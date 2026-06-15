@@ -1,0 +1,84 @@
+<%page args="job, event, request, options" expression_filter="h"/>\
+<%
+xslt = '''\
+<?xml version="1.0" encoding="UTF-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+    <xsl:strip-space elements="*" />
+    <xsl:preserve-space elements="v sg" />
+    <xsl:output method="html" indent="no" />
+    <xsl:template match="/">
+        <xsl:apply-templates select="v" />
+    </xsl:template>
+    <xsl:template match="v">
+        <xsl:apply-templates />
+    </xsl:template>
+    <xsl:template match="sg">
+        <em>
+            <xsl:attribute name="class">
+                <xsl:text>t</xsl:text>
+                <xsl:if test="@h">
+                    <xsl:text> a</xsl:text>
+                </xsl:if>
+            </xsl:attribute>
+            <xsl:apply-templates />
+        </em>
+    </xsl:template>
+</xsl:stylesheet>
+'''
+%>\
+% if not event.raw:
+    <!-- no raw value for this event. -->
+% else:
+% if options['display_row_numbers']:
+<em class="pos">${event.offset+1}</em>
+% endif
+<em class="time">${event.fields.get('_time', '')}</em>
+    % if event.raw.toXml() is None:
+<pre class="event">EATME - ${event.raw}</pre>
+    % else:
+<pre class="event">${event.raw.toXml(xslt) | n}</pre>
+    % endif
+    <%
+    qs = dict(count=1, field_list=",".join(request['field_list']), has_layout=0, offset=event.offset, sid=job.sid, segmentation=request['segmentation'])
+    if request['earliest_time']:
+        qs['earliest_time'] = request['earliest_time']
+    if request['latest_time']:
+        qs['latest_time'] = request['latest_time']
+    qs['display_row_numbers'] = 1 if options['display_row_numbers'] else 0
+    %>
+    % if event.raw.isTruncated is True and request['max_lines'] < max_lines_constraint:
+        <%
+        qs['max_lines'] = 0
+        qs['min_lines'] = request['min_lines']
+    	%>
+        <a href="${ make_route("/module", host_app=request['host_app'], module='Splunk.Module.EventsViewer', action='render', _qs=qs) }" class="showinline">
+        % if int(str(event.get('linecount', max_lines_constraint)))< (max_lines_constraint+1):
+            ${_("Show all %s lines") %  event.get('linecount', '')}\
+        % else:
+            ${_("Show most relevant lines (Exceeds %s limit)") % max_lines_constraint}\
+        % endif:
+        </a>
+    % elif int(str(event.get('linecount', 0))) > request['min_lines']:
+        <%
+        qs['max_lines'] = request['min_lines']
+        qs['min_lines'] = request['min_lines']
+        %>
+        <a href="${ make_route("/module", host_app=request['host_app'], module='Splunk.Module.EventsViewer', action='render', _qs=qs) }" class="showinline">${_("Collapse back to %s lines") % request['min_lines']}</a>
+    % endif
+% endif
+<a href="#" class="actions splIcon splIcon-triangle-large"></a>
+<ul class="fields">
+    % for field_list_item in request['field_list']:
+        % if event.fields.has_key(field_list_item) and field_list_item[0]!='_':
+            % for field in event.fields[field_list_item]:
+                <li>\
+                    <em class="k">${field_list_item}</em>=<em class="${'v h' if field.isHighlighted else 'v'}">${field}</em>\
+                    % for tag in field.tags:
+                        <em class="tg">${tag}</em>\
+                    % endfor
+                    <a href="#" class="fm">${_("Options")}</a>
+                </li>
+            % endfor
+        % endif
+    % endfor
+</ul>
