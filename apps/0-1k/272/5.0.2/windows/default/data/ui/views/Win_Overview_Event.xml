@@ -1,0 +1,530 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" onunloadCancelJobs="true">
+    <label>Event Monitoring</label>
+
+    <!-- Header modules -->
+    <module name="AccountBar" layoutPanel="appHeader" />
+    <module name="WindowsMonitoringCommon" layoutPanel="appHeader" />
+    <module name="WindowsMonitoringAppBar" layoutPanel="navigationHeader" />
+    <module name="Message" layoutPanel="messaging" >
+        <param name="filter">*</param>
+        <param name="clearOnJobDispatch">False</param>
+        <param name="maxSize">1</param>
+    </module>
+    <module name="Message" layoutPanel="messaging">
+        <param name="filter">splunk.search.job</param>
+        <param name="clearOnJobDispatch">True</param>
+        <param name="maxSize">1</param>
+    </module>
+    <module name="TitleBar" layoutPanel="viewHeader">
+        <param name="actionsMenuFilter">dashboard</param>
+    </module>
+    <!-- end Header modules -->
+
+
+    <module name="WindowsMonitoringSearch" layoutPanel="mainSearchControls" autoRun="true">
+        <param name="search">| inputlookup windows_event_system.csv | dedup Host | sort Host | table Host</param>
+        
+        <module name="WindowsMonitoringDropdown">
+            <param name="varName">Host</param>
+            <param name="label">Host</param>
+            <param name="displayField">Host</param>
+            <param name="valueField">Host</param>
+            <param name="staticItem">All,*</param>
+            <param name="topLabel">True</param>
+            <param name="useWildcards">True</param>
+
+            <module name="WindowsMonitoringSearch">
+                <param name="search">| inputlookup windows_event_details.csv | dedup LogName | table LogName | sort LogName</param>
+                <module name="WindowsMonitoringDropdown">
+                    <param name="varName">LogName</param>
+                    <param name="label">LogName</param>
+                    <param name="displayField">LogName</param>
+                    <param name="valueField">LogName</param>
+                    <param name="staticItem">All,*</param>
+                    <param name="topLabel">True</param>
+
+                    <module name="WindowsMonitoringSearch">
+                        <param name="search">| inputlookup windows_event_details.csv | search LogName="$LogName$" | dedup SourceName | table SourceName | sort SourceName</param>
+                        <module name="WindowsMonitoringDropdown">
+                            <param name="varName">SourceName</param>
+                            <param name="label">SourceName</param>
+                            <param name="displayField">SourceName</param>
+                            <param name="valueField">SourceName</param>
+                            <param name="staticItem">All,*</param>
+                            <param name="topLabel">True</param>
+                            
+                            <module name="WindowsMonitoringSearch">
+                                <param name="search">| inputlookup windows_event_details.csv | search LogName="$LogName$" SourceName="$SourceName$" | dedup TaskCategory | table TaskCategory | sort TaskCategory</param>
+                                
+                                <module name="WindowsMonitoringDropdown">
+                                    <param name="varName">TaskCategory</param>
+                                    <param name="label">TaskCategory</param>
+                                    <param name="displayField">TaskCategory</param>
+                                    <param name="valueField">TaskCategory</param>
+                                    <param name="staticItem">All,*</param>
+                                    <param name="topLabel">True</param>
+                                    
+                                    <module name="WindowsMonitoringSearch">
+                                        <param name="search">| inputlookup windows_event_details.csv | search LogName="$LogName$" TaskCategory="$TaskCategory$" SourceName="$SourceName$" | dedup EventCode | table EventCode | sort EventCode</param>
+                                        
+                                        <module name="WindowsMonitoringDropdown">
+                                            <param name="varName">EventCode</param>
+                                            <param name="label">EventCode</param>
+                                            <param name="displayField">EventCode</param>
+                                            <param name="valueField">EventCode</param>
+                                            <param name="staticItem">All,*</param>
+                                            <param name="topLabel">True</param>
+
+                                            <module name="WindowsMonitoringSearch">
+                                                <param name="search">| inputlookup windows_event_details.csv | search LogName="$LogName$" TaskCategory="$TaskCategory$" SourceName="$SourceName$" EventCode="$EventCode$" | dedup Type | table Type | sort Type</param>
+                                        
+                                                <module name="WindowsMonitoringDropdown">
+                                                    <param name="varName">Type</param>
+                                                    <param name="label">Type</param>
+                                                    <param name="displayField">Type</param>
+                                                    <param name="valueField">Type</param>
+                                                    <param name="staticItem">All,*</param>
+                                                    <param name="topLabel">True</param>
+
+                                                    <module name="WindowsMonitoringTextInput">
+                                                        <param name="varName">addedfilter</param>
+                                                        <param name="label">Additional Search Criteria</param>
+                                                        <param name="topLabel">True</param>
+
+                                                        <module name="TimeRangePicker">
+                                                            <param name="searchWhenChanged">True</param>
+                                                            <param name="selected">Last 15 minutes</param>
+                                                            
+                                                            <module name="SubmitButton">
+                                                                <param name="allowSoftSubmit">True</param>
+                                                                <param name="label">Search</param>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row3_col1">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Event SourceNames</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row3_col1">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | stats sparkline as "Trend", count by SourceName | sort -count</param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>count</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+									    <module name="Paginator">
+                                                   			    	<param name="count">10</param>
+                                                    				<param name="entityName">results</param>
+                                                    				<module name="EnablePreview">
+                                                        			<param name="enable">True</param>
+                                                        			<param name="display">False</param>
+                                                                            <module name="SimpleResultsTable">
+                                                                              <param name="count">10</param>
+                                                                              <param name="entityName">results</param>
+                                                                              <param name="allowTransformedFieldSelect">False</param>
+                                                                              <param name="drilldown">row</param>
+
+                                                                              <module name="Gimp"/>
+                                                                              <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$click.value$" EventCode="$EventCode$" Type="$Type$" $addedfilter$</param>
+                                                                                  <module name="ConvertToDrilldownSearch">
+                                                                                      <module name="ViewRedirector">
+                                                                                          <param name="viewTarget">flashtimeline</param>
+                                                                                      </module>
+                                                                                  </module>
+                                                                              </module>
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                </module>
+                                                                </module> 
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row3_col2">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Event TaskCategories</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row3_col2">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | stats sparkline as "Trend", count by TaskCategory | sort -count</param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>count</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+									    <module name="Paginator">
+                                                   			    	<param name="count">10</param>
+                                                    				<param name="entityName">results</param>
+                                                    				<module name="EnablePreview">
+                                                        			<param name="enable">True</param>
+                                                        			<param name="display">False</param>
+                                                                            <module name="SimpleResultsTable">
+                                                                              <param name="count">10</param>
+                                                                              <param name="entityName">results</param>
+                                                                              <param name="allowTransformedFieldSelect">False</param>
+                                                                              <param name="drilldown">row</param>
+
+                                                                              <module name="Gimp"/>
+                                                                              <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$click.value$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$</param>
+                                                                                  <module name="ConvertToDrilldownSearch">
+                                                                                      <module name="ViewRedirector">
+                                                                                          <param name="viewTarget">flashtimeline</param>
+                                                                                      </module>
+                                                                                  </module>
+                                                                              </module>
+
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                </module>
+                                                                </module>
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row4_col1">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Hosts</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row4_col1">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | stats sparkline as "Trend", count by host | sort -count</param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>count</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+										<module name="Paginator">
+                                                   			    	<param name="count">10</param>
+                                                    				<param name="entityName">results</param>
+                                                    				<module name="EnablePreview">
+                                                        			<param name="enable">True</param>
+                                                        			<param name="display">False</param>
+                                                                            <module name="SimpleResultsTable">
+                                                                              <param name="count">10</param>
+                                                                              <param name="entityName">results</param>
+                                                                              <param name="allowTransformedFieldSelect">False</param>
+                                                                              <param name="drilldown">row</param>
+
+                                                                              <module name="Gimp"/>
+                                                                              <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$click.value$" OR ComputerName="$click.value$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$</param>
+                                                                                  <module name="ConvertToDrilldownSearch">
+                                                                                      <module name="ViewRedirector">
+                                                                                          <param name="viewTarget">flashtimeline</param>
+                                                                                      </module>
+                                                                                  </module>
+                                                                              </module>
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                </module>
+                                                                </module>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row4_col2">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Event IDs</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row4_col2">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | eval EventCodeDescription=if(isnull(EventCodeDescription), mvindex(split(Message, "."), 0), EventCodeDescription) | stats sparkline as "Trend", count by EventCode, EventCodeDescription | sort -count</param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>charting.legend.placement</item>
+                                                                            <item>charting.chart</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+										<module name="Paginator">
+                                                   			    	<param name="count">10</param>
+                                                    				<param name="entityName">results</param>
+                                                    				<module name="EnablePreview">
+                                                        			<param name="enable">True</param>
+                                                        			<param name="display">False</param>
+                                                                            <module name="SimpleResultsTable">
+                                                                              <param name="count">10</param>
+                                                                              <param name="entityName">results</param>
+                                                                              <param name="allowTransformedFieldSelect">False</param>
+                                                                              <param name="drilldown">row</param>
+
+                                                                              <module name="Gimp"/>
+                                                                              <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$click.value$" Type="$Type$" $addedfilter$</param>
+                                                                                  <module name="ConvertToDrilldownSearch">
+                                                                                      <module name="ViewRedirector">
+                                                                                          <param name="viewTarget">flashtimeline</param>
+                                                                                      </module>
+                                                                                  </module>
+                                                                              </module>
+
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                </module>
+                                                                </module>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row5_col1">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Event Count by Host - Over Time</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row5_col1">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | timechart count by host </param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>charting.legend.placement</item>
+                                                                            <item>charting.chart</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+                                                                            <module name="HiddenChartFormatter">
+                                                                              <param name="charting.legend.placement">left</param>
+                                                                              <param name="charting.chart">line</param>
+                                                                              <module name="JSChart">
+                                                                                  <param name="width">100%</param>
+                                                                                  <module name="Gimp"/>
+                                                                                  <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$click.name2$" OR ComputerName="$click.name2$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ </param>
+                                                                                  <module name="ViewRedirector">
+                                                                                      <param name="viewTarget">flashtimeline</param>
+                                                                                  </module>
+                                                                              </module>
+
+                                                                              </module>
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row5_col2">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Event Count by EventCode - Over Time</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row5_col2">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | timechart count by EventCode </param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>charting.legend.placement</item>
+                                                                            <item>charting.chart</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+                                                                            <module name="HiddenChartFormatter">
+                                                                                <param name="charting.legend.placement">left</param>
+                                                                                <param name="charting.chart">line</param>
+                                                                                <module name="JSChart">
+                                                                                    <param name="width">100%</param>
+                                                                                    <module name="Gimp"/>
+                                                                                    <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$click.name2$" Type="$Type$" $addedfilter$ </param>
+                                                                                      <module name="ViewRedirector">
+                                                                                          <param name="viewTarget">flashtimeline</param>
+                                                                                      </module>
+                                                                              </module>
+
+                                                                                </module>
+                                                                            </module>
+                                                                          </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                </module>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row6_col1">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Events Counts By LogName - Over Time</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row6_col1">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | timechart count by LogName </param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>charting.legend.placement</item>
+                                                                            <item>charting.chart</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+                                                                            <module name="HiddenChartFormatter">
+                                                                              <param name="charting.legend.placement">left</param>
+                                                                              <param name="charting.chart">line</param>
+                                                                              <module name="JSChart">
+                                                                                <param name="width">100%</param>
+                                                                                
+                                                                                <module name="Gimp"/>
+                                                                                <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$click.name2$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$</param>
+                                                                                  <module name="ViewRedirector">
+                                                                                      <param name="viewTarget">flashtimeline</param>
+                                                                                  </module>
+                                                                              </module>
+
+                                                                              </module>
+                                                                             </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+                                                                
+                                                                <module name="WindowsMonitoringContent" layoutPanel="panel_row6_col2">
+                                                                    <param name="style"></param>
+                                                                    <param name="content">
+                                                                        <![CDATA[
+                                                                        <h1>Events Counts By Type - Over Time</h1>
+                                                                    ]]>
+                                                                    </param>
+                                                                </module>
+
+                                                                
+                                                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row6_col2">
+                                                                    <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$Type$" $addedfilter$ | timechart count by Type </param>
+                                                                    
+                                                                    <module name="ViewstateAdapter">
+                                                                        <param name="suppressionList">
+                                                                            <item>charting.legend.placement</item>
+                                                                            <item>charting.chart</item>
+                                                                        </param>
+
+                                                                        <module name="HiddenFieldPicker">
+                                                                            <param name="strictMode">True</param>
+                                                                            
+                                                                            <module name="JobProgressIndicator"/>
+                                                                            <module name="HiddenChartFormatter">
+                                                                              <param name="charting.legend.placement">left</param>
+                                                                              <param name="charting.chart">line</param>
+                                                                              <module name="JSChart">
+                                                                                <param name="width">100%</param>
+                                                                                <module name="Gimp"/>
+                                                                                <module name="WindowsMonitoringSearch">
+                                                                                  <param name="search">eventtype="windows_events" sourcetype="*inEventLog:$LogName$" (host="$Host$" OR ComputerName="$Host$") TaskCategory="$TaskCategory$"  SourceName="$SourceName$" EventCode="$EventCode$" Type="$click.name2$" $addedfilter$ </param>
+                                                                                  <module name="ViewRedirector">
+                                                                                      <param name="viewTarget">flashtimeline</param>
+                                                                                  </module>
+                                                                              </module>
+
+                                                                              </module>
+                                                                             </module>
+                                                                          <module name="ViewRedirectorLink">
+                                                                              <param name="viewTarget">flashtimeline</param>
+                                                                          </module>
+                                                                       </module>
+                                                                    </module>
+                                                                </module>
+
+
+
+                                                            </module> <!-- SubmitButton -->
+                                                        </module> <!-- TimeRangePicker -->
+                                                    </module> <!-- WindowsMonitoringTextInput -->
+                                                </module> <!-- WindowsMonitoringDropdown -->
+                                            </module> <!-- WindowsMonitoringSearch -->
+                                        </module> <!-- WindowsMonitoringDropdown -->
+                                    </module> <!-- WindowsMonitoringSearch -->
+                                </module> <!-- WindowsMonitoringDropdown -->
+                            </module> <!-- WindowsMonitoringSearch -->
+                        </module> <!-- WindowsMonitoringDropdown -->
+                    </module> <!-- WindowsMonitoringSearch -->
+                </module> <!-- WindowsMonitoringDropdown -->
+            </module> <!-- WindowsMonitoringSearch -->
+        </module> <!-- WindowsMonitoringDropdown -->
+    </module> <!-- WindowsMonitoringSearch -->
+    <module name="WindowsMonitoringContent" layoutPanel="panel_row7_col1">
+        <param name="style"></param>
+        <param name="content">
+                <![CDATA[
+                <div class="winmonitoring-morereports">
+                    <h1>More Reports</h1>
+                    <ul>
+                        <li><a href="%40go?s=Generic%20event%20counts">Generic event counts</a></li>
+                        <li><a href="%40go?s=Event%20categories%20and%20counts%20by%20host%20for%20the%20last%2030%20days">Event categories and counts by host for the last 30 days</a></li>
+                        <li><a href="%40go?s=Event%20severity%20counts%20by%20host%20for%20the%20last%207%20days">Event severity counts by host for the last 7 days</a></li>
+                        <li><a href="%40go?s=Event%20severity%20counts%20by%20host%20for%20the%20last%2030%20days">Event severity counts by host for the last 30 days</a></li>
+                        <li><a href="%40go?s=Event%20severity%20counts%20by%20host%20for%20the%20last%2024%20hours">Event severity counts by host for the last 24 hours</a></li>
+                    </ul>
+                </div>
+                
+            ]]>
+            </param>
+
+    </module>
+
+</view>

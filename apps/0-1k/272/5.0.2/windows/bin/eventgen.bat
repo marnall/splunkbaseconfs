@@ -1,0 +1,1 @@
+"%SPLUNK_HOME%\bin\python" "%SPLUNK_HOME%\etc\apps\eventgen\bin\eventgen.py"

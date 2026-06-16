@@ -1,0 +1,184 @@
+<%page expression_filter="h"/>
+<%inherit file="//layout/base.html" />
+<%namespace name="lib" file="//lib.html" import="*"/>
+<%namespace name="helpers" file="//view/_helpers.html" import="*"/>
+<%
+
+import re
+
+WIN_REGEX = re.compile('microsoft-windows-', re.IGNORECASE)
+
+%>
+
+<%def name="css()">
+    <%coreCSSFiles = [
+        "/static/css/view.css", 
+        "/static/css/skins/default/default.css" 
+    ] %>
+    <%lib:stylesheet_tags files="${coreCSSFiles}" />
+</%def>
+
+<%def name="custom_css()">
+    <%lib:stylesheet_tags files="${['/static/app/%s/windows_setup.css' % app]}" />
+    <%lib:script_tags files="${['/static/app/%s/windows_setup.js' % app,
+                                '/static/app/%s/typewatch.js' % app]}" />
+</%def>
+
+<%def name="gen_form(method='POST', action=None, id=None)">
+    <form  method="${method}"  action="${action if action else ''}" ${'id=' + id if id else ''}>
+</%def>
+
+<%def name="gen_radio_row(input, error_key=None)">
+<tr>
+  <td>${input.name}</td>
+  <td>
+    <input class="MonitorEnable" type="radio" name="${input.name + '.disabled'}" value="false" ${'checked="checked"' if input.disabled==False else ''} /> 
+  </td>
+  <td>
+    <input class="MonitorDisable" type="radio" name="${input.name + '.disabled'}" value="true" ${'checked="checked"' if input.disabled==True else ''} />
+  </td>
+</tr>
+</%def>
+
+<%def name="gen_drag_drop(enabled, all_logs, ns, override, logs)">
+    <% 
+        logs_to_use = enabled.logs
+        if logs:
+            logs_to_use = logs
+        endif
+    %>
+    
+  <div class="EnableDisableContainer">
+    <h4 class="EnableHeader">Enabled <span>Filter: 
+      <input type="text" id="${ns}_enable_filter" class="WinEvtLogFilter" autocomplete="off" />
+      <a href=# id="${ns}_enable_filter_clear">&times;</a>
+    </span></h4>
+    <h4 class="DisableHeader">Disabled <span>Filter: 
+      <input id="${ns}_disable_filter" class="WinEvtLogFilter" autocomplete="off" />
+      <a href=# id="${ns}_disable_filter_clear">&times;</a>
+    </span></h4>
+      <ol id="${ns}_enabled" class="WinEvtLogConnected"> 
+    % if not enabled.disabled or override:
+        % for log in logs_to_use:
+        <li id="${log}">${WIN_REGEX.sub('', log)}
+	<input type="hidden" name="${ns}s" value="${log}" />
+        </li>
+        % endfor
+    % endif
+      </ol>
+
+      <ol id="${ns}_disabled" class="WinEvtLogConnected"> 
+    % for log in all_logs:
+        % if not enabled.disabled or override:
+            % if log.name not in logs_to_use:
+	<li id="${log.name}">${WIN_REGEX.sub('', log.name)}
+	</li>
+            % endif
+        % else:
+	<li id="${log.name}">${WIN_REGEX.sub('', log.name)}
+	</li>
+        % endif
+    % endfor
+      </ol>
+      <div class="EnableMoveSort">
+        <a href=# id="${ns}_enable_move">Disable All</a>
+        <a href=# id="${ns}_enable_sort">Sort (desc)</a>
+      </div>
+      <div class="DisableMoveSort">
+        <a href=# id="${ns}_disable_move">Enable All</a>
+        <a href=# id="${ns}_disable_sort">Sort (desc)</a>
+      </div>
+  </div>
+</%def>
+
+<%
+    error_key = None
+%>
+<div class="WindowsContainer">
+  <div class="WindowsOverview">
+    <h3 id="overview_header">Overview</h3>
+    <p>The Splunk App for Windows provides pre-built data inputs to facilitate monitoring Windows infrastructure using Splunk. Check out the <a href="http://splunk-base.splunk.com/apps/22315/" target="_blank">Splunk for Windows</a> page on <a href="http://splunk-base.splunk.com" target="_blank">Splunkbase</a> for support information, the latest updates, and more.</p>
+    <p>Configuration of inputs through this application will make these inputs visible to other Splunk applications on this system. After configuration, confirm that the changes you make in this application do not negatively alter the other applications.</p>
+    <p>Note that configuration of inputs through this application will only affect data collection on this machine. To collect data from other machines in your environment and report on them through this application, please refer to this documentation - <a href="http://docs.splunk.com/Documentation/WindowsApp/5.0/User/WhataSplunkAppforWindowsdeploymentlookslike" target="_blank" title="What a Splunk App for Windows deployment looks like">http://docs.splunk.com/Documentation/WindowsApp/5.0/User/WhataSplunkAppforWindowsdeploymentlookslike</a>.</p>
+    <p>For extra information, please refer to <a href="http://docs.splunk.com/Documentation/WindowsApp/5.0/User/AbouttheSplunkAppforWindows" target="_blank" title="About the Splunk App for Windows">this page</a>.</p>
+  </div>
+
+% if system:
+  <div class="WindowsError">
+    % if errors:
+<%    
+    error_key = errors.name
+%>
+        % for error in errors.errors:
+    <p class="errorText">Error in ${errors.name}: ${error}</p>
+        % endfor
+    % endif
+  </div>
+
+
+  ${gen_form(method='POST', action=make_url(['custom', app , 'windowssetup', app, 'save']), id="windows_form")}
+
+  ${csrf_hidden_input()}
+
+<div class="WindowsEventLog">
+  <h3>Windows Event Log Inputs:</h3>
+
+  <p class="WinEvtLogInstructions">
+    To enable the collection of an event log in the Disabled group, simply click on the event log name. 
+    Use the filters located above the Enabled and Disabled groups
+    to help locate specific event logs.
+    Clicking "Disable All" will disable all unfiltered event logs in the Enabled group, while
+    clicking "Enable All" will enable all unfiltered event logs in the Disabled group.
+  </p>
+  ${gen_drag_drop(win[0], cannon, 'winevtlog', log_override, log_list)}
+</div>
+
+<div class="WindowsEventLog">
+  <h3>Windows Perfmon Inputs:</h3>
+
+  <p class="WinEvtLogInstructions">
+    To enable the collection of a perfmon object in the Disabled group, simply click on the perfmon object name. 
+    Use the filters located above the Enabled and Disabled groups
+    to help locate specific perfmon objects.
+    Clicking "Disable All" will disable all unfiltered perfmon objects in the Enabled group, while
+    clicking "Enable All" will enable all unfiltered perfmon objects in the Disabled group.
+  </p>
+  ${gen_drag_drop(perfmon_active, perfmon_canon, 'winperfmon', False, [])}
+</div>
+    
+
+  <div class="WindowsMonitor">
+    <h3 id="monitor_header">File and Directory Inputs:</h3>
+    <p class="MonitorOverview">
+    To enable or disable the collection of Windows DHCP or Update logs, toggle the radio buttons below to the appropriate setting.
+    </p>
+    <table id="monitor_table" class="InputTable">
+      <tr>
+        <th class="NameHeader">Name</th>
+        <th class="GenericHeader">Enable
+        </th>
+        <th class="GenericHeader">Disable
+        </th>
+      </tr>
+    % for m in mon:
+        ${gen_radio_row(m, error_key=error_key)}
+    % endfor
+    </table>
+  </div>
+
+
+  <div class="WindowsButtons">
+    <input id="windows_submit" value="Save" type="submit" class="splButton-primary">
+    </input>
+    <input id="windows_reset" type="reset" class="splButton-secondary">
+    </input>
+  </div>
+  </form>
+% else:
+
+  <div class="WindowsError">
+    <p class="errorText">This page is for <strong>local</strong> input configuration only. Since you are not running this instance of Splunk on a Windows system, no additional configuration is necessary. Please continue using this application normally.</p>
+  </div>
+% endif
+</div>
+

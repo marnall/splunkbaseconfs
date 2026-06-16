@@ -1,0 +1,1 @@
+# Making file empty to wipe out content while upgrading.

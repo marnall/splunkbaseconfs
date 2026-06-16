@@ -1,0 +1,484 @@
+<?xml version="1.0"?>
+<!--Copyright (C) 2005-2012 Splunk Inc. All Rights Reserved.-->
+<view template="dashboard.html">
+    <!-- Warning: this label is duplicated in ../nav/default.xml -->
+    <label>Performance Monitoring</label>
+    <module name="AccountBar" layoutPanel="appHeader"/>
+    <module name="WindowsMonitoringCommon" layoutPanel="appHeader" />
+    <module name="WindowsMonitoringAppBar" layoutPanel="navigationHeader"/>
+        <module name="Message" layoutPanel="messaging">
+            <param name="filter">*</param>
+            <param name="clearOnJobDispatch">False</param>
+            <param name="maxSize">2</param>
+        </module>
+        <module name="TitleBar" layoutPanel="viewHeader">
+            <param name="actionsMenuFilter">dashboard</param>
+        </module>
+        <module name="WindowsMonitoringSearch" layoutPanel="mainSearchControls" autoRun="true"> 
+            <param name="search"><![CDATA[| inputlookup windows_perfmon_system.csv | sort Host | table Host]]></param>
+            <module name="WindowsMonitoringDropdown">
+                <param name="varName">Host</param>
+                <param name="label">Select Host</param>
+                <param name="style">float:left;</param>
+                <param name="displayField">Host</param>
+                <param name="valueField">Host</param>
+                <param name="staticItem">All,*</param>
+                <param name="topLabel">True</param>
+                <param name="useWildcards">True</param>
+                
+                <module name="TimeRangePicker">
+                    <!--<param name="label"></param>-->
+                    <param name="searchWhenChanged">True</param>
+                    <param name="selected">Last 24 hours</param>
+                    <module name="WindowsMonitoringSearch">
+                        <param name="search">| inputlookup windows_perfmon_details.csv</param>
+                    <!-- (Server Processor) -->
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row1_col1">
+                            <param name="style"></param>
+                            <param name="content">
+                                <![CDATA[
+                                <h1>CPU Metrics</h1>
+                            ]]>
+                            </param>
+                        </module>
+                        <!-- End HTML - WindowsMonitoringSearch module (Server Processor) -->
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row1_col1">
+                            <param name="search"><![CDATA[search object="Processor" | dedup counter | table counter | sort counter]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row1_col1">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldCPU</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row1_col1">
+                                    <param name="search">
+                                        <![CDATA[search object="Processor" counter="$FieldCPU$" | dedup instance | table instance | sort instance
+                                    ]]>
+                                    </param>
+                                    <module name="WindowsMonitoringDropdown" layoutPanel="panel_row1_col1">
+                                        <param name="style">clear:both;</param>
+                                        <param name="label">Instance</param>
+                                        <param name="varName">FieldCPUinst</param>
+                                        <param name="displayField">instance</param>
+                                        <param name="valueField">instance</param>
+                                        <param name="staticItem">All,*</param>
+                                        <module name="WindowsMonitoringSearch" layoutPanel="panel_row1_col1">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_performance" Host="$Host$" object="Processor" counter="$FieldCPU$"  instance="$FieldCPUinst$" | stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") | sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2)
+                                            ]]>
+                                            </param>
+                                            <module name="ViewstateAdapter">
+                                                <param name="suppressionList">
+                                                    <item>count</item>
+                                                </param>
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="strictMode">True</param>
+                                                    <module name="JobProgressIndicator"/>
+                                                    <module name="Paginator">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <module name="EnablePreview">
+                                                            <param name="enable">True</param>
+                                                            <param name="display">False</param>
+                                                            <module name="SimpleResultsTable">
+                                                                <param name="count">10</param>
+                                                                <param name="entityName">results</param>
+                                                                <param name="allowTransformedFieldSelect">False</param>
+                                                                <param name="drilldown">row</param>
+                                                                <module name="Gimp"/>
+                                                                <module name="WindowsMonitoringSearch">
+                                                                    <param name="search">
+                                                                        <![CDATA[
+                                                                            eventtype="windows_performance" Host="$click.value$" object="Processor" counter="$FieldCPU$"  instance="$FieldCPUinst$" 
+                                                                        ]]>
+                                                                    </param>
+                                                                    <module name="ConvertToDrilldownSearch">
+                                                                        <module name="ViewRedirector">
+                                                                            <param name="viewTarget">flashtimeline</param>
+                                                                        </module>
+                                                                    </module>
+                                                                </module>
+                                                            </module>
+                                                            <module name="ViewRedirectorLink">
+                                                                <param name="viewTarget">flashtimeline</param>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>
+                        <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Server Processor) -->
+                        <!--  (Server Memory)-->
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row1_col2">
+                            <param name="style"></param>
+                            <param name="content">
+                                <![CDATA[
+                                <h1>Memory Metrics</h1>
+                            ]]>
+                            </param>
+                        </module>
+                        <!-- End HTML - WindowsMonitoringSearch module (Server Memory) -->
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row1_col2">
+                            <param name="search"><![CDATA[search object="Memory" | dedup counter | table counter | sort counter]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row1_col2">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldMem</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row1_col2">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_performance" Host="$Host$" object="Memory" counter="$FieldMem$"| stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") |  sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2) 
+                                            ]]>
+                                            </param>
+                                            <module name="ViewstateAdapter">
+                                                <param name="suppressionList">
+                                                    <item>count</item>
+                                                </param>
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="strictMode">True</param>
+                                                    <module name="JobProgressIndicator"/>
+                                                    <module name="Paginator">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <module name="EnablePreview">
+                                                            <param name="enable">True</param>
+                                                            <param name="display">False</param>
+                                                            <module name="SimpleResultsTable">
+                                                                <param name="count">10</param>
+                                                                <param name="entityName">results</param>
+                                                                <param name="allowTransformedFieldSelect">False</param>
+                                                                <param name="drilldown">row</param>
+                                                                <module name="Gimp"/>
+                                                                <module name="WindowsMonitoringSearch">
+                                                                    <param name="search">
+                                                                        <![CDATA[
+                                                                            eventtype="windows_performance" Host="$click.value$" object="Memory" counter="$FieldMem$"
+                                                                        ]]>
+                                                                    </param>
+                                                                    <module name="ConvertToDrilldownSearch">
+                                                                        <module name="ViewRedirector">
+                                                                            <param name="viewTarget">flashtimeline</param>
+                                                                        </module>
+                                                                    </module>
+                                                                </module>
+                                                            </module>
+                                                            <module name="ViewRedirectorLink">
+                                                                <param name="viewTarget">flashtimeline</param>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                            </module>
+                        </module>
+                      <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Server Memory) -->        
+        <!--  (Server Physical Disk)-->
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row2_col1">
+                            <param name="style"></param>
+                            <param name="content"><![CDATA[
+                                <h1>Physical Disk Metrics</h1>
+                            ]]></param>
+                        </module>  <!-- End HTML - WindowsMonitoringSearch module (Server Physical Disk) -->        
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row2_col1">
+                            <param name="search"><![CDATA[search object="PhysicalDisk" | dedup counter | table counter | sort counter]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row2_col1">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldDiskP</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row2_col1">                
+                                    <param name="search"><![CDATA[search object="PhysicalDisk" counter="$FieldDiskP$" | dedup instance | table instance | sort instance]]></param>
+                                    <module name="WindowsMonitoringDropdown" layoutPanel="panel_row2_col1">
+                                        <param name="style">clear:both;</param>
+                                        <param name="label">Instance</param>
+                                        <param name="varName">FieldDiskPinst</param>
+                                        <param name="displayField">instance</param>
+                                        <param name="valueField">instance</param>
+                                        <param name="staticItem">All,*</param>
+                                        <module name="WindowsMonitoringSearch" layoutPanel="panel_row2_col1">
+                                            <param name="search"><![CDATA[eventtype="windows_performance" Host="$Host$" object="PhysicalDisk" counter="$FieldDiskP$" | stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") | sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2) ]]></param>
+                                            <module name="ViewstateAdapter">
+                                                <param name="suppressionList">
+                                                    <item>count</item>
+                                                </param>
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="strictMode">True</param>
+                                                    <module name="JobProgressIndicator"/>
+                                                    <module name="Paginator">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <module name="EnablePreview">
+                                                            <param name="enable">True</param>
+                                                            <param name="display">False</param>
+                                                            <module name="SimpleResultsTable">
+                                                                <param name="count">10</param>
+                                                                <param name="entityName">results</param>
+                                                                <param name="allowTransformedFieldSelect">False</param>
+                                                                <param name="drilldown">row</param>
+                                                                <module name="Gimp"/>
+                                                                <module name="WindowsMonitoringSearch">
+                                                                    <param name="search">
+                                                                        <![CDATA[
+                                                                            eventtype="windows_performance" Host="$click.value$" object="PhysicalDisk" counter="$FieldDiskP$" 
+                                                                        ]]>
+                                                                    </param>
+                                                                    <module name="ConvertToDrilldownSearch">
+                                                                        <module name="ViewRedirector">
+                                                                            <param name="viewTarget">flashtimeline</param>
+                                                                        </module>
+                                                                    </module>
+                                                                </module>
+                                                            </module>
+                                                            <module name="ViewRedirectorLink">
+                                                                <param name="viewTarget">flashtimeline</param>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>  <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Server Processor) -->        
+        <!--  (Server Logical Disk)-->
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row2_col2">
+                            <param name="style"></param>
+                            <param name="content"><![CDATA[
+                                <h1>Logical Disk Metrics</h1>
+                            ]]></param>
+                        </module>  <!-- End HTML - WindowsMonitoringSearch module (Server Logical Disk) -->        
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row2_col2">
+                            <param name="search"><![CDATA[search object="LogicalDisk" | dedup counter | table counter | sort counter]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row2_col2">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldDiskL</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row2_col2">                
+                                    <param name="search"><![CDATA[search object="LogicalDisk" counter="$FieldDiskL$" | dedup instance | table instance | sort instance]]></param>
+                                    <module name="WindowsMonitoringDropdown" layoutPanel="panel_row2_col2">
+                                        <param name="style">clear:both;</param>
+                                        <param name="label">Instance</param>
+                                        <param name="varName">FieldDiskLinst</param>
+                                        <param name="displayField">instance</param>
+                                        <param name="valueField">instance</param>
+                                        <param name="staticItem">All,*</param>
+                                        <module name="WindowsMonitoringSearch" layoutPanel="panel_row2_col2">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_performance" Host="$Host$" object="LogicalDisk" counter="$FieldDiskL$"  instance="$FieldDiskLinst$" | stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") | sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2) 
+                                            ]]></param>
+                                            <module name="ViewstateAdapter">
+                                                <param name="suppressionList">
+                                                    <item>count</item>
+                                                </param>
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="strictMode">True</param>
+                                                    <module name="JobProgressIndicator"/>
+                                                    <module name="Paginator">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <module name="EnablePreview">
+                                                            <param name="enable">True</param>
+                                                            <param name="display">False</param>
+                                                            <module name="SimpleResultsTable">
+                                                                <param name="count">10</param>
+                                                                <param name="entityName">results</param>
+                                                                <param name="allowTransformedFieldSelect">False</param>
+                                                                <param name="drilldown">row</param>
+                                                                <module name="Gimp"/>
+                                                                <module name="WindowsMonitoringSearch">
+                                                                    <param name="search">
+                                                                        <![CDATA[
+                                                                            eventtype="windows_performance" Host="$click.value$" object="LogicalDisk" counter="$FieldDiskL$"  instance="$FieldDiskLinst$" 
+                                                                        ]]>
+                                                                    </param>
+                                                                    <module name="ConvertToDrilldownSearch">
+                                                                        <module name="ViewRedirector">
+                                                                            <param name="viewTarget">flashtimeline</param>
+                                                                        </module>
+                                                                    </module>
+                                                                </module>
+                                                            </module>
+                                                            <module name="ViewRedirectorLink">
+                                                                <param name="viewTarget">flashtimeline</param>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>  <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Server Processor) -->        
+                        <!-- (Network) -->
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row3_col1">
+                            <param name="style"></param>
+                            <param name="content"><![CDATA[<h1>Network Metrics</h1>]]></param>
+                        </module> <!-- End HTML - WindowsMonitoringSearch module (Network) -->
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row3_col1">
+                            <param name="search"><![CDATA[search object="Network Interface" | dedup counter | table counter | sort counter ]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row3_col1">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldNetwork</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row3_col1">
+                                    <param name="search">
+                                        <![CDATA[search object="Network Interface" counter="$FieldNetwork$" | dedup instance | table instance | sort instance
+                                    ]]>
+                                    </param>
+                                    <module name="WindowsMonitoringDropdown" layoutPanel="panel_row3_col1">
+                                        <param name="style">clear:both;</param>
+                                        <param name="label">Instance</param>
+                                        <param name="varName">FieldNetworkinst</param>
+                                        <param name="displayField">instance</param>
+                                        <param name="valueField">instance</param>
+                                        <param name="staticItem">All,*</param>
+                                        <module name="WindowsMonitoringSearch" layoutPanel="panel_row3_col1">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_performance" Host="$Host$" object="Network Interface" counter="$FieldNetwork$"  instance="$FieldNetworkinst$" | stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") | sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2) 
+                                            ]]>
+                                            </param>
+                                            <module name="ViewstateAdapter">
+                                                <param name="suppressionList">
+                                                    <item>count</item>
+                                                </param>
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="strictMode">True</param>
+                                                    <module name="JobProgressIndicator"/>
+                                                    <module name="Paginator">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <module name="EnablePreview">
+                                                            <param name="enable">True</param>
+                                                            <param name="display">False</param>
+                                                            <module name="SimpleResultsTable">
+                                                                <param name="count">10</param>
+                                                                <param name="entityName">results</param>
+                                                                <param name="allowTransformedFieldSelect">False</param>
+                                                                <param name="drilldown">row</param>
+                                                                <module name="Gimp"/>
+                                                                <module name="WindowsMonitoringSearch">
+                                                                    <param name="search">
+                                                                        <![CDATA[
+                                                                            eventtype="windows_performance" Host="$click.value$" object="Network Interface" counter="$FieldNetwork$"  instance="$FieldNetworkinst$" 
+                                                                        ]]>
+                                                                    </param>
+                                                                    <module name="ConvertToDrilldownSearch">
+                                                                        <module name="ViewRedirector">
+                                                                            <param name="viewTarget">flashtimeline</param>
+                                                                        </module>
+                                                                    </module>
+                                                                </module>
+                                                            </module>
+                                                            <module name="ViewRedirectorLink">
+                                                                <param name="viewTarget">flashtimeline</param>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                        </module> <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Network) -->
+                        
+                        <module name="WindowsMonitoringContent" layoutPanel="panel_row3_col2">
+                            <param name="style"></param>
+                            <param name="content"><![CDATA[<h1>System Metrics</h1>]]></param>
+                        </module> <!-- End HTML - WindowsMonitoringSearch module (Network) -->
+                        <module name="WindowsMonitoringPostProcess" layoutPanel="panel_row3_col2">
+                            <param name="search"><![CDATA[search object="System" | dedup counter | table counter | sort counter ]]></param>
+                            <module name="WindowsMonitoringDropdown" layoutPanel="panel_row3_col2">
+                                <param name="style"></param>
+                                <param name="label">Counters</param>
+                                <param name="varName">FieldSystem</param>
+                                <param name="displayField">counter</param>
+                                <param name="valueField">counter</param>
+                                <module name="WindowsMonitoringSearch" layoutPanel="panel_row3_col2">
+                                    <param name="search">
+                                        <![CDATA[
+                                            eventtype="windows_performance" Host="$Host$" object="System" counter="$FieldSystem$"  | stats sparkline(avg(Value)) as Trend avg(Value) as Average, max(Value) as Peak, latest(Value) as Current, latest(_time) as "Last Updated" by Host | convert ctime("Last Updated") | sort -Current | eval Average=round(Average, 2) | eval Peak=round(Peak, 2) | eval Current=round(Current, 2) 
+                                    ]]>
+                                    </param>
+                                    <module name="ViewstateAdapter">
+                                        <param name="suppressionList">
+                                            <item>count</item>
+                                        </param>
+                                        <module name="HiddenFieldPicker">
+                                            <param name="strictMode">True</param>
+                                            <module name="JobProgressIndicator"/>
+                                            <module name="Paginator">
+                                                <param name="count">10</param>
+                                                <param name="entityName">results</param>
+                                                <module name="EnablePreview">
+                                                    <param name="enable">True</param>
+                                                    <param name="display">False</param>
+                                                    <module name="SimpleResultsTable">
+                                                        <param name="count">10</param>
+                                                        <param name="entityName">results</param>
+                                                        <param name="allowTransformedFieldSelect">False</param>
+                                                        <param name="drilldown">row</param>
+                                                        <module name="Gimp"/>
+                                                        <module name="WindowsMonitoringSearch">
+                                                            <param name="search">
+                                                                <![CDATA[
+                                                                    eventtype="windows_performance" Host="$click.value$" object="System" counter="$FieldSystem$"  
+                                                                ]]>
+                                                            </param>
+                                                            <module name="ConvertToDrilldownSearch">
+                                                                <module name="ViewRedirector">
+                                                                    <param name="viewTarget">flashtimeline</param>
+                                                                </module>
+                                                            </module>
+                                                        </module>
+                                                    </module>
+                                                    <module name="ViewRedirectorLink">
+                                                        <param name="viewTarget">flashtimeline</param>
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                        </module> <!-- End WindowsMonitoringSearch - WindowsMonitoringSearch module (Network) -->
+                    </module>
+                </module> <!-- end Target Server WindowsMonitoringDropdown-->
+            </module> <!-- end Main WindowsMonitoringSearch module -->
+        </module> <!-- end TimeRangePicker -->
+        <module name="WindowsMonitoringContent" layoutPanel="panel_row4_col1"> 
+            <param name="style"></param>
+            <param name="content">
+                <![CDATA[
+                <div class="winmonitoring-morereports">
+                    <h1>More Reports</h1>
+                    <ul>
+                    <li><a href="%40go?s=Performance%20counter%20categories%20and%20counts%20by%20host%20for%20the%20last%207%20days">Performance counter categories and counts by host for the last 7 days</a></li>
+                    <li><a href="%40go?s=Number%20of%20hosts%20with%20Average%20CPU%20utilization%20%3E%2080%25%20in%20the%20last%2024%20hours">Number of hosts with Average CPU utilization > 80% in the last 24 hours</a></li>
+                    <li><a href="%40go?s=Average%20Memory%20utilization%20per%20process%2C%20host%20in%20the%20last%2024%20hours">Average Memory utilization per process, host in the last 24 hours</a></li>
+                    <li><a href="%40go?s=Average%20CPU%20utilization%20per%20process%2C%20host%20in%20the%20last%2024%20hours">Average CPU utilization per process, host in the last 24 hours</a></li>
+                    </ul>
+                </div>
+                
+            ]]>
+            </param>
+        </module>
+
+</view>

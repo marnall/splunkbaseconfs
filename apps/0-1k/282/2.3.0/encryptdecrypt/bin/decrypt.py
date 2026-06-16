@@ -1,0 +1,42 @@
+# Copyright (C) 2005-2009 Splunk Inc.  All Rights Reserved.  Version 4.0
+# Author: Nimish Doshi
+#from __future__ import print_function
+import sys,splunk.Intersplunk
+import re
+import string
+import base64
+from pyDes import *
+import os
+
+if len(sys.argv) != 3:
+    print ("Usage |decrypt escaped-regex key")
+    sys.exit()
+
+regex = sys.argv[1]
+key = sys.argv[2]
+k = des(key, CBC, "\0\0\0\0\0\0\0\0", "\0", padmode=PAD_NORMAL)
+m = re.compile(regex)
+
+results = []
+
+try:
+
+    results,dummyresults,settings = splunk.Intersplunk.getOrganizedResults()
+    
+    for r in results:
+        if "_raw" in r:
+            raw = r["_raw"]
+            mymatch = m.search(raw)
+            if mymatch:
+                value = mymatch.group(1)
+                data = base64.b64decode(value)
+                printdata = k.decrypt(data)
+                r["decryptedField"] = printdata.decode("utf-8")
+
+                
+except:
+    import traceback
+    stack =  traceback.format_exc()
+    results = splunk.Intersplunk.generateErrorResults("Error : Traceback: " + str(stack))
+
+splunk.Intersplunk.outputResults( results )

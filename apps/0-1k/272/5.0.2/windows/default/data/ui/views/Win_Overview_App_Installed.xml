@@ -1,0 +1,342 @@
+<?xml version="1.0"?>
+<view template="dashboard.html">
+
+    <label>Application Installs</label>
+    <module name="AccountBar" layoutPanel="appHeader"/>
+    <module name="WindowsMonitoringCommon" layoutPanel="appHeader" />
+    <module name="WindowsMonitoringAppBar" layoutPanel="navigationHeader"/>
+    <module name="Message" layoutPanel="messaging">
+        <param name="filter">*</param>
+        <param name="clearOnJobDispatch">False</param>
+        <param name="maxSize">2</param>
+    </module>
+    <module name="TitleBar" layoutPanel="viewHeader">
+        <param name="actionsMenuFilter">dashboard</param>
+    </module>
+    <module name="WindowsMonitoringSearch" layoutPanel="mainSearchControls" autoRun="true">
+        <param name="search">| inputlookup windows_event_system.csv | dedup Host | table Host</param>
+
+        <module name="WindowsMonitoringDropdown">
+            <param name="varName">Host</param>
+            <param name="label">Select Host</param>
+            <param name="style">float:left;</param>
+            <param name="displayField">Host</param>
+            <param name="valueField">Host</param>
+            <param name="staticItem">All,*</param>
+            <param name="topLabel">True</param>
+            <param name="useWildcards">True</param>
+
+            <module name="TimeRangePicker">
+                <!--<param name="label"></param>-->
+                <param name="searchWhenChanged">True</param>
+                <param name="selected">Last 24 hours</param>
+                
+                <!-- Total Installs by Host -->
+                <module name="WindowsMonitoringContent" layoutPanel="panel_row1_col1">
+                    <param name="style"></param>
+                    <param name="content">
+                        <![CDATA[
+                            <h1>Total Installs by Host</h1>
+                        ]]>
+                    </param>
+                </module>
+                <module name="WindowsMonitoringSearch" layoutPanel="panel_row1_col1">
+                    <param name="search">
+			            eventtype="windows_events" SourceName=MsiInstaller EventCode=11707 host="$Host$"| stats sparkline as "Trend", count by host | sort -count 
+                    </param>
+                    
+                    <module name="ViewstateAdapter">
+                        <param name="suppressionList">
+                            <item>count</item>
+                        </param>
+                        <module name="HiddenFieldPicker">
+                            <param name="strictMode">True</param>
+                            <module name="JobProgressIndicator"/>
+                            <module name="Paginator">
+                                <param name="count">10</param>
+                                <param name="entityName">results</param>
+                                <module name="EnablePreview">
+                                    <param name="enable">True</param>
+                                    <param name="display">False</param>
+                                    <module name="SimpleResultsTable">
+                                        <param name="count">10</param>
+                                        <param name="entityName">results</param>
+                                        <param name="allowTransformedFieldSelect">False</param>
+                                        <param name="drilldown">row</param>
+                                        <module name="Gimp"/>
+                                        <module name="WindowsMonitoringSearch">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_events" SourceName=MsiInstaller EventCode=11707 host="$click.value$"
+                                                ]]>
+                                            </param>
+                                            <module name="ViewRedirector">
+                                                <param name="viewTarget">flashtimeline</param>
+                                            </module>
+                                        </module>
+                                    </module>
+                                    <module name="ViewRedirectorLink">
+                                        <param name="viewTarget">flashtimeline</param>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>
+                    </module>
+                </module>
+                <!-- End Total Crashes by Host -->
+                
+                
+                
+                <!-- Total Installs by Application -->
+                <module name="WindowsMonitoringContent" layoutPanel="panel_row1_col2">
+                    <param name="style"></param>
+                    <param name="content">
+                        <![CDATA[
+                            <h1>Total Installs by Application</h1>
+                        ]]>
+                    </param>
+                </module>
+                <module name="WindowsMonitoringSearch" layoutPanel="panel_row1_col2">
+                    <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$Host$"
+                        | rex field=Message "(?s)Product: (?&lt;product_name&gt;.*) --"
+                        | stats sparkline as "Trend", count by product_name
+                        | sort -count 
+                    </param>
+                    
+                    <module name="ViewstateAdapter">
+                        <param name="suppressionList">
+                            <item>count</item>
+                        </param>
+                        <module name="HiddenFieldPicker">
+                            <param name="strictMode">True</param>
+                            <module name="JobProgressIndicator"/>
+                            <module name="Paginator">
+                                <param name="count">10</param>
+                                <param name="entityName">results</param>
+                                <module name="EnablePreview">
+                                    <param name="enable">True</param>
+                                    <param name="display">False</param>
+                                    <module name="SimpleResultsTable">
+                                        <param name="count">10</param>
+                                        <param name="entityName">results</param>
+                                        <param name="allowTransformedFieldSelect">False</param>
+                                        <param name="drilldown">row</param>
+                                        <module name="Gimp"/>
+                                        <module name="WindowsMonitoringSearch">
+                                            <param name="search">
+                                                <![CDATA[
+                                                    eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$Host$"
+                                                    | rex field=Message "(?s)Product: (?<product_name>.*) --"
+                                                    | search product_name="$click.value$"
+                                                ]]>
+                                            </param>
+                                            <module name="ViewRedirector">
+                                                <param name="viewTarget">flashtimeline</param>
+                                            </module>
+                                        </module>
+                                    </module>
+                                    <module name="ViewRedirectorLink">
+                                        <param name="viewTarget">flashtimeline</param>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>
+                    </module>
+                </module>
+                <!-- End Total Installs by Application -->
+                
+                
+                
+                <!-- Installs Over Time by Host -->
+                <module name="WindowsMonitoringContent" layoutPanel="panel_row2_col1">
+                    <param name="style"></param>
+                    <param name="content">
+                        <![CDATA[
+                            <h1>Installs Over Time by Host</h1>
+                        ]]>
+                    </param>
+                </module>
+                <module name="WindowsMonitoringSearch" layoutPanel="panel_row2_col1">
+                    <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707 host="$Host$"
+| timechart count by host</param>
+                    
+                    <module name="ViewstateAdapter">
+                        <param name="suppressionList">
+                            <item>charting.legend.placement</item>
+                            <item>charting.chart</item>
+                        </param>
+
+                        <module name="HiddenFieldPicker">
+                            <param name="strictMode">True</param>
+                            <module name="JobProgressIndicator"/>
+                            
+                            <module name="HiddenChartFormatter">
+                                <param name="charting.legend.placement">left</param>
+                                <param name="charting.chart">line</param>
+                                <module name="JSChart">
+                                    <param name="width">100%</param>
+                                    <module name="Gimp"/>
+                                    <module name="WindowsMonitoringSearch">
+                                        <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707 host="$click.name2$"</param>
+                                        <module name="ViewRedirector">
+                                            <param name="viewTarget">flashtimeline</param>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                            <module name="ViewRedirectorLink">
+                                <param name="viewTarget">flashtimeline</param>
+                            </module>
+                        </module>
+                    </module>
+                </module>
+                <!-- End Installs Over Time by Host -->
+
+
+                
+                
+                <!-- Installs Over Time by Application -->
+                <module name="WindowsMonitoringContent" layoutPanel="panel_row2_col2">
+                    <param name="style"></param>
+                    <param name="content">
+                        <![CDATA[
+                            <h1>Installs Over Time by Application</h1>
+                        ]]>
+                    </param>
+                </module>
+                <module name="WindowsMonitoringSearch" layoutPanel="panel_row2_col2">
+                    <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$Host$"
+| rex field=Message "(?s)Product: (?&lt;product_name&gt;.*) --"
+| timechart count by product_name</param>
+                    
+                    <module name="ViewstateAdapter">
+                        <param name="suppressionList">
+                            <item>charting.legend.placement</item>
+                            <item>charting.chart</item>
+                        </param>
+
+                        <module name="HiddenFieldPicker">
+                            <param name="strictMode">True</param>
+                            <module name="JobProgressIndicator"/>
+                            
+                            <module name="HiddenChartFormatter">
+                                <param name="charting.legend.placement">left</param>
+                                <param name="charting.chart">line</param>
+                                <module name="JSChart">
+                                    <param name="width">100%</param>
+                                    <module name="Gimp"/>
+                                    <module name="WindowsMonitoringSearch">
+                                        <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$Host$"
+                                            | rex field=Message "(?s)Product: (?&lt;product_name&gt;.*) --"
+                                            | search product_name="$click.name2$"
+                                        </param>
+                                        <module name="ViewRedirector">
+                                            <param name="viewTarget">flashtimeline</param>
+                                        </module>
+                                    </module>
+                                </module>
+                            </module>
+                            <module name="ViewRedirectorLink">
+                                <param name="viewTarget">flashtimeline</param>
+                            </module>
+                        </module>
+                    </module>
+                </module>
+                <!-- End Installs Over Time by Application -->
+
+
+                
+                
+                
+                
+                
+                <!-- Installation details by Host  -->
+                <module name="WindowsMonitoringContent" layoutPanel="panel_row3_col1">
+                    <param name="style"></param>
+                    <param name="content">
+                        <![CDATA[
+                            <h1>Installation details by Host</h1>
+                        ]]>
+                    </param>
+                </module>
+                <module name="WindowsMonitoringSearch" layoutPanel="panel_row3_col1">
+                    <param name="search">eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$Host$"
+| rex field=Message "(?s)Product: (?&lt;product_name&gt;.*) --"
+| stats count, latest(_time) AS ltime by host, product_name
+| convert ctime(ltime)
+| eval comb=product_name." (Last Event Time = ".ltime." )"
+| stats values(comb) AS Installed_Products, sum(count) AS Total_Events by host</param>
+                    
+                    <module name="ViewstateAdapter">
+                        <param name="suppressionList">
+                            <item>count</item>
+                        </param>
+                        <module name="HiddenFieldPicker">
+                            <param name="strictMode">True</param>
+                            <module name="JobProgressIndicator"/>
+                            <module name="Paginator">
+                                <param name="count">10</param>
+                                <param name="entityName">results</param>
+                                <module name="EnablePreview">
+                                    <param name="enable">True</param>
+                                    <param name="display">False</param>
+                                    <module name="SimpleResultsTable">
+                                        <param name="count">10</param>
+                                        <param name="entityName">results</param>
+                                        <param name="allowTransformedFieldSelect">False</param>
+                                        <param name="drilldown">row</param>
+                                        <module name="Gimp"/>
+                                        <module name="WindowsMonitoringSearch">
+                                            <param name="search">
+                                                <![CDATA[
+                                                eventtype="windows_events" SourceName=MsiInstaller EventCode=11707  host="$click.value$"
+                                                ]]>
+                                            </param>
+                                            <module name="ViewRedirector">
+                                                <param name="viewTarget">flashtimeline</param>
+                                            </module>
+                                        </module>
+                                    </module>
+                                    <module name="ViewRedirectorLink">
+                                        <param name="viewTarget">flashtimeline</param>
+                                    </module>
+                                </module>
+                            </module>
+                        </module>
+                    </module>
+                </module>
+                <!-- End Installation Details by Host -->
+
+
+
+
+
+
+
+
+
+
+
+            </module>
+        </module>
+    </module>
+    
+    <module name="WindowsMonitoringContent" layoutPanel="panel_row4_col1"> 
+        <param name="style"></param>
+        <param name="content">
+            <![CDATA[
+          <div class="winmonitoring-morereports">
+            <h1>More Reports</h1>
+            <ul>
+                <li><a href="/app/windows/%40go?s=Count%20of%20total%20installs%20per%20user%20for%20the%20last%207%20days">Count of total installs per user for the last 7 days</a></li>
+                <li><a href="/app/windows/%40go?s=Count%20of%20total%20installs%20per%20user%20each%20day%20for%20the%20last%207%20days">Count of total installs per user each day for the last 7 days</a></li>
+                <li><a href="/app/windows/%40go?s=Count%20of%20total%20installs%20per%20Application%20each%20day%20for%20the%20last%207%20days">Count of total installs per Application each day for the last 7 days</a></li>
+                <li><a href="/app/windows/%40go?s=List%20of%20Applications%2C%20Time%20of%20install%2C%20User%20and%20Host%20for%20the%20last%207%20days">List of Applications, Time of install, User and Host for the last 7 days</a></li>
+            </ul>
+        </div>
+
+        ]]>
+        </param>
+    </module>
+
+</view>
