@@ -1,0 +1,386 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>ICA Statistics</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">ICA Session Monitor</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">
+      This report report provides session bandwidth and latency information
+      for your virtual desktop sessions. Sessions in the High Latency or Low
+      Bandwidth table are sessions that surpass a defined threshold. To filter
+      this view, enter values in the fields below and press Enter. For detailed
+      views on other counters look under Reports/Environment in the navigation
+      above. To view the entire result set or for this report or manipulate the
+      data further, click View Full Report.
+    </param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">first 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server:</param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"/>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Catalog:</param>
+        <param name="field">CatalogName</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="default"/>
+              <param name="prefix">CatalogName="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">User:</param>
+          <param name="field">user</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="user">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="user">
+                <param name="default"/>
+                <param name="prefix">user="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Desktop Name:</param>
+            <param name="field">vm_name</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="value"/>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="default"/>
+                  <param name="prefix">vm_name="</param>
+                  <param name="suffix">"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+              <param name="search">`xendesktop_index` `xd_ica` InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="_Server Total" UserName!="" $vm_name$ | `session_desktop_lookup` | search $CatalogName$ $HostingServerName$ | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by vm_name UserName | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Full Report</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp1" group="Session Bandwidth" autoRun="True">
+                <param name="search">| stats min(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">SessionBandwidth</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Min:</param>
+                  <param name="afterLabel">kbs</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp2" group="Session Bandwidth" autoRun="True">
+                <param name="search">| stats avg(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">SessionBandwidth</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Avg:</param>
+                  <param name="afterLabel">kbs</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp3" group="Session Bandwidth" autoRun="True">
+                <param name="search">| stats max(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">SessionBandwidth</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Max:</param>
+                  <param name="afterLabel">kbs</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col1" group="Top Session Bandwidth by User" autoRun="True">
+                <param name="search">stats max(SessionBandwidth) as TotalSessionBandwidth_kbs by UserName | eval SessionBandwidth = round(SessionBandwidth,2) | head 10</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="FlashChart">
+                    <param name="height">200px</param>
+                    <module name="HiddenSearch">
+                      <param name="search">`xendesktop_index` `xd_ica` $UserName$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                      <module name="ConvertToIntention">
+                        <param name="intention">
+                          <param name="name">stringreplace</param>
+                          <param name="arg">
+                            <param name="UserName">
+                              <param name="prefix">UserName=</param>
+                              <param name="fillOnEmpty">True</param>
+                              <param name="value">$click.value$</param>
+                            </param>
+                          </param>
+                        </param>
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">ica_monitor_drilldown</param>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="ConvertToDrilldownSearch">
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">flashtimeline</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col2" group="Low ICA Session Bandwidth" autoRun="True">
+                <param name="search">search `LOWICABW` | stats max(InputSessionBandwidth) as InputSessionBandwidth max(OutputSessionBandwidth) as OutputSessionBandwidth max(SessionBandwidth) as SessionBandwidth by UserName vm_name | eval OutputSessionBandwidth = round(OutputSessionBandwidth,2) | eval InputSessionBandwidth = round(InputSessionBandwidth,2) | eval SessionBandwidth = round(SessionBandwidth,2) | head 10</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row6_col2">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">UserName=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">ica_monitor_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col3" group="Top ICA Bandwidth by Desktop" autoRun="True">
+                <param name="search">| stats max(InputSessionBandwidth) as InputSessionBandwidth max(OutputSessionBandwidth) as OutputSessionBandwidth max(SessionBandwidth) as SessionBandwidth by vm_name | eval OutputSessionBandwidth = round(OutputSessionBandwidth,2) | eval InputSessionBandwidth = round(InputSessionBandwidth,2) | eval SessionBandwidth = round(SessionBandwidth,2) | head 10</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="FlashChart">
+                    <param name="height">200px</param>
+                    <module name="HiddenSearch">
+                      <module name="HiddenSearch">
+                        <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                        <module name="ConvertToIntention">
+                          <param name="intention">
+                            <param name="name">stringreplace</param>
+                            <param name="arg">
+                              <param name="vm_name">
+                                <param name="prefix">vm_name=</param>
+                                <param name="fillOnEmpty">True</param>
+                                <param name="value">$click.value$</param>
+                              </param>
+                            </param>
+                          </param>
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">ica_monitor_drilldown</param>
+                          </module>
+                        </module>
+                      </module>
+                      <module name="ConvertToDrilldownSearch">
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">flashtimeline</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp1" group="Session Latency" autoRun="True">
+                <param name="search">| stats min(LatencySessionAverage) as LatencySessionAverage| eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">LatencySessionAverage</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Min:</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp2" group="Session Latency" autoRun="True">
+                <param name="search">| stats avg(LatencySessionAverage) as LatencySessionAverage| eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">LatencySessionAverage</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Avg:</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp3" group="Session Latency" autoRun="True">
+                <param name="search">| stats max(LatencySessionAverage) as LatencySessionAverage | eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+                <module name="SingleValue">
+                  <param name="field">LatencySessionAverage</param>
+                  <param name="classField">usrexp</param>
+                  <param name="format">count</param>
+                  <param name="beforeLabel">Max:</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row8_col1" group="Top Session Latency by User" autoRun="True">
+                <param name="search">| search UserName!="_Server Total" | stats max(LatencySessionAverage) as LatencySessionAverage by UserName| eval LatencySessionAverage = round(LatencySessionAverage,2) | head 10</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row8_col1">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">UserName=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">ica_monitor_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row8_col2" group="High Latency Session" autoRun="True">
+                <param name="search">| search `HIGHICALAT` | stats max(LatencySessionAverage) by UserName vm_name | eval LatencySessionAverage = round(LatencySessionAverage,2) | head 10</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row8_col2">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">UserName=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">ica_monitor_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row8_col3" group="Top Session Latency by Desktop" autoRun="True">
+                <param name="search">| stats max(LatencySessionAverage) as LatencySessionAverage by vm_name | eval LatencySessionAverage = round(LatencySessionAverage,2) | head 10</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row8_col3">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">vm_name=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">ica_monitor_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

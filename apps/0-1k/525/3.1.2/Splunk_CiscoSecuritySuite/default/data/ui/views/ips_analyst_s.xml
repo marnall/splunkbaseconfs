@@ -1,0 +1,46 @@
+<form>
+
+	<label>IPS Analyst</label>
+	
+	<fieldset autoRun="true">
+	    <input type="time">
+		<label>Select time range</label>
+		<default>Last 24 hours</default>
+	    </input>
+	</fieldset>
+	
+	<searchTemplate>
+	    `cisco_ips` |
+	    transaction maxevents=2 maxspan=5m eventid |
+	    eval attack_count=if(isnotnull(summary_count),summary_count,1) |
+	    eval attacker=mvfilter(attacker!="0.0.0.0") | eval target=mvfilter(target!="0.0.0.0") |
+	    eval target_port=mvfilter(target_port!="0") | eval threat_rating=mvfilter(threat_rating!="0") |
+	    eval url="http://tools.cisco.com/security/center/viewIpsSignature.x?signatureId=".signature."&amp;signatureSubId=".subSigid |
+	    eval Time=strftime(_time, "%m/%d/%y %I:%M:%S %p") |
+	    fields + Time eventid hostId sig_type severity signature subSigid description attacker target target_port protocol risk_rating threat_rating context fromAttacker_details fromTarget_details sig_created sig_version attack_relevance_rating target_value_rating interface interface_group vlan attack_count actions url |
+	    rename eventid AS "IPS Event ID" severity AS Severity description AS Description attacker AS Attacker target AS Target threat_rating AS "Threat Rating" attack_count AS Occurances
+	</searchTemplate>
+	
+	<row>
+	    <table>
+		<title>IPS Alert Details</title>
+		<searchPostProcess>
+		    table "IPS Event ID" Time Severity Description Attacker Target "Threat Rating" Occurances
+		</searchPostProcess>
+		<option name="drilldown">row</option>
+		<drilldown>
+		    <set token="eventid">$row.IPS Event ID$</set>
+		    <set token="time">$row.Time$</set>
+		</drilldown>
+	    </table>
+	</row>
+	
+	<row>
+	    <single depends="$eventid$">
+		<option name="beforeLabel">Event ID:</option>
+		<option name="field">$eventid$</option>
+		<option name="link.visible">true</option>
+	    </single>
+	</row>
+	
+</form>

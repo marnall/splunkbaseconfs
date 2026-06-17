@@ -1,0 +1,71 @@
+<form>
+    <label>AppFlow Traffic Analysis</label>
+  
+    <fieldset autoRun="true">
+    
+	<input type="time">
+            <label>Time Range:</label>
+	    <default>Last 24 hours</default>
+	</input>
+    
+    </fieldset>
+        
+    <row>
+        <table>
+            <title>Traffic Analysis by Applications</title>
+            <searchString>
+                eventtype=netscaler_appflow httpRequestHost!="" | eval httpRequestHost = lower(httpRequestHost)
+                | eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                | stats distinct_count(connectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                  sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by httpRequestHost
+                | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                | rename httpRequestHost AS "Application", perc_req AS "Percent of Requests"
+                | fields "Application", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <table>
+            <title>Traffic Analysis by Servers</title>
+            <searchString>
+                eventtype=netscaler_appflow
+                | eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                | stats distinct_count(connectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                  sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by appID
+                | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                | lookup appid_lookup appID OUTPUT appName
+                | eval appName = if(isnull(appName), appID, appName)
+                | rename appName AS "Server", perc_req AS "Percent of Requests"
+                | fields "Server", "appID", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <table>
+            <title>Traffic Analysis by Applications and Servers</title>
+            <searchString>
+                eventtype=netscaler_appflow
+                | eval httpRequestHost = lower(httpRequestHost)
+                | eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                | stats distinct_count(connectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                  sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by httpRequestHost, appID
+                | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                | lookup appid_lookup appID OUTPUT appName
+                | eval appName = if(isnull(appName), appID, appName)
+                | rename httpRequestHost AS "Application", appName AS "Server", perc_req AS "Percent of Requests"
+                | fields "Server", "appID", "Application", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <table>
+            <title>Utilization per Server</title>
+            <searchName>AppFlow Utilization per Server</searchName>
+            <earliestTime>$earliest$</earliestTime>
+            <latestTime>$latest$</latestTime>
+        </table>
+    </row>
+</form>

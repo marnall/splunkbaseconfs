@@ -1,0 +1,145 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css" isSticky="False">
+  <label>Group detail</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="mainSearchControls">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Link" layoutPanel="viewHeader">
+      <param name="label">Groups</param>
+
+      <module name="Redirector">
+        <param name="url">groups</param>
+        <param name="arg.earliest">$bc_earliest$</param>
+        <param name="arg.latest">$bc_latest$</param>
+        <param name="arg.group">$bc_group$</param>
+        <param name="arg.subgroup">$bc_subgroup$</param>
+        <param name="arg.number">$bc_number$</param>
+        <param name="arg.huntPilotDN">$bc_huntPilotDN$</param>
+        <param name="arg.searchterms">$bc_searchterms$</param>
+        <param name="arg.clusterId">$bc_clusterId$</param>
+        <param name="arg.clusterGroup">$bc_clusterGroup$</param>
+      </module>
+    </module>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1>&gt; Group Detail</h1>
+        ]]>
+      </param>
+    </module>
+
+    <module name="TextField">
+      <param name="name">group</param>
+      <param name="label">$name$</param>
+      <param name="template">$name$="$value$"</param>
+      <param name="float">left</param>
+
+      <module name="ValueSetter">
+        <param name="name">combinedGroupTerms</param>
+        <param name="requiredKeys">group.rawValue</param>
+        <param name="value">callingPartyGroup="$group.rawValue$"  OR originalCalledPartyGroup="$group.rawValue$" OR finalCalledPartyGroup="$group.rawValue$"</param>
+
+        <module name="TimePicker">
+          <param name="label">time range</param>
+          <param name="default">last 24 hours</param>
+
+          <pattern name="cluster_controls">
+
+            <module name="CustomBehavior">
+              <param name="customBehavior">onlySubmitIfFieldsAreSet</param>
+              <param name="arg.requiredKey">group.rawValue</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <div id="viewerPageInstructions" style="display:none;clear:both;">
+                  <br>
+                  <br>
+                  <b>This view is normally reached by clicking a row in the <a href="groups">Investigate Groups</a> page.<br>
+                  <br>
+                  However you can also use this view manually by simply entering a group name in the field above and hitting Enter.</b>
+
+                  <br>
+                  <br>
+                  <br>
+                  <br>
+                  </div>
+                ]]></param>
+              </module>
+
+
+
+
+              <module name="Search" layoutPanel="panel_row1_col1">
+                <param name="search"><![CDATA[
+`custom_index` sourcetype="cucm_cdr" $combinedGroupTerms$ $clusterGroup$ $clusterId$ NOT destCause_value="2" NOT origCause_value="2" NOT duration="0"
+| eval group=mvappend(callingPartyGroup, finalCalledPartyGroup,originalCalledPartyGroup)
+| `get_locations` | `get_to_and_from`
+| eval direction=case(callingPartyGroup=="$group.rawValue$" AND (finalCalledPartyGroup="$group.rawValue$" OR originalCalledPartyGroup="$group.rawValue$"),"internal", callingPartyGroup="$group.rawValue$", "outbound", (finalCalledPartyGroup="$group.rawValue$" OR originalCalledPartyGroup="$group.rawValue$"), "inbound")
+| eval outside_party_location=case(direction=="inbound", from, direction=="outbound", to, direction="internal", "(internal call)")
+| `get_call_id`
+| fields _time type direction outside_party_location *PartyNumber *PartyGroup from to call_id
+| stats min(_time) as _time list(*) as * by call_id
+| fields _time type callingPartyNumber callingPartyGroup originalCalledPartyNumber originalCalledPartyGroup finalCalledPartyNumber finalCalledPartyGroup direction outside_party_location from to call_id
+
+                ]]></param>
+
+                <module name="ProgressIndicator" layoutPanel="mainSearchControls" />
+
+                <module name="PostProcess">
+                  <param name="search">chart count over outside_party_location by direction</param>
+
+                  <module name="HTML" >
+                    <param name="html"><![CDATA[
+
+                      <h3>Outside locations calling/called</h3>
+                    ]]></param>
+                  </module>
+                  <module name="Pager">
+                    <module name="Table">
+                      <param name="hiddenFields">call_id</param>
+                    </module>
+                  </module>
+                </module>
+
+                <module name="PostProcess" layoutPanel="panel_row1_col2">
+                  <param name="search">timechart bins=100 dc(call_id) by direction</param>
+
+                  <module name="ValueSetter">
+                    <param name="arg.charting.chart.stackMode">stacked</param>
+
+                    <module name="HTML" >
+                      <param name="html"><![CDATA[
+                        <h3>Calls over time by direction</h3>
+                      ]]></param>
+                    </module>
+
+
+                    <module name="Chart" />
+                  </module>
+                </module>
+
+
+                <module name="HTML" layoutPanel="panel_row2_col1">
+                  <param name="html"><![CDATA[
+                    <h3>Calls</h3>
+                  ]]></param>
+                </module>
+                <module name="Pager"  layoutPanel="panel_row2_col1">
+                  <module name="Table" />
+                </module>
+
+
+
+              </module>
+            </module>
+          </pattern>
+        </module>
+      </module>
+    </module>
+  </module>
+
+
+</view>

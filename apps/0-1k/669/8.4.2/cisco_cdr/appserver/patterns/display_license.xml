@@ -1,0 +1,73 @@
+<module name="Search">
+  <param name="search"><![CDATA[
+  | rest /services/cisco_cdr_license splunk_server=local
+  | spath input=value
+  | eval type=case(
+      it=="0" AND le==0 AND se>now(),"perpetual license (purchased)",
+      it=="0" AND le==0 AND se<=now(),"perpetual license, with expired support and maintenance",
+      le>now() AND it=="1","trial license",
+      le<now() AND it=="1","expired trial license",
+      it=="0" AND le>now(),"term license (purchased)",
+      it=="0" AND le<=now(),"expired term license",
+      true(),"Unexpected Error (it=" + it + ")")
+  | eval term=case(le==0,"perpetual",le<=time(),"expired " + strftime(le,"%b %d, %Y"),le>time(), strftime(le,"valid until %b %d, %Y"), true(), "unexpected error - undefined term")
+  | eval se = if(se<=time(),"expired " + strftime(se,"%b %d, %Y"),    strftime(se,"valid until %b %d, %Y"))
+  | eval dc_expansion_threshold=round(1.3 * dc / 1000,1) * 1000
+  | eval license_limit= dc + " devices, up to an expansion threshold of " + dc_expansion_threshold
+  | fillnull license_limit value="(license limit not listed)"
+  | fields - value
+  | appendcols [
+    | rest /servicesNS/nobody/cisco_cdr/configs/conf-sideview_license splunk_server=local
+    | fields license
+  ]
+  ]]></param>
+
+  <module name="ResultsValueSetter">
+    <param name="fields">term le se pr it type dc license_limit c license</param>
+
+    <module name="ShowHide">
+      <param name="show">.panel_row2_col</param>
+    </module>
+
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        <table class="splTable" id="currentLicenseTable" style="width:100%">
+          <tr>
+            <td>Type</td>
+            <td>$type$</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td style="width:180px">License term</td>
+            <td style="width:120px">$term$</td>
+            <td style="width:50%"></td>
+          </tr>
+          <tr>
+            <td>Support and maintenance</td>
+            <td>$se$</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Product</td>
+            <td>$pr$</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>Company name</td>
+            <td>$c$</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>License Limit</td>
+            <td>$license_limit$</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>License string</td>
+            <td colspan="2" class="licenseString">$license$</td>
+          </tr>
+        </table>
+      ]]></param>
+    </module>
+  </module>
+</module>

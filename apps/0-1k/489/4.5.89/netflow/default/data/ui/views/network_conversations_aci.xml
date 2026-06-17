@@ -1,0 +1,220 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Network Conversations with Cisco ACI BD/Tenant Mapping</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device / Virtual Network</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="dropdown" token="ipv4_and_or_v6" searchWhenChanged="false">
+      <label>IPv4/IPv6</label>
+      <default>Both</default>
+      <choice value="(src_ip=* OR dest_ip=*)">IPv4</choice>
+      <choice value="(src_ip6=* OR dest_ip6=*)">IPv6</choice>
+      <choice value="*">Both</choice>
+    </input>
+    <input type="checkbox" searchWhenChanged="False">
+      <label>Show Blocked Flows</label>
+      <choice value="*">Show Blocked Flows</choice>
+      <change>
+        <condition label="Show Blocked Flows">
+          <set token="blocked_flows"></set>
+        </condition>
+        <condition>
+          <set token="blocked_flows">| search action!=R</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20062` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$" id="timechart">
+    <panel>
+      <chart>
+        <title>Traffic by Source Tenant</title>
+        <search>
+          <query>
+            `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_tenant_name=* OR dest_tenant_name=*)  $ipv4_and_or_v6$ $blocked_flows$
+              | search $advanced_filter$ 
+              | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+              | search exp_group="$exp_group$" 
+              | fillnull value=0 bytes_out bytes_in
+              | eval bytes = bytes_in + bytes_out 
+              | bin _time $span_token$ 
+              | stats sum(bytes) as sum_bytes 
+                by src_tenant_name src_ip src_port dest_ip dest_port transport  _time
+              | `dedup_timechart_events`
+              | `per_second_chart(sum(sum_bytes) by src_tenant_name,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Traffic by Destination Tenant</title>
+        <search>
+          <query>
+            `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_tenant_name=* OR dest_tenant_name=*)  $ipv4_and_or_v6$ $blocked_flows$
+              | search $advanced_filter$ 
+              | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+              | search exp_group="$exp_group$" 
+              | fillnull value=0 bytes_out bytes_in
+              | eval bytes = bytes_in + bytes_out 
+              | bin _time $span_token$ 
+              | stats sum(bytes) as sum_bytes 
+                by dest_tenant_name src_ip src_port dest_ip dest_port transport  _time
+              | `dedup_timechart_events`
+              | `per_second_chart(sum(sum_bytes) by dest_tenant_name,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Cross-Tenant Traffic</title>
+        <search>
+          <query>
+            `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_tenant_name=* OR dest_tenant_name=*)  $ipv4_and_or_v6$ $blocked_flows$
+                (src_tenant_name=* OR dest_tenant_name=*) | fillnull src_tenant_name dest_tenant_name value="NULL" | search src_tenant_name!="NULL" AND  dest_tenant_name!="NULL" AND src_tenant_name!=dest_tenant_name 
+              | search $advanced_filter$ 
+              | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+              | search exp_group="$exp_group$" 
+              | strcat src_tenant_name ": " dest_tenant_name tenant_pair_name
+              | fillnull value=0 bytes_out bytes_in
+              | eval bytes = bytes_in + bytes_out 
+              | bin _time $span_token$ 
+              | stats sum(bytes) as sum_bytes 
+                by tenant_pair_name src_ip src_port dest_ip dest_port transport  _time
+              | `dedup_timechart_events`
+              | `per_second_chart(sum(sum_bytes) by tenant_pair_name,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <viz type="sankey_diagram_app.sankey_diagram">
+        <search>
+          <query>`netflow_search_rule_20062` | eval bytes_total = bytes_in+bytes_out
+            | stats sum(bytes_total) as bytes by src_tenant_name src_bd_name dest_bd_name
+            | eval source = src_tenant_name." / ".src_bd_name, target = dest_bd_name
+            | rename bytes as value
+            | fields source target value
+            | sort - value | head 200
+           </query>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10062: Network Conversations”</b> (syslogs with nfc_id=20062). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

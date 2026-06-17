@@ -1,0 +1,102 @@
+<form version="1.1" theme="light" script="js/info_tooltip.js" stylesheet="css/info_tooltip.css">
+  <label>Advanced Activity Monitor</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Windows Domain Policy Changes</title>
+      <table>
+        <search>
+          <query>`windowsindex` `windowssourcetype` EventCode=643 OR EventCode=4739 | rex field=Message "Domain Policy Changed:\s(?&lt;msg&gt;.*)" | eval finalmsg=coalesce(msg,Change_Type,DomainPolicyChanged) | eval finaldomain=coalesce(Caller_Domain,Domain_Name,SubjectDomainName) | table _time host finalmsg finaldomain | rename _time AS Time host AS Server finalmsg AS "Policy change" finaldomain AS "Windows Domain" | convert timeformat="%H:%M:%S %d.%m.%Y." ctime(Time) | fillnull value="-" "Policy change", "Windows Domain"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Log Entry Deleted</title>
+      <input type="text" token="Host_del">
+            <label>Host:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+    </input>
+      <table>
+        <search>
+          <query>`windowsindex` `windowssourcetype` ("EventCode=517" OR "EventCode=1102") | search host=$Host_del$ | eval msg="The audit log was cleared." | convert timeformat=" %H:%M:%S %d.%m.%Y." ctime(_time) | table _time host msg | rename _time as Time host as Hostname msg as Message</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Windows Restarts</title>
+      <input type="text" token="Host_res">
+            <label>Host:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+      </input>
+      <input type="text" token="Username_restart">
+            <label>Username:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+    </input>
+      <table>
+        <search>
+          <query>`windowsindex` source="*WinEventLog:System" EventCode=1074 SourceName="USER32" | rex field=Message "The process.(?&lt;process&gt;[^ ]+)" | transaction host maxspan=5m | eval user_count=mvcount(User) | eval final_user=case(user_count == 1, User, user_count &gt; 1, mvindex(User, user_count-1)) | eval process_count=mvcount(process) | eval final_process=case(process_count == 1, process, process_count &gt; 1, mvindex(process, process_count-1)) | search host="$Host_res$" final_user="$Username_restart$" | table _time host final_user final_process | rename _time AS Time | convert timeformat="%H:%M:%S %d.%m.%Y." ctime(Time) | rename final_user AS Username | rename final_process AS "Process name"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>New Added Services</title>
+        <input type="text" token="Host_new_srv">
+            <label>Host:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+        <input type="text" token="Username_new_srv">
+            <label>Username:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+        <input type="text" token="ServiceName">
+            <label>Service Name:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+        <input type="text" token="ServiceFile">
+            <label>Service File:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+      <table>
+        <search>
+          <query>`windowsindex` `windowssourcetype` NOT (Subject_Account_Name = SYSTEM OR SubjectUserName = SYSTEM) ( EventCode=601 OR EventCode=4697 ) | search host="$Host_new_srv$" user="$Username_new_srv$" Service_Name="$ServiceName$" Service_File_Name="$ServiceFile$" | table _time host User Service_Name Service_File_Name | rename _time AS Time | convert timeformat="%H:%M:%S %d.%m.%Y." ctime(Time) | rename User AS Username Service_Name AS "Service Name" Service_File_Name AS "Service File" host AS "Server" | fillnull value="-" Username</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,156 @@
+<form class="formsearch">
+  <label>Requirement 10</label>
+
+  <fieldset>
+    <input type="dropdown" token="host" searchWhenChanged="true">
+      <label>Selected Host(s):</label>
+      <default>ALL HOSTS (*)</default>
+      <populatingSearch fieldForValue="host" fieldForLabel="host">| metadata type=hosts</populatingSearch>
+      <choice value="*">ALL HOSTS (*)</choice>
+    </input>
+  </fieldset>
+
+  <row>
+    <html><center><h1>Track and monitor all access to network resources and cardholder data</h1></center></html>
+    <html><left>The Requirement States: Logging mechanisms and the ability to track user activities are critical in preventing, detecting, or minimizing the impact of a data compromise. The presence of logs in all environments allows thorough tracking, alerting, and analysis when something does go wrong. Determining the cause of a compromise is very difficult without system activity logs. </left></html>
+  </row>
+
+  <row>
+   <html><left><h2>10.2.1: Verify all individual access to cardholder data is logged.</h2></left></html>
+  </row>
+
+  <row>
+    <chart>
+     <title>Failed User Access</title>
+     <searchTemplate>ssh2 Failed | rex field=_raw "for(?&lt;USER&gt;\s[a-z.]*\s)" | chart count by USER</searchTemplate>
+     <option name="charting.chart">pie</option>
+     <earliestTime>-24h</earliestTime>
+   </chart>
+
+   <chart>
+    <title>Invalid User Listing</title>
+    <searchTemplate>sshd "invalid user" | rex field=_raw "invalid user(?&lt;USER&gt;\s[a-z.]*\s)" | chart count by USER</searchTemplate>
+    <option name="charting.chart">pie</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+
+   <chart>
+    <title>User Access</title>
+    <searchTemplate>sshd "session opened for" | rex field="_raw" "user(?&lt;USER&gt;\s[a-z.]*\s)" | chart count by USER</searchTemplate>
+    <option name="charting.chart">pie</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+  </row>
+ 
+  <row>
+   <html><left><h2>10.2.2: Verify actions taken by an individual with root or administrative privileges is logged.</h2></left></html>
+  </row>
+
+  <row>
+   <chart>
+    <title>Admin actions</title>
+    <searchTemplate>source="/var/log/secure" sudo | rex field=_raw "sudo:(?&lt;SUDO&gt;\s[a-z.]*\s)" | chart count by SUDO COMMAND</searchTemplate>
+    <option name="charting.chart">bar</option>
+    <option name="charting.chart.stackMode">stacked100</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+
+   <chart>
+    <title>Admin actions by Host</title>
+    <searchTemplate>source="/var/log/secure" sudo | rex field=_raw "sudo:(?&lt;SUDO&gt;\s[a-z.]*\s)" | chart count by host COMMAND</searchTemplate>
+    <option name="charting.chart">bar</option>
+    <option name="charting.chart.stackMode">stacked100</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+  </row>
+
+  <row>
+   <html><left><h2>10.2.4: Invalid logical access attempts.</h2></left></html>
+  </row>
+
+  <row>
+   <chart>
+    <title>Failed Access</title>
+    <searchTemplate>sourcetype="syslog" ssh Failed | rex field=_raw "User '(?&lt;User&gt;.*)' auth" | stats count by User | sort count desc</searchTemplate>
+    <option name="charting.chart">pie</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+   <table>
+    <title>Failed Read</title>
+    <searchTemplate>source=/var/log/messages denied read | top path limit=1000 | fields path</searchTemplate>
+    <earliestTime>-24h</earliestTime>
+   </table>
+  </row>
+  <row>
+   <table>
+    <title>Failed Write</title>
+    <searchTemplate>source=/var/log/messages denied write | top path limit=1000 | fields path</searchTemplate>
+    <earliestTime>-24h</earliestTime>
+   </table>
+   <table>
+    <title>Failed Exec</title>
+    <searchTemplate>source=/var/log/messages denied exec | top path limit=1000 | fields path</searchTemplate>
+    <earliestTime>-24h</earliestTime>
+   </table>
+  </row>
+
+  <row>
+   <html><left><h2>10.4: Syncronize all Critical System Clocks and Times</h2></left></html>
+  </row>
+
+  <row>
+   <table>
+    <title>Servers syncd to NTP server 208</title>
+    <searchTemplate>ntp | top host limit=0 | fields host</searchTemplate>
+    <earliestTime>-24h</earliestTime>
+   </table>
+   <table>
+    <title>Servers syncd to NTP server 209</title>
+    <searchTemplate>ntp | top host limit=0 | fields host</searchTemplate>
+    <earliestTime>-24h</earliestTime>
+   </table>
+  </row>
+
+  <row>
+   <html><left><h2>10.5.5: Verify the use of file-integrity monitoring or change-detection software for logs by examining systems settings and monitored files and results from monitoring activities</h2></left></html>
+  </row>
+
+  <row>
+    <table>
+     <title>Servers running AIDE</title>
+     <searchTemplate>"aide started" | top host limit=0 | fields host</searchTemplate>
+     <earliestTime>-24h</earliestTime>
+    </table>
+    <table>
+     <title>AIDE Issues by Host</title>
+     <searchTemplate>source="/var/log/aide/aide.log" differences | top host | fields host</searchTemplate>
+     <earliestTime>-24h</earliestTime>
+    </table>
+   <chart>
+    <title>Aide Issues by Host</title>
+    <searchTemplate>differences | top host limit=0 | fields host</searchTemplate>
+    <option name="charting.chart">piE</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+   </row>
+
+  <row>
+   <html><left>10.6b: Through observation and interviews, verify that regular log reviews are performed for all system components.</left></html>
+   <chart>
+    <title>Operator Review of ISO App in last 24 hours</title>
+    <searchTemplate>index="_internal" source="/opt/splunk/var/log/splunk/splunkd_access.log" NOT user=- NOT clientip=192.168.34.226 | chart count by user</searchTemplate>
+    <option name="charting.chart">pie</option>
+    <earliestTime>-24h</earliestTime>
+   </chart>
+  </row>
+
+  <row>
+   <html><left>10.7: retain audit trail history for at least one year, with a minimum of three months immediately available for analysis (for example, online, archived, or restorable from back-up).</left></html>
+   <table>
+    <title>Earliest Audit Event</title>
+    <searchTemplate>*| stats min(firstTime) as min | convert ctime(min)</searchTemplate>
+   </table>
+  </row>
+
+</form>
+

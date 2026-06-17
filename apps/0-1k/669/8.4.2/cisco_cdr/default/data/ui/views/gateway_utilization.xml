@@ -1,0 +1,466 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" isSticky="False" template="dashboard.html" stylesheet="custom.css">
+  <label>Call concurrency and gateway utilization</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <pattern name="display_saved_report_name" />
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1 class="doNotPrint">Call Concurrency and Gateway Utilization</h1>
+      ]]></param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_concurrencyPage</param>
+    </module>
+
+    <module name="TimePicker" layoutPanel="mainSearchControls">
+      <param name="default">Last 24 hours</param>
+
+      <module name="CheckboxPulldown">
+        <param name="name">type</param>
+        <param name="label">call types</param>
+        <param name="template">$name$="$value$"</param>
+        <param name="selectAllOptimization">omit</param>
+        <param name="staticOptions">
+          <list>
+            <param name="value">incoming</param>
+            <param name="selected">True</param>
+          </list>
+          <list>
+            <param name="value">outgoing</param>
+            <param name="selected">True</param>
+          </list>
+          <list>
+            <param name="value">internal</param>
+          </list>
+          <list>
+            <param name="value">tandem</param>
+          </list>
+        </param>
+
+        <pattern name="cluster_controls">
+          <param name="selectAllOptimization">False</param>
+
+          <module name="Search">
+            <param name="search"><![CDATA[
+| `get_gateways_from_tstats(dest, "$clusterId$")`
+| append [
+| `get_gateways_from_tstats(orig, "$clusterId$")`]
+| stats count by gateway
+| sort 0 + gateway
+              ]]></param>
+
+            <module name="CheckboxPulldown">
+              <param name="name">gateway</param>
+              <param name="label">gateways/trunks</param>
+              <param name="template">orig_gateway="$value$" OR dest_gateway="$value$"</param>
+              <param name="valueField">$name$</param>
+              <param name="labelField">label</param>
+              <param name="selectAllOptimization">omit</param>
+              <param name="customBehavior">hideAndReturnNullIfInternalPresent</param>
+
+              <module name="Pulldown">
+                <param name="name">splitBy</param>
+                <param name="label">split by</param>
+                <param name="template">by $value$ limit=50</param>
+                <param name="staticOptions">
+                  <list>
+                    <param name="label">(no split by)</param>
+                    <param name="value"></param>
+                  </list>
+                  <list>
+                    <param name="value">type</param>
+                    <param name="label">call type</param>
+                  </list>
+                  <list>
+                    <param name="value">internal_device_type</param>
+                    <param name="label">device type</param>
+                  </list>
+                  <list>
+                    <param name="value">gateway</param>
+                    <param name="label">gateway/trunk</param>
+                    <param name="selected">True</param>
+                  </list>
+                  <list>
+                    <param name="value">site</param>
+                  </list>
+                </param>
+
+                <module name="CustomBehavior">
+                  <param name="customBehavior">createRequiredExtractions</param>
+
+                  <module name="Button">
+                    <param name="allowSoftSubmit">True</param>
+
+                    <module name="ValueSetter">
+                      <param name="name">concurrencyCalculation</param>
+                      <param name="if.$splitBy$=*">`get_call_concurrency($splitBy.rawValue$)`</param>
+                      <param name="default">`get_call_concurrency`</param>
+
+                      <module name="ValueSetter">
+                        <param name="name">concurrencyTimechart</param>
+                        <param name="if.$splitBy$=*">`timechart_for_concurrency($splitBy.rawValue$)`
+                        </param>
+                        <param name="default">`timechart_for_concurrency`</param>
+
+                        <module name="Search" layoutPanel="panel_row1_col1">
+                          <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $type$ $gateway$ NOT duration=0
+| fields - _raw
+| fields _time duration seconds_until_answered type `customizable_orig_site_ip` `customizable_dest_site_ip` $splitBy.rawValue$
+$required_extractions$
+| $concurrencyCalculation$
+| $concurrencyTimechart$
+$explicitFieldList$
+                        ]]></param>
+
+
+                          <!-- force a dispatch here, so humans can fiddle
+                          with charting keys and not trigger a new search -->
+                          <module name="CustomBehavior">
+                            <param name="requiresDispatch">True</param>
+                          </module>
+
+                          <module name="HTML" layoutPanel="panel_row1_col1">
+                            <param name="html"><![CDATA[
+                              <h3>Highest call concurrency experienced for $type.customLabels$ calls $search.timeRange.label$</h3>
+                            ]]></param>
+                          </module>
+
+                          <module name="Pulldown" layoutPanel="panel_row1_col1">
+                            <param name="name">charting.chart</param>
+                            <param name="label">Chart as</param>
+                            <param name="staticOptions">
+                              <list>
+                                <param name="label">line chart</param>
+                                <param name="value">line</param>
+                                <param name="selected">true</param>
+                              </list>
+                              <list>
+                                <param name="label">stacked column chart</param>
+                                <param name="value">column</param>
+                              </list>
+                              <list>
+                                <param name="label">stacked area chart</param>
+                                <param name="value">area</param>
+                              </list>
+                            </param>
+
+                            <module name="ValueSetter">
+                              <param name="name">charting.chart.stackMode</param>
+                              <param name="if.$charting.chart$=column[priority=1]">stacked</param>
+                              <param name="if.$charting.chart$=area[priority=2]">stacked</param>
+                              <param name="default">none</param>
+
+                              <module name="ValueSetter">
+                                <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+                                <param name="arg.charting.axisTitleX.text"></param>
+                                <param name="arg.charting.chart.resultTruncationLimit">20000</param>
+                                <param name="arg.outerEarliest">$search.timeRange.earliest$</param>
+                                <param name="arg.outerLatest">$search.timeRange.latest$</param>
+                                <!--
+                                <param name="arg.charting.legend.labelStyle.maximumWidth">200</param>
+                                -->
+
+                                <module name="NullModule">
+
+                                  <pattern name="save_create_buttons" />
+
+                                </module>
+                                <module name="SearchControls">
+                                  <param name="sections">jobControls info export print</param>
+                                  <param name="float">right</param>
+                                </module>
+
+                                <module name="Link" layoutPanel="panel_row1_col1">
+                                  <param name="label">&#187; see search syntax</param>
+                                  <param name="clear">right</param>
+                                  <param name="float">right</param>
+
+                                  <module name="Redirector">
+                                    <param name="url">search</param>
+                                    <param name="arg.q">$search$</param>
+                                    <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                    <param name="arg.latest">$search.timeRange.latest$</param>
+                                    <param name="target">_blank</param>
+                                  </module>
+                                </module>
+
+
+                                <module name="HTML">
+                                  <param name="html"><![CDATA[
+                                    (click the chart to display the concurrency within that single time range)
+                                  ]]></param>
+                                </module>
+                                <module name="ProgressIndicator"></module>
+
+                                <module name="Chart">
+                                  <param name="height">250px</param>
+                                  <param name="enableResize">False</param>
+
+                                  <module name="ValueSetter">
+                                    <param name="arg.innerEarliest">$search.timeRange.earliest$</param>
+                                    <param name="arg.innerLatest">$search.timeRange.latest$</param>
+                                    <param name="arg.innerLabel">$search.timeRange.label$</param>
+
+                                    <module name="ValueSetter">
+                                      <param name="name">concurrencyTimechart</param>
+                                      <param name="if.$splitBy$=*">`timechart_for_concurrency($splitBy.rawValue$,20000)`
+                                      </param>
+                                      <param name="default">`timechart_for_concurrency(null(),20000)`</param>
+
+                                      <module name="ValueSetter">
+                                        <param name="name">filterSPL</param>
+                                        <param name="if.$splitBy$=*">$splitBy.rawValue$="$chart.splitByValue$"</param>
+
+
+                                        <module name="Search">
+                                          <param name="earliest">$outerEarliest$</param>
+                                          <param name="latest">$outerLatest$</param>
+                                          <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $type$ $gateway$ $filterSPL$
+$required_extractions$
+| eval _endTime=_time+duration
+| $concurrencyCalculation$
+| $concurrencyTimechart$
+$explicitFieldList$
+| search *  _time>=$innerEarliest$ _time<$innerLatest$
+                                          ]]></param>
+
+                                          <!--
+                                          <pattern name="see_raw_search_syntax" />
+                                          -->
+
+                                          <module name="HTML">
+                                            <param name="html"><![CDATA[
+                                              <h3>concurrency with $filterSPL$ during $innerLabel$</h3>
+                                            ]]></param>
+                                          </module>
+
+                                          <module name="Chart">
+                                            <param name="height">250px</param>
+                                            <param name="enableResize">True</param>
+
+
+                                            <module name="ValueSetter">
+                                              <param name="arg.innerMostEarliest">$search.timeRange.earliest$</param>
+                                              <param name="arg.innerMostLatest">$search.timeRange.latest$</param>
+                                              <param name="arg.innerMostLabel">$search.timeRange.label$</param>
+
+                                              <module name="Search">
+                                                <param name="earliest">$outerEarliest$</param>
+                                                <param name="latest">$outerLatest$</param>
+                                                <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $type$ $gateway$ $filterSPL$
+$required_extractions$
+| eval startTime=_time
+| eval endTime=_time+duration
+| `get_call_concurrency`
+| eval comment="this is to find calls that begin before the end of the clicked bucket and end after the start of the clicked bucket."
+| search (startTime<=$innerMostLatest$ endTime>=$innerMostEarliest$)
+| eventstats max(concurrency) as bucketwide_max_concurrency
+| eval time_at_max=if(concurrency==bucketwide_max_concurrency,_time,null())
+| eventstats min(time_at_max) as earliest_time_at_max max(time_at_max) as latest_time_at_max
+| where _time<=latest_time_at_max AND endTime>=earliest_time_at_max
+| table _time startTime endTime time_at_max concurrency `id_fields`
+| stats count by `id_fields`
+| fields `id_fields`
+| format
+| rename search as callIdExpression
+                                                ]]></param>
+
+
+                                                <!--
+                                                <pattern name="see_raw_search_syntax" />
+                                              -->
+
+
+                                                <module name="ResultsValueSetter">
+                                                  <param name="fields">callIdExpression</param>
+
+                                                  <module name="Search">
+                                                    <param name="earliest">$outerEarliest$</param>
+                                                    <param name="latest">$outerLatest$</param>
+                                                    <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $callIdExpression$
+| fields - _*
+| transpose
+| rename column as field
+                                                    ]]></param>
+
+                                                    <module name="Fields">
+                                                      <param name="float">right</param>
+                                                      <param name="fields">time duration type callingPartyNumber originalCalledPartyNumber finalCalledPartyNumber cause_description origDeviceName destDeviceName</param>
+
+                                                      <module name="Search">
+                                                        <param name="earliest">$outerEarliest$</param>
+                                                        <param name="latest">$outerLatest$</param>
+                                                        <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $callIdExpression$
+| `get_call_concurrency`
+| eval endTime=_time+duration
+| eventstats max(concurrency) as max_concurrency
+| eval duration=tostring(duration,"duration")
+| eval timeAtMaxConcurrency=if(concurrency==max_concurrency,_time,null())
+| fields timeAtMaxConcurrency $results.fields$ `id_fields`
+
+| stats min(_time) as _time max(endTime) as endTime values(*) as * by `id_fields`
+| fields timeAtMaxConcurrency $results.fields$ `id_fields`
+                                                        ]]></param>
+
+                                                        <module name="HTML" layoutPanel="panel_row1_col1">
+                                                          <param name="html"><![CDATA[
+                                                            At least these $results.count$ calls were ongoing at the moments of highest concurrency $innerMostLabel$.
+                                                            <br>
+                                                            <br>Note: this is a prototype and it has a known bug where it can fail to show many or even most of the calls that were in fact in progress at this moment.<br>
+                                                            <br>
+                                                          ]]></param>
+                                                        </module>
+
+
+                                                        <module name="Pager">
+                                                          <module name="Table" />
+                                                        </module>
+                                                        <pattern name="see_raw_search_syntax" />
+                                                      </module>
+                                                    </module>
+                                                  </module>
+                                                </module>
+                                              </module>
+                                            </module>
+
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+<!--
+| addtotals fieldname="total_concurrency"
+| eval now = now()
+| eval time_period = null()
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-60m@m"), "last 60 minutes", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "@d"), "today", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-24h@h"), "last 24 hours", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-7d@d"), "last 7 days", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-90d@d"), "last 90 days", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-30d@d"), "last 90 days", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-6mon@mon"), "last 6 months", null()))
+| eval time_period=mvappend(time_period,if(_time>relative_time(now, "-12mon@mon"), "last 12 months", null()))
+| stats max(total_concurrency) by time_period
+-->
+<!--
+open issues/wrinkles with the below logic:
+-   due to a bug where relative_time(some_epoch_time, "now") never works,  we can't programmatically
+  check whether the time period's *END* is contained within the timerange.
+-   but more generally due to the granularity issues, we cant use "weird" timeranges like 'last 24 hours'
+  or 'previous month' etc.   not without working around that, bug and adding kind of a lot of additional logic.
+-->
+
+                      <module name="PostProcess">
+                        <param name="search"><![CDATA[
+
+| addtotals fieldname="total_concurrency"
+| addinfo
+| eval now = now()
+| eval periods=split("@d,now,2 today;-30d@d,now,4 last 30 days;-90d@d,now,5 last 90 days;-6mon@mon,now,6 last 6 months;-12mon@mon,@mon,7 last 12 months",";")
+| foreach mode=multivalue periods [
+  | eval period=split(<<ITEM>>,","),  start_time=mvindex(period,0),  end_time=if(mvindex(period,1)=="now","+0s",mvindex(period,1)),  period_label=mvindex(period,2), time_period=mvappend(time_period,if(_time+_span>relative_time(now, start_time) AND info_min_time<=relative_time(now,start_time) AND info_max_time>=relative_time(now,end_time), period_label, null()))
+]
+| stats max(total_concurrency) by time_period
+| eval time_period=substr(time_period,2)
+
+
+                        ]]></param>
+
+
+                        <module name="Pager">
+                          <module name="Table">
+                            <param name="customBehavior">disableNoResultsMessage</param>
+                          </module>
+                        </module>
+
+                        <module name="PostProcess">
+                          <param name="search"><![CDATA[
+$postProcess$ | eval message = "NOTE: this tabular summary of concurrency is limited by the time-granularity of the graph above and for some selected timeranges." | stats last(message) as message]]></param>
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                              $results[0].message$
+                            ]]></param>
+                          </module>
+                        </module>
+
+                      </module>
+                    </module>
+
+                  </module>
+
+                  <!-- yes this is one indentation level further in than you would expect, but we need it to pick up the $customLabels$ key
+                  and the CB that creates that needs the splitBy value.
+                -->
+                  <module name="Search" layoutPanel="panel_row2_col1">
+                    <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $type$ $gateway$ ( origCause_value=34 OR origCause_value=44 OR destCause_value=34 OR destCause_value=44 )
+$required_extractions$
+| timechart bins=400 dc(call_id) $splitBy$
+$explicitFieldList$
+                    ]]></param>
+
+
+                    <pattern name="see_raw_search_syntax">
+                      <param name="float">right</param>
+                    </pattern>
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <h3>$type.customLabels$ calls dropped because no circuit/channel was available $search.timeRange.label$</h3>
+                      ]]></param>
+                    </module>
+
+                    <module name="ValueSetter">
+                      <param name="arg.charting.chart">column</param>
+                      <param name="arg.charting.chart.stackMode">stacked</param>
+                      <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+                      <!-- for known split-by fields it's best to just tell the Redirector
+                      what the splitby is.  Otherwise it has to try and figure it out by parsing
+                      the SPL, which can be a little unreliable. -->
+                      <param name="arg.sideview.splitByField">$splitBy.rawValue$</param>
+
+                      <module name="Chart">
+                        <param name="height">250px</param>
+                        <param name="enableResize">False</param>
+
+                        <module name="Redirector">
+                          <param name="url">calls</param>
+                          <param name="arg.type">$type.rawValue$</param>
+                          <param name="arg.searchterms"> $chart.searchTerms$ (cause_description="Requested circuit/channel not available" OR cause_description="No circuit/channel available")</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+
+                        </module>
+
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </pattern>
+      </module>
+    </module>
+  </module>
+</view>

@@ -1,0 +1,191 @@
+###############
+#
+# Name: GeoASN Add On
+# Desc: Fast local lookups of the Country, AS number and Organization to which an IP address belong
+#
+# Four lookup commands are provided:
+#
+# CMD            INPUT FIELDS    OUTPUT FIELDS
+# --------------------------------------------
+# geo            clientip        client_country client_region client_city client_lat client_lon
+# asn            src_ip dest_ip  src_asn dest_asn
+# geoasn         src_ip dest_ip  src_country dest_country src_asn src_as src_org dest_asn dest_as dest_org
+# ga             ip              country asn org
+#
+# The Add-On is based on Will Hayes @ Splunk's MAXMIND Geo Location Lookup Script, 
+# but it has been rewritten to use the native Maxmind C libraries, for increased speed and functionality.
+#
+# GeoASN requires that you build the Maxmind C SDK and Python SDK, 
+# and copy the resulting libraries to $SPLUNK_HOME (see instructions below)
+#
+# This app includes GeoLite data created by MaxMind, available from http://www.maxmind.com/
+# 
+# Henrik Strom, Telenor Norway, April 2011
+#
+###############
+
+
+INSTALLATION
+
+Step 1 - Install Maxmind's GeoIP for C SDK
+
+  cd /tmp
+  wget http://geolite.maxmind.com/download/geoip/api/c/GeoIP.tar.gz
+  tar zxvf GeoIP.tar.gz
+  cd GeoIP-1.4.7
+  ./configure
+  make
+  make install
+
+If this fails because configure complains about Zlib header not found, 
+you need to install the zlib-devel package. Then rerun ./configure, 
+make and make install.
+
+Next, copy the compiled GeoIP libs to $SPLUNK_HOME/lib
+
+  cp -p /usr/local/lib/libGeoIP* /opt/splunk/lib/
+
+
+Step 2 - Install same Python on your Splunk server as Splunk itself is using
+
+Find out which version of python your Splunk installation is using:
+
+  /opt/splunk/bin/splunk cmd python --version
+  Python 2.6.4
+
+Then download and install this on your Splunk server:
+
+  cd /tmp
+  wget http://www.python.org/ftp/python/2.6.4/Python-2.6.4.tgz
+  tar zxvf Python-2.6.4.tgz
+  cd Python-2.6.4
+  ./configure
+  make
+  make install
+
+
+Step 3 - Install Maxmind's GeoIP for Python SDK
+
+  cd /tmp
+  wget http://geolite.maxmind.com/download/geoip/api/python/GeoIP-Python-1.2.4.tar.gz
+  tar zxvf GeoIP-Python-1.2.4.tar.gz
+  cd GeoIP-Python-1.2.4
+  /usr/local/bin/python setup.py build
+  /usr/local/bin/python setup.py install
+
+Next, copy the compiled GeoIP Python lib to Splunk's Python directory:
+
+  cp -p /usr/local/lib/python2.6/site-packages/GeoIP* /opt/splunk/lib/python2.6/site-packages/ 
+
+
+Step 4 - Install GeoASN Add On
+
+Download the GeoASN Splunk Add On from http://splunkbase.splunk.com
+Then install it under $SPLUNK_HOME/etc/apps/
+
+  cd /opt/splunk/etc/apps
+  tar zxvf GeoASN.spl
+
+
+Step 5 - Restart Splunk
+
+  /opt/splunk/bin/splunk restart
+
+
+Step 6 - Test it from the command line
+
+  cd /opt/splunk/etc/apps/GeoASN/bin
+  /opt/splunk/bin/splunk cmd python ga.py < ga.csv 
+
+If it works, it should output the following:
+
+ip,country,asn,org
+200.148.108.124,Brazil,27699,DE SAO PAULO S/A - TELESP
+203.129.108.100,Japan,10000,Nagasaki Cable Media Inc.
+
+You are now ready to start using the GeoASN lookup commands!
+  
+
+UPDATING THE MAXMIND DATABASES
+
+We use two different databases from Maxmind.com, bundled with this Add On.
+A new version of each database comes out about every month.
+
+Here is how you update to the latest version of these databases:
+
+cd /opt/splunk/etc/apps/GeoASN/lookups
+wget http://geolite.maxmind.com/download/geoip/database/GeoLiteCity.dat.gz
+wget http://geolite.maxmind.com/download/geoip/database/asnum/GeoIPASNum.dat.gz
+gunzip GeoLiteCity.dat.gz
+gunzip GeoIPASNum.dat.gz
+
+Maxmind.com also provides commercial versions of its Geo databases, 
+with better accuracy and more frequent updates.
+
+
+EXAMPLE SEARCHES
+
+If you have logs with a single IP address field:
+
+* | lookup ga ip
+* | lookup ga ip AS the_name_of_your_ip_addr_field
+
+If you have logs with two IP address fields:
+
+* | lookup geoasn src_ip dest_ip
+* | lookup geoasn src_ip AS your_1st_field dest_ip AS your_2nd_field
+
+
+EXAMPLE PROPS.CONF
+
+If you always want your searches to lookup the Country, AS number and 
+Organization for IP addresses, you can configure props.conf to do this:
+
+[asa]
+LOOKUP-geoasn = geoasn src_ip dest_ip
+
+In this example, all events with sourcetype 'asa' (Cisco firewall logs) 
+will use the geoasn command to lookup the src_ip and dest_ip 
+This produces the following fields:
+
+src_country  : The Country as found in the Maxmind GeoCity database
+dest_country : The Country as found in the Maxmind GeoCity database
+src_asn      : The AS number and Org as found in the Maxmind ASN database
+src_as       : The AS number, without the 'AS' prefix 
+src_org      : The Organization, without the AS number
+dest_asn     : The AS number and Orgn as found in the Maxmind ASN database
+dest_as      : The AS number, without the 'AS' prefix 
+dest_org     : The Organization, without the AS number
+
+If the IP address being looked up is within the ranges defined in RFC 1918, 
+the Country and Organization fields are set to 'RFC1918', to make it easy to 
+filter on Private IP addresses. AS number is set to 0.
+
+If the address was not found in the database, and it is not an RFC 1918 address, 
+the Country and/or Organization is set to 'Unknown', and the AS number is set to 0.
+
+
+PERFORMANCE
+
+Benchmarking from Maxmind has shown that the native C libraries are capable of 
+doing 400.000 IP address lookups per second when memory caching is not used. 
+The C implementation is capable of more than 1 million lookups/s when using memory
+caching. We use both the native C libraries and memory caching for maximum performance.
+
+Another optimization is the lookup of the Country, AS number and Organization 
+for both the src_ip and dest_ip in one single command. Instead of executing 
+multiple lookup commands, we only execute once.
+
+
+TYPICAL USE CASES
+
+All logs containing IP addresses will be easier to analyze if you, for each 
+IP address, can tell which Country and Organization it belongs to. This is 
+especially relevant for security analysis, where one can perform queries and 
+reports to e.g., show all foreign communications.
+
+Enjoy!
+
+Henrik Strom
+Telenor Norway
+

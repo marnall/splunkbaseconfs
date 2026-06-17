@@ -1,0 +1,342 @@
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+
+<link rel="stylesheet" type="text/css" href="${make_url('/static/app/launcher/application.css')}"  media="screen" />
+
+<script src="${make_url('/static/app/launcher/scripts/tabify.js')}" type="text/javascript" charset="utf-8"></script>
+
+<%!
+   from splunk.entity import buildEndpoint
+   from splunk import rest
+   from splunk import getDefault, auth
+   from mako import exceptions
+   import splunk
+   import os
+   import logging
+   import urllib
+   import cherrypy
+
+   def convert_spaces_to_underscores(s):
+      
+      if s:
+         new_id = ''
+
+         #remove . : ( ) chars as well
+         for e in s:
+            if e.isalpha() or e.isdigit() or s.isspace():
+               new_id += e
+         #ensure it starts with a char
+         if not new_id[0].isalpha():
+            new_id = 'a'+new_id
+
+         return '_'.join(new_id.split(' ')).strip()
+
+   logger = logging.getLogger('splunk.apps.launcher')
+
+%>
+
+<%
+   namespace = 'launcher'
+   sessionId = cherrypy.session.id
+   sb_uri = make_url('/manager/%s/%s' % (namespace, 'apps/remote'))
+   
+   sburi = buildEndpoint('apps/remote', entityName='entries')
+   net_is_down_flag = False
+
+   splunk_version = cherrypy.config['version_number']
+   if '.' not in splunk_version:
+        splunk_version = '4.99.0'
+
+   try:
+       sbserverResponse, sbserverContent = rest.simpleRequest(sburi, sessionKey=splunk.getSessionKey(), getargs={'sort_by':'downloads', 'count':'1000', 'splunk_version':splunk_version}, timeout=10)
+   except Exception, e:
+       sbatom = []
+       net_is_down_flag = True
+       logger.error(str(e))
+   else:
+      if sbserverResponse.status == 200:
+         sbatom = rest.format.parseFeedDocument(sbserverContent)
+      else:
+         sbatom = []
+         net_is_down_flag = True
+
+%>
+
+
+<%
+  sbappcount = len(sbatom)
+
+  sbpages, sbrem = divmod(sbappcount,10)
+  if sbrem:
+     sbpages += 1
+%>
+<script type="text/javascript">
+
+function performInstall(num) {
+    var form = $("#install_form_" + num);
+    form.find("input[name=splunk_session_id]").val(jQuery.cookie('session_id_' + Splunk.util.getConfigValue('MRSPARKLE_PORT_NUMBER')));
+    form.submit();
+    form.find("input[name=splunk_session_id]").val('');
+    return true;
+}
+
+function clickInstall(appName, num) {
+    % if 'sbSessionKey' in cherrypy.session:
+        $("#loading").show();      
+        performInstall(num);
+    % else:
+        var popup = new Splunk.Popup($('.loginForm'), {
+           title : ${jsonify(_("Login"))},
+           pclass : "myPopupClass",
+           buttons : [
+               {
+                   label: ${jsonify(_('Cancel'))},
+                   type : 'secondary',
+                   callback: function(){
+                       return true;
+                   }.bind(this)
+               },
+               {
+                   label: ${jsonify(_('Login'))},
+                   type : 'primary',
+                   callback: function(){
+                       $('.error').html('');
+                        
+                       $.post(
+                            '${sb_uri}/login',
+                            {
+                                username: $('#sbuser').val(),
+                                password: $('#sbpass').val()
+                            },
+                            function(data) {
+                                if(data != '') {
+                                    $("#loading").show();
+                                    performInstall(num);
+                                    return true; 
+                                }
+                                else {
+                                    $('.error').html(${jsonify(_('Invalid username or password.'))});
+                                }
+                            }
+                        );
+                       
+                   }.bind(this)
+               }
+           ]
+        });
+    % endif
+}
+
+
+</script> 
+    
+    
+<style>
+
+#loading { display : none }
+
+/* icons and screenshots */ 
+
+% for sbentry in sbatom:
+
+<% sbparsedRawContents = rest.format.nodeToPrimitive(sbentry.rawcontents) %>
+
+ <%
+   try:
+      icon_name = sbparsedRawContents['iconURL']
+   except:
+      icon_name = 'appIcon_null.png'
+
+   try:
+      icon_height = sbparsedRawContents['iconHeight']
+   except:
+      icon_height = 0
+
+   try:
+      icon_width = sbparsedRawContents['iconWidth']
+   except:
+      icon_width = 0
+
+   if not icon_name:
+      icon_name = 'appIcon_null.png'
+%>
+.launcher-menu ul li a#${convert_spaces_to_underscores(sbentry.title)}MenuSB {
+       
+        % if icon_name == 'appIcon_null.png':
+           background-image: url(${make_url('/static/app/launcher/%s' %  icon_name)});
+           *background-image:none;
+        % else:
+           background-image: url(${'%s' % (icon_name)});
+           *background-image:none;
+        % endif
+}
+.launcher-menu ul li a#${convert_spaces_to_underscores(sbentry.title)}MenuSB span {
+       
+        % if icon_name == 'appIcon_null.png':
+           *background-image: url(${make_url('/static/app/launcher/%s' %  icon_name)});
+        % else:
+           *background-image: url(${'%s' % (icon_name)});
+        % endif
+}
+
+#${convert_spaces_to_underscores(sbentry.title)} .screenshot {
+        <%
+           try:
+              screenshot_name = sbparsedRawContents['screenshotURL']
+           except:
+              screenshot_name = 'screenshot_null.png'
+
+           try:
+              screenshot_height = sbparsedRawContents['screenshotHeight']
+           except:
+              screenshot_height = 0
+
+           try:
+              screenshot_width = sbparsedRawContents['screenshotWidth']
+           except:
+              screenshot_width = 0
+
+           if not screenshot_name:
+              screenshot_name = 'screenshot_null.png'
+
+        %>
+
+        % if screenshot_name == 'screenshot_null.png':
+           background-image: url(${make_url('/static/app/launcher/%s' %  screenshot_name)});
+        % else:
+           background-image: url(${'%s' % (screenshot_name)});
+        % endif
+}
+
+% endfor
+</style>
+
+</head>
+
+<body>
+	   % if net_is_down_flag :
+	       <div class="noSplunkbase">
+	           <h3>
+                   ${_("Launcher doesn't seem to be able to connect to the Internet to search for more apps. Please visit splunkbase.com to get a full list of what's available for your Splunk.")}
+               </h3>    
+           </div>  
+	   % else : 
+       
+    <div class="loginForm" style="display: none; padding:10px;">
+        <form class="appLogin">
+            <div class="adminFormSection">
+                <div class="adminFormItem">
+                    <h2>${_('Login with your Splunk.com username and password <br /> to download and install the app.')}</h2>
+                </div>
+                <p class="error"></p>
+                <div class="adminFormItem">
+                    <label><%doc>TRANS: Username prompt</%doc>${_('Username')}</label>
+                    <input value="" size="30" id="sbuser" type="text">
+                </div>
+                
+                <div class="adminFormItem">
+                    <label><%doc>TRANS: Password prompt</%doc>${_('Password')}</label>
+                    <input size="30" id="sbpass" type="password">
+                </div>
+            </div>
+            <br><br>
+        </form>
+    </div>    
+       
+    
+            
+
+            <% i=0 %>
+            % for sbentry in sbatom:
+            
+                <% 
+                    sbparsedRawContents = rest.format.nodeToPrimitive(sbentry.rawcontents) 
+                    
+                    try:
+                        sbdesc = sbentry.summary
+                    except (KeyError, AttributeError):
+                        sbdesc = _('No description has been provided for this app. Please update app.conf for your app.')
+                                        
+                    try:
+                        sbversion = sbparsedRawContents['latestVersion'] 
+                    except (KeyError, AttributeError): 
+                        sbversion = '1.0'
+                    
+                    try:
+                        sbauthor = sbparsedRawContents['author']
+                    except (KeyError, AttributeError):                                                              
+                        sbauthor = 'Splunk'
+                
+                %>
+                <div class="appsApplicationBox" id="${convert_spaces_to_underscores(sbentry.title)}MenuSB">
+                    % if sbparsedRawContents['thumbnailURL'] is not None : 
+                        <img width="36px" src="${sbparsedRawContents['thumbnailURL']}" class="appIcon">  
+    			    % else :
+    			        <img width="36px" src="${make_url('/static/app/launcher/appIcon_null.png')}" class="appIcon">
+    			    % endif
+    			    
+        			<div class="appDetail">
+        				<a class="splunkBaseAppTitle" href="${sbparsedRawContents['appURL']}" target="_blank">${sbentry.title}</a>
+        				<div class="clear"></div>
+        				<div class="appsApplicationDesc">
+            				${sbdesc.replace('\n', '<br>\n')}
+        				</div>
+        				<table class="appDetailsTable">
+            				<tbody>
+                            <tr>
+        							<th>${_('Author:')}</th>
+        							<td>${sbauthor}</td>
+                                    <%
+                                        import time
+                                        timestamp = sbparsedRawContents['dateAddonUpdated']
+                                        ts = time.strptime(timestamp[:19], "%Y-%m-%dT%H:%M:%S")
+                                        newTimestamp = time.strftime("%m/%d/%Y %H:%M:%S", ts)
+                                    %>
+        							<th>${_('Last updated:')}</th>
+        							<td>${newTimestamp}</td>
+        							<th>${_('License:')}</th>
+        							<td>
+        								<a href="${sbparsedRawContents['licenseURL']}" target="_blank">${sbparsedRawContents['license']}</a>
+        							</td> 
+        						</tr>
+        					</tbody>
+        				</table>
+        				
+        				<div class="buttonDiv">
+        					                            
+                            % if sbparsedRawContents['price'] is not None and 'free' in sbparsedRawContents['price'].lower():
+    
+                            <form id="install_form_${i}" action="${sb_uri}" method="post">
+                                <input name="splunk_session_id" type="hidden">
+                                <input value="install" name="action" type="hidden">
+                                <input value="${urllib.quote_plus(sbentry.title)}" name="encodedAppname" type="hidden">
+                            </form>  
+                            
+                            <button class="splButton-primary" onclick="clickInstall('${sbentry.title}', '${i}');">
+                                <span>${_('Install Free')}</span>
+                            </button>
+                            
+                            % else :
+                            <div class="button">
+                                <a href="${sbparsedRawContents['appURL']}" target="_blank" class="splButton-primary"><span>${_('Download App')}</span></a>
+                            </div>
+                            
+                            % endif 
+        				</div>
+        			</div>
+        			<div class="clear"></div>
+        		</div>
+    		
+    
+            <% i=i+1 %>
+            % endfor
+
+        % endif
+
+</body>
+</html>
+
+
+
+

@@ -1,0 +1,232 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>SNMP Devices CPU and Memory</label>
+  <fieldset autoRun="True">
+      <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+          <label>NFO hostnames</label>
+          <default>*</default>
+          <search>
+              <query>| `populate_snmp_nfo_hostnames`</query>
+          </search>
+          <fieldForLabel>nfo_hostname</fieldForLabel>
+          <fieldForValue>nfo_hostname</fieldForValue>
+          <change>
+              <unset token="Device"></unset>
+          </change>
+      </input>
+      <input type="dropdown" token="device_group" searchWhenChanged="false">
+          <label>Device group</label>
+          <default>*</default>
+          <search>
+              <query>| `populate_snmp_device_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+          </search>
+          <fieldForLabel>device_group</fieldForLabel>
+          <fieldForValue>device_group</fieldForValue>
+          <change>
+              <unset token="Device"></unset>
+          </change>
+      </input>
+      <input type="dropdown" token="device_sysname" searchWhenChanged="false">
+          <label>Device</label>
+          <default>*</default>
+          <choice value="*">*</choice>
+          <search>
+              <query>
+                | `populate_snmp_device_list_by_nfo_hostname($device_group$,$nfo_hostname$)`
+              </query>
+          </search>
+          <fieldForLabel>device_sysname</fieldForLabel>
+          <fieldForValue>device_sysname</fieldForValue>
+          <change>
+              <unset token="Device"></unset>
+          </change>
+      </input>
+      <input type="dropdown" token="device_type" searchWhenChanged="false">
+          <label>Device Type</label>
+          <default>*</default>
+          <choice value="*">*</choice>
+          <search>
+            <query>
+              | `populate_snmp_device_type_by_nfo_hostname($device_group$,$nfo_hostname$,$device_sysname$)`
+            </query>
+          </search>
+          <fieldForLabel>device_type</fieldForLabel>
+          <fieldForValue>device_type</fieldForValue>
+          <change>
+            <unset token="Device"></unset>
+          </change>
+      </input>
+      <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+          <label>Advanced Filter</label>
+          <default>*</default>
+          <change>
+              <unset token="Device"></unset>
+          </change>
+      </input>
+      <input type="time" searchWhenChanged="false">
+          <label>Time Range</label>
+          <default>Last 60 minutes</default>
+      </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20103`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_1_1">
+        <search>
+          <query>
+            `netflow_search_rule_20103` (oid_set=*mem OR oid_set=*cpu) nfo_hostname="$nfo_hostname$" $advanced_filter$ 
+              | fillnull value="Unassigned" device_group
+              | fillnull value="" device_type
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | search  device_sysname="$device_sysname$" device_group="$device_group$" device_type="$device_type$"
+              | fillnull value=NULL mem_free mem_used mem_total mem_used_percent sysLocation sysUpTimeInstance
+              | eval mem_free=if(mem_free=="NULL",mem_total-mem_used,mem_free) 
+              | eval mem_used=if(mem_used=="NULL",mem_total-mem_free,mem_used) 
+              | eval mem_total=if(mem_total=="NULL",mem_used+mem_free,mem_total)   
+              | eval mem_used_percent=if(mem_used_percent=="NULL",100*mem_used/mem_total,mem_used_percent)
+              | stats avg(cpu_load_percent) as cpu_load_percent  avg(mem_used_percent) as mem_used_percent
+                    by nfo_hostname device_group mgmt_ip sysName device_sysname
+              | join device_sysname [ search `netflow_search_rule_20103`  oid_set=device_info
+                | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")") | rename device_group as device_group_from_info
+              ]
+              | eval cpu_load_percent = round(cpu_load_percent,2)
+              | eval  mem_used_percent = round(mem_used_percent,2)
+              | rex field=sysUpTimeInstance "(?&lt;days&gt;\d+):(?&lt;hours&gt;\d+):(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)"
+              | eval uptimeSeconds=days*24*3600+hours*3600+minutes*60+seconds
+              | eval restarttime=now()-uptimeSeconds
+              | eval sysUpTimeInstance=strftime(restarttime,"%A, %B %d %Y, %I:%M %p")
+              | table nfo_hostname device_group device_type device_sysname sysLocation sysUpTimeInstance cpu_load_percent mem_used_percent 
+              | rename nfo_hostname as "NFO"
+              | rename cpu_load_percent as "Avg CPU utilization %"
+              | rename mem_used_percent as "Avg Memory utilization %"
+              | rename device_sysname as "Device (sysName)"
+              | rename device_group as "Device Group"
+              | rename device_type as "Device Type"
+              | rename sysLocation as Location
+              | rename sysUpTimeInstance as "Last Boot"
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="NFO">$row.NFO$</set>
+          <set token="Device">$row.Device (sysName)$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <chart id="chart_1_1" depends="$Device$">
+        <title>CPU utilization for device : $Device$</title>
+        <search>
+          <query>
+            `netflow_search_rule_20103` oid_set=*cpu nfo_hostname="$nfo_hostname$" $advanced_filter$ 
+              | fillnull value="Unassigned" device_group
+              | fillnull value="" device_type
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | search device_sysname="$Device$"  device_group="$device_group$" device_type="$device_type$"
+              | fillnull value="1" row_num
+              | eval cpunum = "CPU " . row_num 
+              | eventstats perc95(cpu_load_percent) as p95cpu by cpunum
+              | timechart eval(round(max(cpu_load_percent),2)) as "CPU utilization %" eval(round(avg(p95cpu),2)) as "95%" by cpunum
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.chart.overlayFields">95%</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">365</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">row_num</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart id="chart_1_2" depends="$Device$">
+        <title>Memory utilization for device : $Device$</title>
+        <search>
+          <query>
+            `netflow_search_rule_20103` oid_set=*mem nfo_hostname="$nfo_hostname$"  $advanced_filter$ 
+              | fillnull value="Unassigned" device_group
+              | fillnull value="" device_type
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")       
+              | search device_sysname="$Device$" device_group="$device_group$" device_type="$device_type$"
+              | fillnull value="1" row_num
+              | fillnull value=NULL mem_free mem_used mem_total mem_used_percent 
+              | eval mem_free=if(mem_free=="NULL",mem_total-mem_used,mem_free) 
+              | eval mem_used=if(mem_used=="NULL",mem_total-mem_free,mem_used) 
+              | eval mem_total=if(mem_total=="NULL",mem_used+mem_free,mem_total)   
+              | eval mem_used_percent=if(mem_used_percent=="NULL",100*mem_used/mem_total,mem_used_percent)
+              | eval mempool = "MemPool " . row_num 
+              | eventstats perc95(mem_used_percent) as p95 by mempool
+              | timechart eval(round(max(mem_used_percent),2)) as "Mem Utilization %" eval(round(avg(p95),2)) as "95%" by mempool
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.chart.overlayFields">95%</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">365</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">row_num</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10103: SNMP Custom OID Sets Monitor”</b> (syslogs with nfc_id=20103). This Module enables you to perform SNMP polling from network devices by creating OID Sets. Each set can contain up to 64 OIDs, and has its own polling interval. The polling is performed for all network devices set in SNMP Service. The information is provided per device-OID set. This Module is packaged in <b>NFO “Untilities” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

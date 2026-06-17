@@ -1,0 +1,284 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Azure Traffic by Virtual Network (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Exporter (Virtual Network)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_nsg_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_nsg_name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_vm" id="src_input" searchWhenChanged="False">
+      <label>Source VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_vm" id="dest_input" searchWhenChanged="False">
+      <label>Dest. VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20467` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <set token="showbase">1</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <set token="show">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+			`basesearch_20467("$nfo_hostname$","$exp_ip$","$advanced_filter$","$src_vm$","$src_port$","$dest_vm$","$dest_port$","$protocol_name$","$span_token$")`
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <chart>
+        <title>Top 10 Virtual Networks</title>
+        <search base="baseSearch">
+          <query>
+						| `per_second_chart(sum(sum_bytes_in) by vnet_name,"$span_token$",$span_int$)`
+					</query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">200</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+          <unset token="VNET"></unset>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <title>Click on a row to drill down</title>
+        <search base="baseSearch">
+          <query>
+						| bin _time $span_token$
+						| stats sum(sum_bytes) as sumbytes 
+							sum(sum_packets) as sumpackets 
+							sum(sum_flow_count) as sumflowcount 
+								by nfo_hostname exp_ip vnet_name sum_by_exp _time
+						| eval avgbits= sumbytes*8/($span_int$)
+						| stats sum(sumbytes) as TrafficAmount 
+							sum(sumpackets) as PacketsAmount 
+							sum(sumflowcount) as Connections 
+							perc95(avgbits) as p95
+							max(avgbits) as MaxTraffic
+								by nfo_hostname exp_ip vnet_name sum_by_exp
+						| sort 0 - TrafficAmount
+						| eval pct = TrafficAmount*100/sum_by_exp
+						| `commas_formatting(pct, pct, 2)`
+						| head 100 
+						| eval AverageSpeed=(TrafficAmount)*8/$range$
+						| eval PacketsSpeed=(PacketsAmount)/$range$
+						| eval p95=p95/1000000
+						| `commas_formatting(95pct Mbps, p95, 2)`
+						| `default_preparation_for_comma_formatted_table`
+						| table nfo_hostname vnet_name "Max Mbps" "95pct Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+						| rename nfo_hostname as "NFO"
+						| rename vnet_name as "Virtual Network" 
+						| rename pct as "% of Total"
+					</query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="VNET">$row.Virtual Network$</set>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+						`netflow_search_rule_20467` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$"
+						| eventstats sum(bytes) as sum_by_exp by nfo_hostname exp_ip 
+						| search $advanced_filter$
+      			| search src_port="$src_port$" (src_ip="$src_vm$" OR src_vm_name="$src_vm$") (dest_ip="$dest_vm$" OR dest_vm_name="$dest_vm$") dest_port="$dest_port$"
+      			| fillnull value="" transport src_vm_name dest_vm_name
+      			| search transport="$protocol_name$"
+            | eval vnet_name=case((direction == "inbound"),dest_vnet_name,(direction == "outbound"),src_vnet_name) 
+            | stats sum(bytes) as sum_bytes sum(bytes_in) as sum_bytes_in sum(bytes_out) as sum_bytes_out 
+              sum(packets) as sum_packets sum(packets_in) as sum_packets_in sum(packets_out) as sum_packets_out sum(flow_count) as sum_flow_count 
+                by nfo_hostname exp_ip vnet_name sum_by_exp _time 
+						| `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+						| bin _time $span_token$
+						| stats sum(sum_bytes) as sumbytes 
+							sum(sum_packets) as sumpackets 
+							sum(sum_flow_count) as sumflowcount 
+								by nfo_hostname exp_ip vnet_name sum_by_exp _time
+						| eval avgbits= sumbytes*8/($span_int$)
+						| stats sum(sumbytes) as TrafficAmount 
+							sum(sumpackets) as PacketsAmount 
+							sum(sumflowcount) as Connections 
+							perc95(avgbits) as p95
+							max(avgbits) as MaxTraffic
+								by nfo_hostname exp_ip vnet_name sum_by_exp  
+						| sort 0 - TrafficAmount
+						| eval pct = TrafficAmount*100/sum_by_exp
+						| `commas_formatting(pct, pct, 2)`
+						| head 100 
+						| eval AverageSpeed=(TrafficAmount)*8/$range$
+						| eval PacketsSpeed=(PacketsAmount)/$range$
+						| eval p95=p95/1000000
+						| `commas_formatting(95pct Mbps, p95, 2)`
+						| `default_preparation_for_comma_formatted_table`
+						| table nfo_hostname vnet_name "Max Mbps" "95pct Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+						| rename nfo_hostname as "NFO"
+						| rename vnet_name as "Virtual Network" 
+						| rename pct as "% of Total"
+					</query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="VNET">$row.Virtual Network$</set>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <table id="table_2_1" depends="$VNET$,$showbase$">
+      <title>Azure Traffic for Virtual Network "$submitted:VNET$" reported by NFO "$NFO$"</title>
+      <search base="baseSearch">
+        <query>
+					| search nfo_hostname="$NFO$" exp_ip="$exp_ip$" vnet_name="$VNET$"
+          | `format_ip_column(src_ip,src_ip,src_vm_name)`
+          | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+          | stats sum(sum_bytes) as sumbytes
+                  sum(sum_bytes_in) as sumbytesin 
+                  sum(sum_bytes_out) as sumbytesout 
+                  sum(sum_packets_in) as sumpacketsin 
+                  sum(sum_packets_out) as sumpacketsout 
+                  sum(sum_flow_count) as sumflowcount 
+                      by nfo_hostname exp_ip vnet_name sum_by_exp src_ip src_port dest_ip dest_port _time
+						`nsg_traffic_by_host_pairs_table($span_int$,$range$)`
+				</query>
+      </search>
+      <option name="count">10</option>
+      <option name="showPager">true</option>
+      <option name="drilldown">none</option>
+    </table>
+    <table id="table_2_2" depends="$VNET$" rejects="$showbase$">
+      <title>Azure Traffic for Virtual Network "$submitted:VNET$" reported by NFO "$NFO$"</title>
+      <search>
+        <query>
+					`netflow_search_rule_20467` nfo_hostname="$NFO$" exp_ip="$exp_ip$" 
+					| eventstats sum(bytes) as sum_by_exp by nfo_hostname exp_ip
+					| search $advanced_filter$
+    			| search src_port="$src_port$" (src_ip="$src_vm$" OR src_vm_name="$src_vm$") (dest_ip="$dest_vm$" OR dest_vm_name="$dest_vm$") dest_port="$dest_port$"
+    			| fillnull value="" transport src_vm_name dest_vm_name
+    			| search transport="$protocol_name$"
+          | eval vnet_name=case((direction == "inbound"),dest_vnet_name,(direction == "outbound"),src_vnet_name) 
+          | stats sum(bytes) as sum_bytes sum(bytes_in) as sum_bytes_in sum(bytes_out) as sum_bytes_out 
+            sum(packets) as sum_packets sum(packets_in) as sum_packets_in sum(packets_out) as sum_packets_out sum(flow_count) as sum_flow_count 
+              by nfo_hostname exp_ip vnet_name src_ip src_port src_vm_name dest_ip dest_port dest_vm_name direction transport sum_by_exp _time 
+          | search vnet_name="$VNET$"
+					| `format_ip_column(src_ip,src_ip,src_vm_name)`
+          | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+					| bin _time $span_token$
+          | stats sum(sum_bytes) as sumbytes
+                  sum(sum_bytes_in) as sumbytesin 
+                  sum(sum_bytes_out) as sumbytesout 
+                  sum(sum_packets_in) as sumpacketsin 
+                  sum(sum_packets_out) as sumpacketsout 
+                  sum(sum_flow_count) as sumflowcount 
+                      by nfo_hostname exp_ip vnet_name sum_by_exp src_ip src_port dest_ip dest_port _time
+						`nsg_traffic_by_host_pairs_table($span_int$,$range$)`
+				</query>
+        <earliest>$selection.earliest$</earliest>
+        <latest>$selection.latest$</latest>
+      </search>
+      <option name="count">10</option>
+      <option name="showPager">true</option>
+      <option name="drilldown">none</option>
+    </table>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10467: Azure NSG Top Traffic Monitor”</b> (syslogs with nfc_id=20467). This Module identifies Azure VMs with the most traffic. It consolidates NSG Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “Azure NSG Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+    </panel>
+  </row>
+</form>

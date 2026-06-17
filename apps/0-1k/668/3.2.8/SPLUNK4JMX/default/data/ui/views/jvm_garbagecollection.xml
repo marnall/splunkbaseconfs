@@ -1,0 +1,107 @@
+<form version="1.1">
+    <label>Garbage Collection</label>
+    <fieldset autoRun="true">
+        <input type="dropdown" token="host">
+            <label>Choose host</label>
+            <prefix>host="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>host</fieldForValue>
+            <fieldForLabel>host</fieldForLabel>
+            <search>
+                <query>
+                | metadata type=hosts index=main | dedup host | table host
+                </query> 
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="dropdown" token="jvmDescription">
+            <label>Choose JVM Description</label>
+            <prefix>jvmDescription="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>jvmDescription</fieldForValue>
+            <fieldForLabel>jvmDescription</fieldForLabel>
+            <search>
+                <query>
+                index=main sourcetype=jmx $host$ | dedup jvmDescription | table jvmDescription
+                </query>
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="time">
+            <default>Last 4 hours</default>
+        </input>
+    </fieldset>
+    <search id="base_search">
+        <query>
+        index=main sourcetype=jmx $host$ $jvmDescription$ mbean_domain="java.lang" mbean_property_type="GarbageCollector"
+        | eval jvmgc=jvmDescription+"_"+gcName
+        | streamstats current=f global=f window=1 first(colCount) as next_colCount by host jvmgc
+        | eval d_colCount=next_colCount-colCount
+        | eval gcFreq=if(next_colCount>colCount, d_colCount, 0) 
+        | bucket _time span=1m
+        | stats first(jvmgc) as jvmgc first(gcFreq) as gcFreq first(colTime) as colTime first(colCount) as colCount first(memPools) as memPools first(gCStart) as gCStart first(gCEnd) as gCEnd first(gCDuration) as gCDuration first(gCThreadCount) as gCThreadCount by _time host jvmDescription gcName
+    </query></search>
+    <row>
+        <table>
+            <title>Garbage Collection Overview</title>
+            <search base="base_search"><query>
+                stats first(colTime) as "Collection Time (Millis)" first(colCount) as "Collection Count" first(memPools) as "Memory Pools" by host jvmDescription gcName | sort jvmDescription
+           </query></search>
+        </table>
+    </row>
+    <row>
+        <chart>
+            <title>Last Collection Time</title>
+            <search base="base_search"><query> timechart avg(gCDuration) by jvmgc
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Collection: Time (Millis)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>GC Thread Count</title>
+           <search base="base_search"><query> timechart max(gCThreadCount) by jvmgc
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Thread Count</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Frequency of Collections</title>
+            <search base="base_search"><query> timechart sum(gcFreq) by jvmgc
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Collections</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Cumulative Collection Time</title>
+            <search base="base_search"><query> chart sum(gCDuration) as "Collection Time" by jvmgc
+            </query></search>
+            <option name="charting.chart">pie</option>
+            <option name="charting.legend.placement">top</option>
+        </chart>
+        <chart>
+            <title>Cumulative Collection Count</title>
+            <search base="base_search"><query> chart sum(gcFreq) as "Collection Count" by jvmgc
+            </query></search>
+            <option name="charting.chart">pie</option>
+            <option name="charting.legend.placement">top</option>
+        </chart>
+    </row>
+</form>

@@ -1,0 +1,291 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js" stylesheet="inputs_layout.css">
+    <label>Palo Alto Networks Overview (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="time" searchWhenChanged="False">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_palo_rules`  | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+      <panel>
+        <html>
+          <p><b>Top Bandwidth Consumers</b> <a href="$url1$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20030`
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | strcat src_ip "/" user ip_user
+                    | `per_second_chart(sum(bytes) by ip_user,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url1">
+                    <![CDATA[
+                        /app/netflow/palo_top_consumers?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+      <panel>
+        <html>
+          <p><b>Top Destinations</b> <a href="$url2$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20031` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | `per_second_chart(sum(bytes) by dest_ip,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url2">
+                    <![CDATA[
+                        /app/netflow/palo_top_destinations?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+    </row>
+    <row depends="$show_content$">
+      <panel>
+        <html>
+          <p><b>Top Violators</b> <a href="$url3$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20032`
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | strcat src_ip "/" user ip_user
+                    | timechart sum(denied_count) by ip_user useother="f"
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Count</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url3">
+                    <![CDATA[
+                        /app/netflow/palo_top_violators?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+      <panel>
+        <html>
+          <p><b>Top Connections</b> <a href="$url4$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20033`
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | strcat src_ip "/" user ip_user
+                    | timechart sum(created_count) by ip_user useother="f"
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Count</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url4">
+                    <![CDATA[
+                        /app/netflow/palo_top_connections?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+    </row>
+    <row depends="$show_content$">
+      <panel>
+        <html>
+          <p><b>Top Applications</b> <a href="$url5$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20034`
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | `per_second_chart(sum(bytes) by app,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url5">
+                    <![CDATA[
+                        /app/netflow/palo_top_apps?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+      <panel>
+        <html>
+          <p><b>Top Applications and Users</b> <a href="$url6$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+        </html>
+        <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20035`
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | strcat app "/" user appuser 
+                    | `per_second_chart(sum(bytes) by appuser,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                <set token="selection_earliest">$start$</set>
+                <set token="selection_latest">$end$</set>
+                <set token="url6">
+                    <![CDATA[
+                        /app/netflow/palo_top_apps_users?earliest=$selection_earliest$&latest=$selection_latest$
+                    ]]>
+                </set>
+            </selection>
+        </chart>
+      </panel>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Modules <b>"10030: Top Bandwidth Consumers for Palo Alto Networks"</b>, <b>"10031: Top Traffic Destinations for Palo Alto Networks"</b>, <b>"10032: Hosts with Most Policy Violations for Palo Alto Networks"</b>, <b>"10033: Most Active Hosts for Palo Alto Networks"</b>, <b>"10034: Bandwidth Consumption per Application for Palo Alto Networks"</b> and <b>"10035: Bandwidth Consumption per Application and Users for Palo Alto Networks"</b> (syslogs with nfc_id=20030, nfc_id=20031, nfc_id=20032, nfc_id=20033, nfc_id=20034 and nfc_id=20035). These Modules are packaged in <b>NFO “Palo Alto Networks” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

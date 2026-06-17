@@ -1,0 +1,729 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css,call_detail.css">
+  <label>Call details</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="mainSearchControls">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Link" layoutPanel="viewHeader">
+      <param name="label">Investigate Calls</param>
+      <module name="Redirector">
+        <param name="url">calls</param>
+        <param name="arg.earliest">$bc_earliest$</param>
+        <param name="arg.latest">$bc_latest$</param>
+        <param name="arg.type">$bc_type$</param>
+        <param name="arg.number">$bc_number$</param>
+        <param name="arg.numberType">$bc_numberType$</param>
+        <param name="arg.searchterms">$bc_searchterms$</param>
+        <param name="arg.advancedSearchLanguage">$bc_advancedSearchLanguage$</param>
+      </module>
+    </module>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1>&gt; Call Detail</h1>
+        ]]>
+      </param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_callDetailPage</param>
+    </module>
+
+
+    <module name="TextField">
+      <param name="name">globalCallID_callId</param>
+      <param name="label">Call Id</param>
+      <param name="cssClass">callIdTextField</param>
+
+      <module name="ValueSetter">
+        <param name="name">globalCallID_callId_array</param>
+        <param name="delim">,</param>
+        <param name="value">$globalCallID_callId$</param>
+
+        <module name="ArrayValueSetter">
+          <param name="name">globalCallID_callId_search_expression</param>
+          <param name="array">$globalCallID_callId_array$</param>
+          <param name="template">globalCallID_callId="$value$"</param>
+          <param name="separator">+OR+</param>
+          <param name="outerTemplate">( $value$ )</param>
+
+          <module name="TextField">
+            <param name="name">globalCallID_callManagerId</param>
+            <param name="label">Call Manager Id</param>
+            <param name="template">$name$="$value$"</param>
+            <param name="cssClass">callManagerIdTextField</param>
+
+            <module name="TextField">
+              <param name="name">globalCallId_ClusterID</param>
+              <param name="label">Cluster</param>
+              <param name="template">$name$="$value$"</param>
+
+              <module name="Search">
+                <param name="earliest">$search.timeRange.earliest$</param>
+                <param name="latest">$search.timeRange.latest$</param>
+                <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId_search_expression$ $globalCallId_ClusterID$
+| dedup call_reference_id
+| table call_reference_id
+| eval search="WILDCARD" + call_reference_id
+| format "(" "(" "" ")" "OR" ")"
+| eval search=replace(search,"WILDCARD","*")
+| eval additionalCubeClause=" OR (sourcetype=cube_cdr " + search + ")"
+                ]]></param>
+
+                <module name="CustomBehavior">
+                  <param name="customBehavior">onlySubmitIfFieldsAreSet</param>
+                  <!-- this logic could be replaced by Gate -->
+                  <param name="arg.requiredKey">globalCallID_callId.rawValue</param>
+
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                      <div id="viewerPageInstructions" style="display:none;clear:both;">
+                      <br>
+                      <br>
+                      <b>This view is normally reached by clicking a row from the <a href="calls">Investigate Calls</a> page.  <br>
+                      <br>
+                      However you can also use this view manually by simply entering a Call Id in the field above and hitting Enter.  <br>
+                      <br>
+                      If you use multiple callManagers and multiple clusters, note that it's possible for two calls to have the same call id, so it's best to also enter the Call Manager Id and Cluster ID.</b>
+                      <br>
+                      <br>
+                      <br>
+                      <br>
+                      </div>
+                    ]]></param>
+                  </module>
+
+                  <module name="ResultsValueSetter">
+                    <param name="fields">additionalCubeClause</param>
+
+                    <!-- This is just for the main CDR call legs table -->
+                    <module name="Search" layoutPanel="panel_row2_col1">
+                      <param name="earliest">$search.timeRange.earliest$</param>
+                      <param name="latest">$search.timeRange.latest$</param>
+                      <param name="search"><![CDATA[
+`custom_index` (sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId_search_expression$ $globalCallId_ClusterID$) $additionalCubeClause$
+| `convert_ip_address(origIpAddr)`
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(origMediaTransportAddress_IP)`
+| `convert_ip_address(destMediaTransportAddress_IP)`
+| `convert_ip_address(origVideoTransportAddress_IP)`
+| `convert_ip_address(destVideoTransportAddress_IP)`
+| `get_sites`
+| `get_locations`
+| `get_custom_type_fields`
+| eval duration=tostring(duration,"duration")
+| fillnull value="" duration callingPartyNumber originalCalledPartyNumber calledPartyNumber cause_description orig_gateway dest_gateway lastRedirectDn origIpAddr origDeviceName destIpAddr destDeviceName  huntPilotDn origSite destSite
+| fields - _*
+| transpose
+| rename column as field
+                      ]]></param>
+
+
+                      <module name="Fields">
+                        <param name="fields">duration seconds_until_answered type callingPartyNumber originalCalledPartyNumber calledPartyNumber cause_description orig_gateway dest_gateway lastRedirectDn origIpAddr origDeviceName destIpAddr destDeviceName huntPilotDn</param>
+                        <param name="hiddenFields">_time</param>
+
+                        <module name="Search">
+                          <param name="earliest">$search.timeRange.earliest$</param>
+                          <param name="latest">$search.timeRange.latest$</param>
+                          <param name="search"><![CDATA[
+`custom_index` (sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId_search_expression$ $globalCallId_ClusterID$) $additionalCubeClause$
+| `convert_ip_address(origIpAddr)`
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(origMediaTransportAddress_IP)`
+| `convert_ip_address(destMediaTransportAddress_IP)`
+| `convert_ip_address(origVideoTransportAddress_IP)`
+| `convert_ip_address(destVideoTransportAddress_IP)`
+| `get_sites`
+| `get_locations`
+| `get_custom_type_fields`
+| eval duration=tostring(duration,"duration")
+| eval callerHungUp=if(origCallTerminationOnBehalfOf="12" OR origTerminationOnBehalfOf="12","<br><strong>(caller hung up)</strong>","")
+| eval calledPartyHungUp=if(destCallTerminationOnBehalfOf="12" OR destTerminationOnBehalfOf="12","<br><strong>(called party hung up)</strong>","")
+| eval type=if(sourcetype=="cube_cdr","(direction="+direction+")", type)
+| eval cause_description=if(sourcetype=="cube_cdr","(activity="+activity+")", cause_description)
+| fields - _raw
+| `sort_call_legs`
+| fields _time sourcetype $results.fields$ `id_fields` callerHungUp calledPartyHungUp
+
+                          ]]></param>
+                          <param name="clearPostProcess">True</param>
+
+                          <module name="PostProcess">
+                            <param name="search">fields - calledPartyHungUp callerHungUp _bkt _cd _eventtype _indextime _kv _serial _si _sourcetype _eventtype_color</param>
+
+                            <module name="SearchControls">
+                              <param name="sections">export</param>
+                            </module>
+                          </module>
+
+                          <pattern name="see_raw_search_syntax" />
+
+                          <module name="PostProcess">
+                            <param name="search"><![CDATA[
+                              | stats values(sourcetype) as sourcetype
+                              | search sourcetype="cube_cdr"
+                              | eval cubeBackgroundColorMessage="<p class=\"cubeRowBgColorMessage\">Note: the rows in light blue are actually CUBE CDR, not UCM CDR</p>"
+                            ]]></param>
+
+                            <module name="ResultsValueSetter">
+                              <param name="fields">cubeBackgroundColorMessage</param>
+
+                              <module name="HTML">
+                                <param name="html"><![CDATA[
+
+                                <h2>Showing $results.count$ leg(s) for call id(s) $globalCallID_callId.rawValue$ on node $globalCallID_callManagerId.rawValue$ in cluster=$globalCallId_ClusterID.rawValue$</h2>
+
+                                $cubeBackgroundColorMessage$
+                                ]]></param>
+                              </module>
+                            </module>
+                          </module>
+
+                          <module name="ProgressIndicator" />
+
+                            <module name="Pager">
+
+                            <module name="Table">
+                              <param name="hiddenFields">globalCallID_callManagerId, globalCallID_callId, globalCallId_ClusterID, callerHungUp, calledPartyHungUp, sourcetype</param>
+                              <param name="rowClass">$row.fields.sourcetype$_row</param>
+                              <module name="HTML" group="row.fields.callingPartyNumber">
+                                <param name="html">$row.fields.callingPartyNumber$ $row.fields.callerHungUp$</param>
+                              </module>
+                              <module name="HTML" group="row.fields.calledPartyNumber">
+                                <param name="html">$row.fields.calledPartyNumber$ $row.fields.calledPartyHungUp$</param>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <!-- end main CDR legs table -->
+
+
+
+
+                    <!-- this is just for the top right panel -->
+                    <module name="Search" layoutPanel="panel_row1_col3">
+                      <param name="earliest">$search.timeRange.earliest$</param>
+                      <param name="latest">$search.timeRange.latest$</param>
+                      <param name="clearPostProcess">True</param>
+                      <param name="search"><![CDATA[
+`custom_index` (sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId$ $globalCallId_ClusterID$) $additionalCubeClause$
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(destMediaTransportAddress_IP)`
+| `convert_ip_address(destVideoTransportAddress_IP)`
+| `convert_ip_address(origIpAddr)`
+| `convert_ip_address(origMediaTransportAddress_IP)`
+| `convert_ip_address(origVideoTransportAddress_IP)`
+| `get_sites`
+| `get_locations`
+| `get_countries`
+| `get_to_and_from`
+| `get_quality`
+| `get_custom_type_fields`
+| table *
+| fields - _*
+| transpose 100
+| rename column as field
+| foreach row* [eval value=if(length('<<FIELD>>')>0, mvappend(value,'<<FIELD>>'),value)]
+| eval value=mvjoin(mvdedup(value),", ")
+| where isnotnull(value) AND value!=""
+
+                      ]]></param>
+
+                      <module name="SearchControls">
+                        <param name="sections">export</param>
+                      </module>
+
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                          <h2>Showing all $results.count$ populated fields for this call</h2>
+                        ]]></param>
+                      </module>
+
+                      <module name="TextField">
+                        <param name="name">all_fields_filter</param>
+                        <param name="label">search</param>
+                        <param name="float">left</param>
+                        <param name="template">field="*$value$*" OR value="*$value$*"</param>
+
+                        <module name="Button">
+                          <param name="allowSoftSubmit">True</param>
+
+                          <module name="PostProcess">
+                            <param name="search">search * $all_fields_filter$</param>
+
+                            <module name="Pager">
+
+
+                              <module name="Multiplexer">
+                                <param name="fields">field,value</param>
+
+
+                                <module name="HTML">
+                                  <param name="clear">left</param>
+                                  <param name="html"><![CDATA[
+                                  <b>$field$</b>: $value$
+                                  ]]></param>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+
+                    </module>
+                    <!-- end top right panel -->
+
+
+
+                    <module name="Search" layoutPanel="panel_row1_col1">
+                      <param name="earliest">$search.timeRange.earliest$</param>
+                      <param name="latest">$search.timeRange.latest$</param>
+                      <param name="search"><![CDATA[
+`custom_index` `cucm_sourcetypes` $globalCallID_callId_search_expression$ $globalCallID_callManagerId$ $globalCallId_ClusterID$
+| eval duration=tostring(duration,"duration")
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(origIpAddr)`
+| `get_sites` | `get_locations`
+| stats sum(legs) as call_legs earliest(_time) as _time min(dateTimeOrigination) as dateTimeOrigination min(dateTimeConnect) as dateTimeConnect max(dateTimeDisconnect) as dateTimeDisconnect values(*) as *
+| sort - _time
+| `get_to_and_from`
+| eval from="(" . from . ")" | eval to="(" . to . ")"
+| fields - _* punct sourcetype source date_*
+| eval duration=mvjoin(duration,", ")
+| eval callingPartyNumber=mvjoin(callingPartyNumber,"::::")
+| eval originalCalledPartyNumber=mvjoin(originalCalledPartyNumber,"::::")
+| eval calledPartyNumber=mvjoin(finalCalledPartyNumber,"::::")
+| eval origDeviceName=mvjoin(origDeviceName,"::::")
+| eval destDeviceName=mvjoin(destDeviceName,"::::")
+| eval dateTimeOrigination=strftime(dateTimeOrigination, "%m/%d/%Y %H:%M:%S")
+| eval dateTimeConnect=if(dateTimeConnect==0,"(never)",strftime(dateTimeConnect, "%m/%d/%Y %H:%M:%S"))
+| eval dateTimeDisconnect=strftime(dateTimeDisconnect, "%m/%d/%Y %H:%M:%S")
+| rename call_legs as legs
+| eval showCallLegTimeline=if(legs>1,"yes","no")
+                      ]]></param>'
+
+
+                      <pattern name="see_raw_search_syntax"/>
+
+                      <module name="ProgressIndicator" />
+
+                      <!-- NOTE the other-calls-to/from panels Need the $*.searchTerm$ keys
+                      that this module produces -->
+                      <module name="ResultsValueSetter">
+                        <param name="fields">type, callingPartyNumber,originalCalledPartyNumber,calledPartyNumber, from, to, callingParty ,origDeviceName,destDeviceName,dateTimeOrigination,dateTimeConnect,dateTimeDisconnect,duration,origCause_description,destCause_description,lastRedirectRedirect_description,origCalledPartyRedirect_description, on_hook_party, legs, showCallLegTimeline</param>
+                        <param name="customBehavior">createMultiValueClauses</param>
+
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                            <b>calling numbers:</b> $callingPartyNumber.link$ $from$<br>
+                            <b>original numbers called:</b> $originalCalledPartyNumber.link$ <br>
+                            <b>final numbers called:</b> $calledPartyNumber.link$ $to$<br>
+                            <b>type:</b> $type$<br>
+                            <b>party that terminated the call:</b> $on_hook_party$<br>
+                            <br>
+                            <b>originated:</b> $dateTimeOrigination$<br>
+                            <b>connected:</b> $dateTimeConnect$<br>
+                            <b>disconnected:</b> $dateTimeDisconnect$<br>
+                            <b>duration:</b> $duration$
+                          ]]></param>
+                          <param name="customBehavior">useLocaleForTimeStampRendering</param>
+                        </module>
+
+                        <module name="HTML" layoutPanel="panel_row1_col2">
+                          <param name="html"><![CDATA[
+                            <b>Originating device:</b> $origDeviceName.link$<br>
+                            <b>Destination device:</b> $destDeviceName.link$<br>
+                            <br>
+                            <b>Call release cause (orig):</b> $origCause_description$<br>
+                            <b>Call release cause (dest):</b> $destCause_description$<br>
+                            <br>
+                            <b>Last Redirect reason:</b> $lastRedirectRedirect_description$<br>
+                            <b>origCalledParty redirect reason:</b> $origCalledPartyRedirect_description$
+                          ]]></param>
+                        </module>
+
+                        <module name="Switcher" layoutPanel="panel_row2_col1">
+                          <param name="selectedGroup">$showCallLegTimeline$</param>
+
+                          <module name="Search" group="yes">
+                            <param name="earliest">$search.timeRange.earliest$</param>
+                            <param name="latest">$search.timeRange.latest$</param>
+                            <param name="search"><![CDATA[
+`custom_index` (sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId_search_expression$ $globalCallId_ClusterID$) $additionalCubeClause$
+| fillnull callingPartyNumber calledPartyNumber value="(no number)"
+| eval _time=case(dateTimeConnect!="0", dateTimeConnect,dateTimeDisconnect!="0",dateTimeDisconnect,true(),dateTimeOrigination)
+| sort - _time
+| eventstats count as total_legs
+| streamstats count as leg
+| eval parties=tostring(total_legs-leg+1) + ":" + callingPartyNumber + "->" + calledPartyNumber + if(sourcetype=="cube_cdr","(CUBE)","")
+| table _time parties leg duration
+| eval duration=mvrange(0,duration+1)
+| mvexpand duration
+| eval _time=_time+duration
+| eventstats min(_time) as min_time max(_time) as max_time
+| where _time<=max_time AND _time>=min_time
+| timechart fixedrange=false span=1s max(leg) by parties limit=75
+
+                            ]]></param>
+                            <module name="ValueSetter">
+                              <param name="arg.charting.chart">line</param>
+                              <!-- new key for our new Chart module -->
+                              <param name="arg.charting.axisLabelsY.axisVisibility">hide</param>
+
+                              <!-- legacy key for older Chart module versions -->
+                              <param name="arg.charting.axisLabelsY.majorLabelVisibility">hide</param>
+                              <param name="arg.charting.axisLabelsY.minorLabelVisibility">hide</param>
+
+                              <param name="arg.charting.legend.placement">right</param>
+                              <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+
+                              <param name="arg.charting.secondaryAxis.maximumNumber">$legs$</param>
+                              <param name="arg.charting.gridLinesX.showMajorLines">False</param>
+                              <param name="arg.charting.gridLinesY.showMajorLines">False</param>
+                              <param name="arg.charting.gridLinesX.showMinorLines">False</param>
+                              <param name="arg.charting.gridLinesY.showMinorLines">False</param>
+
+                              <module name="HTML">
+                                <param name="html"><![CDATA[
+                                  <h2>Timeline of all $legs$ call legs</h2>
+                                  <br>
+                                ]]></param>
+                              </module>
+
+                              <module name="Chart" />
+                              <pattern name="see_raw_search_syntax" />
+                            </module>
+                          </module>
+                        </module>
+
+                        <pattern name="results_table" layoutPanel="panel_row3_col1">
+                          <param name="search">`custom_index` sourcetype=cucm_cmr $globalCallID_callId_search_expression$ $globalCallID_callManagerId$ $globalCallId_ClusterID$ | `fields_for_cmr`</param>
+                          <param name="earliest">$search.timeRange.earliest$</param>
+                          <param name="latest">$search.timeRange.latest$</param>
+                          <param name="title"><![CDATA[
+                            <h2>Call quality information (CMR)</h2>
+                          ]]></param>
+                        </pattern>
+
+                        <module name="NullModule" layoutPanel="panel_row4_col1">
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                              <h2>Other calls to/from the calling party (or calling parties)  </h2>
+
+                            ]]></param>
+                          </module>
+
+                          <module name="ValueSetter">
+                            <param name="name">callingPartyNumberLogic</param>
+                            <param name="if.$callingPartyNumber$=*">callingPartyNumberIsSet</param>
+                            <param name="default">callingPartyNumberIsNotSet</param>
+
+                            <module name="Switcher">
+                              <param name="selectedGroup">$callingPartyNumberLogic$</param>
+
+                              <module name="Search" group="callingPartyNumberIsSet">
+                                <param name="search"><![CDATA[
+  `custom_index` sourcetype=cucm_cdr $callingPartyNumber.searchTerm$
+| `fields_for_call_detail`
+| eval detailLatest=_time + duration
+| eval duration=tostring(duration,"duration")
+| head 50000
+| stats earliest(_time) as _time max(detailLatest) as detailLatest values(*) as * by call_id
+| `get_time_window_for_detail_views`
+| `fields_for_call_detail`
+| sort - _time
+| `rename_fields`
+                                ]]></param>
+
+                                <module name="ProgressIndicator" />
+
+                                <!-- use postProcess to get a field representing the page the current call is on -->
+                                <module name="PostProcess">
+                                  <param name="search"><![CDATA[
+| fields call_id callManagerId clusterId count
+| streamstats count current=f
+| `unrename_fields`
+| search $globalCallID_callId_search_expression$ $globalCallID_callManagerId$ $globalCallId_ClusterID$
+| eval count=floor(count/10)*10
+| rename count as "results.offset"
+                                  ]]></param>
+
+
+                                  <!-- use ResultsValueSetter to get that value so we can give it to the Pager -->
+                                  <module name="ResultsValueSetter">
+                                    <param name="fields">results.offset</param>
+
+
+<!-- problematic. how to match when globalCallID_callId is comma-separated -->
+                                    <module name="PostProcess">
+                                      <param name="search"><![CDATA[
+
+eval rowClass=if((call_id=="$globalCallID_callId.rawValue$" AND  callManagerId=="$globalCallID_callManagerId.rawValue$" AND clusterId=="$globalCallId_ClusterID.rawValue$"),"selected","")
+| eval cpn_class=if(callingParty in $callingPartyNumber.values$,"selectedHighlight",null())
+| eval ocpn_class=if(origCalledParty in $callingPartyNumber.values$,"selectedHighlight",null())
+| eval fcpn_class=if(calledParty in $callingPartyNumber.values$,"selectedHighlight",null())
+                                      ]]></param>
+
+                                      <module name="Pager">
+
+                                        <module name="Table">
+                                          <param name="hiddenFields">callManagerId call_id clusterId rowClass detailEarliest detailLatest cpn_class ocpn_class fcpn_class</param>
+                                          <param name="rowClass">$row.fields.rowClass$</param>
+                                          <param name="columns.callingParty.class">$row.fields.cpn_class$</param>
+                                          <param name="columns.origCalledParty.class">$row.fields.ocpn_class$</param>
+                                          <param name="columns.calledParty.class">$row.fields.fcpn_class$</param>
+
+                                          <module name="Redirector">
+                                            <param name="url">call_detail</param>
+                                            <param name="arg.globalCallID_callId">$row.fields.call_id$</param>
+                                            <param name="arg.globalCallID_callManagerId">$row.fields.callManagerId$</param>
+                                            <param name="arg.globalCallId_ClusterID">$row.fields.clusterId$</param>
+                                            <param name="arg.selectedFields">$selectedFields$</param>
+                                            <param name="arg.earliest">$row.fields.detailEarliest$</param>
+                                            <param name="arg.latest">$row.fields.detailLatest$</param>
+                                            <param name="arg.autoRun">True</param>
+
+                                            <!--  things for breadcrumb links -->
+                                            <param name="arg.bc_earliest">$bc_earliest$</param>
+                                            <param name="arg.bc_latest">$bc_latest$</param>
+                                            <param name="arg.bc_type">$bc_type$</param>
+                                            <param name="arg.bc_number">$bc_number$</param>
+                                            <param name="arg.bc_numberType">$bc_numberType$</param>
+                                            <param name="arg.bc_searchterms">$bc_searchterms$</param>
+                                            <param name="arg.bc_advancedSearchLanguage">$bc_advancedSearchLanguage$</param>
+                                          </module>
+
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+
+                              </module>
+
+                              <module name="HTML" group="callingPartyNumberIsNotSet">
+                                <param name="html"><![CDATA[
+                                  (This record specified no callingPartyNumber)
+                                ]]></param>
+                              </module>
+                            </module>
+
+                          </module>
+                        </module>
+
+                        <module name="NullModule" layoutPanel="panel_row4_col2">
+
+                          <module name="HTML" >
+                            <param name="html"><![CDATA[
+                              <h2>Other calls to/from the called party (or called parties)</h2>
+                            ]]></param>
+                          </module>
+
+                          <module name="Search">
+                            <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $calledPartyNumber.searchTerm$
+| `fields_for_call_detail`
+| eval detailLatest=_time + duration
+| eval duration=tostring(duration,"duration")
+| head 50000
+| stats earliest(_time) as _time max(detailLatest) as detailLatest values(*) as * by call_id
+| `get_time_window_for_detail_views`
+| `fields_for_call_detail`
+| sort - _time
+| `rename_fields`
+                            ]]></param>
+                            <module name="ProgressIndicator" />
+
+                            <!-- use postProcess to get a field representing the page the current call is on -->
+                            <module name="PostProcess">
+                              <param name="search"><![CDATA[
+| fields call_id clusterId callManagerId count
+| streamstats count current=f
+| `unrename_fields`
+| search $globalCallID_callId_search_expression$ $globalCallID_callManagerId$ $globalCallId_ClusterID$
+| eval count=floor(count/10)*10
+| rename count as "results.offset"
+                              ]]></param>
+
+                              <!-- use ResultsValueSetter to get that value so we can give it to the Pager -->
+                              <module name="ResultsValueSetter">
+                                <param name="fields">results.offset</param>
+
+                                <module name="PostProcess">
+                                  <param name="search"><![CDATA[
+eval rowClass=if((call_id=="$globalCallID_callId.rawValue$" AND  callManagerId=="$globalCallID_callManagerId.rawValue$" AND clusterId=="$globalCallId_ClusterID.rawValue$"),"selected","")
+| eval cpn_class=if(callingParty in $calledPartyNumber.values$,"selectedHighlight",null())
+| eval ocpn_class=if(origCalledParty in $calledPartyNumber.values$,"selectedHighlight",null())
+| eval fcpn_class=if(calledParty in $calledPartyNumber.values$,"selectedHighlight",null())
+                                  ]]></param>
+
+
+                                  <module name="Pager">
+
+                                    <module name="Table">
+                                      <param name="hiddenFields">callManagerId call_id clusterId rowClass detailEarliest detailLatest cpn_class ocpn_class fcpn_class</param>
+                                      <param name="rowClass">$row.fields.rowClass$</param>
+                                      <param name="columns.callingParty.class">$row.fields.cpn_class$</param>
+                                      <param name="columns.origCalledParty.class">$row.fields.ocpn_class$</param>
+                                      <param name="columns.calledParty.class">$row.fields.fcpn_class$</param>
+
+
+                                      <module name="Redirector">
+                                        <param name="url">call_detail</param>
+                                        <param name="arg.globalCallID_callId">$row.fields.call_id$</param>
+                                        <param name="arg.globalCallID_callManagerId">$row.fields.callManagerId$</param>
+                                        <param name="arg.globalCallId_ClusterID">$row.fields.clusterId$</param>
+                                        <param name="arg.selectedFields">$selectedFields$</param>
+                                        <param name="arg.earliest">$row.fields.detailEarliest$</param>
+                                        <param name="arg.latest">$row.fields.detailLatest$</param>
+                                        <param name="arg.autoRun">True</param>
+
+                                        <!--  things for breadcrumb links -->
+                                        <param name="arg.bc_earliest">$bc_earliest$</param>
+                                        <param name="arg.bc_latest">$bc_latest$</param>
+                                        <param name="arg.bc_type">$bc_type$</param>
+                                        <param name="arg.bc_number">$bc_number$</param>
+                                        <param name="arg.bc_numberType">$bc_numberType$</param>
+                                        <param name="arg.bc_searchterms">$bc_searchterms$</param>
+                                        <param name="arg.bc_advancedSearchLanguage">$bc_advancedSearchLanguage$</param>
+
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <!--
+                Looking in entirely foreign data, for one or more of this call's "ciscoguid" values
+                NOTE: each leg might have 0, 1 or 2 values of "ciscoguid".
+                They are each cisco's way of denoting what system this call leg came from, or went to.
+
+                NOTE: The first few parts of what this config does could easily be replaced by a simple
+                subsearch.  However down the road I want to also bake out dynamic eval expression
+                that can tell us in the final table,  how many matches are from raw tokens, and how
+                many matches are from extracted fields...
+              -->
+              <module name="Search" layoutPanel="panel_row5_col1">
+                <!-- the second NOT ciscoguid="" filter is just in case a sourcetype out there has made it
+                multivalue, AND one of the values is ""   -->
+                <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $globalCallID_callManagerId$ $globalCallID_callId_search_expression$ $globalCallId_ClusterID$
+ciscoguid=* NOT ciscoguid=""
+| stats count by ciscoguid
+| search NOT ciscoguid=""
+                ]]></param>
+                <param name="earliest">$search.timeRange.earliest$</param>
+                <param name="latest">$search.timeRange.latest$</param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h2>Looking for other data sources involved in this call</h2>
+                  ]]></param>
+                </module>
+
+                <!-- we use of the format command to get ourselves an SPL expression
+                that will match EITHER the ciscoguid="foo" value or just the raw "foo" value -->
+                <module name="PostProcess">
+                  <param name="search"><![CDATA[
+| fields - count
+| eval search=ciscoguid
+| format "(" "" "OR" "" "OR" ")"
+| rename search as match_raw_or_extracted
+                  ]]></param>
+
+                  <!-- pull that down to the client as $match_raw_or_extracted$ -->
+                  <module name="ResultsValueSetter">
+                    <param name="fields">match_raw_or_extracted</param>
+
+
+                    <!-- now we use it -->
+                    <module name="Search">
+                      <param name="search"><![CDATA[
+`customizable_other_notable_indexes` NOT (`cucm_sourcetypes`) NOT (`cube_sourcetypes`) $match_raw_or_extracted$
+| stats count by sourcetype index
+                      ]]></param>
+                      <param name="earliest">$search.timeRange.earliest$</param>
+                      <param name="latest">$search.timeRange.latest$</param>
+
+                      <!-- make ourselves a simple variable indicating whether we found any.  -->
+                      <module name="PostProcess">
+                        <param name="search"><![CDATA[
+| stats count
+| eval content_to_show=if(count>0,"found_some","didnt_find_any")
+                        ]]></param>
+
+                        <!-- pull that down as $content_to_show$  -->
+                        <module name="ResultsValueSetter">
+                          <param name="fields">content_to_show</param>
+
+                          <module name="Switcher">
+                            <param name="selectedGroup">$content_to_show$</param>
+
+                            <module name="NullModule" group="didnt_find_any">
+
+                              <pattern name="see_raw_search_syntax" />
+
+                              <module name="HTML">
+                                <param name="html"><![CDATA[
+                                  <p>(no results found)</p>
+                                  <p>
+                                    (We searched for this call's "ciscoguid" values in other sourcetypes and indexes but we didn't find any)
+                                  </p>
+
+                                ]]></param>
+                              </module>
+                            </module>
+
+
+                            <module name="PostProcess" group="found_some">
+                              <param name="search"></param>
+
+                              <module name="HTML">
+                                <param name="html"><![CDATA[
+                                  Click one of the rows below to explore where one or more of this call's "ciscoguid" values appears in the given sourcetype and index.
+                                ]]></param>
+                              </module>
+
+                              <module name="Pager">
+                                <module name="Table">
+
+                                  <module name="Redirector">
+                                    <param name="url">search</param>
+                                    <param name="arg.q">index="$row.fields.index$" sourcetype="$row.fields.sourcetype$" $match_raw_or_extracted$ | head 1000</param>
+                                    <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                    <param name="arg.latest">$search.timeRange.latest$</param>
+                                    <param name="target">_blank</param>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

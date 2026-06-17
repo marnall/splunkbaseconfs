@@ -1,0 +1,347 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Session Load Times</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Virtual Desktop Session Load Time</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This dashboard provides visibility into sessions that are above the defined threshold for acceptable session load times. Session load time is defined as the length of time it takes from when the user clicks on a virtual desktop to when that session is in an 'Active' state (meaning the user is presented with a usable desktop). Sessions whose load times are below the threshold are flagged as Poor. This report provides a count of sessions over time for the selected time range, a breakdown of those sessions by user, IP, and client type, as well as the average load time across the deployment. Adjust the time range for this report by changing the timerange picker. Filter this view by entering values in the fields below and pressing Enter.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">Last 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server:</param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"></param>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"></param>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Catalog:</param>
+        <param name="field">CatalogName</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="value"></param>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="default"></param>
+              <param name="prefix">CatalogName="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">User:</param>
+          <param name="field">user</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="user">
+                <param name="value"></param>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="user">
+                <param name="default"></param>
+                <param name="prefix">user="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Desktop Name:</param>
+            <param name="field">vm_name</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="value"></param>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="default"></param>
+                  <param name="prefix">vm_name="</param>
+                  <param name="suffix">"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+              <param name="search">`xendesktop_index` `xd_sessions_sourcetype` SessionState=Active Active $user$ | `session_desktop_lookup` | search $vm_name$ $CatalogName$ $HostingServerName$ | `client_name` | `get_times` | `poor_loadtime` | stats last(SessionState) as SessionState last(dur) as duration last(load_time) as load_time last(session_load) as session_load last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by user vm_name StartTime ControllerDNSName _time | dedup vm_name StartTime</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Full Report</param>
+              </module>
+              <module name="JobProgressIndicator"></module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="Session Stats" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user |search session_load=Poor | stats count | eval range="session"</param>
+                <module name="SingleValue">
+                  <param name="field">count</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Affected Sessions</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp2" group="Session Stats" autoRun="True">
+                <param name="search">| search session_load=Poor | stats dc(user) as users | eval range="user"</param>
+                <module name="SingleValue">
+                  <param name="field">users</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Affected Users</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp3" group="Session Stats" autoRun="True">
+                <param name="search">| search session_load=Poor | stats dc(vm_name) as vms | eval range="session"</param>
+                <module name="SingleValue">
+                  <param name="field">vms</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Affected Virtual Machines</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp4" group="Session Stats" autoRun="True">
+                <param name="search">| search session_load=Poor | stats max(load_time) as load_time | eval load_time = round( load_time,2) | eval range="time"</param>
+                <module name="SingleValue">
+                  <param name="field">load_time</param>
+                  <param name="classField">range</param>
+                  <param name="beforeLabel">Max. Load Time:</param>
+                  <param name="afterLabel">secs</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" group="User Experience over Time" layoutPanel="panel_row4_col1" autoRun="True">
+                <param name="groupLabel">Sessions by Load Time</param>
+                <param name="search">| timechart count by session_load</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">column</param>
+                  <param name="chart.stackMode">stacked</param>
+                  <param name="legend.placement">bottom</param>
+                  <param name="primaryAxisTitle.text">Sessions Over Time</param>
+                  <module name="JSChart"></module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" group="Session Load Time over Time" layoutPanel="panel_row4_col2" autoRun="True">
+                <param name="groupLabel">Sessions by Load Time</param>
+                <param name="search">| timechart max(load_time) median(load_time) min(load_time)</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">area</param>
+                  <!--                          <param name="chart.stackMode">stacked</param> -->
+                  <param name="legend.placement">bottom</param>
+                  <param name="primaryAxisTitle.text">Sessions Over Time</param>
+                  <module name="JSChart"></module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col1" group="Affected User(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user | search session_load=Poor |stats max(load_time) as "Load Time" by user | head 10 | sort - "Load Time"</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row6_col1">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $user$ | `session_desktop_lookup` | `client_name` | `get_times` | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="user">
+                            <param name="prefix">user=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">xd5_session_info</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col2" group="Affected Client IP(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user | search session_load=Poor |stats max(load_time) as "Load Time" by ClientAddress | head 10 | sort - "Load Time"</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row6_col2">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $ClientAddress$ | `session_desktop_lookup` | `client_name` | `get_times` | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="ClientAddress">
+                            <param name="prefix">ClientAddress=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">xd5_session_info</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row6_col3" group="Affected VM(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user | search session_load=Poor |stats max(load_time) as "Load Time" by vm_name | head 10 | sort - "Load Time"</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row6_col3">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_sessions_sourcetype` | `session_desktop_lookup` | search $vm_name$ | `client_name` | `get_times` | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">vm_name=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">xd5_session_info</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col1" group="Affected Broker Host(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user | search session_load=Poor |stats max(load_time) as "Load Time" by ControllerDNSName | sort - "Load Time"</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="JSChart">
+                    <param name="height">200px</param>
+                    <module name="HiddenSearch">
+                      <param name="search">`xendesktop_index` `xd_sessions_sourcetype` | `session_desktop_lookup` | search $ControllerDNSName$ | `client_name` | `get_times` | | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                      <module name="ConvertToIntention">
+                        <param name="intention">
+                          <param name="name">stringreplace</param>
+                          <param name="arg">
+                            <param name="ControllerDNSName">
+                              <param name="prefix">ControllerDNSName=</param>
+                              <param name="fillOnEmpty">True</param>
+                              <param name="value">$click.value$</param>
+                            </param>
+                          </param>
+                        </param>
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">xd5_session_info</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col2" group="Affected Device Type(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user| search session_load=Poor | stats max(load_time) as "Load Time" by client_dvc_type | sort - "Load Time"</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="JSChart">
+                    <param name="height">200px</param>
+                    <module name="HiddenSearch">
+                      <param name="search">`xendesktop_index` `xd_sessions_sourcetype` | `session_desktop_lookup` | `client_name` | search $client_dvc_type$ | `get_times` | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                      <module name="ConvertToIntention">
+                        <param name="intention">
+                          <param name="name">stringreplace</param>
+                          <param name="arg">
+                            <param name="client_dvc_type">
+                              <param name="prefix">client_dvc_type="</param>
+                              <param name="suffix">"</param>
+                              <param name="fillOnEmpty">True</param>
+                              <param name="value">$click.value$</param>
+                            </param>
+                          </param>
+                        </param>
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">xd5_session_info</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row7_col3" group="Affected Client Version(s)" autoRun="True">
+                <param name="search">| dedup StartTime vm_name user| search session_load=Poor | stats max(load_time) as "Load Time" by ClientVersion | sort - "Load Time"</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="JSChart">
+                    <param name="height">200px</param>
+                    <module name="HiddenSearch">
+                      <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $ClientVersion$ | `session_desktop_lookup` | `client_name` | `get_times` | stats last(SessionState) as SessionState last(dur) as duration last(BrokeringTime) as BrokeringTime last(CatalogName) as CatalogName last(ClientAddress) as ClientAddress last(HostingServerName) as HostingServerName last(DeviceId) as DeviceId last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(ClientName) as ClientName last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(AgentVersion) as AgentVersion last(IPAddress) as IPAddress last(Protocol) as Protocol last(DesktopSID) as DesktopSID by vm_name SessionStateChangeTime</param>
+                      <module name="ConvertToIntention">
+                        <param name="intention">
+                          <param name="name">stringreplace</param>
+                          <param name="arg">
+                            <param name="ClientVersion">
+                              <param name="prefix">ClientVersion=</param>
+                              <param name="fillOnEmpty">True</param>
+                              <param name="value">$click.value$</param>
+                            </param>
+                          </param>
+                        </param>
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">xd5_session_info</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

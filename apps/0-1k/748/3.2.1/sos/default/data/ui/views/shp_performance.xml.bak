@@ -1,0 +1,250 @@
+<view autoCancelInterval="90" isVisible="true" isSticky="true" isPersistable="true" onunloadCancelJobs="true" stylesheet="application.css" template="dashboard.html">
+  <label>Search Head Pooling Performance</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="maxSize">1</param>
+    <param name="clearOnJobDispatch">False</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="maxSize">2</param>
+    <param name="clearOnJobDispatch">True</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+        <param name="view">home</param>
+      </list>
+      <list>
+        <param name="label">Search-head Pooling Performance</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">shp_performance.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+  
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | search server_role="search-head" | sort sort_rank</param>
+
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="staticFieldsToDisplay">
+          <list>
+            <param name="value">*</param>
+            <param name="label">All Search-heads</param>
+          </list>
+        </param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+
+        <module name="TimeRangePicker" layoutPanel="mainSearchControls">
+          <param name="searchWhenChanged">True</param>
+          <param name="selected">Last 4 hours</param>
+
+
+          <module name="Pulldown" layoutPanel="panel_row1_col1" group="Pooling Shared Storage - I/O Throughput vs. Performance">
+            <param name="label">Function</param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">Max</param>
+                <param name="value">max</param>
+              </list>
+              <list>
+                <param name="label">95th percentile</param>
+                <param name="value">perc95</param>
+              </list>
+              <list>
+                <param name="label">Average</param>
+                <param name="value">avg</param>
+              </list>
+              <list>
+                <param name="label">Median</param>
+                <param name="value">median</param>
+              </list>
+              <list>
+                <param name="label">Minimum</param>
+                <param name="value">min</param>
+              </list>
+            </param>
+            <param name="float">left</param>
+            <param name="template">$value$</param>
+            <param name="name">function</param>
+
+            <module name="Checkbox">
+              <param name="offValue"></param>
+              <param name="onValue">by host</param>
+              <param name="checked">False</param>
+              <param name="float">left</param>
+              <param name="label">Split by host</param>
+              <param name="name">host_splitby</param>
+              <param name="labelPosition">right</param>
+
+              <module name="Search">
+                <param name="search">
+                `set_sos_index` $host$ `search_head_filter` sourcetype=nfs-iostat_sos (total_op_count=* OR (op_type!=read op_type!=write op_type!=commit))
+                | timechart bins=200 per_second(total_op_count) AS IOps $function$(rtt_per_op) AS "RTT (ms)" $host_splitby$
+                </param>
+                <module name="JobProgressIndicator">
+                </module>
+                <module name="HiddenChartFormatter">
+                  <param name="charting.chart">line</param>
+                  <param name="charting.chart.nullValueMode">gaps</param>
+                  <param name="charting.axisY.scale">log</param>
+                  <param name="charting.legend.placement">bottom</param>
+                  <module name="JSChart">
+                    <param name="width">100%</param>
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">True</param>
+                </module>
+              </module>
+            </module>
+          </module>
+
+
+          <module name="Pulldown" layoutPanel="panel_row2_col1" group="Splunk UI and Search - Usage vs. Responsiveness">
+            <param name="label">Function</param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">Max</param>
+                <param name="value">max</param>
+              </list>
+              <list>
+                <param name="label">95th percentile</param>
+                <param name="value">perc95</param>
+              </list>
+              <list>
+                <param name="label">Median</param>
+                <param name="value">median</param>
+              </list>
+              <list>
+                <param name="label">Minimum</param>
+                <param name="value">min</param>
+              </list>
+            </param>
+            <param name="float">left</param>
+            <param name="template">$value$</param>
+            <param name="name">function</param>
+
+            <module name="Checkbox">
+              <param name="offValue">$function$(total_searches) as "Search concurrency"</param>
+              <param name="onValue">$function$(active_hist_searches) as "Search concurreny - Historical", $function$(active_realtime_searches) as "Search concurrency - Real-time"</param>
+              <param name="checked">False</param>
+              <param name="float">left</param>
+              <param name="label">Split by search type</param>
+              <param name="name">search_type_split</param>
+              <param name="labelPosition">right</param>
+
+              <module name="Checkbox">
+                <param name="offValue"></param>
+                <param name="onValue">by host</param>
+                <param name="checked">False</param>
+                <param name="float">left</param>
+                <param name="label">Split by host</param>
+                <param name="name">host_splitby</param>
+                <param name="labelPosition">right</param>
+
+                <module name="Search">
+                  <param name="search">
+                  `set_internal_index` $host$ `search_head_filter` (source=*splunkd_access.log* AND (uri_path="*/search/jobs" OR uri_path="*/data/ui/views")) OR (source=*metrics.log* AND group=search_concurrency)
+                  | eval splunkd_request_type=case(method=="POST" AND like(uri_path,"%/search/jobs"),"dispatch_search",method=="GET" AND like(uri_path,"%/data/ui/views"),"serve_view")
+                  | eval search_dispatch_time = if(splunkd_request_type=="dispatch_search",round(spent/1000,3),"")
+                  | eval view_service_time = if(splunkd_request_type=="serve_view",round(spent/1000,3),"")
+                  | eval total_searches = active_hist_searches + active_realtime_searches
+                  | timechart bins=200 $function$(search_dispatch_time) AS "Search dispatch time (s)" $function$(view_service_time) AS "View service time (s)" $search_type_split$ $host_splitby$
+                  </param>
+                  <module name="JobProgressIndicator">
+                  </module>
+                  <module name="HiddenChartFormatter">
+                    <param name="charting.chart.nullValueMode">connect</param>
+                    <param name="charting.axisY.scale">log</param>
+                    <param name="charting.chart">line</param>
+                    <param name="charting.legend.placement">bottom</param>
+                    <module name="JSChart">
+                      <param name="width">100%</param>
+                    </module>
+                  </module>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">True</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+
+          <module name="Search" layoutPanel="panel_row3_col1" group="Top 10 IOps Peaks by Host">
+            <param name="search">
+            `set_sos_index` $host$ `search_head_filter` sourcetype = nfs-iostat_sos  total_ops_per_sec=*
+            | timechart span=1m max(total_ops_per_sec) AS "Peak IOps" by host
+            | addtotals row=true
+            | sort 10 - Total
+            </param>
+            <module name="JobProgressIndicator">
+            </module>
+            <module name="Paginator">
+              <param name="count">10</param>
+              <param name="entityName">results</param>
+              <module name="SimpleResultsTable">
+                <param name="displayRowNumbers">false</param>
+              </module>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">True</param>
+            </module>
+          </module>
+
+
+          <module name="Search" layoutPanel="panel_row4_col1" group="IOps Per Operation Category">
+            <param name="search">
+            `set_sos_index` $host$ `search_head_filter` sourcetype=nfs-iostat_sos op_type=*
+            | `get_op_category`
+            | timechart bins=200 per_second(op_count) by op_category
+            </param>
+            <module name="JobProgressIndicator">
+            </module>
+            <module name="HiddenChartFormatter">
+              <param name="charting.chart.nullValueMode">gaps</param>
+              <param name="charting.axisY.scale">linear</param>
+              <param name="charting.chart">line</param>
+              <param name="charting.axisTitleY.text">IOPS</param>
+              <param name="charting.legend.placement">bottom</param>
+              <module name="JSChart">
+                <param name="width">100%</param>
+              </module>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">True</param>
+            </module>
+          </module>
+
+
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

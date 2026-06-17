@@ -1,0 +1,326 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Distributed Indexing Performance</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Distributed Indexing Performance</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">indexing_distributed.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+  <!-- COMMON CONTROLS END   -->
+
+    <module name="Pulldown" layoutPanel="panel_row1_col1" group="Real-time measured indexing rate and latency">
+      <param name="name">type</param>
+      <param name="float">left</param>
+      <param name="label">Per Type:</param>
+      <param name="template">by "$value$"</param>
+      <param name="staticFieldsToDisplay">
+        <list>
+          <param name="selected">true</param>
+          <param name="value">sourcetype</param>
+          <param name="label">Sourcetype</param>
+       </list>
+       <list>
+          <param name="value">index</param>
+          <param name="label">Index</param>
+        </list>
+        <list>
+          <param name="value">host</param>
+          <param name="label">Host</param>
+        </list>
+        <list>
+          <param name="value">source</param>
+          <param name="label">Source</param>
+        </list>
+        <list>
+          <param name="value">splunk_server</param>
+          <param name="label">Splunk server</param>
+        </list>
+      </param>
+  
+    <module name="Button">
+      <param name="label">Run search</param>
+      <param name="allowAutoSubmit">false</param>
+      <module name="HTML"> 
+        <param name="html"><![CDATA[
+        <p style="margin-top:5px;margin-left:5px">Click the Run button to start a real-time (all time) search that evaluates the indexing latency of all incoming data.</p>
+        ]]></param>
+      </module>
+      <module name="Search">
+        <param name="search"><![CDATA[
+        index=* OR index=_internal
+        | eval latency=round((_indextime - _time),2)
+        | eval seconds_elapsed=(time() - now())
+        | eval secs=if(seconds_elapsed<0,"1",seconds_elapsed)
+        | eval esize=((len(_raw)/1024))
+        | eventstats max(secs) AS seconds
+        | eventstats count AS ecount, sum(esize) as sum_esize $type$
+        | stats last(ecount) AS "event count", last(eval(ecount/seconds)) AS eps, last(eval(sum_esize/seconds)) AS KBps, min(latency) AS "minimum latency (seconds)", avg(latency) AS avglat, max(latency) AS "maximum latency (seconds)" min(_time) AS oldestTime max(_time) AS newestTime $type$
+        | eval avglat=round(avglat,2)
+        | eval eps=round(eps,2)
+        | eval KBps=round(KBps,2)
+        | convert timeformat="%m/%d/%Y %H:%M:%S" ctime(newestTime)
+        | convert timeformat="%m/%d/%Y %H:%M:%S" ctime(oldestTime)
+        | rename newestTime AS "Time stamp of newest event" oldestTime AS "Time stamp of oldest event" avglat AS "average latency (seconds)" eps AS "events per second" KBps AS "indexing rate (KBps)"
+        ]]></param>
+        <param name="earliest">rt</param>
+        <param name="latest">rt</param>
+
+        <module name="JobStatus" />
+
+        <module name="Paginator">
+          <param name="entityName">results</param>
+          <module name="SimpleResultsTable">
+            <param name="drilldown">row</param>
+            <param name="displayRowNumbers">off</param>
+            <module name="Paginator">
+              <param name="entityName">results</param>
+            </module>
+            <module name="Redirector">
+              <param name="url">flashtimeline</param>
+              <param name="popup">true</param>
+              <param name="arg.q"><![CDATA[
+              index=* OR index=_* $click.name$=$click.value$
+              | eval latency=round((_indextime - _time),2)
+              | eval seconds_elapsed=(time() - now())
+              | eval secs=if(seconds_elapsed<0,"1",seconds_elapsed)
+              | eval esize=((len(_raw)/1024))
+              | eventstats max(secs) AS seconds
+              | eventstats count AS ecount, sum(esize) as sum_esize $type$
+              | stats last(ecount) AS "event count", last(eval(ecount/seconds)) AS eps, last(eval(sum_esize/seconds)) AS KBps, min(latency) AS "minimum latency (seconds)", avg(latency) AS avglat, max(latency) AS "maximum latency (seconds)" first(_time) AS oldestTime last(_time) AS newestTime $type$
+              | eval avglat=round(avglat,2)
+              | eval eps=round(eps,2)
+              | eval KBps=round(KBps,2)
+              | convert timeformat="%m/%d/%Y %H:%M:%S" ctime(newestTime)
+              | convert timeformat="%m/%d/%Y %H:%M:%S" ctime(oldestTime)
+              | rename newestTime AS "Time stamp of newest event" oldestTime AS "Time stamp of oldest event" avglat AS "average latency (seconds)" eps AS "events per second" KBps AS "indexing rate (KBps)"
+              ]]></param>
+              <param name="arg.earliest">rt</param>
+              <param name="arg.latest">rt</param>
+            </module>
+          </module>
+          <module name="ViewRedirectorLink">
+            <param name="viewTarget">flashtimeline</param>
+            <param name="popup">true</param>
+          </module>
+          <module name="HTML">
+            <param name="html"><![CDATA[
+            <br>
+            <p><span style="font-weight:bolder">Caution:</span> This search can be resource intensive and should not run indefinitely. Use the search controls on the right to cancel, pause, or finalize the search.</p>
+            ]]></param>
+          </module>
+        </module>
+      </module>
+    </module>
+
+    <module name="TimeRangePicker" layoutPanel="panel_row2_col1">
+      <param name="selected">Last 4 hours</param>
+      <param name="searchWhenChanged">True</param>
+
+      <module name="Checkbox" layoutPanel="panel_row2_col1" group="Estimated indexing rate">
+        <param name="name">split</param>
+        <param name="checked">True</param>
+        <param name="float">left</param>
+        <param name="label">Split by indexer</param>
+        <param name="labelPosition">right</param>
+        <param name="onValue">by host useother=false limit=100</param>
+        <module name="Checkbox">
+          <param name="name">include_sh</param>
+          <param name="checked">False</param>
+          <param name="float">left</param>
+          <param name="label">Include search-head</param>
+          <param name="labelPosition">right</param>
+          <param name="offValue">| search server_role!="search-head"</param>
+          <param name="onValue"></param>
+          <module name="Search">
+            <param name="search"><![CDATA[
+            `set_internal_index` source=*metrics.log group=per_index_thruput
+                [inputlookup splunk_servers_cache
+                $include_sh$
+                | search server_role!="*forwarder*"
+                | eval host=sos_server
+                | fields host]
+            | timechart minspan=30s per_second(kb) AS KBps $split$
+            ]]></param>
+            <module name="JobProgressIndicator"></module>
+
+            <module name="HiddenChartFormatter">
+              <param name="primaryAxisTitle.text">Time</param>
+              <param name="secondaryAxisTitle.text">Indexing rate (KB/s)</param>
+              <param name="charting.chart">area</param>
+              <param name="charting.layout.splitSeries">true</param>
+              <module name="FlashChart">
+                <param name="height">400px</param>
+                <param name="width">100%</param>
+                <module name="Redirector">
+                  <param name="popup">true</param>
+                  <param name="url">indexing_performance</param>
+                  <param name="arg.host">$click.name2$</param>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">true</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+          </module>
+        </module>
+      </module>
+
+      <module name="Pulldown" layoutPanel="panel_row3_col1" group="Fill ratio of data processing queues">
+        <param name="float">left</param>
+        <param name="name">queue</param>
+        <param name="template">$value$</param>
+        <param name="label">Queue to measure:</param>
+        <param name="staticFieldsToDisplay">
+          <list>
+            <param name="value">name=splunktcpin</param>
+            <param name="label">Splunk tcpin queue</param>
+          </list>
+          <list>
+            <param name="value">name=parsingqueue</param>
+            <param name="label">Parsing queue</param>
+          </list>
+          <list>
+            <param name="value">name=aggqueue</param>
+            <param name="label">Aggregation queue</param>
+          </list>
+          <list>
+            <param name="value">name=typingqueue</param>
+            <param name="label">Typing queue</param>
+          </list>
+          <list>
+            <param name="value">name=indexqueue</param>
+            <param name="label">Indexing queue</param>
+            <param name="selected">true</param>
+          </list>
+          <list>
+            <param name="value">name=tcpout* | eval name=if(like(name,"tcpout_%"),"tcpout",name)</param>
+            <param name="label">Tcpout queue(s) - consolidated</param>
+          </list>
+        </param>
+        <module name="Pulldown">
+          <param name="name">function</param>
+          <param name="float">left</param>
+          <param name="label">Function:</param>
+          <param name="template">$value$</param>
+          <param name="staticFieldsToDisplay">
+            <list>
+              <param name="value">median</param>
+              <param name="label">median</param>
+            </list>
+            <list>
+              <param name="value">perc95</param>
+              <param name="label">95th percentile</param>
+            </list>
+            <list>
+              <param name="value">avg</param>
+              <param name="label">average</param>
+            </list>
+            <list>
+              <param name="value">max</param>
+              <param name="label">maximum</param>
+            </list>
+          </param>
+
+          <module name="Checkbox">
+            <param name="name">split</param>
+            <param name="checked">True</param>
+            <param name="float">left</param>
+            <param name="label">Split by indexer</param>
+            <param name="labelPosition">right</param>
+            <param name="onValue">by host useother=false limit=100</param>
+
+            <module name="Checkbox">
+              <param name="name">include_sh</param>
+              <param name="checked">False</param>
+              <param name="float">left</param>
+              <param name="label">Include search-head</param>
+              <param name="labelPosition">right</param>
+              <param name="offValue">| search server_role!="search-head"</param>
+              <param name="onValue"></param>
+
+              <module name="Search">
+                <param name="search"><![CDATA[
+                `set_internal_index` source=*metrics.log group=queue
+                    [inputlookup splunk_servers_cache
+                    $include_sh$
+                    | search server_role!="*forwarder*"
+                    | eval host=sos_server
+                    | fields host]
+                $queue$
+                | eval max=if(isnotnull(max_size_kb),max_size_kb,max_size)
+                | eval curr=if(isnotnull(current_size_kb),current_size_kb,current_size)
+                | eval fill_perc=round((curr/max)*100,2)
+                | timechart minspan=30s $function$(fill_perc) AS "fill percentage" $split$
+                ]]></param>
+                <module name="JobProgressIndicator"></module>
+
+                <module name="HiddenChartFormatter">
+                  <param name="primaryAxisTitle.text">Time</param>
+                  <param name="secondaryAxisTitle.text">Fill ratio (%)</param>
+                  <param name="charting.chart">area</param>
+                  <param name="charting.layout.splitSeries">true</param>
+                  <param name="charting.axisY.minimumNumber">0</param>
+                  <param name="charting.axisY.maximumNumber">100</param>
+                  <module name="FlashChart">
+                    <param name="height">400px</param>
+                    <param name="width">100%</param>
+                    <module name="Redirector">
+                      <param name="popup">true</param>
+                      <param name="url">indexing_performance</param>
+                      <param name="arg.host">$click.name2$</param>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+     </module>
+
+    </module>
+  </module>
+</view>

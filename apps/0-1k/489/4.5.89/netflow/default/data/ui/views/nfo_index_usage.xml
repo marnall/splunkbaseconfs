@@ -1,0 +1,214 @@
+<form version="1.1" onunloadCancelJobs="True">
+  <label>NFO Index Usage</label>
+  <search id="baseSearch">
+    <query>`netflow_index` 
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+            | eval raw_size = len(_raw) / 1024 / 1024 
+            | lookup `is_local_lookup` nfc_lookup nfc_id 
+            | `get_exporter_name(exp_ip_name)`
+            | stats sum(raw_size) AS raw_size by nfo_hostname exp_ip_name nfc_module_name
+        </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <sampleRatio>1</sampleRatio>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <fieldset autoRun="true">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Index Usage by NFO Instance (MB)</title>
+      <chart>
+        <search base="baseSearch">
+          <query>
+                  | chart sum(raw_size) AS MB by nfo_hostname 
+                  | eval MB=round(MB,2) 
+                  | eval nfo_hostname=nfo_hostname." (".MB." MB)" 
+            
+          </query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">210</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Index Usage by NFO Module (MB)</title>
+      <chart>
+        <search base="baseSearch">
+          <query> 
+                  | chart sum(raw_size) AS MB by nfc_module_name 
+                  | eval MB=round(MB,2) 
+                  | eval nfc_module_name=nfc_module_name." (".MB." MB)" 
+          </query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">210</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Index Usage by NFO Exporter IP (MB)</title>
+      <chart>
+        <search base="baseSearch">
+          <query> 
+                  | chart sum(raw_size) AS MB by exp_ip_name 
+                  | eval MB=round(MB,2) 
+                  | eval exp_ip_name=exp_ip_name." (".MB." MB)" 
+          </query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">210</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Index Usage Per Module by Exporter IP</title>
+      <chart>
+        <search base="baseSearch">
+          <query> 
+                  | stats sum(raw_size) AS MB by nfc_module_name exp_ip_name 
+                  | eval MB=round(MB,2) 
+                  | eval exp_ip_name=exp_ip_name." (".MB." MB)" 
+          </query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.text">NFO Module</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Stacked Size (MB)</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">small</option>
+        <option name="trellis.splitBy">nfc_module_name</option>
+      </chart>
+    </panel>
+  </row>
+</form>

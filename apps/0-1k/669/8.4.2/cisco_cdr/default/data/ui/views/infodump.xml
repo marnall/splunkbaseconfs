@@ -1,0 +1,387 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view template="dashboard.html" isVisible="False" stylesheet="custom.css">
+  <label>System and Usage Information</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+    <h1>System and Usage Information</h1>
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <module name="HTML" layoutPanel="panel_row1_col1">
+      <param name="html"><![CDATA[
+        <p>This view collects information for diagnosis and support goals. Please print to PDF to send to Sideview when asking for help. (We rely on your OS to generate the PDF, which should work on windows 10+ and Mac OS).   You may also want to run the app's <a href="data_health_checks">health checks</a> if you haven't already.
+        <p>Note: no information is transmitted automatically out of your environment. </p>
+        <p><input type="button" onClick="window.print();" value="Print info" /> </p>
+        ]]></param>
+    </module>
+
+
+    <module name="TimePicker" layoutPanel="panel_row2_col1">
+      <param name="default">Last 30 days</param>
+
+      <module name="Search">
+        <param name="search"><![CDATA[
+| tstats count WHERE `custom_index` sourcetype=cucm_* GROUPBY _time sourcetype
+| timechart sum(count) by sourcetype
+        ]]></param>
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+            <h3>CUCM records over time</h3>
+            ]]></param>
+        </module>
+        <module name="ValueSetter">
+          <param name="arg.charting.chart">line</param>
+          <module name="Chart">
+            <module name="Redirector">
+              <param name="url">calls</param>
+              <param name="arg.earliest">$search.timeRange.earliest$</param>
+              <param name="arg.latest">$search.timeRange.latest$</param>
+            </module>
+
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="NullModule" layoutPanel="panel_row3_col1">
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Cisco CDR app license details</h3>
+          ]]></param>
+      </module>
+
+      <pattern name="display_license" />
+    </module>
+
+    <!-- Open questions:
+      1. What do we get from a search head?  Do we see indexer licenses?
+      2. What happens when licensing is centralized on a license server?
+      -->
+    <module name="Search" layoutPanel="panel_row3_col2">> >
+      <param name="search"><![CDATA[
+| rest /services/licenser/pools splunk_server=local
+| rename title AS Pool
+| search [
+    rest splunk_server=local /services/licenser/groups
+    | search is_active=1
+    | eval stack_id=stack_ids
+    | fields stack_id
+  ]
+| join type=outer stack_id [
+  rest splunk_server=local /services/licenser/stacks
+  | eval stack_id=title
+  | search stack_id!="fixed-sourcetype_*"
+  | eval stack_quota=quota
+  | fields stack_id stack_quota
+]
+| join type=outer stack_id [
+  rest splunk_server=local /services/licenser/licenses
+  | fields stack_id expiration_time
+]
+| stats sum(used_bytes) as usedB max(stack_quota) as quotaB min(expiration_time) as expiration_time
+| eval usedKB=usedB/1024
+| eval usedMB=usedKB/1024
+| eval usedGB=usedMB/1024
+| eval usedTB=usedGB/1024
+| eval quotaKB=quotaB/1024
+| eval quotaMB=quotaKB/1024
+| eval quotaGB=quotaMB/1024
+| eval quotaTB=quotaGB/1024
+| eval expiration_date=strftime(expiration_time, "%+")
+| eval usedLabel=case(usedTB>1,tostring(round(usedTB,2)) +" TB",usedGB>1,tostring(round(usedGB,2)) + " GB",usedMB>1,tostring(round(usedMB,2)) + " MB",usedKB>1,tostring(round(usedKB,2)) + " KB",usedB>1,"only " + tostring(round(usedB,0)) + " Bytes!")
+| eval quotaLabel=case(quotaTB>1,tostring(round(quotaTB,2)) +" TB",quotaGB>1,tostring(round(quotaGB,2)) + " GB",quotaMB>1,tostring(round(quotaMB,2)) + " MB")
+| table usedMB usedLabel quotaLabel expiration_date
+| transpose | rename column as title, "row 1" as value
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Splunk license details</h3>
+          ]]></param>
+      </module>
+
+      <module name="Pager">
+        <param name="entityName">results</param>
+
+        <module name="Table"></module>
+
+      </module>
+    </module>
+
+
+
+    <module name="Search" layoutPanel="panel_row4_col1">
+      <param name="search"><![CDATA[
+| inputlookup cidr.csv | stats count | eval lookup="Sites (cidr.csv)"
+| append [| inputlookup groups.csv | stats count | eval lookup="Groups and Extensions (groups.csv)" ]
+| append [| inputlookup devices.csv | stats count | eval lookup="Devices (devices.csv)" ]
+| append [| inputlookup clusters.csv | stats count | eval lookup="Clusters and Locales (clusters.csv)" ]
+| rename count as rows
+| table lookup rows
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Cisco CDR lookup summary</h3>
+          ]]></param>
+      </module>
+
+      <module name="Pager">
+        <param name="entityName">results</param>
+
+        <module name="Table"></module>
+
+      </module>
+    </module>
+
+
+
+
+
+
+
+    <module name="Search" layoutPanel="panel_row4_col2">
+      <param name="search"><![CDATA[
+| dbinspect `custom_index` | stats dc(splunk_server) AS indexer_count
+      ]]></param>
+
+      <module name="CustomBehavior">
+        <param name="customBehavior">getBrowserInfo</param>
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+            <h3>Splunk system summary</h3>
+            <p>Splunk instances/indexers containing CDR data: $results[0].indexer_count$</p>
+            <p> Browser User Agent: $userAgent$ </p>
+            ]]></param>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row4_col2">
+      <param name="search"><![CDATA[
+| rest /services/server/info splunk_server=local
+| fields os_build os_name os_version physicalMemoryMB, server_roles, startup_time version activeLicenseGroup
+| eval startup_time=strftime(startup_time, "%b %d %Y, %H:%M:%S")
+| rename startup_time as last_restart
+| eval server_roles=mvjoin(server_roles,", ")
+| transpose | rename column as title, "row 1" as value
+      ]]></param>
+
+
+      <module name="Pager">
+        <param name="entityName">results</param>
+
+        <module name="Table"></module>
+
+      </module>
+    </module>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  </module>
+
+
+
+
+    <module name="Search" layoutPanel="panel_row6_col1">
+      <param name="search"><![CDATA[
+| rest /services/apps/local splunk_server=local
+| search author=sideview*
+| fields title label version check_for_updates disabled
+| stats values(*) as * by title
+| table label title version check_for_updates disabled
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Installed Sideview apps and versions</h3>
+          ]]></param>
+
+      </module>
+
+      <module name="Pager">
+        <param name="entityName">results</param>
+
+        <module name="Table"></module>
+
+      </module>
+    </module>
+
+
+
+
+    <module name="Search" layoutPanel="panel_row7_col1">
+      <param name="earliest">-60min</param>
+      <param name="latest">now</param>
+      <param name="search"><![CDATA[
+((index=_audit sourcetype=audittrail search_id=* (info=granted OR info=completed OR info=canceled) NOT "search='typeahead prefix=" )
+OR (index=_introspection sourcetype=splunk_resource_usage data.search_props.sid::* ))
+| eval comment="autokv can not be trusted in audittrail so we nuke it and reextract with our auditextractor command"
+| fields - app user action event_count scan_count result_count available_count drop_count total_run_time exec_time search_id search provenance sourcetypes sourcetype_count__*
+| auditextractor
+| eval comment="view is nuked and rebuilt from scratch using only the provenance"
+| eval view=case(provenance=="UI:Search", "search", provenance=="UI:Report", "report", match(provenance,"UI:Canary:"), mvindex(split(provenance,":"),2), match(provenance,"UI:Dashboard:"), mvindex(split(provenance,":"),2))
+| eval sid=case(index="_introspection",'data.search_props.sid', isnotnull(search_id),search_id,true(),sid)
+| eval pct_cpu='data.pct_cpu'
+| eval pct_memory='data.pct_memory'
+| eval fd_used = 'data.fd_used'
+| eval mem_used = 'data.mem_used'
+| eval time_range_duration=round(time_range_duration)
+| eval user=if(user=="nobody",null(),user)
+| eval time_range_duration = search_lt - search_et
+
+| eval comment="total_run_time is great, but we don't have introspection for all searches, and sometimes it's just not there for reasons unknown,  so we fall back to getting it from completed time - granted time."
+| eval time_granted=if(sourcetype="audittrail" AND info="granted",_time,null())
+| eval time_completed=if(sourcetype="audittrail" AND info="completed",_time,null())
+| fields sid search host app view user info pct_cpu pct_memory scan_count event_count total_run_time time_range_duration mem_used fd_used sourcetypes sourcetypes_verbose sourcetypes_ratio time_granted time_completed
+
+| stats earliest(_time) as _time avg(pct_cpu) as avg_pct_cpu avg(pct_memory) as avg_pct_memory max(mem_used) as max_mem_used max(fd_used) as max_fd_used earliest(time_granted) as time_granted latest(time_completed) as time_completed values(*) as * by sid
+| eval is_scheduled=if(match(sid, "scheduler_"),1,0)
+| eval outcome=case(info="cancelled","cancelled",info="completed","completed")
+| eval total_run_time=if(isnotnull(total_run_time),total_run_time, time_completed - time_granted)
+| fields - time_completed time_granted
+| eval avg_pct_cpu=round(avg_pct_cpu,4)
+| eval avg_pct_memory=round(avg_pct_memory,4)
+| eval comment="it's possible in edge cases, for auditextractor to mess up one of two different searches from different audit events "
+| fields - comment
+| nomv app
+| nomv search
+
+| splcheck
+| sort 0 - _time
+| eval cisco_cdr_view=if(app="cisco_cdr",view,null())
+|
+stats sparkline as activity sum(scan_count) as scan_count sum(event_count) as event_count sum(total_run_time) as total_run_time values(app) as apps values(cisco_cdr_view) as cisco_cdr_views values(sourcetypes) as sourcetypes dc(sid) as searches by user
+| sort 0 - searches
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Recent user activity</h3>
+          ]]></param>
+      </module>
+
+      <module name="ProgressIndicator" />
+      <module name="Pager">
+        <module name="Table"/>
+      </module>
+    </module>
+
+    <module name="Search" layoutPanel="panel_row8_col1">
+      <param name="earliest">-60min</param>
+      <param name="latest">now</param>
+      <param name="search"><![CDATA[
+index=_internal sourcetype="canary_log" app="cisco_cdr" | stats values(user) as users count by view
+| append [
+| rest /servicesNS/-/cisco_cdr/data/ui/views | rename title as view | fields view eai:acl.app eai:acl.owner eai:acl.sharing eai:appName | rename eai:appName as app, eai:acl.sharing as sharing | fields view app sharing | search app="cisco_cdr"
+]
+| stats values(*) as * by view
+| search view!=_* app="cisco_cdr" sharing="app" OR sharing="system" NOT view IN (test_runner,update_license,sorry_canary_not_installed,deployment_snapshot,infodump,release_notes,browse,calls_elastic,calls_prototype,chart,data_health_checks,general_report,home_redirect) view!=guid* view!="setup_*"
+| fields view users
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Pages visited and by which users (requires admin role)</h3>
+          ]]></param>
+      </module>
+
+      <module name="ProgressIndicator" />
+      <module name="Pager">
+        <module name="Table"/>
+      </module>
+    </module>
+
+
+
+
+    <module name="Search" layoutPanel="panel_row9_col1">
+      <param name="search"><![CDATA[
+| rest /services/authentication/current-context splunk_server=local
+| mvexpand roles
+| map search="rest /services/authorization/roles/$roles$ splunk_server=local | eval roles=\"$roles$\""
+| appendcols
+    [| rest /services/server/info splunk_server=local | search activeLicenseGroup="Free" |  stats count as is_free_license ]
+| eval effective_srchJobsQuota = case(is_free_license = 1, 0, imported_srchJobsQuota = 0 OR isnull(imported_srchJobsQuota), srchJobsQuota, true(), max(imported_srchJobsQuota, srchJobsQuota))
+| eval effective_cumulativeSrchJobsQuota = case(is_free_license = 1, 0, imported_cumulativeSrchJobsQuota = 0 OR isnull(imported_cumulativeSrchJobsQuota), cumulativeSrchJobsQuota, true(), min(imported_cumulativeSrchJobsQuota, cumulativeSrchJobsQuota))
+| eval effective_srchDiskQuota = case(is_free_license = 1, 0, imported_srchDiskQuota = 0 OR isnull(imported_srchDiskQuota), srchDiskQuota, true(), min(imported_srchDiskQuota, srchDiskQuota))
+| eval effective_srchTimeWin = case(is_free_license = 1, 0, true(), srchTimeWin)
+| stats values(is_free_license) as is_free_license, max(effective_srchDiskQuota) as effective_srchDiskQuota, max(effective_srchJobsQuota) AS effective_srchJobsQuota, max(srchJobsQuota) as srchJobsQuota, max(imported_srchJobsQuota) as imported_srchJobsQuota, max(effective_cumulativeSrchJobsQuota) as effective_cumulativeSrchJobsQuota, max(effective_srchTimeWin) as high_srchTimeWin, min(effective_srchTimeWin) as low_srchTimeWin, values(imported_roles) as imported_roles, values(roles) as roles
+| fields  effective_srchJobsQuota effective_srchDiskQuota effective_cumulativeSrchJobsQuota srchDiskQuota high_srchTimeWin low_srchTimeWin imported_roles roles
+| eval comment="-1 and 0 are both effectively unlimited and the least restrictive, and take priority.  for positive values, the highest value is least restrictive "
+| fields - comment
+| eval effective_srchTimeWin = case(low_srchTimeWin = 0, 0, low_srch_timeWin = -1, 0, true(), high_srchTimeWin)
+| fields effective_srchJobsQuota effective_srchDiskQuota effective_cumulativeSrchJobsQuota  effective_srchTimeWin imported_roles roles
+| appendcols [
+  | rest /services/authentication/current-context splunk_server=local | fields username type
+]
+| transpose | rename column as title, "row 1" as value
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Current search limits for the currently logged-in user account</h3>
+          ]]></param>
+      </module>
+
+      <module name="Pager">
+        <param name="entityName">results</param>
+
+        <module name="Table"></module>
+
+      </module>
+    </module>
+
+    <module name="Search" layoutPanel="panel_row9_col2">
+      <param name="search"><![CDATA[
+| rest /services/authentication/current-context splunk_server=local
+| fields capabilities
+| nomv capabilities
+| rex mode=sed field=capabilities "s/\\s/, /g"
+      ]]></param>
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Current splunk capabilities for the currently logged-in user account</h3>
+          $results[0].capabilities$
+          ]]></param>
+
+      </module>
+    </module>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</view>

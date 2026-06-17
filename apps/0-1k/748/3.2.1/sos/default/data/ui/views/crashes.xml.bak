@@ -1,0 +1,168 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Crash Log Viewer</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Crash Log Viewer</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">crashes.html</param>
+    </module>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+      
+            
+        <!-- COMMON CONTROLS END   -->
+
+
+        <module name="Search" layoutPanel="panel_row1_col1" group="Crash Log History">
+          <param name="search"><![CDATA[
+          `set_internal_index` $host$ sourcetype=splunkd_crash_log
+          | eval argv=if(isnull(argv),"no argv available",argv)
+          | sort - _time
+          | rex field=source "(?<ftime>(?:19|20|21|22)\d{2}-(?:0\d|1[012])-(?:[012]\d|3[01])-(?:[01]\d|2[0123]):(?:[0-5]\d:?){2})"
+          | convert timeformat="%Y-%m-%d-%H:%M:%S" mktime(ftime) AS local_crash_time | eval tzoffset=(_time - local_crash_time)
+          | eval lt=case(like(version,"3.%") OR like(version,"4.0%") OR like(version,"4.1%"),(_time - tzoffset + 1),like(version,"4.2%") OR like(version,"4.3%") OR like (version,"4.4%") OR like(version,"5%") OR like(version,"6%"),(_time + 1))
+          | eval et=case(like(version,"3.%") OR like(version,"4.0%") OR like(version,"4.1%"),(_time - tzoffset - 600),like(version,"4.2%") OR like(version,"4.3%") OR like (version,"4.4%") OR like(version,"5%") OR like(version,"6%"),(_time - 600))
+          | table _time crash_log version cause thread argv lt et
+          ]]></param>
+          <module name="HTML">
+            <param name="html"><![CDATA[<h3>Select a crash log from the table to view in the Crash Log Viewer panel below :</h3>]]></param>
+          </module>
+          
+          <module name="JobProgressIndicator"></module>
+
+          <module name="Count">
+            <param name="options">
+            <list>
+              <param name="text">5</param>
+              <param name="value">5</param>
+            </list>
+            <list>
+              <param name="text">10</param>
+              <param name="value">10</param>
+            </list>
+            <list>
+              <param name="text">20</param>
+              <param name="value">20</param>
+            </list>
+            <list>
+              <param name="text">50</param>
+              <param name="value">50</param>
+            </list>
+            </param>
+            <param name="default">5</param>
+
+            <module name="Paginator" group="Table">
+              <param name="count">5</param>
+              <param name="entityName">results</param>
+              <param name="maxPages">10</param>
+              <module name="SimpleResultsTable">
+                <param name="displayRowNumbers">off</param>
+                <param name="drilldown">row</param>
+                    
+                <module name="Search" layoutPanel="panel_row2_col1" group="Crash Log Viewer">
+                  <param name="search">`set_internal_index` $host$ sourcetype=splunkd_crash_log source=*$click.cell1.value$ | eval raw=_raw</param>
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                    <pre>$results[0].raw$</pre><br>
+                    ]]></param>
+                  </module>
+                </module>
+
+                <module name="Search" layoutPanel="panel_row3_col1" group="splunkd.log Viewer">
+                  <param name="search">`set_internal_index` $host$ source=*splunkd.log latest=$click.cell6.value$ earliest=$click.cell7.value$</param>
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                    <h3>Contextual messages logged in splunkd.log in the 5 minutes prior to the crash :</h3>
+                    ]]></param>
+                  </module>
+                  <module name="Count">
+                    <param name="options">
+                    <list>
+                      <param name="text">5</param>
+                      <param name="value">5</param>
+                    </list>
+                    <list>
+                      <param name="text">10</param>
+                      <param name="value">10</param>
+                    </list>
+                    <list>
+                      <param name="text">20</param>
+                      <param name="value">20</param>
+                    </list>
+                    <list>
+                      <param name="text">50</param>
+                      <param name="value">50</param>
+                    </list>
+                    </param>
+                    <param name="default">20</param>
+                    <module name="Paginator">
+                      <param name="count">5</param>
+                      <param name="entityName">results</param>
+                      <param name="maxPages">10</param>
+                      <module name="EventsViewer">
+                        <param name="enableEventActions">False</param>
+                        <param name="enableFieldActions">False</param>
+                        <param name="enableTermSelection">False</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                    
+              </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+            </module>
+            
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

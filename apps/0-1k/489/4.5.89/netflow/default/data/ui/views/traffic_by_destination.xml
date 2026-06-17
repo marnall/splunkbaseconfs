@@ -1,0 +1,720 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Traffic by Destination IP</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device / Virtual Network</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="checkbox" token="show_dest_port" searchWhenChanged="False">
+      <label>Topology</label>
+      <choice value="*">Show dest port</choice>
+      <change>
+        <condition label="Show dest port">
+          <set token="show_dest_port">| eval dest_ip=dest_ip.":".dest_port</set>
+        </condition>
+        <condition>
+          <set token="show_dest_port"></set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20067` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <set token="show">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+`basesearch_20067("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$" id="tabs">
+    <panel>
+      <input type="link" token="unused">
+        <label>Choose a view</label>
+        <choice value="table">Table</choice>
+        <choice value="sankey">Sankey</choice>
+        <choice value="topology">Topology</choice>
+        <choice value="bubble">Bubble</choice>
+        <default>Table</default>
+        <change>
+          <condition value="table">
+            <set token="showTable">true</set>
+            <unset token="showSankey"></unset>
+            <unset token="showTopology"></unset>
+            <unset token="showBubble"></unset>
+          </condition>
+          <condition value="sankey">
+            <set token="showSankey">true</set>
+            <unset token="showTable"></unset>
+            <unset token="showTopology"></unset>
+            <unset token="showBubble"></unset>
+          </condition>
+          <condition value="topology">
+            <set token="showTopology">true</set>
+            <unset token="showTable"></unset>
+            <unset token="showSankey"></unset>
+            <unset token="showBubble"></unset>
+          </condition>
+          <condition value="bubble">
+            <set token="showBubble">true</set>
+            <unset token="showTopology"></unset>
+            <unset token="showTable"></unset>
+            <unset token="showSankey"></unset>
+          </condition>
+        </change>
+      </input>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTable$" id="timechart">
+    <panel>
+      <chart>
+        <title>Traffic by Destination IP</title>
+        <search base="baseSearch">
+          <query>         
+            | `dedup_timechart_events`
+            | eventstats latest(dest_host) as l_dest_host by nfo_hostname exp_ip dest_ip
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | `per_second_chart(sum(sum_bytes_in) by dest_ip_string,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+          <unset token="Destination IP"></unset>
+          <unset token="Device"></unset>
+          <unset token="Exp_IP"></unset>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$,$showTable$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <title>Click on a row to drill down</title>
+        <search base="baseSearch">
+          <query> 
+            | fields - $showTable$
+            | eventstats latest(dest_host) as l_dest_host by nfo_hostname exp_ip dest_ip
+            | bin _time $span_token$
+            | stats  sum(sum_bytes_in) as sumbytes 
+                    sum(sum_packets_in) as sumpacketsin 
+                    sum(sum_flow_count) as sumflowcount 
+                        by  exp_ip nfo_hostname sum_by_exp  dest_ip l_dest_host _time
+            `traffic_by_dest_table($span_int$,$range$)`
+          </query>
+          <done>
+            <condition>
+              <unset token="Destination IP"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Destination IP">$row.Destination IP$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+            `netflow_search_rule_20067` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$"
+            | fields - $showTable$
+            | `sampling(bytes_in)`
+            | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search  exp_group="$exp_group$" (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+               (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+               src_port="$src_port$" dest_port="$dest_port$" 
+            | fillnull value="" transport src_host
+            | search transport="$protocol_name$" 
+            | `sampling(packets_in)` 
+            | `sampling(flow_count)`
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | bin _time $span_token$
+            | stats  sum(bytes_in) as sumbytes 
+                    sum(packets_in) as sumpacketsin 
+                    sum(flow_count) as sumflowcount 
+                        by  nfo_hostname exp_ip dest_ip l_dest_host _time sum_by_exp
+            `traffic_by_dest_table($span_int$,$range$)`
+                </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+          <done>
+            <condition>
+              <unset token="Destination IP"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Destination IP">$row.Destination IP$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$,$Destination IP$,$showTable$" id="drilldown">
+    <panel>
+      <chart id="chart_2_1_1" depends="$Destination IP$,$showbase$">
+        <title>Top 10 Source IPs and Traffic for $submitted:Destination IP$ reported by $submitted:Device$ NFO $NFO$</title>
+        <search base="baseSearch">
+          <query>
+            | fields - $showTable$
+            | search exp_ip="$Exp_IP$" nfo_hostname="$NFO$" (dest_ip="$Destination IP$" OR dest_host="$Destination IP$") 
+            | eventstats latest(src_host) as l_src_host by nfo_hostname exp_ip src_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `per_second_chart(sum(sum_bytes_in) by src_ip_string,"$span_token$",$span_int$)`
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">200</option>
+        <selection>
+          <set token="selection.earliest2">$start$</set>
+          <set token="selection.latest2">$end$</set>
+        </selection>
+      </chart>
+      <chart id="chart_2_1_2" depends="$Destination IP$" rejects="$showbase$">
+        <title>Top 10 Source IPs and Traffic for $submitted:Destination IP$ reported by $submitted:Device$ NFO $NFO$</title>
+        <search>
+          <query>
+            `netflow_search_rule_20067`  $advanced_filter$ exp_ip="$Exp_IP$" nfo_hostname="$NFO$"
+            | fields - $showTable$
+            | search (dest_ip="$Destination IP$" OR dest_host="$Destination IP$") 
+               (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+               src_port="$src_port$" dest_port="$dest_port$" 
+            | fillnull value="" transport
+            | search transport="$protocol_name$" 
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `per_second_chart(sum(bytes_in) by src_ip_string,"$span_token$",$span_int$)`
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">200</option>
+        <selection>
+          <set token="selection.earliest2">$start$</set>
+          <set token="selection.latest2">$end$</set>
+        </selection>
+      </chart>
+      <table id="table_2_1_1" depends="$Destination IP$,$showbase$">
+        <search base="baseSearch">
+          <query>
+            | fields - $showTable$
+            | search exp_ip="$Exp_IP$" nfo_hostname="$NFO$" (dest_ip="$Destination IP$" OR dest_host="$Destination IP$") 
+            | `conversation_basesearch(TrafficAmount,"$span_token$",$span_int$,$range$)`
+          </query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+      <table id="table_2_1_2" depends="$Destination IP$" rejects="$showbase$">
+        <search>
+          <query>
+            `netflow_search_rule_20067` exp_ip="$Exp_IP$" nfo_hostname="$NFO$"
+            | fields - $showTable$
+            | `sampling(bytes_in)`
+            | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+            | fillnull value="" transport
+            | search  transport="$protocol_name$" (dest_ip="$Destination IP$" OR dest_host="$Destination IP$")  $advanced_filter$
+               (src_ip="$src_ip$" OR src_host="$src_ip$")
+               src_port="$src_port$" dest_port="$dest_port$"
+            | `sampling(packets_in)` 
+            | `sampling(flow_count)`
+            | `conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+          </query>
+          <earliest>$selection.earliest2$</earliest>
+          <latest>$selection.latest2$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showSankey$">
+    <panel>
+      <title>Traffic MB Inbound</title>
+      <viz type="sankey_diagram_app.sankey_diagram">
+        <search>
+          <query>`netflow_search_rule_20067` nfo_hostname="$nfo_hostname$"  exp_ip="$exp_ip$"  $advanced_filter$
+            | fields - $showSankey$
+            | `dedup_timechart_events`
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" 
+              (src_ip="$src_ip$" OR src_host="$src_ip$")  
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")  
+              src_port="$src_port$" dest_port="$dest_port$" ((dest_ip="10.0.0.0/8" OR dest_ip="172.16.0.0/12" OR dest_ip="192.168.0.0/16") AND NOT (src_ip="10.0.0.0/8" OR src_ip="172.16.0.0/12" OR src_ip="192.168.0.0/16"))
+            | fillnull value="" transport
+            | search transport="$protocol_name$"
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | stats sum(bytes_in) as Traffic by src_ip_string dest_ip_string
+            | sort - Traffic
+            | head 10
+            | eval Traffic=Traffic/1024/1024 
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="height">266</option>
+        <option name="sankey_diagram_app.sankey_diagram.colorMode">categorical</option>
+        <option name="sankey_diagram_app.sankey_diagram.maxColor">#3fc77a</option>
+        <option name="sankey_diagram_app.sankey_diagram.minColor">#d93f3c</option>
+        <option name="sankey_diagram_app.sankey_diagram.numOfBins">6</option>
+        <option name="sankey_diagram_app.sankey_diagram.showBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLabels">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLegend">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showSelf">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showTooltip">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.styleBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.useColors">1</option>
+      </viz>
+    </panel>
+    <panel>
+      <title>Traffic MB Outbound</title>
+      <viz type="sankey_diagram_app.sankey_diagram">
+        <search>
+          <query>`netflow_search_rule_20067` nfo_hostname="$nfo_hostname$"  exp_ip="$exp_ip$"  $advanced_filter$
+            | fields - $showSankey$
+            | `dedup_timechart_events`
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" 
+              (src_ip="$src_ip$" OR src_host="$src_ip$")  
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")  
+              src_port="$src_port$" dest_port="$dest_port$" ((src_ip="10.0.0.0/8" OR src_ip="172.16.0.0/12" OR src_ip="192.168.0.0/16") AND NOT (dest_ip="10.0.0.0/8" OR dest_ip="172.16.0.0/12" OR dest_ip="192.168.0.0/16"))
+            | fillnull value="" transport
+            | search transport="$protocol_name$"
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | stats sum(bytes_in) as Traffic by src_ip_string dest_ip_string
+            | sort - Traffic
+            | head 10
+            | eval Traffic=Traffic/1024/1024 
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="height">266</option>
+        <option name="sankey_diagram_app.sankey_diagram.colorMode">categorical</option>
+        <option name="sankey_diagram_app.sankey_diagram.maxColor">#3fc77a</option>
+        <option name="sankey_diagram_app.sankey_diagram.minColor">#d93f3c</option>
+        <option name="sankey_diagram_app.sankey_diagram.numOfBins">6</option>
+        <option name="sankey_diagram_app.sankey_diagram.showBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLabels">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLegend">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showSelf">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showTooltip">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.styleBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.useColors">1</option>
+      </viz>
+    </panel>
+  </row>
+    <row depends="$show_content$,$showSankey$">
+    <panel>
+      <title>Traffic MB Lateral</title>
+      <viz type="sankey_diagram_app.sankey_diagram">
+        <search>
+          <query>`netflow_search_rule_20067` nfo_hostname="$nfo_hostname$"  exp_ip="$exp_ip$"  $advanced_filter$
+            | fields - $showSankey$
+            | `dedup_timechart_events`
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" 
+              (src_ip="$src_ip$" OR src_host="$src_ip$")  
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")  
+              src_port="$src_port$" dest_port="$dest_port$" ((dest_ip="10.0.0.0/8" OR dest_ip="172.16.0.0/12" OR dest_ip="192.168.0.0/16") AND (src_ip="10.0.0.0/8" OR src_ip="172.16.0.0/12" OR src_ip="192.168.0.0/16"))
+            | fillnull value="" transport
+            | search transport="$protocol_name$"
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | stats sum(bytes_in) as Traffic by src_ip_string dest_ip_string
+            | sort - Traffic
+            | head 10
+            | eval Traffic=Traffic/1024/1024 
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="height">266</option>
+        <option name="sankey_diagram_app.sankey_diagram.colorMode">categorical</option>
+        <option name="sankey_diagram_app.sankey_diagram.maxColor">#3fc77a</option>
+        <option name="sankey_diagram_app.sankey_diagram.minColor">#d93f3c</option>
+        <option name="sankey_diagram_app.sankey_diagram.numOfBins">6</option>
+        <option name="sankey_diagram_app.sankey_diagram.showBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLabels">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showLegend">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.showSelf">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.showTooltip">1</option>
+        <option name="sankey_diagram_app.sankey_diagram.styleBackwards">0</option>
+        <option name="sankey_diagram_app.sankey_diagram.useColors">1</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showBubble$,$showbase$" id="bubble_1">
+    <panel>
+      <chart>
+        <search base="baseSearch">
+          <query>
+            | fields - $showBubble$
+            `traffic_bubble`
+          </query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">480</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showBubble$" rejects="$showbase$" id="bubble_2">
+    <panel>
+      <chart>
+        <search>
+          <query>
+            `netflow_search_rule_20067` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" $advanced_filter$
+            | `dedup_timechart_events`
+            | fillnull value=0 src_tos dest_tos input_snmp output_snmp
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" 
+              (src_ip="$src_ip$" OR src_host="$src_ip$") 
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+              src_port="$src_port$" dest_port="$dest_port$" 
+            | fillnull value="" transport
+            | search transport="$protocol_name$"
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | stats dc(dest_ip_string) as "# of Destination IPs" sum(bytes_in) as "Total Bytes" sum(flow_count) as "Flow Count" by src_ip_string 
+            | sort - "Total Bytes" 
+            | head 25
+            | table src_ip_string "# of Destination IPs" "Flow Count"    "Total Bytes"
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">480</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTopology$,$showbase$" id="topology_1">
+    <panel>
+      <viz type="force_directed_viz.force_directed">
+        <title>Topology</title>
+        <search base="baseSearch">
+          <query>
+            | fields - $showTopology$
+             $show_dest_port$
+            `traffic_topology`
+          </query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMax">200</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMin">60</option>
+        <option name="force_directed_viz.force_directed.AttractForceStrength">-300</option>
+        <option name="force_directed_viz.force_directed.CollisionIterations">1</option>
+        <option name="force_directed_viz.force_directed.CollisionRadius">40</option>
+        <option name="force_directed_viz.force_directed.CollisionStrength">0.7</option>
+        <option name="force_directed_viz.force_directed.ColorRange1">100</option>
+        <option name="force_directed_viz.force_directed.ColorRange1Code">#65a637</option>
+        <option name="force_directed_viz.force_directed.ColorRange2">500</option>
+        <option name="force_directed_viz.force_directed.ColorRange2Code">#6db7c6</option>
+        <option name="force_directed_viz.force_directed.ColorRange3">1000</option>
+        <option name="force_directed_viz.force_directed.ColorRange3Code">#f7bc38</option>
+        <option name="force_directed_viz.force_directed.ColorRange4">10000</option>
+        <option name="force_directed_viz.force_directed.ColorRange4Code">#f58f39</option>
+        <option name="force_directed_viz.force_directed.ColorRange5">1000000</option>
+        <option name="force_directed_viz.force_directed.ColorRange5Code">#d93f3c</option>
+        <option name="force_directed_viz.force_directed.ForceCollision">20</option>
+        <option name="force_directed_viz.force_directed.LineColor">disabled</option>
+        <option name="force_directed_viz.force_directed.LinkDistance">100</option>
+        <option name="force_directed_viz.force_directed.LinkLength">1</option>
+        <option name="force_directed_viz.force_directed.PanZoom">enabled</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMax">50</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMin">10</option>
+        <option name="force_directed_viz.force_directed.RepelForceStrength">-140</option>
+        <option name="force_directed_viz.force_directed.SWRange1">1</option>
+        <option name="force_directed_viz.force_directed.SWRange2">1</option>
+        <option name="force_directed_viz.force_directed.SWRange3">1</option>
+        <option name="force_directed_viz.force_directed.SWRange4">1</option>
+        <option name="force_directed_viz.force_directed.SWRange5">1</option>
+        <option name="force_directed_viz.force_directed.StrokeWidth">1</option>
+        <option name="force_directed_viz.force_directed.arrows">enabled</option>
+        <option name="force_directed_viz.force_directed.lowerRange">5</option>
+        <option name="force_directed_viz.force_directed.theme">dark</option>
+        <option name="force_directed_viz.force_directed.upperRange">5</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTopology$" rejects="$showbase$" id="topology_2">
+    <panel>
+      <viz type="force_directed_viz.force_directed">
+        <title>Topology</title>
+        <search>
+          <query> 
+            `netflow_search_rule_20067` nfo_hostname="$nfo_hostname$"  exp_ip="$exp_ip$" $advanced_filter$
+            | fields - $showTopology$
+            | `dedup_timechart_events`
+            | fillnull value=0 src_tos dest_tos input_snmp output_snmp
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$"
+                (src_ip="$src_ip$" OR src_host="$src_ip$")  
+                (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")  
+                src_port="$src_port$" dest_port="$dest_port$" 
+            | fillnull value="" transport
+            | search transport="$protocol_name$"
+            | `sampling(bytes_in)`
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+            | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+            $show_dest_port$
+            | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+            | stats sum(bytes_in) as TrafficBytes by dest_ip_string, src_ip_string 
+            | sort - TrafficBytes 
+            | head 100
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMax">200</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMin">60</option>
+        <option name="force_directed_viz.force_directed.AttractForceStrength">-300</option>
+        <option name="force_directed_viz.force_directed.CollisionIterations">1</option>
+        <option name="force_directed_viz.force_directed.CollisionRadius">40</option>
+        <option name="force_directed_viz.force_directed.CollisionStrength">0.7</option>
+        <option name="force_directed_viz.force_directed.ColorRange1">100</option>
+        <option name="force_directed_viz.force_directed.ColorRange1Code">#65a637</option>
+        <option name="force_directed_viz.force_directed.ColorRange2">500</option>
+        <option name="force_directed_viz.force_directed.ColorRange2Code">#6db7c6</option>
+        <option name="force_directed_viz.force_directed.ColorRange3">1000</option>
+        <option name="force_directed_viz.force_directed.ColorRange3Code">#f7bc38</option>
+        <option name="force_directed_viz.force_directed.ColorRange4">10000</option>
+        <option name="force_directed_viz.force_directed.ColorRange4Code">#f58f39</option>
+        <option name="force_directed_viz.force_directed.ColorRange5">1000000</option>
+        <option name="force_directed_viz.force_directed.ColorRange5Code">#d93f3c</option>
+        <option name="force_directed_viz.force_directed.ForceCollision">20</option>
+        <option name="force_directed_viz.force_directed.LineColor">disabled</option>
+        <option name="force_directed_viz.force_directed.LinkDistance">100</option>
+        <option name="force_directed_viz.force_directed.LinkLength">1</option>
+        <option name="force_directed_viz.force_directed.PanZoom">enabled</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMax">50</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMin">10</option>
+        <option name="force_directed_viz.force_directed.RepelForceStrength">-140</option>
+        <option name="force_directed_viz.force_directed.SWRange1">1</option>
+        <option name="force_directed_viz.force_directed.SWRange2">1</option>
+        <option name="force_directed_viz.force_directed.SWRange3">1</option>
+        <option name="force_directed_viz.force_directed.SWRange4">1</option>
+        <option name="force_directed_viz.force_directed.SWRange5">1</option>
+        <option name="force_directed_viz.force_directed.StrokeWidth">1</option>
+        <option name="force_directed_viz.force_directed.arrows">enabled</option>
+        <option name="force_directed_viz.force_directed.lowerRange">5</option>
+        <option name="force_directed_viz.force_directed.theme">dark</option>
+        <option name="force_directed_viz.force_directed.upperRange">5</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

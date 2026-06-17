@@ -1,0 +1,443 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>System Resources</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">System Resources</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report allows you to profile the performance counters and other characteristics of a virtual desktop. Enter the hostname of the virtual Desktop, select a timerange and press submit. Selecting a row will take you to a detailed report for that counter. To view the entire result set or for this report or manipulate the data further, click on the View Full Report link below.</param>
+  </module>
+  <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="search">`perfmon_brief` $vm_name$ | eval biosinfo = "View BIOS Info" | eval osinfo = "View OS Info" | eval sysinfo = "View System Info" | eval inv = "View Inventory" | eval broker = "View Broker Info" | eval ica = "View ICA Info" | eval proc = "View Running Processes" | stats count by ica proc osinfo biosinfo sysinfo inv broker counter Value object vm_name</param>
+    <module name="HiddenPostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+      <param name="search">stats values(vm_name) as vm | eval range="vmsreporting"</param>
+      <module name="SingleValue">
+        <param name="field">vm</param>
+        <param name="beforeLabel">Resource overview for:</param>
+        <param name="classField">range</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="JobProgressIndicator"></module>
+    <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+      <param name="viewTarget">flashtimeline</param>
+      <param name="label">View Full Report</param>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="View Reports" autoRun="True">
+      <param name="search">| head 1 | stats first(proc) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp1">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">$vm_name$ `perfmon_process` | table vm_name process_name Value counter instance | eval mem = if(counter=="Virtual Bytes",Value,"") | eval cpu = if(counter=="% Processor Time",Value,"") | eval ioread = if(counter="IO Read Operations/sec",Value,"") | eval iowrite = if(counter="IO Write Operations/sec",Value,"")</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">proc_detail_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="View Reports" autoRun="True">
+      <param name="search">head 1 | stats first(biosinfo) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp1">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`win_index` sourcetype=WMI:BIOS $vm_name$ earliest=-180d | head 1 | table BIOSVersion BiosCharacteristics BuildNumber Caption CodeSet CurrentLanguage Description IdentificationCode InstallDate InstallableLanguages LanguageEdition ListOfLanguages Manufacturer Message Name OtherTargetOS PrimaryBIOS ReleaseDate SMBIOSBIOSVersion SMBIOSMajorVersion SMBIOSMinorVersion SMBIOSPresent SerialNumber SoftwareElementID SoftwareElementState Status TargetOperatingSystem Version wmi_type | transpose</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">vdi_bios_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp2" group="View Reports" autoRun="True">
+      <param name="search">| head 1 | stats first(osinfo) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp2">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`win_index` sourcetype=WMI:OSInfo $vm_name$ earliest=-180d | head 1 | table BootDevice BuildNumber BuildType CSCreationClassName CSDVersion CSName Caption CodeSet CountryCode CreationClassName CurrentTimeZone DataExecutionPrevention_32BitApplications DataExecutionPrevention_Available DataExecutionPrevention_Drivers DataExecutionPrevention_SupportPolicy Debug Description Distributed EncryptionLevel ForegroundApplicationBoost FreePhysicalMemory FreeSpaceInPagingFiles FreeVirtualMemory InstallDate LargeSystemCache LastBootUpTime LocalDateTime Locale MUILanguages Manufacturer MaxNumberOfProcesses MaxProcessMemorySize Name NumberOfLicensedUsers NumberOfProcesses NumberOfUsers OSArchitecture OSLanguage OSProductSuite OSType OperatingSystemSKU Organization OtherTypeDescription PAEEnabled PlusProductID PlusVersionNumber Primary ProductType RegisteredUser SerialNumber ServicePackMajorVersion ServicePackMinorVersion SizeStoredInPagingFiles Status SuiteMask SystemDevice SystemDirectory SystemDrive TotalSwapSpaceSize TotalVirtualMemorySize TotalVisibleMemorySize Version WindowsDirectory wmi_type | transpose</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">vdi_osinfo_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp2" group="View Reports" autoRun="True">
+      <param name="search">head 1 | stats first(sysinfo) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp2">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`win_index` sourcetype=WMI:SysInfo $vm_name$ earliest=-180d | head 1 | table AdminPasswordStatus AutomaticManagedPagefile AutomaticResetBootOption AutomaticResetCapability BootOptionOnLimit BootOptionOnWatchDog BootROMSupported BootupState Caption ChassisBootupState CreationClassName CurrentTimeZone DNSHostName DaylightInEffect Description Domain DomainRole EnableDaylightSavingsTime FrontPanelResetStatus InfraredSupported InitialLoadInfo InstallDate KeyboardPasswordStatus LastLoadInfo Manufacturer Message Model Name NameFormat NetworkServerModeEnabled NumberOfLogicalProcessors NumberOfProcessors OEMLogoBitmap OEMStringArray PCSystemType PartOfDomain PauseAfterReset PowerManagementCapabilities PowerManagementSupported PowerOnPasswordStatus PowerState PowerSupplyState PrimaryOwnerContact PrimaryOwnerName ResetCapability ResetCount ResetLimit Roles Status SupportContactDescription SystemStartupDelay UserName | transpose</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">vdi_sysinfo_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp3" group="View Reports" autoRun="True">
+      <param name="search">head 1 | stats first(ica) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp3">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`xendesktop_index` `xd_ica` $vm_name$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">ica_monitor_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp3" group="View Reports" autoRun="True">
+      <param name="search">head 1 | stats first(broker) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp3">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`xendesktop_index` `xd_desktops_sourcetype` $vm_name$| head 1 | table vm_name AgentVersion ApplicationsInUse AssignedClientName AssignedIPAddress AssociatedUserFullNames AssociatedUserNames AssociatedUserUPNs AutonomouslyBrokered CatalogKind CatalogName CatalogUid ClientAddress ClientName ClientVersion ColorDepth ConnectedViaHostName ConnectedViaIP ControllerDNSName DNSName Description DesktopConditions DesktopGroupName DesktopGroupUid DesktopKind DeviceId HardwareId HostedMachineId HostedMachineName HostingServerName HypervisorConnectionName HypervisorConnectionUid IPAddress IconUid ImageOutOfDate InMaintenanceMode IsAssigned LastConnectionFailure LastConnectionTime LastConnectionUser LastDeregistrationReason LastDeregistrationTime LastHostingUpdateTime LaunchedViaHostName LaunchedViaIP LicenseId MachineName MachineUid OSType OSVersion PowerActionPending PowerState Protocol PublishedApplications RegistrationState SID | transpose</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">xd5_desktop_info_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="View Reports" autoRun="True">
+      <param name="search">head 1 | eval Report="View WinEvents" | stats first(Report) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp1">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">index=winevents sourcetype=wineventlog:* $vm_name$ | fields + _time EventCode Type SourceName Message | table _time EventCode Type SourceName Message</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">flashtimeline</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp3" group="View Reports" autoRun="True">
+      <param name="search">head 1 | eval Report="View Installed Applications" | stats first(Report) as Report by vm_name</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row3_col1_grp3">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`win_index` sourcetype="wmi:installedsoftware" application_name!="----" earliest=-7d $vm_name$ | stats first(application_version) as application_version by application_vendor application_name</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">vdi_installedapps_drilldown</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp1" group="% CPU Utilization">
+      <param name="search">search counter="% Processor Time" counter="% Processor Time" | stats min(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_cpu`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Min. CPU %:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp2" group="% CPU Utilization">
+      <param name="search">search counter="% Processor Time" counter="% Processor Time" | stats avg(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_cpu`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Avg. CPU %:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp3" group="% CPU Utilization">
+      <param name="search">search counter="% Processor Time" counter="% Processor Time" | stats max(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_cpu`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Max. CPU %:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp4" group="% CPU Utilization" autoRun="True">
+      <param name="search">search counter="% Processor Time" counter="% Processor Time" | head 1 | eval Details = "View CPU Report" | table vm_name Details</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row5_col1_grp4">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`perfmon_cpu` $vm_name$ | table vm_name _time Value</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">cpu_util_drilldown</param>
+            </module>
+          </module>
+        </module>
+        <module name="ConvertToDrilldownSearch">
+          <module name="ViewRedirector">
+            <param name="viewTarget">flashtimeline</param>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1_grp1" group="Available Memory in Megabytes">
+      <param name="search">search object="Memory" | eval Value = Value/1024/1024 | stats min(Value) as Value | eval Value=round(Value,2) | `usrexp_mem`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Min. Free MB:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1_grp2" group="Available Memory in Megabytes">
+      <param name="search">search object="Memory"| eval Value = Value/1024/1024 | stats avg(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_mem`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Avg. Free MB:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1_grp3" group="Available Memory in Megabytes">
+      <param name="search">search object="Memory"| stats max(Value) as Value by vm_name | eval Value = Value/1024/1024 | eval Value=round(Value,2) | `usrexp_mem`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Max. Free MB:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1_grp4" group="Available Memory in Megabytes">
+      <param name="search">| head 1 | eval Details = "View Memory Report" | table vm_name Details</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row6_col1_grp4">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`perfmon_mem` $vm_name$ | table vm_name _time Value</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">mem_util_drilldown</param>
+            </module>
+          </module>
+        </module>
+        <module name="ConvertToDrilldownSearch">
+          <module name="ViewRedirector">
+            <param name="viewTarget">flashtimeline</param>
+          </module>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp1" group="Disk Transfers/Sec">
+      <param name="search">search object=LogicalDisk counter="Disk Transfers/Sec" | stats min(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_io`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Min. Transfers/sec:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp2" group="Disk Transfers/Sec">
+      <param name="search">search object=LogicalDisk counter="Disk Transfers/Sec" | stats avg(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_io`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Avg. Transfers/sec:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp3" group="Disk Transfers/Sec">
+      <param name="search">search object=LogicalDisk counter="Disk Transfers/Sec" | stats max(Value) as Value by vm_name | eval Value=round(Value,2) | `usrexp_io`| eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">Value</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Max. Transfers/sec:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp4" group="Disk Transfers/Sec">
+      <param name="search">| search object=LogicalDisk counter="Disk Transfers/Sec" | head 1 | eval Details = "View Disk Report" | table vm_name Details</param>
+      <module name="SimpleResultsTable" layoutPanel="panel_row7_col1_grp4">
+        <param name="displayMenu">true</param>
+        <param name="count">100</param>
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+        <module name="HiddenSearch">
+          <param name="search">`perfmon_logdisk` object=LogicalDisk $vm_name$ | table vm_name _time Value counter</param>
+          <module name="ConvertToIntention">
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="prefix">vm_name=</param>
+                  <param name="fillOnEmpty">True</param>
+                  <param name="value">$click.value$</param>
+                </param>
+              </param>
+            </param>
+            <module name="ViewRedirector">
+              <param name="viewTarget">logdisk_iops_drilldown</param>
+            </module>
+          </module>
+        </module>
+        <module name="ConvertToDrilldownSearch">
+          <module name="ViewRedirector">
+            <param name="viewTarget">flashtimeline</param>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

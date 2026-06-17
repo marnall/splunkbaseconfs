@@ -1,0 +1,89 @@
+<view template="dashboard.html" onunloadCancelJobs="True" autoCancelInterval="100">
+  <label>F5 - SWG - URLs requested from hostname - Report</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="navigationHeader">
+    <param name="showActionsMenu">False</param>
+  </module>
+
+  <module name="SearchBar" layoutPanel="mainSearchControls">
+    <param name="useAssistant">true</param>
+    <param name="useTypeahead">true</param>
+    <module name="TimeRangePicker">
+      <param name="default">-24h</param>
+      <module name="ViewRedirector">
+        <param name="viewTarget">flashtimeline</param>
+      </module>
+    </module>
+  </module>
+
+  <module name="TimeRangePicker" layoutPanel="panel_row2_col1" group="URLs requested from hostname">
+    <param name="searchWhenChanged">True</param>
+    <param name="selected">Last 24 hours</param>
+<!-- ########################################################### -->
+    <module name="MultiSelect" autoRun="False" layoutPanel="panel_row1_col1" group="Select hostname from list(you may use cntr/shift for multiple select)">
+      <param name="earliest">-48h</param>
+      <param name="selected">Edit</param>
+      <param name="settingToCreate">host_name</param>
+      <param name="search"><![CDATA[sourcetype="swg_log" | rex field=destination_url "[?:http|https]://(?<hostname>[^/]*)" |stats count by hostname| sort limit=50 - count]]></param>
+      <param name="searchFieldsToDisplay">
+	<list>
+	  <param name="label">hostname</param>
+	  <param name="value">hostname</param>
+	</list>
+      </param>
+      <module name="ConvertToIntention">
+	<param name="settingToConvert">host_name</param>
+	<param name="intention">
+	  <param name="name">stringreplace</param>
+	  <param name="arg">
+	    <param name="host_name">
+	      <param name="fillOnEmpty">True</param>
+	      <param name="value">$target$</param>
+	    </param>
+	  </param>
+	</param>
+<!-- #########################################################  -->
+    
+     <module name="SearchTextSetting" layoutPanel="panel_row1_col2" autoRun="False" group="Enter regular expression to extract hostname">
+     	<param name="elementName">hostname_regexp</param>
+     	<param name="settingName">hostname_regexp</param>
+	<module name="ConvertToIntention">
+	   <param name="settingToConvert">hostname_regexp</param>
+	   <param name="intention">
+	   	<param name="name">stringreplace</param>
+	   	<param name="arg">
+	   	  <param name="hostname_regexp">
+	   	      <param name="fillOnEmpty">True</param>
+	   	      <param name="value">$target$</param>
+	   	  </param>
+	   	</param>
+	   </param>
+	<module name="HiddenSearch" autoRun="False" layoutPanel="panel_row2_col1">
+	  <param name="search"><![CDATA[sourcetype="swg_log" | rex field=destination_url "[?:https|https]://(?<hostname>[^/]*)" | where hostname=split("$host_name$",",") OR (""!="$hostname_regexp$" AND match(hostname,"$hostname_regexp$")) | sort - _time | table _time, hostname, destination_url ]]></param>
+	  <module name="SubmitButton">
+	    <module name="JobProgressIndicator"/>
+	    <param name="label">Search</param>
+            <module name="Paginator" layoutPanel="panel_row2_col1">
+              <param name="count">50</param>
+	      <param name="entityName">results</param>
+              <param name="maxPages">10</param>
+	      <module name="SimpleResultsTable">
+	      </module>
+            </module>
+	  </module>
+	</module>
+	</module> 
+	</module>
+      </module>
+    </module>
+    
+  </module>
+  
+</view>
+

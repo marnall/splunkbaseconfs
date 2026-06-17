@@ -1,0 +1,344 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css">
+  <label>Settings > Device Types</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML">
+      <param name="html"><![CDATA[
+      <h1><a href="home">Home</a> &gt; App Settings &gt; Device Types</h1>
+      ]]></param>
+    </module>
+
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        <div class="error">$error$</div>
+
+        <div class="info">$message$</div>
+      ]]></param>
+    </module>
+
+    <!--
+  we get the current user's role(s) and we look at the roles that have write access to our app.
+  If the user is not in one of these roles,  then the eai:acl.can_write field will be 0.
+  In this case we
+  a) display an informative error message
+  b) quietly take away the tab to "Add/Edit Device Types"
+
+  NOTE:  to get the user's current roles and capabilities,  either navigate in the app to "Help > System & Usage Information"
+  or  run this search:
+| rest /services/authentication/current-context splunk_server=local | table roles capabilities *
+    -->
+    <module name="Search">
+      <param name="search"><![CDATA[
+| rest /services/apps/local splunk_server=local | search title="cisco_cdr" | rename eai:acl.can_write as can_write | rename eai:acl.perms.write as required_roles | table can_write required_roles
+| eval required_roles=mvjoin(required_roles,",")
+| appendcols [ | rest /services/authentication/current-context splunk_server=local | table roles | eval roles=mvjoin(roles,", ") | rename roles as current_roles]
+| eval unauthorized_message=if(can_write==0, "Unfortunately your Splunk user account has a lower privilege role and you will not be able to create or edit device types on this page.  <br>Your current Splunk role(s): " . current_roles . " <br>If you would like to fix this, you have two options:<br><br><ol>  <li>have your Splunk admins expand the list of roles that are allowed to write to this app.</li><li>or, get added to one of the existing roles that already has write access: " . required_roles. "</li></ol>",null() )
+      ]]></param>
+
+      <!-- multiplexing an HTML module is a weird sideview trick to have an HTML module not exist at all on the page when 'empty' .-->
+      <module name="PostProcess">
+        <param name="search">| stats count by unauthorized_message</param>
+        <module name="Multiplexer">
+          <param name="fields">unauthorized_message</param>
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <div class="error">$unauthorized_message$</div>
+            ]]></param>
+          </module>
+        </module>
+      </module>
+
+      <!-- now if the current user has write access, we will render one dynamic tab.
+      If they do not, we will not render any dynamic tabs and the "About" tab will be the only one.
+
+      the reason we are careful not to expose the UI to lower privilege users is that to create a shared app-level
+      KO you first have to create a private object. This will succeed for pretty much any user.
+      Then the POST to /acl to change the permissions of the KO would fail with a 403 and then...
+      who goes and cleans up the incredibly confusing private KO... Rather than fall into this pitfall
+      we try and just ensure no such private KO's get created.
+      -->
+      <module name="PostProcess">
+        <param name="search"><![CDATA[
+        | search can_write=1
+        | eval tabValue="edit"
+        | eval tabLabel="Add/Edit Device Types"
+        ]]></param>
+
+        <module name="Tabs" layoutPanel="mainSearchControls">
+          <param name="name">selectedTab</param>
+          <param name="valueField">tabValue</param>
+          <param name="labelField">tabLabel</param>
+          <param name="staticTabs">
+            <list>
+              <param name="value">about</param>
+              <param name="label">About</param>
+            </list>
+          </param>
+
+          <module name="Switcher" layoutPanel="panel_row1_col1">
+            <param name="selectedGroup">$selectedTab$</param>
+
+            <module name="NullModule" group="about">
+              <module name="HTML">
+                <param name="html"><![CDATA[
+
+                  <p>
+                    The app ships a number of "device type" definitions and it also allows you to create your own.   This is quite quick and easy and has two main benefits:
+                  </p>
+
+                  <ol>
+                    <li>Minor:  You get your orig_device_type, dest_device_type and the overall device_type fields extracted properly.</li>
+
+                    <li>Major:  As a side effect, setting device type can fix the values of the "type" field,  in situations where some devices eg fax machines or Call Recorders have their call legs labeled strangely as "tandem" legs.</li>
+                  </ol>
+
+                  <p>
+                    The first benefit is useful but usually not a game changer.  However the second item can be VERY helpful.  CUCM does not actually report the "type" in the CDR as a native field.  Instead this app infers the "type" (largely from the origSpan and destSpan integers in the CDR).   The problem arises though that CallManager's logic has evolved strangely and in practice it ends up saying some devices are trunks or gateways because CUCM thinks they are "outside" of the VOIP world in some way.   Analog devices and fax lines usually fall into this.   You definitely do not think of an analog device or a call recorder as a trunk/gateway and so seeing these call legs labeled as "tandem" legs is confusing.
+                  </p>
+                  <p>
+                    The good news is that simply setting a "device type" on these troublesome devices will fix this problem.  With the custom device type matching, our whole app will always treat that device as an internal endpoint, and the "type" field will be "incoming" or "outgoing" and never "tandem"
+                  </p>
+
+
+                ]]></param>
+              </module>
+            </module>
+
+            <!--
+            The create/edit ui will stil be here, but without the tab control nobody will
+            ever be able to activate it.
+            -->
+            <module name="NullModule" group="edit">
+
+              <module name="Button">
+                <param name="label">Add new</param>
+                <param name="float">right</param>
+
+                <module name="Layer">
+
+                  <module name="TextField">
+                    <param name="name">device_type</param>
+                    <param name="label">device_type</param>
+
+                    <module name="TextField">
+                      <param name="name">REGEX</param>
+                      <param name="label">regex</param>
+
+                      <module name="Button">
+                        <param name="label">Save</param>
+
+                        <module name="REST">
+                          <param name="name">create</param>
+                          <param name="uri">/splunkd/__raw/services/cisco_cdr_custom_device_types</param>
+                          <param name="arg.name">$device_type$</param>
+                          <param name="arg.regex">$REGEX.rawValue$</param>
+
+                          <module name="Switcher">
+                            <param name="selectedGroup">$create.state$</param>
+
+                            <module name="NullModule" group="success">
+                              <module name="AutoRefresh">
+                                <param name="mode">reloadEntirePage</param>
+                              </module>
+                            </module>
+
+                            <module name="HTML" group="failure">
+                              <param name="html"><![CDATA[
+                                Error creating custom device type:<br>
+                                $create.errorMessage$
+                              ]]></param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <module name="Search">
+                <param name="search"><![CDATA[
+          | rest /servicesNS/$sideview.currentUser$/cisco_cdr/data/transforms/extractions splunk_server=local
+          | rename eai:acl.owner as owner
+          | search title=cisco-cdr-* FORMAT=*device_type::* disabled=0
+          | rex field=FORMAT "device_type::(?<device_type>[^\s]+)"
+          | fields device_type title owner FORMAT REGEX SOURCE_KEY
+          | stats count values(*) as * by device_type
+          | search device_type!="gateway"
+          | eval actions="replaced at runtime"
+          | eval type=if(owner=="nobody","app", "custom")
+          | fields device_type REGEX owner type actions
+          | sort - type
+
+                ]]></param>
+
+                <module name="ProgressIndicator"></module>
+
+                <module name="Pulldown">
+                  <param name="name">results.count</param>
+                  <param name="label">Results per page:</param>
+                  <param name="float">right</param>
+                  <param name="staticOptions">
+                    <list><param name="value">10</param></list>
+                    <list><param name="value">20</param><param name="selected">True</param></list>
+                    <list><param name="value">50</param></list>
+                    <list><param name="value">100</param></list>
+                  </param>
+
+                  <module name="PostProcess">
+                    <param name="search"><![CDATA[
+          | search type="custom"
+          | fields - type
+                    ]]></param>
+
+                    <module name="PostProcess">
+                      <param name="search"><![CDATA[
+          $postProcess$
+          | stats count
+                      ]]></param>
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                          <h2 style="margin:0px;padding:0px;">$results[0].count$ custom device types found.</h2>
+                        ]]></param>
+                      </module>
+                    </module>
+
+                    <module name="Pager">
+
+                      <module name="Table">
+                        <param name="hiddenFields">count FORMAT title SOURCE_KEY</param>
+
+                        <module name="CustomBehavior" group="row.fields.actions">
+
+                          <module name="Link">
+                            <param name="label">Delete</param>
+                            <param name="float">left</param>
+
+                            <module name="REST">
+                              <param name="name">delete</param>
+                              <param name="method">POST</param>
+                              <param name="uri">/splunkd/__raw/services/cisco_cdr_custom_device_types</param>
+                              <!-- method="DELETE" works in 9.2 and up, but we have to support 9.1 and earlier wherein
+                              this is... "unsupported" is one word.  "very broken" is more accurate.
+                              -->
+                              <param name="arg.action">delete</param>
+                              <param name="arg.name">$row.fields.device_type$</param>
+
+
+                              <module name="Switcher">
+                                <param name="selectedGroup">$delete.state$</param>
+
+                                <module name="NullModule" group="success">
+                                  <module name="AutoRefresh">
+                                    <param name="mode">reloadEntirePage</param>
+                                  </module>
+                                </module>
+
+                                <module name="HTML" group="failure">
+                                  <param name="html"><![CDATA[
+                                    Error deleting custom device type:<br>
+                                    $delete.errorMessage$
+                                  ]]></param>
+                                </module>
+                              </module>
+
+                            </module>
+
+                          </module>
+
+                          <module name="Link">
+                            <param name="label">Edit</param>
+
+                            <module name="PostProcess">
+                              <param name="search"><![CDATA[
+          | search device_type="$row.fields.device_type$"
+                              ]]></param>
+
+                              <module name="Layer">
+                                <!-- TODO - need a resetUI on close param / customBehavior -->
+                                <module name="ResultsValueSetter">
+                                  <param name="fields">device_type REGEX</param>
+
+                                  <module name="TextField">
+                                    <param name="name">REGEX</param>
+                                    <param name="label">regex</param>
+
+                                    <module name="Button">
+                                      <param name="label">Save</param>
+
+                                      <module name="REST">
+                                        <param name="name">edit</param>
+                                        <param name="uri">/splunkd/__raw/services/cisco_cdr_custom_device_types/$device_type$</param>
+                                        <param name="method">PUT</param>
+                                        <param name="arg.regex">$REGEX.rawValue$</param>
+
+                                        <module name="Switcher">
+                                          <param name="selectedGroup">$edit.state$</param>
+
+                                          <module name="NullModule" group="success">
+                                            <module name="AutoRefresh">
+                                              <param name="mode">reloadEntirePage</param>
+                                            </module>
+
+                                          </module>
+
+                                          <module name="HTML" group="failure">
+                                            <param name="html"><![CDATA[
+                                              Error editing custom device type:<br>
+                                              $edit.errorMessage$
+                                            ]]></param>
+                                          </module>
+                                        </module>
+
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                      <module name="Pager" />
+                    </module>
+                  </module>
+
+                  <module name="PostProcess" layoutPanel="panel_row2_col1">
+                    <param name="search"><![CDATA[
+          | search type="app"
+          | fields - type owner actions
+                    ]]></param>
+
+                    <module name="PostProcess">
+                      <param name="search"><![CDATA[
+          $postProcess$
+          | stats count
+                      ]]></param>
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                          <h2 style="margin:0px;padding:0px;">$results[0].count$ default device types found.</h2>
+                        ]]></param>
+                      </module>
+                    </module>
+
+                    <module name="Pager">
+                      <module name="Table">
+                        <param name="hiddenFields">count FORMAT title SOURCE_KEY</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+</view>

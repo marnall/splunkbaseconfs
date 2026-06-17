@@ -1,0 +1,64 @@
+Growl Notification Script for Splunk
+====================================
+
+This package includes a simple alert script that sends Splunk alerts as notifications to a Growl deamon over network (UDP).
+
+Growl is a notification utiliy for Mac OS X that displays notification from various applications. For more information about Growl and to download it visit http://growl.info/
+
+Feedback
+--------
+
+Please send your feedback to splunk@spp.at. 
+
+If you have questions/issues/ideas don't hesitate to ask them on Splunk Answers: http://answers.splunk.com/questions/tagged/app-growl-spp
+
+Prerequisites:
+--------------
+
+ - Growl has to be installed on your Mac OS X client machine.
+ - Your client machine has to be reachable on UDP Port 9887 for the Splunk Server (ie. not blocked by a firewall)
+
+Installation:
+-------------
+
+On your client machine:
+
+Setup growl to listen on the network for incoming notifications and enter a password to allow remote application registration. To do so go to System Preferences on your Mac > Growl > Network - See growl_config_screen.png
+
+On the Splunk Server:
+
+Copy the growlnotify.py form the package to the following folder on your Splunk Server: 
+$SPLUNK_HOME/bin/scripts
+
+Make sure the script is executable:
+$ chmod a+x $SPLUNK_HOME/bin/scripts/growlnotify.py
+
+Edit the growlnotify.py and enter the values for the following variables:
+
+GROWL_HOST - Enter the IP Address of the client machine running Growl (eg. GROWL_HOST = "192.168.0.33")
+GROWL_REGISTRATION_PASSWORD - Enter the password you've set in the Growl Preferences (eg. GROWL_PASSWORD="changeme")
+
+Excute the growlnotify.py with --register as argument. The script will send a registrations packet to the Growl daemon.
+
+$ splunk cmd python growlnotify.py --register
+
+You will get an entry in Growl > Applications where you can configure how Splunk notifications should look like.
+
+Basic Usage
+-----------
+
+Set up a scheduled search and enter as alert action "Trigger shell script" and fill in growlnotify.py as the "Filename of shell script to execute". See save_search_dialog.png
+
+When the search is executed and the conditions match, the growlnotify script will be invoked which will send a notification to the Growl host using the saved search name as a title and the number of events as the message.
+
+Advanced Usage
+--------------
+
+If you want to customize the message that is displayed within the Growl notification, you'll have to customize the search. Once the saved search name ends with "--inline", then the growlnotify script will take a look at each result of the search if it contains a field called "growl_msg" and will send a notification with the value of this field.
+
+Example search:
+
+sourcetype=access_combined | stats count by uri,host | where count>1000 | eval growl_msg="Frequently accessed URI: ".uri." has been hit ".tostring(count)." times in the last hour on host ".host
+
+Save this search with the search name "Website Notification--inline" and configure it to execute the grownotify.py script.
+This will produce notification messages like "Frequently accessed URI: /products/product1 has been hit 3805 times in the last hour on host webserver1" with the notification title "Web Notification"

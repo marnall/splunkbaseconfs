@@ -1,0 +1,158 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Running Procesess</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Identify Rare Processes</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report allows you to compare the running process on a set of desktops. Processes that are present on less then then total number of desktops in the result set are displayed in the table below. Additional PerfMon information is added by selecting a perfmon counter. To view the entire result set for a given counter or manipulate the data further, click on the View Full Report link below. Host string is a search string added to the beginning of the report. *Host String Example* : host=bd-seven-3 OR host=bd-seven-2 OR host=bd-vista*</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row3_col1_grp1">
+    <param name="selected">Last 60 minutes</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+      <param name="label">Hoststring:</param>
+      <param name="field">hoststring</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="hoststring">
+            <param name="value"></param>
+          </param>
+        </param>
+      </param>
+      <param name="default">host=*</param>
+      <param name="field">hoststring</param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="hoststring">
+            <param name="default"></param>
+            <param name="prefix"></param>
+            <param name="suffix"></param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="StaticSelect" layoutPanel="panel_row2_col1_grp1">
+        <param name="settingToCreate">groupSelection</param>
+        <param name="staticFieldsToDisplay">
+          <list>
+            <param name="label">% Processor Time</param>
+            <param name="value">% Processor Time</param>
+          </list>
+          <list>
+            <param name="label">Virtual Bytes</param>
+            <param name="value">Virtual Bytes</param>
+          </list>
+          <list>
+            <param name="label">IO Read Operations/sec</param>
+            <param name="value">IO Read Operations/sec</param>
+          </list>
+          <list>
+            <param name="label">IO Write Operations/sec</param>
+            <param name="value">IO Write Operations/sec</param>
+          </list>
+        </param>
+        <param name="selected">Index</param>
+        <param name="label">PerfMon Counter:</param>
+        <module name="ConvertToIntention">
+          <param name="intention">
+            <param name="name">addterm</param>
+            <param name="arg">
+              <param name="counter">$groupSelection$</param>
+            </param>
+          </param>
+          <module name="ConvertToIntention">
+            <param name="settingToConvert">cond1</param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="cond1">
+                  <param name="value">$target$</param>
+                  <param name="default"></param>
+                  <param name="fillOnEmpty">True</param>
+                </param>
+              </param>
+            </param>
+            <module name="SubmitButton" layoutPanel="panel_row3_col1_grp2">
+              <param name="allowSoftSubmit">False</param>
+              <param name="label">Submit</param>
+              <module name="HiddenSearch" layoutPanel="panel_row5_col1">
+                <param name="search">`perfmon_index` sourcetype="Perfmon:RunningProcesses" $cond1$ instance!=_Total instance!=idle $hoststring$ | stats values(host) as "Host(s)" avg(Value) as "Avg Counter Value" dc(host) as "InstalledHosts" by process_name | eventstats max("InstalledHosts") as "TotalHosts"</param>
+                <!--          <param name="search">index=perfmon sourcetype!="Perfmon:RunningProcesses" $cond1$ |  timechart $span$ avg(Value) as "Avg Value" by host | appendcols [ search index=perfmon sourcetype!="Perfmon:RunningProcesses" $cond1$  | eventstats avg(Value) as "Avg: __Normal" | fields + "Avg: __Normal"]</param>  -->
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="label">View Counter Results</param>
+                </module>
+                <module name="JobProgressIndicator"></module>
+                <module name="LinkSwitcher" layoutPanel="panel_row5_col1" group="Processes by Host Count">
+                  <param name="mode">independent</param>
+                  <param name="label"></param>
+                  <module name="NullModule" group="Process List" layoutPanel="panel_row5_col1">
+                    <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row5_col1">
+                      <param name="displayMenu">true</param>
+                      <param name="count">100</param>
+                      <param name="drilldown">row</param>
+                      <param name="entityName">results</param>
+                      <param name="displayRowNumbers">False</param>
+                      <module name="ConvertToDrilldownSearch">
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">flashtimeline</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="NullModule" group="Rare Processes" layoutPanel="panel_row5_col1">
+                    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1">
+                      <param name="search">| where InstalledHosts&lt;TotalHosts</param>
+                      <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row5_col1">
+                        <param name="displayMenu">true</param>
+                        <param name="count">100</param>
+                        <param name="drilldown">row</param>
+                        <param name="entityName">results</param>
+                        <param name="displayRowNumbers">False</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="NullModule" group="Chart" layoutPanel="panel_row5_col1">
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">bar</param>
+                      <param name="chart.stackMode">none</param>
+                      <param name="legend.placement">bottom</param>
+                      <module name="FlashChart">
+                        <param name="width">100%</param>
+                        <param name="height">100%</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

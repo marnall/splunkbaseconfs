@@ -1,0 +1,85 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" css="custom.css,calls.css" customJS="lib/custom_behaviors/chart.js">
+
+  <!--
+This view is only a prototype of some skunkworks functionality to dispatch ES|QL searches
+against ElasticSearch's new ES|QL language.
+  -->
+  <label>Calls</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Calls</h1>
+      ]]></param>
+    </module>
+
+    <pattern name="call_filter_controls">
+
+
+      <module name="ElasticSearch">
+        <param name="search"><![CDATA[
+FROM cisco_cdr | LIMIT 10000
+| STATS count=COUNT(globalCallId_ClusterID) BY globalCallId_ClusterID
+| WHERE globalCallId_ClusterID != "globalCallId_ClusterID"
+| EVAL label=globalCallId_ClusterID
+| EVAL clusterId=globalCallId_ClusterID
+
+        ]]></param>
+
+        <module name="CheckboxPulldown">
+          <param name="name">clusterId</param>
+          <param name="label">cluster</param>
+          <param name="template">globalCallId_ClusterID=$value$</param>
+          <param name="valueField">clusterId</param>
+          <param name="labelField">label</param>
+          <param name="customBehavior">hideIfOnlyOneOption</param>
+          <param name="selectAllOptimization">omit</param>
+
+          <module name="TextField" layoutPanel="mainSearchControls">
+            <param name="name">searchterms</param>
+            <param name="label">search</param>
+            <param name="width">900px</param>
+
+            <module name="Button">
+              <param name="allowSoftSubmit">True</param>
+
+              <module name="CustomBehavior">
+                <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+
+
+                <module name="TextField" layoutPanel="resultsAreaLeft">
+                  <param name="name">esql</param>
+                  <param name="clear">left</param>
+                  <param name="width">100%</param>
+                  <param name="rows">5</param>
+                  <param name="default"><![CDATA[
+| LIMIT 1000
+| EVAL dateTimeOrigination=TO_DATETIME(1000*TO_DOUBLE(TO_STRING(dateTimeOrigination)))
+| EVAL type="UNIMPLEMENTED", cause_description="UNIMPLEMENTED"
+| STATS time=values(dateTimeOrigination), duration=values(duration), type=values(type), callingPartyNumber=values(callingPartyNumber), originalCalledPartyNumber=values(originalCalledPartyNumber), finalCalledPartyNumber=values(finalCalledPartyNumber), cause_description =values(cause_description), origDeviceName=values(origDeviceName), destDeviceName=values(destDeviceName) BY globalCallID_callId, globalCallID_callManagerId, globalCallId_ClusterID
+                  ]]></param>
+
+
+
+
+
+                  <module name="ElasticSearch">
+                    <param name="search">FROM cisco_cdr $globalCallId_ClusterID$ $searchterms$  $esql$</param>
+
+                    <module name="Table" />
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </pattern>
+  </module>
+</view>

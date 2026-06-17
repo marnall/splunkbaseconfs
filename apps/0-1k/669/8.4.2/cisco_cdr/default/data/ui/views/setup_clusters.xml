@@ -1,0 +1,323 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css" customJS="lib/custom_behaviors/setup_pages.js">
+  <label>Settings > Clusters and Locales</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+    <h1><a href="home">Home</a> &gt; App Settings &gt; Clusters and Locales</h1>
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="panel_row1_col1">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <div class="error">$error$</div>
+
+        <div class="info">$message$</div>
+      ]]></param>
+    </module>
+
+    <module name="ValueSetter" layoutPanel="mainSearchControls">
+      <param name="arg.lookupName">clusters</param>
+      <param name="arg.lookupName.rawValue">clusters</param>
+      <param name="arg.exportFileName">clusters.csv</param>
+      <param name="arg.fieldOrder">clusterId name group locale axlHost</param>
+
+      <module name="CustomBehavior">
+        <param name="customBehavior">reloader</param>
+
+        <module name="Tabs">
+          <param name="name">selectedTab</param>
+          <param name="staticTabs">
+            <list>
+              <param name="value">about</param>
+              <param name="label">About</param>
+            </list>
+            <list>
+              <param name="value">edit</param>
+              <param name="label">Edit/Delete Clusters</param>
+            </list>
+            <list>
+              <param name="value">download</param>
+              <param name="label">Download CSV</param>
+            </list>
+            <list>
+              <param name="value">reupload</param>
+              <param name="label">Upload CSV</param>
+            </list>
+          </param>
+
+          <module name="Switcher" layoutPanel="panel_row1_col1">
+            <param name="selectedGroup">$selectedTab$</param>
+
+
+            <module name="NullModule" group="about">
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <p>
+                    A list of your CallManager clusters is kept in this app's Clusters lookup.   This is used to populate the cluster pulldowns on various pages, and the lookup also has a role in making the Devices Lookup work.  Most of the time you don't have to think about this because it gets updated every time Splunk is restarted.
+                  </p>
+                  <p>
+                    However:
+                  </p>
+                  <ol>
+                    <li>For customers with clusters outside the United States, setting the locale correctly per cluster will help the app to correctly parse full outside DN's. To set particular non-US locales for your clusters click the "Edit/Delete Clusters" tab above.</li>
+
+                    <li>Also sometimes a new cluster worth of data is added without Splunk being restarted. When this situation arises, simply adjust the timerange below and when the right clusterId values are appearing in the table, click the "Regenerate Clusters Lookup" button.</li>
+
+                    <li>If you have a large number of clusters, you should consider populating the optional "group" field, as this will make a pulldown "cluster group" appear, and this may be very useful to your end-users.</li>
+                  </ol>
+
+                  <br>
+                  <hr />
+                  <br>
+
+
+
+                ]]></param>
+              </module>
+              <module name="Search">
+                <!-- the usage here of inputlookup instead of the more normal lookup command,  is
+                because we have to worry about whether the clusters.csv is unmigrated and thus has incorrect columns.
+                lookup command would fail - but this more janky inputlookup append=t works without error. -->
+                <param name="search">
+| tstats count WHERE `custom_index` by globalCallId_ClusterID
+| rename globalCallId_ClusterID as clusterId
+| eval in_data=1
+| inputlookup clusters append=t
+| fields clusterId name count group locale axlHost in_data
+| stats sum(count) as count first(*) as * by clusterId
+| where in_data=1
+| fillnull name, group value=""
+| eval locale=case(locale="","US",isnull(locale),"US", true(),locale)
+                </param>
+
+                <module name="TimePicker">
+                  <param name="default">Last 30 days</param>
+                  <param name="label">Across call data in</param>
+
+                  <module name="ProgressIndicator"></module>
+
+                  <module name="PostProcess">
+                    <param name="search">
+stats last(name) as name last(locale) as locale last(axlHost) as axlHost sum(count) as events by clusterId
+                    </param>
+
+                    <module name="Button">
+                      <param name="label">Regenerate Clusters Lookup</param>
+                      <param name="float">right</param>
+                      <param name="allowAutoSubmit">False</param>
+
+                      <module name="PostProcess">
+                        <param name="search">fields $fieldOrder$ | outputlookup clusters create_empty=false override_if_empty=false  | eval successMessage="Success - we pushed these clusters to the CSV. Next go to the 'Edit/Delete Clusters' tab to review the list and set locales."</param>
+
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                          $results[0].successMessage$
+                          ]]></param>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="Pager">
+                      <module name="Table">
+                        <param name="clear">both</param>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+
+              </module>
+            </module>
+
+            <module name="NullModule" group="edit">
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <table style="width:1000px" class="splTable">
+                    <tr>
+                      <th>name</th>
+                      <td style="margin-left:20px;">(optional) This will set the text labels in the cluster pulldowns. If left blank the clusterId value will be used. </td>
+                    </tr>
+                    <tr>
+                      <th>group</th>
+                      <td style="margin-left:20px;">(optional) If you set any of these you should set ALL of them.  When set, a new checkbox pulldown will appear in most views called "cluster group".  Also the corresponding value will be available in your data as the "clusterGroup" field.</td>
+                    </tr>
+                    <tr>
+                      <th>locale</th>
+                      <td style="margin-left:20px;">(optional) You can set this to a value appropriate for the cluster.  Examples include: "US", "UK", "AU", "DE", "CH" or "SG".<br>
+                        <br>
+                        When set correctly, international-dialing prefixes and other region-specific parsing rules will be used when parsing outside numbers and DID numbers. Contact support@sideviewapps.com if you have questions or if you'd like to know the full list of possible values here.
+                      </td>
+                    </tr>
+                    <tr>
+                      <th>axlHost</th>
+                      <td style="margin-left:20px;">
+                        If you are not using our Supporting App for AXL, set this to "*".<br>
+                        Otherwise the values on each cluster need to exactly match the "axlHost" value that is used in the AXL connection to that publisher</strong>.
+                        In the cases where two or more clusters have devices with the same name, this is how the app is able to tell which one gets which fields from the AXL side.
+                      </td>
+                    </tr>
+                  </table>
+                  <br>
+                  <br>
+                ]]></param>
+              </module>
+
+
+              <module name="Search">
+                <param name="search">| inputlookup $lookupName$ | table $fieldOrder$</param>
+
+                <module name="CustomBehavior">
+                  <param name="customBehavior">changeResultsOffset</param>
+
+                  <module name="Pulldown">
+                    <param name="name">results.count</param>
+                    <param name="label">Results per page:</param>
+                    <param name="float">right</param>
+                    <param name="staticOptions">
+                      <list><param name="value">10</param></list>
+                      <list><param name="value">20</param></list>
+                      <list><param name="value">50</param></list>
+                      <list><param name="value">100</param></list>
+                    </param>
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <h2 style="margin:0px;padding:0px;">$results.count$ clusters found.</h2>
+                      ]]></param>
+                    </module>
+
+                    <module name="Pager">
+                      <module name="Table">
+                        <param name="customBehavior">editableTable</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+            </module>
+
+
+            <module name="Search" group="download">
+              <param name="search">| inputlookup $lookupName$ | table $fieldOrder$ *</param>
+
+              <module name="SearchControls">
+                <param name="sections">export</param>
+              </module>
+            </module>
+
+            <module name="HTML" group="reupload">
+              <param name="html"><![CDATA[
+
+<form id="lookupUpdater" method="POST" action="REPLACED_AT_RUNTIME" enctype="multipart/form-data" >
+  <p>
+    If you wish you can upload a fresh csv to replace the one loaded.
+  </p>
+  <p>
+    Note that the easiest way to do this is to first use the "Download CSV" tab first to get the
+    existing csv file, as that file will already have the right columns.
+  </p>
+
+  <label class="inputFileLabel">Local csv file:</label>
+
+  <input type="file"   name="lookupFile" />
+  <input type="hidden" name="lookupName" />
+  <input type="hidden" name="currentView" />
+  <!--
+  Sideview OEM customers building custom views based on the
+  Lookup Updater, or otherwise using the lookup controller,
+  can pass the following variable to control the redirect
+  after POST'ing to the controller.
+  <input type="hidden" name="redirectOverride" value="/app/sideview_utils/framework_intro"/>
+  -->
+
+
+  <input type="hidden" name="splunk_form_key" value="FILLED BY JAVASCRIPT ONSUBMIT" />
+  <br>
+  <br>
+
+
+  <fieldset>
+    <input type="submit" class="splButton-primary" value="Update" />
+  </fieldset>
+
+</form>
+              ]]></param>
+              <param name="customBehavior">neverReload</param>
+            </module>
+
+
+
+            <module name="HTML" group="download">
+              <param name="html"><![CDATA[
+                <p>
+                  To download a copy of the current clusters lookup as a csv file or to open it in Excel just click the download icon below:
+                </p>
+              ]]></param>
+            </module>
+
+
+
+
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row1_col1">
+      <param name="search">replaced at runtime by customBehavior</param>
+      <param name="customBehavior">receivePushesForRowUpdates</param>
+
+
+      <module name="ProgressIndicator"></module>
+      <module name="CustomBehavior">
+        <param name="customBehavior">reloadEditedLookup</param>
+      </module>
+      <!--
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          $search$
+        ]]></param>
+      </module>
+      -->
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row1_col1">
+      <param name="search">replaced at runtime by customBehavior</param>
+      <param name="customBehavior">receivePushesForRowDeletes</param>
+
+
+      <module name="ProgressIndicator"></module>
+
+
+      <module name="CustomBehavior">
+        <param name="customBehavior">reloadEditedLookup</param>
+      </module>
+      <!--
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          $search$
+        ]]></param>
+      </module>
+      -->
+    </module>
+  </module>
+
+
+
+
+
+
+
+
+
+
+</view>

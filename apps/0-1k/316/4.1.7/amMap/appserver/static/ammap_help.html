@@ -1,0 +1,204 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+  <meta content="text/html; charset=ISO-8859-1"
+ http-equiv="Content-Type">
+  <title>Getting started with Splunk for use with amMap</title>
+</head>
+<body>
+<h1>Getting started with Splunk for use with amMap</h1>
+Splunk Version: 4.0 and Higher <br>
+Last Modified: Jun-2010 <br>
+Author: Will Hayes - Splunk, Inc.&nbsp; - will@splunk.com <br>
+<span style="font-weight: bold;">
+</span><br>
+Welcome to the Splunk for use with amMap application. This app uses the
+amMap geo mapping capabilities to create flash maps of activity by the IPs in
+your Splunk index. This script can be invoked via a search command,
+alert action or through the CLI. The purpose of this app is to support
+the amMap flash maps anywhere in your Splunk instance. Meaning you can
+target different apps for outputs and read the resulting HTML file from
+any app. First you'll want to get the map functioning properly in here
+before trying to port it to another app. In this doc I will explain how
+to generate the sample map shipped with this application as
+well as how to create maps in other apps in your Splunk
+instance. For feedback or questions you can reach me at will@splunk.com.<span
+ style="font-weight: bold;"></span><br>
+<br>
+<h2>Populating the map<br>
+</h2>
+<span style="font-weight: bold;">**** YOU WILL NEED TO INSTALL THE
+MAXIND APP ON SPLUNKBASE FOR GEO
+LOCATION INFORMATION </span><span style="font-weight: bold;">****</span><br>
+The app can be fond <a
+ href="http://www.splunkbase.com/apps/All/4.x/Add-On/app:Geo+Location+Lookup+Script">here</a>:
+http://www.splunkbase.com/apps/All/4.x/Add-On/app:Geo+Location+Lookup+Script
+<h3>I installed the app now populate my map!</h3>
+By now you have installed the amMap application and should have
+installed supporting <a
+ href="http://www.splunkbase.com/apps/All/4.x/Add-On/app:Geo+Location+Lookup+Script">MAXMIND</a>&nbsp;
+app
+as
+well. You'll notice an empty map on the default landing page of
+this app. That map is set to be populated by your data on an hourly
+basis, mapping the top 100 public IP's in your instance that are
+recorded in the last hour. If you are running Splunk Free you will need
+to manually populate this map. You'll notice the drill down searches aren't working but I'll explain that later on in this doc. 
+<br>
+<br>In order to do a first run and see if
+things are working correctly you can run the following search:<br>
+<br>
+<span style="font-style: italic;">* | rex
+"(?&lt;ip&gt;\d+\.\d+\.\d+\.\d+)"| search ip!=192.168* ip!=0.0.*
+ip!=10.*|&nbsp; stats count by ip | head&nbsp; 100 | eval
+count_label="Event" |
+eval iterator="ip" | eval iterator_label="IP" | eval
+movie_color="#FF0000" | eval output_file="home_threat_data.xml" | eval
+app="amMap" | lookup geoip clientip as ip</span> | mapit&nbsp; <br>
+<br>
+If this search completes but does not display any results then you should see a populated map on the landing page.
+
+&nbsp; If you do not see anything try the search
+but
+remove the <span style="font-style: italic;">| mapit</span> and make
+sure you are getting back a results table with populated geo info. If a
+table is returning but the geo fields are empty you have most likely do
+not have any public IP's in your data for the geoip translation to
+operate on. <br>
+<br>
+It is possible to create maps on other assets such as internal IPs, subnets, hostnames etc. That is explained further down in this doc under Populating the map with csv lookups. 
+<span style="font-weight: bold;"><br>
+<br>
+</span>
+<h2>Breaking down the search</h2>
+For the purpose of this doc we are going to use the following example search:
+<br>
+<br><i>eventtype=firewall src_ip=* |  stats count by src_ip | eval count_label="Event" | eval iterator="src_ip" | eval iterator_label="src_ip" | eval movie_color="#FF0000" | eval output_file="home_threat_data.xml" | eval app="amMap" | lookup geoip clientip as src_ip | mapit</i><br>
+<br>
+In the first segment of the search you will see that we are searching
+across our firewall data looking for events with a src_ip field. (<i>Instructions on how to create a field in splunk can be found <a hre=f"">here</a>)</i> 
+<br><br>
+<span style="font-style: italic;">eventtype=firewall src_ip=*<br>
+<br>
+</span>This part of the search represents the results you are
+interested in. You may want to add additional values to have results
+that represent a particular threat or web traffic or something else you
+would like to see represented geographically on the flash map. <br>
+<span style="font-style: italic;"><br>
+</span>Next we need to create a stats table for that IP field, which is
+done here in the example search:<span style="font-style: italic;"><br>
+</span><span style="font-style: italic;"><br>
+|&nbsp; stats count by src_ip </span><br>
+<span style="font-style: italic;"><br>
+</span>The next step is to create the required fields necessary for the
+map_results.py script to run. These are the varibles which drive your flashmap. That is happening in the above search
+here:<span style="font-style: italic;"><br>
+<br>
+</span><span style="font-style: italic;">| eval
+count_label="Event" |
+eval iterator="src_ip" | eval iterator_label="IP" | eval
+movie_color="#FF0000" | eval output_file="home_threat_data.xml" | eval
+app="amMap"</span><br>
+<span style="font-style: italic;"><br>
+<br>
+<span style="font-style: italic;"><span style="font-style: italic;"><span
+ style="font-style: italic;"><span style="font-style: italic;"></span></span></span></span></span>These
+eval statements create the REQUIRED fields for the map to work<span
+ style="font-style: italic;">:<br>
+<br>
+</span><span style="font-weight: bold;">count_label</span> - What we
+want to display on the mouse over (i.e. Security Events, BotNet events,
+etc.) the default in the example above is simply Events. <br>
+<span style="font-weight: bold;">iterator</span> - What should the
+script iterate on, in this case we are counting up the src_ip counts for
+each location, this is represented in the flashmap as the unique field count.<br>
+<span style="font-weight: bold;">iterator_label</span> - For better
+formatting we give a name to the iterator, in this case its an IP. We
+will use this field like this in the mouse over for a location: Unique
+&lt;iterator_label&gt;(s)<br>
+<span style="font-weight: bold;">movie_color</span> - This is the color
+of the balloon on the map. This can be dynamic using a rangemap or eval
+for multiple colors. <br>
+<span style="font-weight: bold;">app</span> - This is the app where the
+map data will be written to.<br>
+<span style="font-weight: bold;">output_file</span> - this is the xml
+file where the map data will be written to. The output file will go
+into the appserver/static/xml_out directory of the specified app. The
+map homepage of this app is already set to read from
+home_threat_data.xml<br>
+
+*OPTIONAL*
+<span style="font-weight: bold;">zoom</span> -  if you are familiar with amMap and would like to set the default zoom for your map you can do so by eval'ing the zoom values into a string i.e "zoom=\"334%\" zoom_x=\"-128.58%\" zoom_y=\"-113.11%\""
+<br><br>Next we need to add the geo information for mapping. This can be done with the MAXMIND geoip lookup app OR by using a lookup on internal or non-ip values.
+<BR> the example above is done with the MAXMIND app using the following syntax:<br>
+<br><span style="font-style: italic;">lookup geoip clientip as src_ip </span>
+<br>
+<br>This command returns the following fields to your results which are required by the amMap app. client_city client_region client_country client_lat client_lon
+<br><br>
+Finally we call the mapit script. If all of the above fields are present the script should run and output your flashmap. 
+<br>
+<br><span style="font-style: italic;">mapit<br> </span>
+<h2><br>
+</h2>
+<h2>Populating the map with csv lookups</h2>
+If you would like to populate the map using something other than public IPs you can do so by creating a CSV lookup documented <a href="http://www.splunk.com/base/Documentation/latest/Knowledge/Addfieldsfromexternaldatasources">here</a>: http://www.splunk.com/base/Documentation/latest/Knowledge/Addfieldsfromexternaldatasources<br>
+Your lookup must return the following fields in order for mapit to run properly: client_city client_region client_country client_lat client_lon 
+<h2>Adding drill down capabilites</h2>
+If your searches are failing when you drill down it is most likley becuase you are not interating on a searchable field in Splunk. Documentation on how to create fields in your results can be found <a href="http://www.splunk.com/base/Documentation/4.1.3/User/ExtractNewFields">here</a>: http://www.splunk.com/base/Documentation/4.1.3/User/ExtractNewFields
+	
+<span style="font-weight: bold;"></span>
+<h2>Adding a amMap map to my own application or view </h2>
+The sample map lives inside of the ammap_view view. You will see the
+following stanza:<br>
+<br>
+&nbsp; &lt;module name="ServerSideInclude"
+layoutPanel="panel_row1_col1"&gt;<br>
+&nbsp;&nbsp;&nbsp; &lt;param name="src"&gt;ammap.html&lt;/param&gt;<br>
+&nbsp; &lt;/module&gt;<br>
+<br>
+This refers to ammap.html in the appserver/static directory. That HTML
+file specifies the xml being used, we generate the xml with the
+output_file field in our search.<br>
+<br>
+<h3>Creating a new map</h3>
+<ul>
+  <li>First you will need to do a couple of things in the app you want
+to render the map in. You will need to copy the ammap folder in
+amMap/appserver/static to the YOUR_APP/appserver/static directory of
+your app. </li>
+  <li>Next you'll need to create an empty xml_out directory</li>
+  <li>Next copy the ammap.html from amMap/appserver/static into the
+YOUR_APP/appserver/static directory, you can re-name this file. You
+will need to modify the following line:<br>
+&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp; so.addVariable("data_file",
+escape("/static/app/<span style="font-weight: bold;">amMap</span>/xml_out/<span
+ style="font-weight: bold;">home_threat_data.xml</span>"));<br>
+updating the home_threat_data.xml and amMap value with your output_file
+and app eval statements respectively.&nbsp;</li>
+  <li>Finally create a view with a serverside include module for your
+HTML file like this</li>
+</ul>
+&nbsp; &lt;module name="ServerSideInclude"
+layoutPanel="panel_row1_col1"&gt;<br>
+&nbsp;&nbsp;&nbsp; &lt;param name="src"&gt;ammap.html&lt;/param&gt;<br>
+&nbsp; &lt;/module&gt;<br>
+<br>
+<h2>Debugging map_results.py</h2>
+The map_results log file is indexed into the Splunk internal index. You
+can view that log with the following search: index="_internal"
+source="*ammap_map_results.log" Additional debugging statements can be
+added by un-commenting anywhere you see logger() being called. <br>
+<br>
+<h2>Extending the mapping capabilities</h2>
+I've been playing with lots of different outputs for amMap maps. Please
+send me your ideas and I may have a parser you can use now or may need
+to do a little tweaking but in any case please send feed back as I'd
+love to hear how we can make this feature useful for you!<br>
+<br>
+<br>
+will@splunk.com 6/4/2010 <br>
+<br>
+<br>
+<br>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>GCP Visitors by Country (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="gcp_project_id" searchWhenChanged="false">
+      <label>Project ID</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_gcp_project_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>gcp_project_id</fieldForLabel>
+      <fieldForValue>gcp_project_id</fieldForValue>
+    </input>
+    <input type="dropdown" token="gcp_exp" searchWhenChanged="false">
+      <label>Exporter (Project ID/VPC/Subnet)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_gcp_project_vpc_subnet_list_by_nfo_hostname($nfo_hostname$, $gcp_project_id$)`</query>
+      </search>
+      <fieldForLabel>gcp_exp</fieldForLabel>
+      <fieldForValue>gcp_exp</fieldForValue>
+    </input>
+		<input type="text" token="src_vm_name" id="src_input" searchWhenChanged="False">
+			<label>Source VM</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+			<label>Src. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_vm_name" id="dest_input" searchWhenChanged="False">
+			<label>Dest. VM</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+			<label>Dest. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+			<label>Protocol</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+			<label>Advanced Filter</label>
+			<default>*</default>
+		</input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20367`  | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearchInbound">
+    <query>
+			`netflow_search_rule_20367`
+			| fillnull value="" src_vm_name src_host src_vm_zone dest_vm_name dest_host dest_vm_zone transport
+      | search src_vm_zone="" AND dest_vm_zone!=""
+			| search nfo_hostname="$nfo_hostname$" gcp_exp"$gcp_exp$"
+			    (src_vm_name="$src_vm_name$" OR src_ip="$src_vm_name$")
+					(dest_vm_name="$dest_vm_name$" OR dest_ip="$dest_vm_name$")
+					src_port="$src_port$" dest_port="$dest_port$" transport="$protocol_name$" 
+			| `dedup_timechart_events`
+			| bucket _time $span_token$
+<!-- use these lines to include DNS name
+			| eval src_host = src_vm_name ."/". src_host
+			| eval dest_host = dest_vm_name ."/". dest_host
+-->  
+			| eval dest_host = dest_vm_name
+			| iplocation src_ip
+			| stats sum(flow_count) as sumflowcount sum(bytes_in) as sumbytes by nfo_hostname,gcp_exp,src_ip,src_host,dest_ip,dest_host,transport,Country,_time 
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <search id="baseSearchOutbound">
+    <query>
+			`netflow_search_rule_20367`
+			| fillnull value="" src_vm_name src_host src_vm_zone dest_vm_name dest_host dest_vm_zone transport
+      | search src_vm_zone!="" AND dest_vm_zone=""
+			| search nfo_hostname="$nfo_hostname$" gcp_exp"$gcp_exp$"
+			    (src_vm_name="$src_vm_name$" OR src_ip="$src_vm_name$")
+					(dest_vm_name="$dest_vm_name$" OR dest_ip="$dest_vm_name$")
+					src_port="$src_port$" dest_port="$dest_port$" transport="$protocol_name$" 
+			| `dedup_timechart_events`
+			| bucket _time $span_token$
+<!-- use these lines to include DNS name
+			| eval src_host = src_vm_name ."/". src_host
+			| eval dest_host = dest_vm_name ."/". dest_host
+-->  
+			| eval src_host = src_vm_name
+			| iplocation dest_ip
+			| stats sum(flow_count) as sumflowcount sum(bytes_in) as sumbytes by nfo_hostname,gcp_exp,src_ip,src_host,dest_ip,dest_host,transport,Country,_time 
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <map>
+        <title>Inbound Traffic</title>
+        <search base="baseSearchInbound">
+          <query>
+            | iplocation src_ip
+            | geostats globallimit=0 sum(sumflowcount) by Country
+					</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(30.15,1.41)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+      </map>
+    </panel>
+    <panel>
+      <map>
+        <title>Outbound Traffic</title>
+        <search base="baseSearchOutbound">
+          <query>
+            | iplocation dest_ip
+            | geostats globallimit=0 sum(sumflowcount) by Country
+					</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(30.15,1.41)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+      </map>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_1_1">
+        <search base="baseSearchInbound">
+          <query>
+            | eval avgbits= sumbytes*8/($span_int$)
+            | stats sum(sumbytes) as TrafficAmount 
+                sum(sumflowcount) as Connections 
+                max(avgbits) as MaxTraffic
+                    by nfo_hostname gcp_exp src_ip src_host dest_ip dest_host Country
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | sort - TrafficAmount
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eval MaxTraffic=MaxTraffic/1000000
+            | eval src_host=src_ip ."/". src_host
+            | eval dest_host= dest_ip ."/". dest_host 
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Total Traffic MB, TrafficAmount)`
+            | `commas_formatting(Flow Count, Connections)`
+<!--
+            | table nfo_hostname gcp_exp src_host dest_host "Flow Count" "Max Mbps" "Average Mbps" "Total Traffic MB" 
+-->
+            | table gcp_exp src_host dest_host "Flow Count" "Total Traffic MB" Country
+            | rename gcp_exp as "Project ID/VPC/Subnet"
+            | rename src_host as "Source IP/Host"
+            | rename dest_host as "Dest. IP/VM"
+            | rename nfo_hostname as "NFO"
+					</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <table id="table_1_2">
+        <search base="baseSearchOutbound">
+          <query>
+            | eval avgbits= sumbytes*8/($span_int$)
+            | stats sum(sumbytes) as TrafficAmount 
+                sum(sumflowcount) as Connections 
+                max(avgbits) as MaxTraffic
+                    by nfo_hostname gcp_exp src_ip src_host dest_ip dest_host Country
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | sort - TrafficAmount
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eval MaxTraffic=MaxTraffic/1000000
+            | eval src_host=src_ip ."/". src_host
+            | eval dest_host= dest_ip ."/". dest_host 
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Total Traffic MB, TrafficAmount)`
+            | `commas_formatting(Flow Count, Connections)`
+<!--
+            | table nfo_hostname gcp_exp src_host dest_host "Flow Count" "Max Mbps" "Average Mbps" "Total Traffic MB" 
+-->
+            | table gcp_exp src_host dest_host "Flow Count" "Total Traffic MB" Country
+            | rename gcp_exp as "Project ID/VPC/Subnet"
+            | rename src_host as "Source IP/VM"
+            | rename dest_host as "Dest. IP/Host"
+            | rename nfo_hostname as "NFO"
+					</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10367: GCP Top Traffic Monitor”</b> (syslogs with nfc_id=20367). This Module identifies GCP VMs with the most traffic. It consolidates VPC Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “GCP VPC Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+    </panel>
+  </row>
+</form>

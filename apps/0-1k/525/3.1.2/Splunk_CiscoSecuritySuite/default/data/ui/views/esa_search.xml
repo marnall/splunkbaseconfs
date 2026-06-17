@@ -1,0 +1,108 @@
+<form stylesheet="application.css">
+	<label>Message Tracking</label>
+	<description>Tracking Email Security events</description>
+
+	<fieldset>
+		<input type="time">
+			<default>Last 60 minutes</default>
+		</input>
+		<input type="text" token="sender">
+			<label>Sender</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="recipient">
+			<label>Recipient</label>
+			<default>*</default>
+		</input>
+		<input type="dropdown" token="policy_direction">
+			<label>Direction</label>
+			<default>*</default>
+			<choice value="*">Both</choice>
+			<choice value="inbound">Inbound</choice>
+			<choice value="outbound">Outbound</choice>
+		</input>
+		<input type="dropdown" token="dest_interface">
+			<label>Interface</label>
+			<default>*</default>
+			<choice value="*">All</choice>
+			<populatingSearch fieldForValue="dest_interface" fieldForLabel="dest_interface">
+				<![CDATA[| inputlookup interface_list]]>
+			</populatingSearch>
+		</input>
+		<input type="dropdown" token="threat_reason">
+			<label>Threat</label>
+			<default>*</default>
+			<choice value="*">All</choice>
+			<choice value="spam">Spam</choice>
+			<choice value="outbreak">Outbreak</choice>
+			<choice value="viral">Viral</choice>
+			<choice value="clean">Clean</choice>
+		</input>
+		<input type="dropdown" token="host">
+			<label>Mail Gateway</label>
+			<default>*</default>
+			<choice value="*">All</choice>
+			<populatingSearch fieldForValue="host" fieldForLabel="host">
+				<![CDATA[eventtype=cisco-esa | stats count by host]]>
+			</populatingSearch>
+		</input>
+	</fieldset>
+
+	<searchTemplate><![CDATA[eventtype=cisco-esa | transaction keepevicted=true icid mid | search host="$host$" sender="$sender$" recipient="$recipient$" dest_interface="$dest_interface$" policy_direction="$policy_direction$" threat_reason="$threat_reason$" | stats count by sender,recipient,threat_reason,host,sender_reputation,policy_direction,_time]]></searchTemplate>
+  
+	<row>
+		<chart>
+			<title>Messages over Time</title>
+			<searchPostProcess>timechart sum(count) as count by policy_direction</searchPostProcess>
+			<option name="charting.chart">area</option>
+			<option name="charting.chart.nullValueMode">zero</option>
+			<option name="charting.chart.stackMode">stacked</option>
+			<option name="charting.axisTitleX.visibility">collapsed</option>
+			<drilldown>
+				<link><![CDATA[esa_search?form.sender=$sender$&form.recipient=$recipient$&form.policy_direction=$click.name2$&form.dest_interface=$dest_interface$&form.host=$host$&form.threat_reason=$threat_reason$&earliest=$earliest$&latest=$latest$]]></link>
+			</drilldown>
+		</chart>
+		<chart>
+			<title>Message by Threats</title>
+			<searchPostProcess>timechart sum(count) as count by threat_reason</searchPostProcess>
+			<option name="charting.chart">area</option>
+			<option name="charting.chart.nullValueMode">zero</option>
+			<option name="charting.chart.stackMode">stacked</option>
+			<option name="charting.axisTitleX.visibility">collapsed</option>
+			<drilldown>
+				<link><![CDATA[esa_search?form.sender=$sender$&form.recipient=$recipient$&form.policy_direction=$policy_direction$&form.dest_interface=$dest_interface$&form.host=$host$&form.threat_reason=$click.name2$&earliest=$earliest$&latest=$latest$]]></link>
+			</drilldown>
+		</chart>
+	</row>
+
+	<row>
+		<table>
+			<title>Top Senders</title>
+			<searchPostProcess>top sender</searchPostProcess>
+			<drilldown>
+				<link><![CDATA[esa_search?form.sender=$row.sender$&form.recipient=$recipient$&form.policy_direction=$policy_direction$&form.dest_interface=$dest_interface$&form.host=$host$&form.threat_reason=$threat_reason$&earliest=$earliest$&latest=$latest$]]></link>
+			</drilldown>
+		</table>
+		<table>
+			<title>Top Recipients</title>
+			<searchPostProcess>top recipient</searchPostProcess>
+			<drilldown>
+				<link><![CDATA[esa_search?form.sender=$sender$&form.recipient=$row.recipient$&form.policy_direction=$policy_direction$&form.dest_interface=$dest_interface$&form.host=$host$&form.threat_reason=$threat_reason$&earliest=$earliest$&latest=$latest$]]></link>
+			</drilldown>
+		</table>
+		<table>
+			<title>Top Gateways</title>
+			<searchPostProcess>top host</searchPostProcess>
+			<drilldown>
+				<link><![CDATA[esa_search?form.sender=$sender$&form.recipient=$recipient$&form.policy_direction=$policy_direction$&form.dest_interface=$dest_interface$&form.host=$row.host$&form.threat_reason=$threat_reason$&earliest=$earliest$&latest=$latest$]]></link>
+			</drilldown>
+		</table>
+	</row>
+
+	<row>
+		<table>
+			<title>Transaction Details</title>
+			<searchPostProcess>sort -count | table sender, sender_reputation, recipient, count, threat_reason, host | rename sender_reputation as "Sender Reputation", count as "# Messages", threat_reason as "Threat", host as "Gateway"</searchPostProcess>
+		</table>
+	</row>
+</form>

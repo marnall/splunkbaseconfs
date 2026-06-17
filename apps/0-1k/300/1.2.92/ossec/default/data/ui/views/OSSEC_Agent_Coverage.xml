@@ -1,0 +1,98 @@
+<view template="dashboard.html" stylesheet="agentcov.css">
+	<label>OSSEC Agent Coverage</label>
+
+	<module name="AccountBar" layoutPanel="navigationHeader"/>
+	<module name="AppBar" layoutPanel="navigationHeader"/>
+	<module name="Message" layoutPanel="messaging">
+		<param name="filter">splunk.search.error</param>
+		<param name="clearOnJobDispatch">false</param>
+		<param name="maxSize">1</param>
+	</module>
+
+	<module name="TitleBar" layoutPanel="viewHeader">
+		<param name="actionsMenuFilter">dashboard</param>
+	</module>
+	
+			
+			
+	<module name="HiddenSearch" autoRun="True" layoutPanel="panel_row1_col1">
+		<param name="search"><![CDATA[ | inputlookup lookup_ossec_expected | lookup lookup_ossec_last_checkin reporting_host | eval days_ago=round((now()-last_checkin)/86400) | eval covered=if(days_ago<=7, 1, 0) | stats count sum(covered) as covered | eval covered=coalesce(covered,0) | eval percent=round(100*covered/count,1) | eval percent=coalesce(percent,0) | rangemap field=percent low=95-100 elevated=80-95 default=severe ]]></param>
+		<module name="GenericHeader"><param name="label">Total Machines:</param></module>
+		<module name="SingleValue">
+			<param name="field">count</param>
+			<param name="classField">range</param>
+			<param name="linkView">search</param>
+			<param name="linkSearch"><![CDATA[ | inputlookup lookup_ossec_expected | lookup lookup_ossec_last_checkin reporting_host | eval days_ago=round((now()-last_checkin)/86400) | search days_ago > 7]]></param>
+		</module>
+
+		<module name="GenericHeader" layoutPanel="panel_row1_col2"><param name="label">Working Agents:</param></module>
+		<module name="SingleValue" layoutPanel="panel_row1_col2">
+			<param name="field">covered</param>
+			<param name="classField">range</param>
+			<param name="linkView">search</param>
+			<param name="linkSearch"><![CDATA[ | inputlookup lookup_ossec_expected | lookup lookup_ossec_last_checkin reporting_host | eval days_ago=round((now()-last_checkin)/86400) | search days_ago <= 7 ]]></param>
+		</module>
+
+		<module name="GenericHeader" layoutPanel="panel_row1_col3"><param name="label">Percent Coverage:</param></module>
+		<module name="SingleValue" layoutPanel="panel_row1_col3">
+			<param name="field">percent</param>
+			<param name="afterLabel">%</param>
+			<param name="classField">range</param>
+			<param name="linkView">search</param>
+			<param name="linkSearch"><![CDATA[ | inputlookup lookup_ossec_expected | lookup lookup_ossec_last_checkin reporting_host | eval days_ago=round((now()-last_checkin)/86400) | search days_ago <= 7 ]]></param>
+		</module>
+	</module>
+
+
+
+	<module name="HiddenSearch" autoRun="True" layoutPanel="panel_row2_col1">
+		<param name="search"><![CDATA[ | inputlookup lookup_ossec_expected | lookup lookup_ossec_last_checkin reporting_host | eval days_ago=round((now()-last_checkin)/86400) | eval Checkin_Age=if(days_ago<7, days_ago+" Days", ">7 Days") | stats count by Checkin_Age]]></param>
+		<!-- Pie Chart -->
+		<module name="GenericHeader"><param name="label">Age of Last Agent Checkin</param></module>
+		<module name="JobProgressIndicator" />
+		<module name="HiddenChartFormatter">						
+			<param name="chart">pie</param>
+			<module name="JSChart">
+				<param name="maxRowsForTop">10</param>
+				<param name="width">100%</param>
+				<param name="height">230px</param>
+				<module name="ConvertToDrilldownSearch">
+					<module name="ViewRedirector">
+						<param name="viewTarget">search</param>
+					</module>
+				</module>
+			</module>
+		</module>					
+
+		<!-- Table -->
+		<module name="SimpleResultsTable" layoutPanel="panel_row2_col2">
+			<param name="entityName">results</param>
+			<param name="drilldown">row</param>
+			<module name="ConvertToDrilldownSearch">
+				<module name="ViewRedirector">
+					<param name="viewTarget">search</param>
+				</module>
+			</module>
+		</module>
+		<module name="ViewRedirectorLink" layoutPanel="panel_row2_col2">
+			<param name="viewTarget">search</param>
+			<param name="label">View full results</param>
+		</module>
+	</module>
+
+
+	<!-- Missing and Inactive Agents List -->
+	<module name="HiddenSearch" autoRun="True" layoutPanel="panel_row3_col1">
+		<param name="search"><![CDATA[ | inputlookup lookup_ossec_expected | eval hostname=reporting_host | lookup lookup_ossec_last_checkin reporting_host | eval Days_Ago=round((now()-last_checkin)/86400) | eval Days_Ago=coalesce(Days_Ago, "Never") | sort hostname | fields - ossec_server,reporting_host,last_checkin ]]></param>
+		
+		<module name="GenericHeader"><param name="label">Missing / Inactive Agents</param></module>
+		<module name="Paginator">
+			<param name="entityName">results</param>
+			<module name="SimpleResultsTable" />
+			<module name="ViewRedirectorLink">
+				<param name="viewTarget">search</param>
+				<param name="label">View full results</param>
+			</module>
+		</module>
+	</module>
+</view>

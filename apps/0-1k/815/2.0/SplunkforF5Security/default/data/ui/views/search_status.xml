@@ -1,0 +1,75 @@
+<dashboard>
+  <label>Search activity</label>
+
+  <row>
+    <chart>
+      <title>Search count by user</title>
+      <searchString>search index=_audit action=search user!="n/a" id=* | timechart count by user</searchString>
+      <earliestTime>-24h</earliestTime>
+      <option name="charting.chart">column</option>
+      <option name="charting.chart.stackMode">stacked</option>
+      <option name="charting.secondaryAxisTitle.text">Searches</option>
+    </chart>    
+  </row>
+
+  <row>
+    <table>
+      <title>Recent searches by expense (last hour)</title>
+      <searchString>search index=_audit action=search id=* | convert num(total_run_time) | eval user = if(user="n/a", null(), user) | rex "search='(?&lt;search&gt;.*?)', autojoin" | transaction id | search user=* | eval is_scheduled = if(id LIKE "scheduler%", "yes", "no") | sort - total_run_time</searchString> 
+      <earliestTime>-1h</earliestTime>
+      <fields>_time,user,is_scheduled,total_run_time,search</fields>
+      <option name="showPager">true</option>
+    </table>
+  </row>
+
+  <row>
+    <chart>
+      <title>Run time by user (last 24 hours)</title>
+      <searchString>search index=_audit action=search id=* | eval user = if(user="n/a", null(), user) | stats min(_time) as _time first(user) as user max(total_run_time) as total_run_time by id | stats sum(total_run_time) by user | sort - sum(total_run_time) | head 5</searchString> 
+      <earliestTime>-24h</earliestTime>
+      <option name="charting.chart">bar</option>
+      <option name="charting.primaryAxisLabels.majorLabelVisibility">show</option>
+    </chart>
+    <chart>
+      <title>Search load over time (last 24 hours)</title>
+      <searchString>search index=_audit action=search total_run_time=* total_run_time | timechart sum(total_run_time)</searchString> 
+      <earliestTime>-24h</earliestTime>
+      <option name="charting.secondaryAxisTitle.text">Total run time (s)</option>
+    </chart>
+  </row>
+ 
+  <row>
+    <table>
+      <title>Recent searches by time (last hour)</title>
+      <searchString>search index=_audit action=search id=* | convert num(total_run_time) | eval user = if(user="n/a", null(), user) | rex "search='(?&lt;search&gt;.*?)', autojoin" | transaction id | search user=* | eval is_scheduled = if(id LIKE "scheduler%", "yes", "no")</searchString> 
+      <earliestTime>-1h</earliestTime>
+      <fields>_time,user,is_scheduled,total_run_time,search</fields>
+      <option name="showPager">true</option>
+    </table>
+  </row>
+  <row>
+    <table>
+      <title>Common searches (last hour)</title>
+      <searchString>search index=_audit action=search id=* | convert num(total_run_time) | eval user = if(user="n/a", null(), user) | rex "search='(?&lt;search&gt;.*?)', autojoin" | transaction id | search user=* | stats count dc(user) as users avg(total_run_time) as "Average run time (s)" by search | sort - count</searchString> 
+      <earliestTime>-1h</earliestTime>
+      <option name="showPager">true</option>
+    </table>
+  </row>
+  <row>
+    <chart>
+      <title>UI activity by user</title>
+      <searchString>search index="_internal" source="*/splunkd_access.log" "/services/search/jobs" | kv access-extractions | search uri=/services/search/jobs/* user!="-"| rex (?&lt;run_time&gt;\d+)ms$ | timechart eval(sum(run_time)/1000) by user</searchString>
+      <earliestTime>-24h</earliestTime>
+      <option name="charting.chart">column</option>
+      <option name="charting.chart.stackMode">stacked</option>
+      <option name="charting.secondaryAxisTitle.text">Service time (s)</option>
+    </chart>    
+  </row>
+  <row>
+    <table>
+      <title>Average splunkd Latency per Search Job Endpoint Type (last 24 hours)</title>
+      <searchString>search index="_internal" source="*/splunkd_access.log" "/services/search/jobs" | kv access-extractions | search uri=/services/search/jobs/* user!="-"| rex (?&lt;run_time&gt;\d+)ms$ | eval file = if(file = "summary" OR file = "timeline" OR file = "control" OR file = "results_preview" OR file = "results" OR file = "events", file, "job") | chart avg(run_time) as "Avg. Latency (ms)" perc95(run_time) as "95th Percentile Latency (ms)" count by file | rename file as "Endpoint Type"</searchString>
+      <earliestTime>-24h</earliestTime>
+    </table>    
+  </row>
+</dashboard>

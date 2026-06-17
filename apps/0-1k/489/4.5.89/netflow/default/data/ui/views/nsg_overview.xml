@@ -1,0 +1,289 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js" stylesheet="inputs_layout.css">
+  <label>Azure Traffic Overview (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Exporter (Virtual Network)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_nsg_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_nsg_name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20467`  | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+			`netflow_search_rule_20467`
+			| search nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$"
+			| `dedup_timechart_events`
+			| bucket _time $span_token$
+			| fillnull value="" src_vm_name src_vnet_name dest_vm_name dest_vnet_name transport
+<!-- use these lines to include DNS name
+			| eval src_host = src_vm_name ."/". src_host
+			| eval dest_host = dest_vm_name ."/". dest_host
+-->  
+			| eval src_host = src_vm_name
+			| eval dest_host = dest_vm_name
+			| `format_ip_column(src_vm, src_ip, src_host)`
+			| `format_ip_column(dest_vm, dest_ip, dest_host)`
+			| eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+			| stats sum(bytes_in) as sumbytesin sum(bytes_out) as sumbytesout by nfo_hostname,exp_ip,src_vnet_name,src_vm_name,src_vm,dest_vnet_name,dest_vm_name,dest_vm,app_port,transport,direction,_time 
+			| eval summbitsin= sumbytesin*8/($span_int$*1000000)  
+			| eval summbitsout= sumbytesout*8/($span_int$*1000000)  
+			| eval summbits= summbitsin+summbitsout
+			| `format_port_column(dest_port_string, app_port)`
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+			<html>
+				<p><b>Top Traffic Inbound: Source - Destination</b> <a href="$url1$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+              | search direction=inbound
+              | strcat src_vm " - " dest_vm host_pair 
+              | timechart limit=10 $span_token$ sum(summbits) by host_pair useother="f"  
+					</query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url1">
+						<![CDATA[
+							/app/netflow/nsg_traffic_inbound?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+    <panel>
+			<html>
+				<p><b>Top Traffic Outbound: Source - Destination</b> <a href="$url2$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+                        | search direction=outbound
+                        | strcat src_vm " - " dest_vm host_pair 
+                        | timechart limit=10 $span_token$ sum(summbits) by host_pair useother="f"  
+					</query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url2">
+						<![CDATA[
+							/app/netflow/nsg_traffic_outbound?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+			<html>
+				<p><b>Top Traffic by Port and Protocol</b> <a href="$url3$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+              | timechart limit=10 $span_token$ sum(summbits) by dest_port_string useother="f"
+					</query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url3">
+						<![CDATA[
+							/app/netflow/nsg_traffic_by_application?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+    <panel>
+			<html>
+				<p><b>Top Traffic by Protocol</b> <a href="$url4$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+                        | timechart limit=10 $span_token$ sum(summbits) by transport useother="f"
+					</query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url4">
+						<![CDATA[
+							/app/netflow/nsg_traffic_by_protocol?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+			<html>
+				<p><b>Top Virtual Networks by Traffic</b> <a href="$url5$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+              | eval vnet_name=case((direction == "inbound"),dest_vnet_name,(direction == "outbound"),src_vnet_name) 
+              | eval exp_nsg_name = exp_ip ." (". vnet_name .")"
+              | timechart limit=10 $span_token$ sum(summbits) by exp_nsg_name useother="f"
+					</query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url5">
+						<![CDATA[
+							/app/netflow/nsg_traffic_by_vnet?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+    <panel>
+			<html>
+				<p><b>Top Regions by Traffic</b> <a href="$url6$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+			</html>
+      <chart>
+        <search>
+          <query>`netflow_search_rule_20467` 
+              | search nfo_hostname="$nfo_hostname$" exp_ip"$exp_ip$"
+              | strcat src_region "," dest_region regions
+              | eval regions = split(regions, ",")
+              | `per_second_chart(sum(bytes) by regions,"$span_token$",$span_int$)`
+              | fields - VALUE
+					</query>
+          <earliest>$earliest_token$</earliest>
+          <latest>$latest_token$</latest>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+				<selection>
+					<set token="selection_earliest">$start$</set>
+					<set token="selection_latest">$end$</set>
+					<set token="url6">
+						<![CDATA[
+							/app/netflow/nsg_traffic_by_region?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_ip=$exp_ip$
+						]]>
+					</set>
+				</selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10467: Azure NSG Top Traffic Monitor”</b> (syslogs with nfc_id=20467). This Module identifies Azure VMs with the most traffic. It consolidates NSG Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “Azure NSG Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,580 @@
+<form version="1.1" onunloadCancelJobs="True" script="table_icons_rangemap.js,toggle-switchy.js" stylesheet="table_decorations.css,toggle-switchy.css">
+  <label>Interface Errors and Discards</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_snmp_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="device_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_snmp_device_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>device_group</fieldForLabel>
+      <fieldForValue>device_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="device_sysname" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>
+                | `populate_snmp_device_list_by_nfo_hostname($device_group$,$nfo_hostname$)`
+        </query>
+      </search>
+      <fieldForLabel>device_sysname</fieldForLabel>
+      <fieldForValue>device_sysname</fieldForValue>
+    </input>
+    <input type="dropdown" token="device_type" searchWhenChanged="false">
+      <label>Device Type</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>
+          | `populate_snmp_device_type_by_nfo_hostname($device_group$,$nfo_hostname$,$device_sysname$)`
+        </query>
+      </search>
+      <fieldForLabel>device_type</fieldForLabel>
+      <fieldForValue>device_type</fieldForValue>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="false">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <init>
+    <set token="device_sysname">*</set>
+    <set token="device_sysname_for_snmp_table">*</set>
+    <set token="show_1line"></set>
+    <set token="show_non_critical_interfaces"></set>
+    <set token="show_inactive_interfaces">| search ifPktsChange&gt;0</set>
+    <unset token="device_selected"></unset>
+  </init>
+  <search>
+    <query>`netflow_search_rule_20103`  | `set_span` </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <unset token="show_hint"></unset>
+        <unset token="device_selected"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <!-- deviceColorN is 1 - Normal, 2 - Warning, 3 - Critical -->
+  <search>
+    <query>| inputlookup status_ranges_lookup | transpose header_field=status</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="status_critical">$result.critical$</set>
+        <eval token="maxCritical">mvindex(split($result.critical$,"-"),1)</eval>
+        <set token="status_warning">$result.warning$</set>
+        <eval token="maxWarning">mvindex(split($result.warning$,"-"),1)</eval>
+        <set token="status_normal">$result.normal$</set>
+        <eval token="maxNormal">mvindex(split($result.normal$,"-"),1)</eval>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>`netflow_search_rule_20103` oid_set=interface_mon nfo_hostname=$nfo_hostname$  $advanced_filter$
+          | fillnull value="Unassigned" device_group
+          | fillnull value="" mgmt_ip sysName device_type
+          | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+          | search  device_sysname="$device_sysname$" device_group="$device_group$"  device_type="$device_type$"
+          | fillnull value=0 ifInErrors ifOutErrors ifInDiscards ifOutDiscards ifInUcastPkts ifOutUcastPkts ifInNUcastPkts ifOutNUcastPkts
+          | stats latest(ifInErrors) as maxIfInErrors earliest(ifInErrors) as minIfInErrors
+                latest(ifOutErrors) as maxIfOutErrors earliest(ifOutErrors) as minIfOutErrors
+                latest(ifInDiscards) as maxIfInDiscards earliest(ifInDiscards) as minIfInDiscards
+                latest(ifOutDiscards) as maxIfOutDiscards  earliest(ifOutDiscards) as minIfOutDiscards 
+                latest(ifInUcastPkts) as maxifInUcastPkts  earliest(ifInUcastPkts) as minifInUcastPkts 
+                latest(ifOutUcastPkts) as maxifOutUcastPkts  earliest(ifOutUcastPkts) as minifOutUcastPkts 
+                latest(ifInNUcastPkts) as maxifInNUcastPkts  earliest(ifInNUcastPkts) as minifInNUcastPkts 
+                latest(ifOutNUcastPkts) as maxifOutNUcastPkts  earliest(ifOutNUcastPkts) as minifOutNUcastPkts 
+                by nfo_hostname device_group device_type mgmt_ip sysName ifIndex ifName exp_ip
+          | eval IfInErrorsChange = maxIfInErrors-minIfInErrors
+          | eval IfOutErrorsChange = maxIfOutErrors-minIfOutErrors
+          | eval IfInDiscardsChange = maxIfInDiscards-minIfInDiscards
+          | eval IfOutDiscardsChange = maxIfOutDiscards-minIfOutDiscards
+          | eval ifInUcastPktsChange = maxifInUcastPkts-minifInUcastPkts
+          | eval ifOutUcastPktsChange = maxifOutUcastPkts-minifOutUcastPkts
+          | eval ifInNUcastPktsChange = maxifInNUcastPkts-minifInNUcastPkts
+          | eval ifOutNUcastPktsChange = maxifOutNUcastPkts-minifOutNUcastPkts
+          | eval ifErrorsDiscardsChange = IfInErrorsChange+IfOutErrorsChange+IfInDiscardsChange+IfOutDiscardsChange
+          | eval ifPktsChange = ifInUcastPktsChange+ifOutUcastPktsChange+ifInNUcastPktsChange+ifOutNUcastPktsChange+ifErrorsDiscardsChange
+          | eval PercentLost = if(ifPktsChange&gt;0,ifErrorsDiscardsChange/ifPktsChange*100," ") 
+          | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip as mgmt_ip snmp_index as ifIndex OUTPUT  if_name as ifname_interfaces
+          | eval ifName = if(ifname_interfaces=="unknown",ifName,ifname_interfaces)
+          | `commas_formatting(PercentLost,PercentLost,0)`
+          | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+          | eval interface = (((ifIndex . " (") . ifName) . ")")
+          | eval device_ip=mgmt_ip
+          |  sort - PercentLost  
+          | table nfo_hostname device_group device_type mgmt_ip device_ip device_sysname interface ifIndex ifName ifPktsChange IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost percOfUsage sysName exp_ip
+          | eventstats max(PercentLost) as devicemaxPercentLost by device_sysname
+          | eval deviceColor=if(devicemaxPercentLost&lt;=$maxNormal$,"green",if(devicemaxPercentLost&lt;=$maxWarning$,"yellow","red"))
+          | eval deviceColorN=if(devicemaxPercentLost&lt;=$maxNormal$,1,if(devicemaxPercentLost&lt;=$maxWarning$,2,if(devicemaxPercentLost&lt;=$maxCritical$,3,0)))
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row>
+    <panel depends="$alwaysHideCSS$">
+      <html>
+        <style>
+
+          #snmp_device_panel{
+            width:30% !important;
+          }
+          #tree_panel{
+            width:30% !important;
+          }
+          #interfaces_snmp_panel{
+            width:100% !important;
+          }
+          #interfaces_traffic_panel{
+            width:100% !important;
+          }
+          #snmp_mem_panel{
+            width:35% !important;
+          }
+          #snmp_cpu_panel{
+            width:35% !important;
+          }
+.SingleValue .SingleValueHolder {
+width: auto;
+min-width: 100%;
+}
+         .single-value .single-result {
+             font-size: 20px !important;
+           }
+           #resized_input div[data-component="splunk-core:/splunkjs/mvc/components/Dropdown"] {
+              width: 300px !important;
+              margin-right: auto !important;
+            }
+                       #adv_input  {
+              width: 400px !important;
+            }
+          #single_undefined .single-result{
+          fill: rgb(153, 153, 153) !important;
+          }
+         .fieldset .input{
+          width:auto !important;
+          }
+          #snmp_table th[data-sort-key=SNMPField] {
+              width: 30% !important;
+          }
+          #snmp_table th[data-sort-key=Value] {
+              width: 70% !important;
+          }
+          #show_details_btn{
+              margin-right: 10px;
+          }
+          #show_non_critical_interfaces_btn{
+              margin-right: 10px;
+          }
+          #show_inactive_interfaces_btn{
+              margin-right: 10px;
+          }
+        </style>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Device Health (Status ranges defined in status_ranges.csv are: Critical=$status_critical$ Warning=$status_warning$ Normal=$status_normal$)</title>
+      <single>
+        <search base="baseSearch">
+          <query>   
+            | dedup nfo_hostname device_sysname deviceColorN
+            | search deviceColorN=3 
+            | eval status=case(deviceColorN==1,"Normal",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(device_sysname) as node_count by status deviceColorN
+            | appendpipe [stats count]
+            | fillnull status value="Critical"
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=3
+            | eval status=status." (". node_count .")" 
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+        <option name="height">50</option>
+      </single>
+      <single>
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname device_sysname deviceColorN
+            | search deviceColorN=2 
+            | eval status=case(deviceColorN==1,"Normal",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(device_sysname) as node_count by status deviceColorN
+            | appendpipe [stats count]
+            | fillnull status value="Warning" 
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=2
+            | eval status=status." (". node_count .")"
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+        <option name="height">50</option>
+      </single>
+      <single>
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname device_sysname deviceColorN
+            | search deviceColorN=1 
+            | eval status=case(deviceColorN==1,"Normal",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(device_sysname)  as node_count by status deviceColorN
+            | appendpipe [stats count]
+            | fillnull status value="Normal" 
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=1
+            | eval status=status." (". node_count .")"
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel id="interfaces_snmp_panel">
+      <html>
+        <p>
+          <b>Top Interface Errors and Discards             Show 1 line per device: 
+<label class="toggle-switchy" for="show_1line_btn" data-color="green" data-size="sm" data-style="rounded">
+              <input id="show_1line_btn" type="checkbox"/> 
+              <span class="toggle">
+                <span class="switch"/>
+              </span>
+            </label>
+               Show non critical interfaces: 
+<label class="toggle-switchy" for="show_non_critical_interfaces_btn" data-color="green" data-size="sm" data-style="rounded">
+              <input checked="true" type="checkbox" id="show_non_critical_interfaces_btn"/>  
+              <span class="toggle">
+                <span class="switch"/>
+              </span>
+            </label> 
+           Show inactive interfaces: 
+<label class="toggle-switchy" for="show_inactive_interfaces_btn" data-color="green" data-size="sm" data-style="rounded">
+              <input type="checkbox" id="show_inactive_interfaces_btn"/>    
+              <span class="toggle">
+                <span class="switch"/>
+              </span>
+            </label> 
+          </b> 
+        </p>
+      </html>
+      <table id="table_interfaces">
+        <search base="baseSearch">
+          <query> 
+          | fillnull value=""
+          $show_non_critical_interfaces$
+          | table nfo_hostname device_ip device_sysname device_type device_group interface ifPktsChange  IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost sysName ifIndex ifName exp_ip $show_1line$
+          $show_inactive_interfaces$
+          | rangemap field=PercentLost Normal=$status_normal$ Warning=$status_warning$ Critical=$status_critical$ default=" "
+          | sort - PercentLost
+          | rename nfo_hostname as "NFO"
+          | rename device_sysname as "Device (sysName)"
+          | rename device_group as "Device Group"
+          | rename device_type as "Device Type"
+          | rename interface as "Interface"
+          | rename ifPktsChange as "Packets"
+          | rename IfInErrorsChange as "Receive Errors"
+          | rename IfInDiscardsChange as "Receive Discards"
+          | rename IfOutErrorsChange as "Transmit Errors"
+          | rename IfOutDiscardsChange as "Transmit Discards"
+          | rename PercentLost as "% Packets Lost"
+          | rename range as "Status"
+          </query>
+          <done>
+            <condition>
+              <unset token="device_selected"></unset>
+            </condition>
+          </done>
+        </search>
+        <fields>"NFO","Device (sysName)","Device Group","Device Type",Interface,Packets,"Receive Errors","Receive Discards","Transmit Errors","Transmit Discards","% Packets Lost",Status</fields>
+        <drilldown>
+          <set token="clicked_nfo">$row.NFO$</set>
+          <set token="device_sysname_for_snmp_table">$row.Device (sysName)$</set>
+          <set token="sysName">$row.sysName$</set>
+          <set token="mgmt_ip">$row.device_ip$</set>
+          <set token="interface">$row.Interface$</set>
+          <set token="ifIndex">$row.ifIndex$</set>
+          <set token="ifName">$row.ifName$</set>
+          <set token="exp_ip">$row.exp_ip$</set>
+          <set token="device_selected">1</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$device_selected$">
+    <panel id="snmp_device_panel">
+      <table id="snmp_table">
+        <title>SNMP Fields from oid_set=device_info (selected device: $device_sysname_for_snmp_table$)</title>
+        <search>
+          <query>`netflow_search_rule_20103` oid_set=device_info nfo_hostname=$clicked_nfo$ 
+              | fillnull value="" mgmt_ip sysName device_type
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | search  device_sysname="$device_sysname_for_snmp_table$" device_type="$device_type$"
+              | head 1 
+              | table device_sysname sysLocation ifNumber sysUpTimeInstance IOSVersion sysDescr
+              | rex field=sysUpTimeInstance "(?&lt;days&gt;\d+):(?&lt;hours&gt;\d+):(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)" 
+              | eval uptimeSeconds=days*24*3600+hours*3600+minutes*60+seconds 
+              | eval restarttime=now()-uptimeSeconds 
+              | eval sysUpTimeInstance=strftime(restarttime,"%A, %B %d %Y, %I:%M %p")
+              | rename device_sysname as "Device (sysName)"  ifNumber as "# of Interfaces" sysDescr as "Node Description" sysUpTimeInstance as "Last Boot" sysLocation as Location
+              | fields - uptimeSeconds restarttime days hours minutes seconds
+              | transpose 
+              | rename column as "SNMPField" "row 1" as "Value"
+          </query>
+        </search>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel id="snmp_mem_panel">
+      <chart>
+        <title>Memory utilization for device: $device_sysname_for_snmp_table$</title>
+        <search>
+          <query>`netflow_search_rule_20103` nfo_hostname=$clicked_nfo$ oid_set=*mem
+            | fillnull value="" mgmt_ip sysName device_type
+            | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+            | search  device_sysname="$device_sysname_for_snmp_table$" device_type="$device_type$"
+            | fillnull value="1" row_num
+            | fillnull value=NULL mem_free mem_used mem_total mem_used_percent
+            | eval mem_free=if(mem_free=="NULL",mem_total-mem_used,mem_free)
+            | eval mem_used=if(mem_used=="NULL",mem_total-mem_free,mem_used)
+            | eval mem_total=if(mem_total=="NULL",mem_used+mem_free,mem_total)
+            | eval mem_used_percent=if(mem_used_percent=="NULL",100*mem_used/mem_total,mem_used_percent)
+            | eval mempool = "MemPool " . row_num 
+            | eventstats perc95(mem_used_percent) as p95 by mempool
+            | timechart eval(round(max(mem_used_percent),2)) as "Mem Utilization %" eval(round(avg(p95),2)) as "95%" by mempool
+            </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.chart.overlayFields">95%</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">365</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">mempool</option>
+      </chart>
+    </panel>
+    <panel id="snmp_cpu_panel">
+      <chart>
+        <title>CPU utilization for device : $device_sysname_for_snmp_table$)</title>
+        <search>
+          <query>
+            `netflow_search_rule_20103` nfo_hostname=$clicked_nfo$ oid_set=*cpu 
+            | fillnull value="" mgmt_ip sysName device_type
+            | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+            | search  device_sysname="$device_sysname_for_snmp_table$" device_type="$device_type$"
+            | fillnull value="1" row_num
+            | eval cpunum = "CPU " . row_num 
+            | eventstats perc95(cpu_load_percent) as p95cpu by cpunum
+            | timechart eval(round(max(cpu_load_percent),2)) as "CPU utilization %" eval(round(avg(p95cpu),2)) as "95%" by cpunum
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.axisTitleY2.visibility">collapsed</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.chart.overlayFields">95%</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">365</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">row_num</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$device_selected$" id="tabs">
+    <panel>
+      <input type="link" token="unused">
+        <label>Choose a view</label>
+        <choice value="20067">Unidirectional Flows</choice>
+        <choice value="20062">Network Conversations</choice>
+        <default>Unidirectional Flows</default>
+        <change>
+          <condition value="20067">
+            <set token="show20067">true</set>
+            <unset token="show20062"></unset>
+          </condition>
+          <condition value="20062">
+            <set token="show20062">true</set>
+            <unset token="show20067"></unset>
+          </condition>
+        </change>
+      </input>
+    </panel>
+  </row>
+  <row depends="$device_selected$,$show20067$">
+    <panel>
+      <table id="table_20067">
+        <title>NFO: $clicked_nfo$ Device: $exp_ip$/$mgmt_ip$ ($sysName$) Interface: $interface$ Traffic Details”    </title>
+        <search>
+          <query>
+            `netflow_search_rule_20067`  nfo_hostname="$clicked_nfo$" (input_snmp=$ifIndex$ OR output_snmp=$ifIndex$) exp_ip="$exp_ip$"
+            | `sampling(bytes_in)`
+            | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+            | `sampling(packets_in)` 
+            | `sampling(flow_count)`
+            | `conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$device_selected$,$show20062$">
+    <panel>
+      <table id="table_20062">
+        <title>NFO: $clicked_nfo$ Device: $exp_ip$/$mgmt_ip$ ($sysName$) Interface: $interface$ Traffic Details”    </title>
+        <search>
+          <query>
+            `netflow_search_rule_20062` nfo_hostname="$clicked_nfo$"  (input_snmp=$ifIndex$ OR output_snmp=$ifIndex$) exp_ip=$exp_ip$
+            | fillnull value=0 bytes_out packets_out 
+            | fillnull value="unknown" app_name
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | fillnull value="" src_host src_vm_name dest_vm_name
+            | eventstats latest(src_host) as l_src_host by exp_ip src_ip 
+            | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip 
+            | eval exp_ip_network_conversation=nfo_hostname."#".exp_ip."#".src_ip."#".l_src_host."#".src_vm_name."#".src_port."#".dest_ip."#".l_dest_host."#".dest_vm_name."#".dest_port."#".flow_type."#".transport
+            | stats sum(bytes_in) as sndbytes 
+              sum(bytes_out) as rcvbytes 
+              sum(packets_in) as sndpackets 
+              sum(packets_out) as rcvpackets 
+              sum(flow_count) as FlowCount 
+              avg(duration) as avgduration
+                by nfo_hostname exp_ip_network_conversation app_name 
+            | eval temp=split(exp_ip_network_conversation,"#")
+            | eval nfo_hostname=mvindex(temp,0) 
+            | eval exp_ip=mvindex(temp,1) 
+            | eval src_ip=mvindex(temp,2)
+            | eval src_host=mvindex(temp,3)
+            | eval src_vm_name=mvindex(temp,4)
+            | eval src_port=mvindex(temp,5)
+            | eval dest_ip=mvindex(temp,6)
+            | eval dest_host=mvindex(temp,7)
+            | eval dest_vm_name=mvindex(temp,8)
+            | eval dest_port=mvindex(temp,9)
+            | eval flow_type=mvindex(temp,10)
+            | eval transport=mvindex(temp,11)
+            | eval "Bytes Rcvd/Sent %"=round((rcvbytes/sndbytes)*100,2)
+            | eval "Packets Rcvd/Sent %"=round((rcvpackets/sndpackets)*100,2)
+            | eval sndmegabytes = sndbytes/1024/1024
+            | eval rcvmegabytes = rcvbytes/1024/1024
+            | sort 0 by - sndmegabytes
+            | `commas_formatting(MB Sent, sndmegabytes,2)` 
+            | `commas_formatting(MB Received, rcvmegabytes,2)` 
+            | `commas_formatting(Packets Sent, sndpackets)` 
+            | `commas_formatting(Packets Received, rcvpackets)` 
+            | `commas_formatting(Avg Duration, avgduration,2)` 
+            | `get_exporter_name(exp_ip_name)`
+            | eval src_host=if(src_vm_name=="",src_host,src_host." (".src_vm_name.")")
+            | eval dest_host=if(dest_vm_name=="",dest_host,dest_host." (".dest_vm_name.")")
+            | `format_port_column(src_port, src_port)`
+            | `format_port_column(dest_port, dest_port)`
+            | table  flow_type transport src_ip src_port src_host dest_ip dest_port dest_host app_name "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" FlowCount, "Avg Duration"
+            | rename nfo_hostname as "NFO" 
+            | rename exp_ip_name as "Device" 
+            | rename src_ip as "Source IP" 
+            | rename src_port as "Source Port"
+            | rename src_host as "Source Host (VM)"
+            | rename dest_ip as "Dest IP" 
+            | rename dest_port as "Dest Port"
+            | rename dest_host as "Dest Host (VM)"
+            | rename flow_type as "Flow Type"
+            | rename transport as "Protocol"
+            | rename FlowCount as "Flow Count"
+            | rename app_name as "App Name"
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10103: SNMP Custom OID Sets Monitor”</b> (syslogs with nfc_id=20103). This Module enables you to perform SNMP polling from network devices by creating OID Sets. Each set can contain up to 64 OIDs, and has its own polling interval. The polling is performed for all network devices set in SNMP Service. The information is provided per device-OID set. This Module is packaged in <b>NFO “Untilities” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

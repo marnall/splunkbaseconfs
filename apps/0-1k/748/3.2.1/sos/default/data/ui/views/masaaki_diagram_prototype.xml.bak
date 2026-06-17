@@ -1,0 +1,250 @@
+<view autoCancelInterval="90" isVisible="false" onunloadCancelJobs="true" template="dashboard.html" stylesheet="masaaki_diagram.css">
+  <label>Masaaki Diagram</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Masaaki Diagram</param>
+      </list>
+    </param>
+  </module>
+  
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="HTML">
+      <param name="html"><![CDATA[
+<table width="100%" border="0" cellpadding="30" cellspacing="0" bgcolor="#EFF6F6" style="display:none;">
+<tr valign="top"><td>
+      <h1>Masaaki Diagram</h1>
+      <div style="margin-bottom: 30px">
+      <p>
+        This is a prototype view, under active development. 
+      </P>
+      <h3>What is it?</h3>
+      <p>
+        This is a tool you can use to see where you might have bottlenecks in your indexing configuration.  The diagram below shows the various 'queues' that events move through in a Splunk indexer.   This view will run searches that will end up painting a color from green to red into each queue, depending on how full or empty that queue is.  Click or drag a range on the timeline to select a narrower timerange to analyze.
+      </p>
+      <h3>Technical Summary</h3>
+      <p>
+        The basic idea is that we get the perc95() of the queue fill ratio (a percentage) for all event-processing queues. Then we use some macros to turn this from a number from 0-100 into a hexcode from 00 to FF.  Then we use these hexcodes as the background colors of the relevant queue in the diagram. 
+      </p>
+</td></tr>
+</table>
+      ]]></param>
+    </module>
+  </module>
+
+  
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+              
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker" layoutPanel="mainSearchControls">
+          <param name="selected">Last 24 hours</param>
+          <param name="searchWhenChanged">True</param>
+          
+          <module name="Button">
+            <param name="allowSoftSubmit">True</param>
+
+            <!-- COMMON CONTROLS END   -->
+
+            <!--  Note that we cheat layoutPanels here to render the controls out of order -->
+            <module name="Pulldown" layoutPanel="panel_row2_col1">
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="value"></param>
+                  <param name="label">automatic</param>
+                  <param name="selected">true</param>
+                </list>
+                <list>
+                  <param name="value">15m</param>
+                  <param name="label">15 min</param>
+                </list>
+                <list>
+                  <param name="value">30m</param>
+                  <param name="label">30 min</param>
+                </list>
+                <list>
+                  <param name="value">1h</param>
+                  <param name="label">1 hour</param>
+                </list>
+                <list>
+                  <param name="value">1d</param>
+                  <param name="label">1 day</param>
+                </list>
+              </param>
+
+              <param name="name">span</param>
+              <param name="float">left</param>
+              <param name="label">Bucket span:</param>
+              <param name="template">span="$value$"</param>
+
+              
+              <module name="Search" layoutPanel="panel_row1_col1">
+                <param name="search">`set_internal_index` $host$ source=*metrics.log group=queue $queues$ (name=parsingqueue OR name=aggqueue OR name=typingqueue OR name=indexqueue) | eval name=case(name=="aggqueue","2 - Aggregation queue",name=="indexqueue","4 - Indexing queue",name=="parsingqueue","1 - Parsing queue",name=="typingqueue","3 - Typing queue") | eval max=if(isnotnull(max_size_kb),max_size_kb,max_size) | eval curr=if(isnotnull(current_size_kb),current_size_kb,current_size) | eval fill_perc=round((curr/max)*100,2) | timechart perc95(fill_perc) by name useother=false limit=15</param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h4>(click or drag to select a timerange)</h4>
+                  ]]></param>
+                </module>
+                <module name="FlashTimeline">
+                  <param name="width">100%</param>
+                  <param name="height">60px</param>
+
+                  
+
+                      
+                  
+                  
+                  <module name="HiddenChartFormatter" layoutPanel="panel_row2_col1">
+                    <param name="charting.chart.stackMode">default</param>
+                    <param name="charting.chart">area</param>
+                    <!-- neat trick that takes away the "_time" label AND takes away the 
+                    space that it takes up.  If you just clear the 'label', it still takes 
+                    up the vertical space. -->
+                    <param name="charting.axisTitleX.visibility">collapsed</param>
+                    <param name="primaryAxisTitle.text">Time</param>
+                    <param name="secondaryAxisTitle.text">95th percentile of queue fill ratio (%)</param>
+                    
+                    <module name="Pulldown">
+                      <param name="staticFieldsToDisplay">
+                        <list>
+                          <param name="label">Yes</param>
+                          <param name="selected">True</param>
+                          <param name="value">true</param>
+                        </list>
+                        <list>
+                          <param name="label">No</param>
+                          <param name="value">false</param>
+                        </list>
+                      </param>
+                      <param name="name">charting.layout.splitSeries</param>
+                      <param name="label">Split the series</param>
+                      
+                      <module name="JobProgressIndicator"/>
+                      <module name="FlashChart">
+                        <param name="height">250px</param>
+
+                        <module name="Search">
+                          <param name="search">`set_internal_index` $host$ component=metrics sourcetype="splunkd" group=queue (name=tcpin_queue OR name=parsingqueue OR name=aggqueue OR name=typingqueue OR name=indexqueue)
+                          | eval max=if(isnotnull(max_size_kb),max_size_kb,max_size) | eval curr=if(isnotnull(current_size_kb),current_size_kb,current_size) | eval fill_perc=round((curr/max)*100,2)
+                          | stats perc95(fill_perc) as outputField by name
+                          
+                          
+                          </param>
+
+                          
+                          <module name="JobProgressIndicator" layoutPanel="panel_row3_col1"></module>
+
+                          <module name="PostProcess">
+                            <param name="search">`make_colors_and_values(outputField)`</param>
+                            <module name="ResultsValueSetter">
+                              <param name="fields">aggqueue_color aggqueue_value indexqueue_color indexqueue_value parsingqueue_color parsingqueue_value tcpin_queue_color tcpin_queue_value typingqueue_color typingqueue_value</param>
+
+                              
+                              <module name="HTML" layoutPanel="panel_row3_col1">
+                                <param name="html"><![CDATA[
+
+                                  <div class="masaakiDiagram">
+                                    <div class="colorLayers">
+                                      <div class="tcpInQueue $tcpin_queue_color$">tcpin queue<br>($tcpin_queue_value$%)</div>
+                                      <div class="parsingQueue $parsingqueue_color$">parsing queue<br>($parsingqueue_value$%)</div>
+                                      <div class="aggQueue $aggqueue_color$" >agg queue<br>($aggqueue_value$%)</div>
+                                      <div class="typingQueue $typingqueue_color$">typing queue<br>($typingqueue_value$%)</div>
+                                      <div class="indexQueue $indexqueue_color$" >index queue<br>($indexqueue_value$%)</div>
+                                    </div>
+                                    <div class="diagram"></div>
+                                  </div>
+                              
+                                ]]></param>
+                              </module>
+                              
+
+                              <module name="HTML" layoutPanel="panel_row3_col1">
+                                <param name="html"><![CDATA[
+                                
+                                <hr>
+                                debugging keys: <br>
+
+                                  aggqueue_color=$aggqueue_color$<br>
+                                  aggqueue_value=$aggqueue_value$<br>
+                                  <br>
+                                  indexqueue_color=$indexqueue_color$<br>
+                                  indexqueue_value=$indexqueue_value$<br>
+                                  <br>
+                                  parsingqueue_color=$parsingqueue_color$<br>
+                                  parsingqueue_value=$parsingqueue_value$<br>
+                                  <br>
+                                  tcpin_queue_color=$tcpin_queue_color$<br>
+                                  tcpin_queue_value=$tcpin_queue_value$<br>
+                                  <br>
+                                  typingqueue_color=$typingqueue_color$<br>
+                                  typingqueue_value=$typingqueue_value$<br>
+                                  <br>
+
+                                  The search we ran: <br>
+
+                                  $search$
+                                ]]></param>
+                              </module>
+                              -->
+                            </module>
+
+
+                          </module>
+                        </module>
+
+
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                
+              
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>
+                    
+                    
+                    

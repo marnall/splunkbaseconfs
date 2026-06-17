@@ -1,0 +1,455 @@
+<%namespace name="lib" file="//lib.html" import="*"/>
+<script src="${make_url('/static/app/launcher/scripts/tabify.js')}" type="text/javascript" charset="utf-8"></script>
+
+<%!
+from mako import exceptions
+from splunk import getDefault, auth
+from splunk import rest
+from splunk import util
+import splunk.entity as en
+import splunk.appserver.mrsparkle.lib.viewstate as viewstate
+import logging
+import os
+import splunk
+import urllib
+
+logger = logging.getLogger('splunk.apps.launcher')
+
+#
+# helper methods
+#
+
+def convert_spaces_to_underscores(s):
+    if s:
+        new_id = ''
+        
+        #remove . : ( ) chars as well
+        for e in s:
+            if e.isalpha() or e.isdigit() or s.isspace():
+                new_id += e
+        #ensure it starts with a char
+        if not new_id[0].isalpha():
+            new_id = 'a'+new_id
+        
+        return '_'.join(new_id.split(' ')).strip()
+
+
+def getname(entry, imgtype):
+    icon_name = ''
+    static_dir = os.path.join('etc', 'apps', entry.title, 'appserver', 'static')
+    
+    if imgtype == 'app':
+        img_name_start = 'appIcon'
+    elif imgtype == 'screenshot':
+        img_name_start = 'screenshot'
+    else:
+        return ''
+    
+    if os.path.exists(os.path.join(os.environ['SPLUNK_HOME'], static_dir, '%s.png' % (img_name_start))):
+        icon_name = '%s.png' % (img_name_start)
+    else:
+        if imgtype == 'app':
+            icon_name = 'appIcon_null.png'
+        elif imgtype == 'screenshot':
+            icon_name = 'screenshot_null.png'
+    
+    return icon_name
+
+%>
+
+<%
+
+#
+# splunkbase app retrieval
+#
+
+# will build a uri like https://localhost:9089/servicesNS/owner/search/apps/local
+uri = en.buildEndpoint('apps/', entityName='local', namespace=getDefault('namespace'), owner=auth.getCurrentUser()['name'])
+try:
+    serverResponse, serverContent = rest.simpleRequest(uri, sessionKey=splunk.getSessionKey() , getargs={'count':'-1'})
+except Exception, e:
+    raise e
+
+atomFeed = rest.format.parseFeedDocument(serverContent)
+
+# list of atom entries
+atom = []
+show_remote = True
+
+# pop of all apps we are not interested in
+for entry in atomFeed:
+    parsedRawContents = rest.format.nodeToPrimitive(entry.rawcontents) 
+    try:
+        if entry.title == 'launcher':
+            show_remote = util.normalizeBoolean(parsedRawContents['remote_tab'])
+            continue
+    except:
+        continue
+    if (parsedRawContents['visible'] and not util.normalizeBoolean(parsedRawContents['visible'])):
+        continue
+    else:
+        atom.append(entry)
+
+appcount = len(atom)
+currentpage = 0
+pages, rem = divmod(appcount,10)
+if rem:
+    pages += 1
+
+
+#
+# first time run state
+#
+
+localEventCount = 0
+try:
+    defaultIndex = en.getEntity('data/indexes', 'main')
+    if defaultIndex.get('totalEventCount'):
+        localEventCount = int(defaultIndex['totalEventCount'])
+except splunk.ResourceNotFound:
+    pass
+    
+    
+#
+# launcher tab state
+#
+# This logic reuses the viewstate system to store the selected launcher tab
+# on a per-user basis.  The index of the selected tab is persisted on disk
+# like:
+#
+#     $SPLUNK_HOME/etc/users/admin/launcher/local/viewstates.conf
+#         [home:_current]
+#         ServerSideInclude_0_0_0.tab_index = 1
+#
+# On load, the _current viewstate is loaded.  On tab click, the JS handler
+# will contact the existing viewstate handler (in view.py) to POST the
+# updated tab index.
+#
+
+PLACEHOLDER_MODULE_ID = 'ServerSideInclude_0_0_0'
+PLACEHOLDER_PARAM = 'tab_index'
+
+selectedTabIndex = 1
+persisted = viewstate.get(VIEW['id'], viewstate_id=None, namespace=APP['id'], owner=None)
+if persisted.modules.get(PLACEHOLDER_MODULE_ID):
+    selectedTabIndex = int(persisted.modules[PLACEHOLDER_MODULE_ID].get(PLACEHOLDER_PARAM, 1))
+%>
+
+<%lib:add_script_block>
+    
+    function doEnableAction(enable_uri, sessionID, ctrlAction, ctrlLink, ctrlName) {
+        $.post(
+            enable_uri,
+            {
+                splunk_session_id: sessionID,
+                ctrl: ctrlAction,
+                ctrl_link: ctrlLink,
+                ctrl_name: ctrlName   
+            }
+        );
+    }
+    
+    function onEnable ( t ) {
+        Splunk.Messenger.System.getInstance().send('warn', 'restart_server', _('You must [[/manager/search/control|restart]] for the app to be enabled.'));
+        
+        $(t).parent('.disabledOptions').hide().siblings('.enabledOptions').show();    
+    }
+    
+    /**
+     * Persists the currently selected tab index to the viewstate system
+     * See python section above for full details
+     */
+    function persistTabState(newTabIndex) {
+        
+        var vsUri = Splunk.util.make_url(
+            'app',
+            Splunk.util.getCurrentApp(),
+            Splunk.util.getCurrentView(),
+            'home:_current'
+        );
+        
+        $.ajax({
+            type: 'POST',
+            url: vsUri,
+            data: '${PLACEHOLDER_MODULE_ID}.${PLACEHOLDER_PARAM}=' + encodeURIComponent(newTabIndex),
+            dataType: 'json'
+        });
+    }
+    
+    /**
+     * Click event binder for tab clicks.  This overlays the click handler
+     * defined by the tabify.js library so that we can persist the index
+     * of the selected tab
+     */
+    function attachTabPersistence(tabId) {
+        $(tabId).bind('click', function(evt) {
+            var el = $(evt.target);
+            if (!el.is('a')) return false;
+            persistTabState(el.attr('idx'));
+        });
+    }
+    
+    /**
+     * Click event binder for app list item clicks.  Makes entire li a link
+     * to the href of the internally contained link.  
+     */
+    function attachAppListClickHandler() {
+        // set up welcome link clicks functions
+        $('.launcherLinks li').click(function(evt){
+            var t = evt.target;
+            if ( ($(t).is('li.disabledApp') || $(t).parents('li.disabledApp').length) && !$(t).is('a.enableLink') ) {
+                return false
+            } else if ( !$(t).is('a') ) { //do nothing if it's a link
+                var loc = $(this).find('a.launcher-applist-link').attr('href');
+                location.href = loc;
+            }
+        }); 
+    } 
+
+    function loadRemoteApps() {
+      var logger = Splunk.Logger.getLogger("splunk.launcher");
+      % if show_remote:
+       var xhr = $.ajax({
+            type: 'GET',
+            url: 'sb',
+            dataType: 'html',
+            async: true,
+            success: function(htmlresult, textStatus){
+                logger.info("successfully loaded app tab content");
+                $("#loadingSB").hide();
+                var html = $('#sb').replaceWith(htmlresult);
+            },
+            error: function(xhr, textStatus, errorThrown) {
+                logger.error("Could not load app tab content");
+            }
+        });
+        % endif
+    }
+    
+    $('#externalAppsTab').click(function(){
+       loadRemoteApps();
+     }
+    );
+
+
+    $(document).ready(function(){
+        var logger = Splunk.Logger.getLogger("splunk.launcher");
+        
+        tabify('#appTabs');
+        attachTabPersistence('#appTabs');
+        attachAppListClickHandler();
+
+        var remoteTabIndex = $('#externalAppsTab').attr('idx');
+        var $current = $('.current');
+        var shownTabID = $current.children('a').attr('idx');
+
+        /* When the page loads for the first time, if we are on the 'Remote Apps' tab (say we timed out previously and were prompted to login again)
+           will will continur in a wait loop as no 'click' event wil take place. This code will ensure that on page load if we are on the 
+           'Remote Tab' we will show results as well.
+        */ 
+        if (remoteTabIndex == shownTabID)
+        {
+           loadRemoteApps();
+         }
+
+        logger.info("Launcher initialization complete");
+    });
+</%lib:add_script_block>
+
+
+<style>
+
+    /* icons and screenshots */ 
+
+    % for entry in atom:
+
+    <%
+       icon_name = getname(entry, 'app')
+       screenshot_name = getname(entry, 'screenshot')
+    %>
+
+    .launcherLinks li#${convert_spaces_to_underscores(entry.title)}Menu div.launcher-applist-wrapper {
+        % if icon_name == 'appIcon_null.png':
+           background-image: url("${make_url('/static/app/launcher/%s' %  icon_name)}");
+        % else:
+	       background-image: url("${make_url('/static/app/%s/%s' % (entry.title, icon_name))}");
+        % endif
+    }
+
+    % endfor
+
+</style>
+
+
+<div id="appTabs-outer">
+	<div id="appTabs-wrapper">
+    	<ul id="appTabs" class="launcher-tabs">
+    	    <%
+    	        tabdef = [
+        	        _('Welcome'),
+    	            _('Your apps (%(appcount)s)') % dict(appcount=appcount),
+    	            _('Browse more apps')
+    	        ]
+    	    %>
+    	    % for i, title in enumerate(tabdef, 1):
+    	        % if i == selectedTabIndex:
+            	    <li class="current">
+            	% else:
+        	        <li>
+        	    % endif
+
+                % if title == _('Browse more apps'):
+                   <a href="#tab_${i}" idx="${i}" id="externalAppsTab">${title | h}</a>
+                % else:
+            	    <a href="#tab_${i}" idx="${i}">${title | h}</a>
+                % endif
+            	</li>
+            % endfor
+    	</ul>
+	</div>
+</div>
+
+
+<div id="launcher-wrapper">
+    <div id="tab_1" class="appTab">
+        <h1>
+    	    <%doc>Launcher welcome message</%doc>
+    	    ${_('Welcome to Splunk.')}
+    	</h1>
+        <p class="intro">${_("Splunk is the IT Search engine. It lets you index, search, alert and report on any IT data, in real time, for application management, IT operations, security and compliance, and more. Splunk consumes any IT data, from log files, system metrics, applications, configurations - just try it!")}</p>
+        <p class="intro">${_("If this is your first time using Splunk, we recommend going through the steps below.")}</p>
+        
+        <ul class="launcherLinks">
+		    <li id="datainputs">
+		    	<div>
+			    	<a class="launcher-applist-link" href="${make_url('/manager/search/datainputstats')}">${_("Add Data")}</a>
+			    	<p>${_("Before you can use Splunk, you'll need to index some IT data. Index event logs, log files, syslog, and more.")} </p>
+			    	
+			    </div>
+		    </li>
+		    
+		    <li id="gettingstarted">
+			    <div>
+			    	<a class="launcher-applist-link" href="${make_url('/app/gettingstarted/getstarted')}">${_("Getting Started Tutorial")}</a>
+			    	<p>${_("Learn how to use Splunk's core features, like searching, monitoring, alerting, and reporting.")}</p>
+			    </div>
+		    </li>
+		    <li id="manager">
+		    	<div>
+			    	<a class="launcher-applist-link" href="${make_url('/manager/search')}">${_("Manager")}</a>
+			    	<p>${_("Edit your server settings and configurations.")}</p>
+			    </div>
+		    </li>
+		    <li class="last" id="search">
+		    	<div>
+			    	<a class="launcher-applist-link" href="${make_url('/app/search')}">${_("Search")}</a>
+			    	<p>${_("Search your IT data.")}</p>
+		    	</div>
+		   </li>
+		    
+		</ul>
+        <div class="launcherfooter">
+            
+            <%
+                defaultAppChangeLink = make_url('/manager/search/authentication/changepassword/%s' % util.safeURLQuote(cherrypy.session['user']['name'], safe=''), _qs=dict(action='edit'))
+            %>
+            <%doc>Launcher message with link to change default app </%doc>
+			${_("Don't want to see this screen? %(open_link)s Change your default settings %(close_link)s in Manager") % dict(open_link='<a href="'+defaultAppChangeLink+'">', close_link='</a>') }
+		</div>
+    </div>
+
+	<div id="tab_2" class="appTab">
+        <h1>
+            <%doc>Launcher installed apps message</%doc>
+            ${_('Your installed apps')}
+        </h1>
+        <p class="intro">${_("Below you'll find Splunk apps to get the most out of your Splunk experience.")}</p>
+        
+        
+        
+        <ul class="launcherLinks">
+		    
+	    
+            % for entry in atom:
+
+                 <% 
+                    parsedRawContents = rest.format.nodeToPrimitive(entry.rawcontents) 
+                    
+                    isDisabled = False
+                    if util.normalizeBoolean(parsedRawContents['disabled']):
+                       isDisabled = True
+                       disabledFlag = "disabledApp"
+                    else:
+                       disabledFlag = ""
+                       
+                    try:
+                       desc = parsedRawContents['description']
+                    except KeyError:
+                       desc = _('No description has been provided for this app. Please update app.conf for your app.')
+                           
+                %>
+
+                <li id="${convert_spaces_to_underscores(entry.title)}Menu" class="launcher-applist ${disabledFlag}">
+                	<div class="launcher-applist-wrapper">
+            	    	<a class="launcher-applist-link" ${'href="'+make_url('/app/'+entry.title)+'"' if not isDisabled else ''}>
+            	    	    ${parsedRawContents['label'] | h}
+            	    	</a>
+            	    	<p>
+                            ${_(desc) | h}
+            	    	</p>
+            	    </div>
+            	    % if util.normalizeBoolean(parsedRawContents['disabled']):
+
+                    <%
+                        ## temp_uri = en.buildEndpoint('/apps/local/', entityName=entry.title, namespace=getDefault('namespace'), owner=auth.getCurrentUser()['name'])
+                        ## enable_uri = '%s://%s:%s/%s' % (splunk.getDefault('protocol'),splunk.getDefault('host'), splunk.getDefault('port'), temp_uri.strip('/'))
+                        
+                        namespace=getDefault('namespace')
+                        sessionId = cherrypy.session.id
+                        port = splunk.getDefault('port')
+                        enable_link = filter((lambda x: x[0] == 'enable'), entry.links)
+                        ctrl_link = enable_link[0][1]
+                        ctrl_action = enable_link[0][0]
+                        enable_uri = make_url('/manager/%s/%s/multidelete' % (namespace, 'apps/local'))
+                    %>
+                     
+                     <a class="enableLink" href="#" onclick="doEnableAction('${enable_uri}', '${sessionId}', '${ctrl_action}', '${ctrl_link}', '${entry.title}');  onEnable($(this));" title="${_('This app is installed but not enabled. Click this link to enable this app.')}">${_('Enable')}</a>                     
+                                                      
+                    % endif
+                </li>
+
+
+            % endfor
+
+		</ul>
+	</div><!-- / tab 2 -->
+	
+	
+	
+	
+	<!-- SPLUNKBASE APPS -->
+	
+	<div id="tab_3" class="appTab">
+        <h1>
+            <%doc>Launcher splunkbase message</%doc>
+            ${_('Browse for more apps')}
+        </h1>
+        <p class="intro">${_("Below you'll find more Splunk apps to get the most out of your Splunk experience.")}</p>
+           <div id="loadingSB">
+               ${_('Loading...')}
+           </div>
+                % if show_remote:
+                <div class="launcher-menu" id="sb">
+                </div>
+               % else:
+                <div class="noSplunkbase">
+                   <h3>
+                    <%doc>The content below is really controlled via the output of sb.html</%doc>
+                     ${_("Launcher doesn't seem to be able to connect to the Internet to search for more apps. Please visit splunkbase.com to get a full list of what's available for your Splunk.")}
+                   </h3>
+                </div>
+               % endif
+
+	</div><!-- / tab 3 -->
+
+</div><!-- / launcher-wrapper -->

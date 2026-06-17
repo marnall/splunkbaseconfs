@@ -1,0 +1,289 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Dispatch Directory Inspector</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Dispatch Directory Inspector</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">dispatch_inspector.html</param>
+    </module>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+            
+    <!-- COMMON CONTROLS END   -->
+
+    <module name="Pulldown" layoutPanel="panel_row1_col1" group="Artifact count">
+      <param name="name">splitBy</param>
+      <param name="template">$value$</param>
+      <param name="float">left</param>
+      <param name="label">Split by</param>
+      <param name="staticFieldsToDisplay">
+        <list>
+          <param name="label">search type</param>
+          <param name="value">searchType</param>
+        </list>
+        <list>
+          <param name="label">search name</param>
+          <param name="value">searchName</param>
+        </list>
+        <list>
+          <param name="label">user</param>
+          <param name="value">user</param>
+        </list>
+        <list>
+          <param name="label">app</param>
+          <param name="value">app</param>
+        </list>
+      </param>
+      <module name="Search">
+        <param name="search"><![CDATA[
+        | rest splunk_server=local timeout=300 /services/search/jobs
+        | eval searchName=if(len(label)>0,label,"n/a")
+        | `get_search_type`
+        | rename eai:acl.app AS app eai:acl.owner AS user
+        | stats count by $splitBy$
+        ]]></param>
+        <module name="HiddenChartFormatter">
+          <param name="charting.chart">pie</param>
+          <module name="JSChart">
+          </module>
+        </module>
+        <module name="ViewRedirectorLink">
+          <param name="viewTarget">flashtimeline</param>
+          <param name="popup">true</param>
+        </module>
+      </module>
+    </module>
+ 
+    <module name="Pulldown" layoutPanel="panel_row1_col2" group="Artifact disk usage">
+      <param name="name">splitBy</param>
+      <param name="template">$value$</param>
+      <param name="float">left</param>
+      <param name="label">Split by</param>
+      <param name="staticFieldsToDisplay">
+        <list>
+          <param name="label">search type</param>
+          <param name="value">searchType</param>
+        </list>
+        <list>
+          <param name="label">search name</param>
+          <param name="value">searchName</param>
+        </list>
+        <list>
+          <param name="label">user</param>
+          <param name="value">user</param>
+        </list>
+        <list>
+          <param name="label">app</param>
+          <param name="value">app</param>
+        </list>
+      </param>
+      <module name="Search">
+        <param name="search"><![CDATA[
+        | rest splunk_server=local timeout=300 /services/search/jobs
+        | eval searchName=if(len(label)>0,label,"n/a")
+        | `get_search_type`
+        | eval diskUsageMB=round(diskUsage/1024/1024,2)
+        | rename eai:acl.app AS app eai:acl.owner AS user
+        | stats sum(diskUsageMB) AS totalDiskUsageMB by $splitBy$
+        | eval avgDiskUsageMB=round(totalDiskUsageMB/count,2)
+        ]]></param>
+        <module name="HiddenChartFormatter">
+          <param name="charting.chart">pie</param>
+          <module name="JSChart">
+          </module>
+        </module>
+        <module name="ViewRedirectorLink">
+          <param name="viewTarget">flashtimeline</param>
+          <param name="popup">true</param>
+        </module>
+      </module>
+    </module>
+ 
+
+    <module name="Pulldown" layoutPanel="panel_row2_col1" group="Breakdown of dispatch directory disk usage">
+      <param name="name">splitBy</param>
+      <param name="template">$value$</param>
+      <param name="float">left</param>
+      <param name="label">Split by</param>
+      <param name="staticFieldsToDisplay">
+        <list>
+          <param name="label">search</param>
+          <param name="value">| stats sum(count) AS count sum(totalDiskUsageMB) AS totalDiskUsageMB values(user) AS users values(app) AS apps values(schedule) AS schedule values(earliest_time) AS earliest_time values(latest_time) AS latest_time by search | fields - user app</param>
+        </list>
+        <list>
+          <param name="label">user</param>
+          <param name="value">| stats sum(count) AS count sum(totalDiskUsageMB) AS totalDiskUsageMB values(app) AS apps values(search) AS searches values(schedule) AS schedule values(earliest_time) AS earliest_time values(latest_time) AS latest_time by user | fields - search app</param>
+        </list>
+        <list>
+          <param name="label">app</param>
+          <param name="value">| stats sum(count) AS count sum(totalDiskUsageMB) AS totalDiskUsageMB values(user) AS users values(search) AS searches values(schedule) AS schedule values(earliest_time) AS earliest_time values(latest_time) AS latest_time by app | fields - search user </param>
+        </list>
+      </param>
+
+      <module name="Checkbox">
+        <param name="name">searchTypeFilter</param>
+        <param name="checked">True</param>
+        <param name="label">Show scheduled searches only</param>
+        <param name="labelPosition">right</param>
+        <param name="onValue">| search searchType="scheduled"</param>
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+          | rest splunk_server=local timeout=300 /services/search/jobs
+          | `get_search_type`
+          $searchTypeFilter$
+          | eval diskUsageMB=round(diskUsage/1024/1024,2)
+          | eval doneProgress=round(doneProgress*100,2)."%"
+          | eval search=if(label="",title,label)
+          | append [rest splunk_server=local count=0 /servicesNS/-/-/saved/searches]
+          | search (disabled=0 is_scheduled=1) OR NOT is_scheduled=*
+          | lookup cron2basic cron_schedule OUTPUT basic_schedule
+          | eval schedule=if(isnull(basic_schedule),cron_schedule,basic_schedule)
+          | rename dispatch.earliest_time AS earliest dispatch.latest_time AS latest
+          | eval search=if(is_scheduled="1",title,search)
+          | eval earliest_time=if(earliest="","epoch",earliest)
+          | eval latest_time=if(latest="","now",latest)
+          | rename eai:acl.app AS app eai:acl.owner AS user
+          | stats count(diskUsageMB) AS count sum(diskUsageMB) AS totalDiskUsageMB values(schedule) AS schedule values(earliest_time) AS earliest_time values(latest_time) AS latest_time by search user app
+          $splitBy$
+          | makemv search delim="|"
+          | eval avgDiskUsageMB=round(totalDiskUsageMB/count,2)
+          | search count>0
+          | rename count AS "Number of artifacts" avgDiskUsageMB AS "Average disk usage per artifact (MB)" totalDiskUsageMB AS "Total disk usage (MB)"
+          ]]></param>
+          <module name="HTML">
+            <param name="html"><![CDATA[
+            <h3>Click on a table row to view the full details of a group of search artifacts in a new window</h3>
+            ]]></param>
+          </module>
+          <module name="Pager">
+            <module name="SimpleResultsTable">
+              <param name="drilldown">row</param>
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">true</param>
+                <param name="arg.q"><![CDATA[
+                | rest splunk_server=local timeout=300 /services/search/jobs
+                | eval user='eai:acl.owner'
+                | eval app='eai:acl.app'
+                | eval search=if(label="",title,label)
+                | `get_search_type`
+                $searchTypeFilter$
+                | search $click.cell0.name$="$click.cell0.value$"
+                | fields - performance.*
+                ]]></param>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="ViewRedirectorLink">
+            <param name="viewTarget">flashtimeline</param>
+            <param name="popup">true</param>
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="Checkbox" layoutPanel="panel_row3_col1" group="Inventory of search artifacts">
+      <param name="name">searchTypeFilter</param>
+      <param name="checked">True</param>
+      <param name="float">left</param>
+      <param name="label">Show scheduled searches only</param>
+      <param name="labelPosition">left</param>
+      <param name="onValue">| search searchType="scheduled"</param>
+
+      <module name="TextField" autoRun="True">
+        <param name="width">200px</param>
+        <param name="name">my_filter</param>
+        <param name="float">left</param>
+        <param name="template">$value$*</param>
+        <param name="label">Filter terms:</param>
+        <param name="default">*</param>
+        <module name="SubmitButton">
+          <param name="allowSoftSubmit">True</param>
+
+          <module name="Search">
+            <param name="search"><![CDATA[
+            | rest splunk_server=local timeout=300 /services/search/jobs
+            | `get_search_type`
+            $searchTypeFilter$
+            | eval diskUsageMB=round(diskUsage/1024/1024,2)
+            | eval doneProgress=round(doneProgress*100,2)."%"
+            | eval runDuration=round(runDuration,2)
+            | table eai:acl.owner eai:acl.app label title searchType dispatchState doneProgress eventCount resultCount runDuration diskUsageMB ttl updated sid
+            | makemv title delim="|"
+            | search eai:acl.owner=*$my_filter$ OR eai:acl.app=*$my_filter$ OR label=*$my_filter$ OR title=*$my_filter$ OR searchType=*$my_filter$ OR dispatchState=*$my_filter$ OR doneProgress=*$my_filter$ OR eventCount=*$my_filter$ OR resultCount=*$my_filter$ OR runDuration=*$my_filter$ OR diskUsageMB=*$my_filter$ OR ttl=*$my_filter$ OR updated=*$my_filter$ OR sid=*$my_filter$
+            | rename eai:acl.owner AS user eai:acl.app AS app label AS "saved search name" title AS "search string"
+            | makemv _raw delim="|"
+            | rename label AS "saved search name" _raw AS "search string"
+            ]]></param>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+              <h3>Click on a table row to view the full details of a search artifact in a new window</h3>
+              ]]></param>
+            </module>
+
+            <module name="SimpleResultsHeader">
+              <param name="entityName">results</param>
+              <param name="headerFormat">$count$ search artifacts found</param>
+              <module name="Pager">
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <module name="Redirector">
+                    <param name="url">flashtimeline</param>
+                    <param name="popup">true</param>
+                    <param name="arg.q"><![CDATA[
+                    | rest splunk_server=local timeout=300 /services/search/jobs
+                    | search sid="$click.fields.sid$"
+                    | fields - performance.*
+                    | transpose
+                    | rename column AS key "row 1" AS value
+                    ]]></param>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+
+  </module>
+</view>

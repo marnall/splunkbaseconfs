@@ -1,0 +1,233 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css">
+  <label>Set up Data Inputs</label
+>
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+      <h1><a href="home">Home</a> &gt; Admin &gt; Set Up Data Inputs</h1>
+    ]]></param>
+  </module>
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search"><![CDATA[
+| tstats max(_time) as max_time count WHERE `custom_index` sourcetype="cucm_cdr" earliest=-14d BY index
+| stats sum(count) as call_legs last(max_time) as last_contact
+| appendcols [
+  | rest /services/data/inputs/monitor splunk_server=local
+  | rename eai:acl.app as app title as path
+  | search (sourcetype="cucm_cdr" OR sourcetype="cucm_cmr") disabled=0
+  | stats count as local_data_input_count values(sourcetype) as data_input_sourcetypes values(app) as data_input_app values(path) as data_input_paths
+  | table local_data_input_count data_input_app data_input_sourcetypes index data_input_paths
+]
+| eval has_data = if(call_legs>0,"yes","no")
+| eval message_type=case(call_legs>0 AND local_data_input_count>0, "has_data_has_inputs", call_legs>0 AND local_data_input_count==0, "has_data_no_inputs", call_legs==0 AND local_data_input_count>0, "no_data_has_inputs", call_legs==0 AND local_data_input_count==0, "no_data_no_inputs")
+    ]]></param>
+
+    <module name="ResultsValueSetter">
+      <param name="fields">message_type, has_data</param>
+
+      <module name="Switcher">
+        <param name="selectedGroup">$message_type$</param>
+
+        <module name="HTML" group="has_data_has_inputs">
+          <param name="html"><![CDATA[
+
+            This page exists to help admins ingest CDR and CMR files from this server's <strong>local filesystem</strong>. <br>
+
+            It looks like this has already been done and CDR data has been coming in.<br>
+            <br>
+
+            <strong>
+                Unless you would like to add an additional set of inputs in a different directory, there's no need to configure anything additional on this page.
+            </strong>
+          ]]></param>
+        </module>
+
+        <module name="HTML" group="has_data_no_inputs">
+          <param name="html"><![CDATA[
+            This page exists to help admins ingest CDR and CMR files from this server's <strong>local filesystem</strong>. <br>
+            <br>
+            Data seems to be getting sent to this server already from a Splunk forwarder.<br>
+            <br>
+            <strong>Therefore there is most likely no need to configure anything on this page.</strong>
+
+          ]]></param>
+        </module>
+
+        <module name="HTML" group="no_data_has_inputs">
+          <param name="html"><![CDATA[
+            <div class="error" style="padding-left:0px;">
+              This splunk instance seems to have local data inputs configured already, but no data is coming in.<a href="data_health_checks">Run the app's health checks</a> for more information.
+            </div>
+
+            <br>
+            <br>
+            <strong>
+                Unless you would like to add an additional set of data inputs in a different directory, there's no need to configure anything additional on this page.
+            </strong>
+
+          ]]></param>
+        </module>
+
+        <module name="HTML" group="no_data_no_inputs">
+          <param name="html"><![CDATA[
+            This page exists to help admins ingest CDR and CMR files from this server's <strong>local filesystem</strong>.
+            <br>
+
+            This Splunk server has no CDR data flowing in yet, and has not been configured yet to index anything from the local filesystem.<br>
+            <br>
+            If you are already transferring files to this host via SFTP then you are in the right place. Use the form below to start ingesting and deleting those files from the local filesystem as they come in.
+          ]]></param>
+        </module>
+
+      </module>
+
+
+
+
+      <module name="Pulldown" layoutPanel="panel_row2_col1">
+        <param name="name">section</param>
+        <param name="label">Proceed and ingest CDR from this server's local filesystem?</param>
+        <param name="staticOptions">
+          <list>
+            <param name="label">Yes</param>
+            <param name="value">singleIndexer</param>
+          </list>
+          <list>
+            <param name="label">No thanks</param>
+            <param name="value">distributed</param>
+          </list>
+        </param>
+
+        <module name="Switcher">
+          <param name="selectedGroup">$section$</param>
+
+          <module name="NullModule" group="singleIndexer">
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                OK Great. You can use this page to create the data input config inside Splunk.
+                <br>
+                <br>
+              ]]></param>
+            </module>
+
+            <module name="TextField">
+              <param name="name">path</param>
+              <param name="width">350px</param>
+              <param name="label">First, enter the directory on this server that contains the CDR and CMR files</param>
+              <param name="float">left</param>
+
+              <module name="Button">
+
+                <module name="REST">
+                  <param name="name">validateDataInputs</param>
+                  <param name="uri">/splunkd/__raw/services/cisco_cdr_data_inputs/validate</param>
+                  <param name="arg.path">$path.rawValue$</param>
+
+                  <module name="Switcher">
+                    <param name="selectedGroup">$validateDataInputs.state$</param>
+
+                    <module name="NullModule" group="success">
+                      <module name="HTML">
+                        <param name="clear">both</param>
+                        <param name="html"><![CDATA[
+                          OK. $validateDataInputs.message$<br>
+                          <br>
+                          Next select which Splunk index the data should go into. If you want the data to appear in this app, use the index marked as "recommended".
+                          <br>
+                          <br>
+                        ]]></param>
+                      </module>
+
+                      <module name="Search">
+                        <param name="search"><![CDATA[
+    | rest splunk_server=local /servicesNS/-/cisco_cdr/admin/macros/custom_index
+    | table definition
+    | eval custom_index_eval_spl="eval label=if(" + definition + ", index + \" (recommended)\", index)"
+                        ]]></param>
+
+                        <module name="ResultsValueSetter">
+                          <param name="fields">custom_index_eval_spl</param>
+
+                          <module name="Search">
+                            <param name="search"><![CDATA[
+    | eventcount summarize=false `customizable_all_indexes`
+    | $custom_index_eval_spl$
+                            ]]></param>
+
+                            <module name="Pulldown">
+                              <param name="name">index</param>
+                              <param name="label">$name$</param>
+                              <param name="valueField">$name$</param>
+                              <param name="labelField">label</param>
+                              <param name="staticOptions"></param>
+                              <param name="float">left</param>
+
+                              <module name="Button">
+
+                                <module name="REST">
+                                  <param name="name">createDataInputs</param>
+                                  <param name="uri">/splunkd/__raw/services/cisco_cdr_data_inputs/create</param>
+                                  <param name="arg.path">$path.rawValue$</param>
+                                  <param name="arg.index">$index.rawValue$</param>
+
+                                  <module name="Switcher">
+                                    <param name="selectedGroup">$createDataInputs.state$</param>
+
+                                    <module name="HTML" group="success">
+                                      <param name="clear">both</param>
+                                      <param name="html"><![CDATA[
+                                        $createDataInputs.message$<br>
+                                      ]]></param>
+                                    </module>
+
+                                    <module name="HTML" group="failure">
+                                      <param name="clear">both</param>
+                                      <param name="html"><![CDATA[
+                                        $createDataInputs.message$<br>
+                                      ]]></param>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+
+                    <module name="HTML" group="failure">
+                      <param name="clear">both</param>
+                      <param name="html"><![CDATA[
+                        ERROR: $validateDataInputs.errorMessage$
+                      ]]></param>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+
+          <module name="HTML" group="distributed">
+            <param name="html"><![CDATA[
+              No problem. The setup docs on our website will walk you through everything. <br>
+              <br>
+              If you haven't done it already, your next step will be <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation-step-3-data-collection" target="_blank">Install Step 3, Data Collection</a>.
+
+              <br>
+              <br>
+              If you have any questions or if you are hitting any problems, please don't hesitate to contact us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>.
+
+            ]]></param>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+
+
+</view>

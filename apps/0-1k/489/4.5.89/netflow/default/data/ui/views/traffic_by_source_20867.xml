@@ -1,0 +1,252 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+	<label>Traffic by Source IP with TCP Duration (DEPRECATED)</label>
+	<fieldset autoRun="True">
+		<input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+			<label>NFO hostnames</label>
+			<default>*</default>
+			<search>
+				<query>| `populate_nfo_hostnames`</query>
+			</search>
+			<fieldForLabel>nfo_hostname</fieldForLabel>
+			<fieldForValue>nfo_hostname</fieldForValue>
+		</input>
+		<input type="dropdown" token="exp_group" searchWhenChanged="false">
+			<label>Device group</label>
+			<default>*</default>
+			<search>
+				<query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+			</search>
+			<fieldForLabel>exp_group</fieldForLabel>
+			<fieldForValue>exp_group</fieldForValue>
+		</input>
+		<input type="dropdown" token="exp_ip" searchWhenChanged="false">
+			<label>Device</label>
+			<default>*</default>
+			<choice value="*">*</choice>
+			<search>
+				<query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+			</search>
+			<fieldForLabel>name</fieldForLabel>
+			<fieldForValue>exp_ip</fieldForValue>
+		</input>
+		<input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+			<label>Source IP/mask</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+			<label>Dest. IP/mask</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+			<label>Protocol</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+			<label>Src. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+			<label>Dest. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+			<label>Advanced Filter</label>
+			<default>*</default>
+		</input>
+		<input type="time" searchWhenChanged="False">
+			<label>Time Range</label>
+			<default>Last 60 minutes</default>
+		</input>
+	</fieldset>
+	<search>
+		<query>`netflow_search_rule_20867` | `set_span`</query>
+		<earliest>$earliest$</earliest>
+		<latest>$latest$</latest>
+		<done>
+			<condition match="'job.resultCount' &gt; 0">
+				<set token="show_content">true</set>
+				<set token="span_token">$result.span$</set>
+				<set token="span_int">$result.span_int$</set>
+				<set token="range">$result.range$</set>
+				<set token="earliest_token">$result.all_time_earliest$</set>
+				<set token="latest_token">$result.all_time_latest$</set>
+				<unset token="show_hint"/>
+				<unset token="search_done"/>
+			</condition>
+			<condition>
+				<unset token="show_content"/>
+				<set token="show_hint">true</set>
+			</condition>
+		</done>
+	</search>
+	<search>
+		<query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+		<earliest>-24h@h</earliest>
+		<latest>now</latest>
+		<done>
+			<condition>
+				<set token="charting.chart_value">$result.charting.chart$</set>
+				<set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+			</condition>
+		</done>
+	</search>
+	<search id="baseSearch">
+		<query>
+			`basesearch_20867("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+		</query>
+		<earliest>$earliest$</earliest>
+		<latest>$latest$</latest>
+	</search>
+	<row depends="$show_content$" id="timechart">
+		<panel>
+			<chart>
+				<title>Traffic by Source IP</title>
+				<search base="baseSearch">
+					<query>
+						| `dedup_timechart_events`
+						| eventstats latest(src_host) as l_src_host by nfo_hostname exp_ip src_ip
+						| `format_ip_column(src_ip_string, src_ip, l_src_host)`
+						| `per_second_chart(sum(sum_bytes_in) by src_ip_string,"$span_token$",$span_int$)`
+					</query>
+					<done>
+						<set token="search_done">"done"</set>
+					</done>
+				</search>
+				<option name="charting.axisTitleX.text">Time</option>
+				<option name="charting.axisTitleY.text">Mbps</option>
+				<option name="charting.chart">$charting.chart_value$</option>
+				<option name="charting.chart.nullValueMode">zero</option>
+				<option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+				<option name="charting.drilldown">none</option>
+				<option name="charting.legend.placement">right</option>
+				<option name="height">216</option>
+				<selection>
+					<set token="selection.earliest">$start$</set>
+					<set token="selection.latest">$end$</set>
+					<eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+					<unset token="Source IP"/>
+					<unset token="Device"/>
+					<unset token="Exp_IP"/>
+				</selection>
+			</chart>
+		</panel>
+	</row>
+	<row depends="$show_content$,$search_done$">
+		<panel>
+			<table depends="$showbase$" id="table_1_1">
+				<search base="baseSearch">
+					<query>
+						| fillnull value="" src_host
+						| eventstats latest(src_host) as l_src_host by exp_ip src_ip 
+						| eval exp_ip_host_port=exp_ip."#".src_ip."#".l_src_host."#".src_port 
+						| stats sum(sum_bytes_in) as outbytes 
+								sum(sum_bytes_out) as inbytes 
+								sum(sum_packets_in) as outpackets 
+								sum(sum_packets_out) as inpackets 
+								sum(sum_flow_count) as Connections 
+								avg(avg_tcp_duration) as avgtcpduration
+								  by nfo_hostname exp_ip_host_port
+						| eval temp=split(exp_ip_host_port,"#")
+						| eval exp_ip=mvindex(temp,0) 
+						| eval ip=mvindex(temp,1)
+						| eval host=mvindex(temp,2)
+						| eval port=mvindex(temp,3)
+						| eval "Bytes Rcvd/Sent %"=round((inbytes/outbytes)*100,2)
+						| eval "Packets Rcvd/Sent %"=round((inpackets/outpackets)*100,2)
+						| eval outmegabytes = outbytes/1024/1024
+						| eval inmegabytes = inbytes/1024/1024
+						| sort 0 by - outmegabytes
+						| `commas_formatting(MB Sent, outmegabytes,2)` 
+						| `commas_formatting(MB Received, inmegabytes,2)` 
+						| `commas_formatting(Packets Sent, outpackets)` 
+						| `commas_formatting(Packets Received, inpackets)` 
+						| `get_exporter_name(exp_ip_name)`
+						| table nfo_hostname exp_ip_name ip port host "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" Connections, avgtcpduration
+						| rename nfo_hostname as "NFO" 
+						| rename exp_ip_name as "Device" 
+						| rename ip as "Source IP" 
+						| rename port as "Source Port"
+						| rename host as "Source Host"
+						| rename avgtcpduration as "Avg TCP duration"
+					</query>
+				</search>
+				<option name="count">10</option>
+				<option name="showPager">true</option>
+				<option name="drilldown">none</option>
+			</table>
+			<table rejects="$showbase$" id="table_1_2">
+				<search>
+					<query>
+						`netflow_search_rule_20867` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$"
+						| eval bytes = bytes_in + bytes_out
+						| `sampling(bytes)`
+						| eventstats sum(bytes) as sum_by_exp by exp_ip nfo_hostname
+						| lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+						| search exp_group="$exp_group$" (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+							(dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+							src_port="$src_port$" dest_port="$dest_port$"
+						| fillnull value="" transport
+						| search transport="$protocol_name$"
+						| bin _time $span_token$
+						| stats sum(bytes_in) as sum_bytes_in sum(packets_in) as sum_packets_in
+						sum(bytes_out) as sum_bytes_out sum(packets_out) as sum_packets_out
+						sum(flow_count) as sum_flow_count avg(tcp_duration) as avg_tcp_duration
+						by nfo_hostname exp_ip src_ip src_port src_host dest_ip dest_port dest_host transport
+						flow_smpl_id sum_by_exp _time
+						| `sampling(bytes_in)`
+						| `sampling(sum_packets_in)`
+						| `sampling(bytes_out)`
+						| `sampling(sum_packets_out)`
+						| `sampling(sum_flow_count)`
+						| fillnull value="" src_host
+						| eventstats latest(src_host) as l_src_host by exp_ip src_ip 
+						| eval exp_ip_host_port=exp_ip."#".src_ip."#".l_src_host."#".src_port 
+						| stats sum(sum_bytes_in) as outbytes 
+							  sum(sum_bytes_out) as inbytes 
+							  sum(sum_packets_in) as outpackets 
+							  sum(sum_packets_out) as inpackets 
+							  sum(sum_flow_count) as Connections 
+							  avg(avg_tcp_duration) as avgtcpduration
+								by nfo_hostname exp_ip_host_port
+						| eval temp=split(exp_ip_host_port,"#")
+						| eval exp_ip=mvindex(temp,0) 
+						| eval ip=mvindex(temp,1)
+						| eval host=mvindex(temp,2)
+						| eval port=mvindex(temp,3)
+						| eval "Bytes Rcvd/Sent %"=round((inbytes/outbytes)*100,2)
+						| eval "Packets Rcvd/Sent %"=round((inpackets/outpackets)*100,2)
+						| eval outmegabytes = outbytes/1024/1024
+						| eval inmegabytes = inbytes/1024/1024
+						| sort 0 by - outmegabytes
+						| `commas_formatting(MB Sent, outmegabytes,2)` 
+						| `commas_formatting(MB Received, inmegabytes,2)` 
+						| `commas_formatting(Packets Sent, outpackets)` 
+						| `commas_formatting(Packets Received, inpackets)` 
+						| `get_exporter_name(exp_ip_name)`
+						| table nfo_hostname exp_ip_name ip port host "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" Connections, avgtcpduration
+						| rename nfo_hostname as "NFO" 
+						| rename exp_ip_name as "Device" 
+						| rename ip as "Source IP" 
+						| rename port as "Source Port"
+						| rename host as "Source Host"
+						| rename avgtcpduration as "Avg TCP duration"
+					</query>
+					<earliest>$selection.earliest$</earliest>
+					<latest>$selection.latest$</latest>
+				</search>
+				<option name="count">10</option>
+				<option name="showPager">true</option>
+				<option name="drilldown">none</option>
+			</table>
+		</panel>
+	</row>
+	<row depends="$show_hint$">
+		<panel>
+			<html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10867: Top Traffic Monitor Geo City”</b> (syslogs with nfc_id=20867). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received. This Module is packaged in <b>NFO “Enhanced Traffic Monitor 2” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+		</panel>
+	</row>
+</form>

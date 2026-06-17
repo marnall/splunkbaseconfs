@@ -1,0 +1,129 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>ICA Monitor</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">ICA Session Monitor</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report report provides detailed session bandwidth and latency statistics for the selected ICA session. For detailed views on other counters look under Reports/Environment in the navigation above. To view the entire result set or for this report or manipulate the data further, click on the View Full Report link below.</param>
+  </module>
+  <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="search">`xendesktop_index` `xd_ica` InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" | stats avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth avg(LatencySessionAverage) as LatencySessionAverage by _time vm_name | eval SessionBandwidth = InputSessionBandwidth + OutputSessionBandwidth</param>
+    <module name="HiddenPostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+      <param name="search">| stats values(vm_name) as vm first(_time) as f last(_time) as l | convert ctime(l) as l| convert ctime(f) as f | eval message = vm + " From: " + f + " to " + l | eval range="vmsreporting"</param>
+      <module name="SingleValue">
+        <param name="field">message</param>
+        <param name="beforeLabel">ICA Details For:</param>
+        <param name="classField">range</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+      <param name="viewTarget">flashtimeline</param>
+      <param name="label">View Full Report</param>
+    </module>
+    <module name="JobProgressIndicator"></module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp1" group="Session Bandwidth" autoRun="True">
+      <param name="search">| stats min(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">SessionBandwidth</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Min:</param>
+        <param name="afterLabel">kbs</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp2" group="Session Bandwidth" autoRun="True">
+      <param name="search">| stats avg(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">SessionBandwidth</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Avg:</param>
+        <param name="afterLabel">kbs</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp3" group="Session Bandwidth" autoRun="True">
+      <param name="search">| stats max(SessionBandwidth) as SessionBandwidth| eval SessionBandwidth = round(SessionBandwidth,2) | `usrexp_icabw` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">SessionBandwidth</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Max:</param>
+        <param name="afterLabel">kbs</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Input/Output Session Bandwidth" autoRun="True">
+      <param name="search">| timechart max(InputSessionBandwidth) as "InputSessionBandwidth" max(OutputSessionBandwidth) as "OutputSessionBandwidth"</param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">area</param>
+        <param name="chart.stackMode">stacked</param>
+        <param name="legend.placement">bottom</param>
+        <module name="FlashChart">
+          <param name="width">100%</param>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row4_col1" group="Total Session Bandwidth" autoRun="True">
+      <param name="search">| timechart max(SessionBandwidth) as "Max SessionBandwidth" avg(SessionBandwidth) as "Avg SessionBandwidth" min(SessionBandwidth) as "Min SessionBandwidth"</param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">area</param>
+        <param name="chart.stackMode">100% stacked</param>
+        <param name="legend.placement">bottom</param>
+        <module name="FlashChart">
+          <param name="width">100%</param>
+        </module>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp1" group="Session Latency" autoRun="True">
+      <param name="search">| stats min(LatencySessionAverage) as LatencySessionAverage| eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">LatencySessionAverage</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Min:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp2" group="Session Latency" autoRun="True">
+      <param name="search">| stats avg(LatencySessionAverage) as LatencySessionAverage| eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">LatencySessionAverage</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Avg:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp3" group="Session Latency" autoRun="True">
+      <param name="search">| stats max(LatencySessionAverage) as LatencySessionAverage | eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency` | eval usrexp="usrexp"+usrexp</param>
+      <module name="SingleValue">
+        <param name="field">LatencySessionAverage</param>
+        <param name="classField">usrexp</param>
+        <param name="format">count</param>
+        <param name="beforeLabel">Max:</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1" group="Session Latency Over Time" autoRun="True">
+      <param name="search">| timechart max(LatencySessionAverage) as "Max LatencySessionAverage" avg(LatencySessionAverage) as "Avg LatencySessionAverage" min(LatencySessionAverage) as "Min LatencySessionAverage"</param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">line</param>
+        <param name="chart.stackMode">none</param>
+        <param name="legend.placement">bottom</param>
+        <module name="FlashChart">
+          <param name="width">100%</param>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

@@ -1,0 +1,192 @@
+<view template="dashboard.html" objectMode="SimpleForm" onunloadCancelJobs="true" stylesheet="eventsearch.css">
+    <label>OSSEC Agent Management</label>
+    <module name="AccountBar" layoutPanel="appHeader"/>
+    <module name="AppBar" layoutPanel="navigationHeader"/>
+    <module name="Message" layoutPanel="messaging">
+        <param name="filter">splunk.search.error</param>
+        <param name="clearOnJobDispatch">False</param>
+        <param name="maxSize">1</param>
+    </module>
+    <module name="TitleBar" layoutPanel="viewHeader">
+        <param name="actionsMenuFilter">dashboard</param>
+    </module>
+    <module name="HiddenSearch" layoutPanel="viewHeader">
+        <!-- TODO: There should be a cleaner way to keep from really searching events... -->
+        <param name="search">XXXXX earliest=-1m | $command$ $ossec_server$ $agent_name$ $agent_id$ $agent_ip$</param>
+    
+        <module name="SearchSelectLister">
+            <param name="staticFieldsToDisplay"/>
+            <!-- 6/12/2011: Reverted to using lookup table, since Splunk doesn't
+                            seem to like running the `ossecservers` command when
+                            populating the dropdown list.
+            -->
+            <param name="search">| inputlookup lookup_ossec_servers | where managed=1</param>
+            <!-- 
+            <param name="search">| ossecservers | where managed=1</param>
+            -->
+            <param name="label">OSSEC Server</param>
+            <param name="settingToCreate">ossec_server_setting</param>
+            <param name="searchFieldsToDisplay">
+                <list>
+                    <param name="value">ossec_server</param>
+                    <param name="label">description</param>
+                </list>
+            </param>
+            <param name="searchWhenChanged">False</param>
+            <module name="ConvertToIntention">
+                <param name="settingToConvert">ossec_server_setting</param>
+                <param name="intention">
+                    <param name="name">stringreplace</param>
+                    <param name="arg">
+                        <param name="ossec_server">
+                            <param name="fillOnEmpty">True</param>
+                            <param name="prefix">ossec_server="</param>
+                            <param name="suffix">"</param>
+                            <param name="value">$target$</param>
+                        </param>
+                    </param>
+                </param>
+                
+
+                <module name="StaticSelect">
+                    <param name="label">Action to Take</param>
+                    <param name="settingToCreate">command_setting</param>
+                    <param name="searchWhenChanged">False</param>
+                    <param name="staticFieldsToDisplay">
+                        <list>
+                            <param name="value">listagents</param>
+                            <param name="label">List Agents</param>
+                        </list>
+                        <list>
+                            <param name="value">extractagentkey</param>
+                            <param name="label">Extract Agent Key</param>
+                        </list>
+                        <list>
+                            <param name="value">addagent</param>
+                            <param name="label">Add New Agent</param>
+                        </list>
+                        <list>
+                            <param name="value">removeagent</param>
+                            <param name="label">Remove Agent</param>
+                        </list>                        
+                    </param>
+                    <module name="ConvertToIntention">
+                        <param name="settingToConvert">command_setting</param>
+                        <param name="intention">
+                            <param name="name">stringreplace</param>
+                            <param name="arg">
+                                <param name="command">
+                                    <param name="fillOnEmpty">True</param>
+                                    <param name="value">$target$</param>
+                                </param>
+                            </param>
+                        </param>
+
+
+                        <module name="ExtendedFieldSearch">
+                            <param name="field">Agent Name</param>
+                            <param name="intention">
+                                <param name="name">stringreplace</param>
+                                <param name="arg">
+                                    <param name="agent_name">
+                                        <param name="default"></param>
+                                        <param name="prefix">agent_name="</param>
+                                        <param name="suffix">"</param>
+                                    </param>
+                                </param>
+                            </param>
+                            <param name="replacementMap">
+                                <param name="arg">
+                                    <param name="agent_name">
+                                        <param name="value"></param>
+                                    </param>
+                                </param>
+                            </param>
+                            
+
+
+                            
+                            <module name="ExtendedFieldSearch">
+                                <param name="field">Agent IP</param>
+                                <param name="intention">
+                                    <param name="name">stringreplace</param>
+                                    <param name="arg">
+                                        <param name="agent_ip">
+                                            <param name="default"></param>
+                                            <param name="prefix">agent_ip="</param>
+                                            <param name="suffix">"</param>
+                                        </param>
+                                    </param>
+                                </param>
+                                <param name="replacementMap">
+                                    <param name="arg">
+                                        <param name="agent_ip">
+                                            <param name="value"></param>
+                                        </param>
+                                    </param>
+                                </param>
+                                
+                                
+                                
+                        
+                                <module name="ExtendedFieldSearch">
+                                    <param name="field">Agent ID</param>
+                                    <param name="intention">
+                                        <param name="name">stringreplace</param>
+                                        <param name="arg">
+                                            <param name="agent_id">
+                                                <param name="default"></param>
+                                                <param name="prefix">agent_id="</param>
+                                                <param name="suffix">"</param>
+                                            </param>
+                                        </param>
+                                    </param>
+                                    <param name="replacementMap">
+                                        <param name="arg">
+                                            <param name="agent_id">
+                                                <param name="value"></param>
+                                            </param>
+                                        </param>
+                                    </param>
+
+                        
+                        
+                                    <module name="SubmitButton" >
+                                        <param name="label">Add/Remove Agent</param>
+
+                                        
+                                        <!-- <module name="JobStatus"> -->
+                                            <module name="Paginator" layoutPanel="panel_row3_col1" group="Results">
+                                                <param name="count">15</param>
+                                                <param name="entityName">results</param>
+                                                <param name="groupLabel">Results</param>
+                                                
+                                                <module name="HiddenFieldPicker">
+                                                    <param name="fields">_time agent_name agent_ip agent_id status message</param>
+                                                    <param name="strictMode">True</param>
+                                                
+                                                    <module name="EnablePreview">
+                                                        <param name="enable">True</param>
+                                                        <param name="display">false</param>
+                                                        <module name="SimpleResultsTable">
+                                                            <param name="count">10</param>
+                                                        </module>
+                                                        <!--
+                                                        <module name="ViewRedirectorLink">
+                                                            <param name="viewTarget">search</param>
+                                                        </module>
+                                                        -->
+                                                    </module>
+                                                </module>
+                                            </module>
+                                        <!-- </module> -->
+                                    </module>
+                                </module>
+                            </module>
+                        </module>    
+                    </module>
+                </module>
+            </module>
+        </module>
+    </module>
+</view>

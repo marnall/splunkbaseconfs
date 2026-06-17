@@ -1,0 +1,163 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>TCP Health</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+        <label>NFO hostnames</label>
+        <default>*</default>
+        <search>
+            <query>| `populate_nfo_hostnames`</query>
+        </search>
+        <fieldForLabel>nfo_hostname</fieldForLabel>
+        <fieldForValue>nfo_hostname</fieldForValue>
+        <change>
+            <unset token="Device/Interface"></unset>
+        </change>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+        <label>Device group</label>
+        <default>*</default>
+        <search>
+            <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>exp_group</fieldForLabel>
+        <fieldForValue>exp_group</fieldForValue>
+        <change>
+            <unset token="Device/Interface"></unset>
+        </change>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+        <label>Device</label>
+        <default>*</default>
+        <choice value="*">*</choice>
+        <search>
+            <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>name</fieldForLabel>
+        <fieldForValue>exp_ip</fieldForValue>
+        <change>
+            <unset token="Device/Interface"></unset>
+        </change>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+        <label>Advanced Filter</label>
+        <default>*</default>
+        <change>
+            <unset token="Device/Interface"></unset>
+        </change>
+    </input>
+    <input type="time" searchWhenChanged="false">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20060` | head 1</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_1_1">
+        <title>Hosts with most count of failed TCP connections</title>
+        <search>
+          <query>
+            `netflow_search_rule_20060` $advanced_filter$
+            | fillnull value="" exp_ip
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+            | eventstats latest(src_host) as l_src_host by src_ip nfo_hostname
+            | eval slice_total=if(total_share==0,1,ceil(100*reset_count/total_share))
+            | eval slice_local=ceil(100*reset_count/local_share)
+            | eventstats mode(slice_total) as total_by_nfo_exp  by nfo_hostname exp_ip _time   
+            | eventstats mode(slice_local) as local_by_nfo_exp  by nfo_hostname exp_ip src_ip l_src_host _time   
+            | eventstats sum(total_by_nfo_exp) as sum_total_by_nfo_exp  by nfo_hostname exp_ip
+            | eventstats sum(local_by_nfo_exp) as sum_local by src_ip l_src_host nfo_hostname exp_ip
+            | stats sum(reset_count) as sumResetCount 
+                  mode(sum_local) as sumLocalCount
+                    by  nfo_hostname exp_ip src_ip l_src_host sum_total_by_nfo_exp 
+            | eval percTotal = sumResetCount/sum_total_by_nfo_exp*100
+            | eval percLocal = sumResetCount/sumLocalCount*100
+            | sort - percTotal sumResetCount
+            | `commas_formatting(Reset Count, sumResetCount)`
+            | `commas_formatting(percTotal, percTotal,2)`
+            | `commas_formatting(percLocal, percLocal,2)`
+            | `get_exporter_name(exp_ip_name)`
+            | table nfo_hostname exp_ip_name src_ip l_src_host "Reset Count"  percTotal percLocal
+            | rename exp_ip_name as "Device" 
+            | rename src_ip as "Source IP"
+            | rename l_src_host as "Source Host"
+            | rename percTotal as "% of Total Resets" 
+            | rename percLocal as "% of Local Resets"
+            | rename nfo_hostname as NFO
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <table id="table_1_2">
+        <title>Hosts with largest share of failed TCP connections</title>
+        <search>
+          <query>
+            `netflow_search_rule_20060` $advanced_filter$
+            | fillnull value="" exp_ip
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+            | eventstats latest(src_host) as l_src_host by src_ip nfo_hostname
+            | eval slice_total=if(total_share==0,1,ceil(100*reset_count/total_share))
+            | eval slice_local=ceil(100*reset_count/local_share)
+            | eventstats mode(slice_total) as total_by_nfo_exp  by nfo_hostname exp_ip _time   
+            | eventstats mode(slice_local) as local_by_nfo_exp  by nfo_hostname exp_ip src_ip l_src_host _time   
+            | eventstats sum(total_by_nfo_exp) as sum_total_by_nfo_exp  by nfo_hostname exp_ip
+            | eventstats sum(local_by_nfo_exp) as sum_local by src_ip l_src_host nfo_hostname exp_ip
+            | stats sum(reset_count) as sumResetCount 
+                  mode(sum_local) as sumLocalCount
+                    by  nfo_hostname exp_ip src_ip l_src_host sum_total_by_nfo_exp
+            | eval percTotal = sumResetCount/sum_total_by_nfo_exp*100
+            | eval percLocal = sumResetCount/sumLocalCount*100
+            | sort - percLocal sumResetCount
+            | `commas_formatting(Reset Count, sumResetCount)`
+            | `commas_formatting(percTotal, percTotal,2)`
+            | `commas_formatting(percLocal, percLocal,2)`
+            | `get_exporter_name(exp_ip_name)`
+            | table nfo_hostname exp_ip_name src_ip l_src_host "Reset Count"  percTotal percLocal
+            | rename exp_ip_name as "Device" 
+            | rename src_ip as "Source IP"
+            | rename l_src_host as "Source Host"
+            | rename percTotal as "% of Total Resets" 
+            | rename percLocal as "% of Local Resets"
+            | rename nfo_hostname as NFO
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10060: TCP Health Monitor”</b> (syslogs with nfc_id=20060). This Module reports TCP Health by detecting top hosts with the most TCP Resets. Top hosts are defined by percent of TCP resets to the total number of Resets for definitive NetFlow exporter or by percent of TCP resets to the total number of host’s connections. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

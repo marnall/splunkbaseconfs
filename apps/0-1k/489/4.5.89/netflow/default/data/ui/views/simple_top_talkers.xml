@@ -1,0 +1,175 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js">
+    <label>Top Talkers Report</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_rule_20067`  | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <single>
+            <search>
+                <query>
+                     `netflow_search_rule_20067` 
+                     | head 1 
+                     | addinfo 
+                     | eval selection_duration=strftime(info_min_time, "%m/%d/%Y %I:%M:%S %p") . " - " . strftime(info_max_time, "%m/%d/%Y %I:%M:%S %p") 
+                     | table selection_duration
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="field">selection_duration</option>
+            <title>Top Talkers</title>
+        </single>
+    </row> 
+    <row depends="$show_content$">
+       <panel>
+         <html><h3 class="dashboard-element-title">NFO hostname - $nfo_hostname$ | Device group - $exp_group$ | Device - $exp_ip$</h3>
+         </html>
+       </panel>
+    </row>
+    <row depends="$show_content$">
+       <chart>
+            <search>
+                <query>
+                    `netflow_search_rule_20067` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" 
+                    | `sampling(bytes_in)`  
+                    | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+                    | `format_ip_column(src_ip, src_ip, l_src_host)`
+                    | `per_second_chart(sum(bytes_in) by src_ip,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>  
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+    </row>
+    <row depends="$show_content$">
+        <table>
+            <title>Top Talkers Details</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20067` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" 
+                    | `sampling(bytes_in)` 
+                    | `sampling(packets_in)` 
+                    | `sampling(flow_count)`
+                    | fillnull value="" src_host 
+                    | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+                    | bin _time $span_token$
+                    | stats  sum(bytes_in) as sumbytes 
+                        sum(packets_in) as sumpacketsin 
+                        sum(flow_count) as sumflowcount 
+                            by  exp_ip src_ip l_src_host _time nfo_hostname
+                    | eval avgbits= sumbytes*8/($span_int$)
+                    | stats sum(sumbytes) as TrafficAmount 
+                        sum(sumpacketsin) as PacketsAmount 
+                        sum(sumflowcount) as Connections 
+                        max(avgbits) as MaxTraffic
+                            by exp_ip src_ip l_src_host nfo_hostname
+                    | sort 0 - TrafficAmount 
+                    | head 20 
+                    | eval AverageSpeed=(TrafficAmount)*8/$range$
+                    | eval PacketsSpeed=(PacketsAmount)/$range$
+                    | eval TrafficSpeed=AverageSpeed/1000000
+                    | eval TrafficAmount=TrafficAmount/1024/1024
+                    | eval MaxTraffic=MaxTraffic/1000000
+                    | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+                    | `commas_formatting(Total Traffic MB, TrafficAmount, 2)`
+                    | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+                    | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+                    | `commas_formatting(Total Packets, PacketsAmount)`
+                    | `commas_formatting(Total Connections, Connections)`
+                    | `get_exporter_name(exp_ip_name)`
+                    | table exp_ip_name src_ip l_src_host "Max Mbps" "Average Mbps" "Total Traffic MB" "Average Packets/s" "Total Packets" "Total Connections"
+                    | rename exp_ip_name as "Device" 
+                    | rename src_ip as "Source IP"  
+                    | rename l_src_host as "Source Host"
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="wrap">false</option>
+            <option name="rowNumbers">true</option>
+            <option name="count">20</option>
+            <option name="showPager">false</option>
+        </table>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

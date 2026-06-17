@@ -1,0 +1,128 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Network Utilization</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Perfmon:NetworkInterface</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">TThis dashboard provides Windows PerfMon information regarding Network utilization for the selected Desktop. Clicking on the hostname below will take you to a list of the running processes for that machine. To view the entire result set or for this report or manipulate the data further, click on the View Full Report link below.</param>
+  </module>
+  <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="search">`perfmon_net` $vm_name$ | table vm_name Value counter _time</param>
+    <module name="HiddenPostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+      <param name="search">| stats values(vm_name) as vm first(_time) as f last(_time) as l | eval message = vm + " From: " + f + " to " + l | eval range="vmsreporting"</param>
+      <module name="SingleValue">
+        <param name="field">message</param>
+        <param name="beforeLabel">Network Details For:</param>
+        <param name="classField">range</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+      <param name="viewTarget">flashtimeline</param>
+      <param name="label">View Full Report</param>
+    </module>
+    <module name="JobProgressIndicator"></module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Bytes Sent/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Sent*" | stats max(Value) as max | eval max = round(max,2) | eval range="netup"</param>
+      <module name="SingleValue">
+        <param name="field">max</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Max:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Bytes Sent/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Sent*" | stats avg(Value) as avg| eval avg = round(avg,2) | eval range="netup"</param>
+      <module name="SingleValue">
+        <param name="field">avg</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Avg:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Bytes Sent/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Sent*" | stats min(Value) as min | eval min = round(min,2) | eval range="netup"</param>
+      <module name="SingleValue">
+        <param name="field">min</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Min:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col2" group="Network Usage by VM" autoRun="True">
+      <param name="search">| eval type = if(counter=="Bytes Sent/sec","send","recv") | eval send = if(type=="send",Value,"") | eval recv = if(type=="recv",Value,"") | eval recv = round(recv,2) | eval send = round(send,2) | rename vm_name as "Virtual Machine" | stats max(send) as "Bytes Sent/sec" max(recv) as "Bytes Received" by "Virtual Machine"</param>
+      <module name="SimpleResultsTable">
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col3" group="Bytes Received/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Received*" | stats max(Value) as max | eval max = round(max,2) | eval range="netdown"</param>
+      <module name="SingleValue">
+        <param name="field">max</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Max:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col3" group="Bytes Received/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Received*" | stats avg(Value) as avg | eval avg = round(avg,2) | eval range="netdown"</param>
+      <module name="SingleValue">
+        <param name="field">avg</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Avg:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row3_col3" group="Bytes Received/sec" autoRun="True">
+      <param name="search">| search counter="*Bytes Received*" | stats min(Value) as min | eval range="netdown"</param>
+      <module name="SingleValue">
+        <param name="field">min</param>
+        <param name="classField">range</param>
+        <param name="beforeLabel">Min:</param>
+        <param name="format">count</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col1" group="VMs with High Send bps" autoRun="True">
+      <param name="search">| search `HIGHNETSEND` | eval type = if(counter=="Bytes Sent/sec","send","recv") | eval send = if(type=="send",Value,"") | rename vm_name as "Virtual Machine" | stats max(send) as "Bytes Sent/sec" by "Virtual Machine" | head 10</param>
+      <module name="SimpleResultsTable">
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row5_col2" group="VMs with High Recvd bps" autoRun="True">
+      <param name="search">| search `HIGHNETRECV` | eval type = if(counter=="Bytes Sent/sec","send","recv") | eval recv = if(type=="recv",Value,"") | rename vm_name as "Virtual Machine" | stats max(recv) as "Bytes Received/sec" by "Virtual Machine" | head 10</param>
+      <module name="SimpleResultsTable">
+        <param name="drilldown">row</param>
+        <param name="entityName">results</param>
+        <param name="displayRowNumbers">False</param>
+      </module>
+    </module>
+    <module name="HiddenPostProcess" layoutPanel="panel_row6_col1" group="Network Activity Over Time" autoRun="True">
+      <param name="search">| eval type = if(counter=="Bytes Sent/sec","send","recv") | eval send = if(type=="send",Value,"") | eval recv = if(type=="recv",Value,"") | stats max(send) as "Bytes Sent/sec" max(recv) as "Bytes Received/sec" by _time| head 10</param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">area</param>
+        <param name="chart.stackMode">stacked</param>
+        <param name="legend.placement">bottom</param>
+        <module name="FlashChart">
+          <param name="width">100%</param>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

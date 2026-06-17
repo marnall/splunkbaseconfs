@@ -1,0 +1,245 @@
+<view template="dashboard.html">
+  <label>Deployment Topology</label>
+  <module name="sosIncludeD3" layoutPanel="viewHeader" />
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="appHeader" />
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="level">ERROR</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Deployment Topology</param>
+      </list>
+    </param>
+  </module>
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">splunk_topology.html</param>
+    </module>
+  </module>
+  <module name="HiddenSearch" layoutPanel="panel_row2_col1" autoRun="True">
+    <param name="search">| `get_splunk_servers` 
+      | fields sos_server server_role 
+      | inputlookup append=true splunk_servers_cache
+      | `curate_splunk_servers_cache` 
+      | inputlookup append=true splunk_forwarders_cache 
+      | eval heartbeat_age = now() - _time 
+      | eval heartbeat_age = if(heartbeat_age&gt;0,ceiling(heartbeat_age),0) 
+      | eval server_status = case(isnull(_time),-1,like(server_role,"%peer%") OR like(server_role,"%indexer%"),if(heartbeat_age&gt;60,0,1),1=1,if(heartbeat_age&gt;900,0,1)) 
+      | stats max(server_role) AS server_role max(server_status) AS server_status max(_time) AS last_heartbeat by sos_server 
+      | `get_rank_rack($server_role$)` 
+      | eval rank=sort_rank 
+      | eval host=sos_server 
+      | eval rack=if(isnull(rack),"Everything Else",rack)
+      | eval services=rack 
+      | table services rank rack host status 
+      | sort + rack</param>
+    <param name="earliest">-15m</param>
+    <module name="sosNodesMetricsSelect" layoutPanel="panel_row1_col1" group="Splunk Topology by Server Role">
+      <param name="outer_width">100</param>
+      <param name="options">
+        <list>
+          <param name="No overlay"></param>
+        </list>
+        <list>
+          <param name="Status"></param>
+        </list>
+        <list>
+          <param name="Memory">
+            <param name="search">`set_sos_index` sourcetype="ps" earliest=-5m
+            | multikv 
+            | `get_splunk_process_type` 
+            | where type=="splunkd server"
+            | eval RSZ_MB = round(RSZ_KB/1024,2)
+            | stats median(RSZ_MB) AS heatmap by type host
+            </param>
+            <param name="rangemap">
+              <list>
+                <param name="low">0</param>
+                <param name="high">2000</param>
+                <param name="node_fill">#008000</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">8</param>
+              </list>
+              <list>
+                <param name="low">2001</param>
+                <param name="high">4000</param>
+                <param name="node_fill">#ffff00</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">7</param>
+              </list>
+              <list>
+                <param name="low">4001</param>
+                <param name="high">500000</param>
+                <param name="node_fill">#e97418</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">7</param>
+              </list>
+            </param>
+          </param>
+        </list>
+        <list>
+          <param name="CPU">
+            <param name="search">`set_sos_index` sourcetype="ps" earliest=-5m
+            | multikv 
+            | `get_splunk_process_type` 
+            | where type=="splunkd server"
+            | stats median(pctCPU) AS heatmap by type host
+            </param>
+            <param name="rangemap">
+              <list>
+                <param name="low">0</param>
+                <param name="high">200</param>
+                <param name="node_fill">#008000</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">8</param>
+              </list>
+              <list>
+                <param name="low">201</param>
+                <param name="high">400</param>
+                <param name="node_fill">#ffff00</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">7</param>
+              </list>
+              <list>
+                <param name="low">401</param>
+                <param name="high">500000</param>
+                <param name="node_fill">#e97418</param>
+                <param name="text_fill">#111111</param>
+                <param name="text_offset">7</param>
+              </list>
+            </param>
+          </param>
+        </list>
+      </param>
+      <module name="sosTokenizer">
+        <module name="sosButton">
+          <param name="updatePermalink">True</param>
+          <param name="allowSoftSubmit">True</param>
+          <param name="visible">False</param>
+          <module name="sosNodesSizer" layoutPanel="panel_row1_col1">
+            <module name="ServerSideInclude" layoutPanel="panel_row1_col1">
+              <param name="src">legends.html</param>
+            </module>
+            <module name="sosNodes" layoutPanel="panel_row2_col1">
+              <param name="radius_factor">15</param>
+              <module name="StaticContentSample" layoutPanel="panel_row2_col2">
+                <param name="text">Click a node for details</param>
+                <module name="HiddenSearch">
+                  <param name="search">| inputlookup splunk_instances_info
+                    | eval host=sos_server
+                    | search $host$ 
+                    | table host,version,os_name,total_phys_mem_gb,cpu_arch,cpu_count,SPLUNK_HOME, SPLUNK_DB,auth_method, license_role
+                    | rename host AS Hostname version AS "Splunk version" os_name AS "OS" cpu_arch AS "Platform" total_phys_mem_gb AS "Physical Memory(GB)" cpu_count AS "Number of CPU cores" SPLUNK_HOME AS "$SPLUNK_HOME" SPLUNK_DB AS "$SPLUNK_DB" auth_method AS "Authentication method" license_role AS "Distributed licensing role"
+                    | transpose
+                    | rename "row 1" AS Values column AS Details
+                    | eval Values=if (isnull(Values),"Not reported",Values)</param>
+                  <module name="sosTokenizer">
+                    <module name="SimpleResultsTable">
+                      <param name="displayRowNumbers">false</param>
+                      <param name="count">13</param>
+                    </module>
+                  </module>
+                </module>
+                <module name="HiddenSearch">
+                  <param name="search">| rest /services/admin/distsearch-peer 
+                    | eval host=splunk_server 
+                    | search $host$ 
+                    | eval SH=splunk_server 
+                    | rename title AS servers splunk_server AS host 
+                    | table SH peerName servers host 
+                    | join host [ 
+                           | inputlookup splunk_servers_cache 
+                           | `get_rank_rack($server_role$)`
+                           | eval rank=sort_rank 
+                           | eval host=sos_server 
+                           | eval status=1 
+                           | eval services=rack 
+                           | table server_label host ] 
+                    | table servers
+                    | mvcombine delim=", " servers
+                    | nomv servers</param>
+                  <module name="sosTokenizer">
+                    <module name="SimpleResultsTable">
+                      <param name="displayRowNumbers">false</param>
+                    </module>
+                    <module name="HiddenSearch">
+                      <param name="search">`set_sos_index` sourcetype="ps" earliest=-6m latest=-1m
+                      | search $host$ 
+                      | multikv 
+                      | `get_splunk_process_type` 
+                      | where type == "splunkd server"
+                      | eval RSZ_MB = round(RSZ_KB/1024,2)
+                      | bin _time span=10s
+                      | sistats median(pctCPU) median(RSZ_MB) by type, _time
+                      </param>
+                      <module name="sosTokenizer">
+                        <module name="PostProcess">
+                          <param name="search">
+                          | timechart span=10s partial=false median(RSZ_MB) by type
+                          </param>
+                          <module name="JobProgressIndicator"></module>
+                          <module name="HiddenChartFormatter">
+                            <param name="chart">line</param>
+                            <param name="chart.nullValueMode">zero</param>
+                            <param name="secondaryAxisTitle.text">Physical memory (MB)</param>
+                            <module name="HTML" >
+                              <param name="html"><![CDATA[
+                              <div id="splunk_ps_link"></div>
+                              ]]></param>
+                            </module>
+
+                            <module name="JSChart">
+                              <param name="height">230px</param>
+                            </module>
+
+                            <module name="PostProcess">
+                              <param name="search">
+                              | timechart span=10s partial=false median(pctCPU) by type 
+                              </param>
+                              <module name="JobProgressIndicator"></module>
+                              <module name="HiddenChartFormatter">
+                                <param name="chart">line</param>
+                                <param name="chart.nullValueMode">zero</param>
+                                <param name="secondaryAxisTitle.text">%CPU</param>
+                                <module name="JSChart">
+                                  <param name="height">230px</param>
+                                </module>
+
+
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+
+              </module>
+
+
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

@@ -1,0 +1,224 @@
+
+<!-- note some callers will pass this from outside.
+     and note that save_report has the same ValueSetter.  -->
+
+<module name="ValueSetter">
+  <param name="name">searchPlusFields</param>
+  <!-- if it was specified by the calling view/pattern, then so be it -->
+  <param name="if.$searchPlusFields$=*">$searchPlusFields$</param>
+  <param name="if.$selectedFields$=*">$search$ | fields $selectedFields$</param>
+  <param name="if.$results.fields$=*">$search$ | fields $results.fields$</param>
+  <param name="default">$search$</param>
+
+  <module name="ValueSetter">
+    <param name="arg.buttonLabel"><outerparam name="buttonLabel" default="Create Dashboard Panel"/></param>
+
+    <module name="Button">
+      <param name="label">$buttonLabel$</param>
+      <param name="float">right</param>
+      <param name="allowAutoSubmit">False</param>
+
+      <module name="Layer" >
+        <module name="HTML">
+          <param name="html"><![CDATA[
+            <h3>$buttonLabel$</h3>
+          ]]></param>
+        </module>
+
+        <module name="Search">
+          <param name="search">
+| rest /servicesNS/-/$sideview.currentApp$/data/ui/views splunk_server=local
+| search (rootNode="dashboard" OR rootNode="form") eai:acl.can_write="1" title=* title!="home_redirect" title!="sorry_canary_not_installed" title!="splunk_archiver_dashboard"
+| table title eai:userName
+| rename eai:userName as userName
+| search (userName="$sideview.currentUser$" OR userName="nobody")
+| eval label=title
+| append [| makeresults | fields - _time | eval title="none_found" | eval label="(no dashboards found)"]
+| stats values(*) as * by title
+| eventstats count as total
+| search (total=1 title="none_found") OR (total>1 title!="none_found")
+          </param>
+
+          <module name="Radio">
+            <param name="name">newOrExistingDashboard</param>
+            <param name="cssClass">createDashboardFields</param>
+            <param name="staticRadios">
+              <list>
+                <param name="value">new</param>
+                <param name="label">new dashboard</param>
+              </list>
+              <list>
+                <param name="value">existing</param>
+                <param name="label">existing dashboard</param>
+              </list>
+            </param>
+
+            <module name="Switcher">
+              <param name="selectedGroup">$newOrExistingDashboard$</param>
+
+              <module name="TextField" group="new">
+                <param name="name">dashboardName</param>
+                <param name="label">dashboard name</param>
+                <param name="cssClass">createDashboardFields</param>
+
+                <module name="TextField">
+                  <param name="name">panelTitle</param>
+                  <param name="label">panel title</param>
+                  <param name="cssClass">createDashboardFields</param>
+
+                  <module name="Button">
+                    <param name="label">Create</param>
+                    <param name="cssClass">createDashboardFields</param>
+                    <param name="customBehavior">createNewDashboardButton</param>
+
+                    <module name="CustomBehavior">
+                      <param name="customBehavior">createNewDashboardPanel</param>
+                      <param name="arg.visualization"><outerparam name="visualization" default="oh hai" /></param>
+
+                      <module name="REST">
+                        <param name="name">createDashboardRest</param>
+                        <param name="uri">/splunkd/__raw/servicesNS/$sideview.currentUser$/$sideview.currentApp$/data/ui/views/</param>
+                        <param name="arg.name">$dashboardName$</param>
+                        <param name="arg.eai:data"><![CDATA[<dashboard version="1.1">
+<label>$dashboardName.rawValue$</label>
+$newDashboardPanel$
+</dashboard>]]></param>
+                        <module name="Switcher">
+                          <param name="selectedGroup">$createDashboardRest.state$</param>
+
+                          <module name="NullModule" group="success">
+
+                            <module name="HTML">
+                              <param name="html"><![CDATA[
+                                Your private dashboard was created successfully.
+                              ]]></param>
+                              <param name="customBehavior">reloadViewsInNav</param>
+                            </module>
+
+                            <module name="Link">
+                              <param name="label">You can edit the dashboard directly using Splunk's Dashboard Editor</param>
+
+                              <module name="Redirector">
+                                <param name="url">/app/$sideview.currentApp$/$dashboardName$/edit</param>
+                              </module>
+                            </module>
+
+                            <module name="Link">
+                              <param name="label">Or share it by editing its Permissions in Settings > User Interface</param>
+
+                              <module name="Redirector">
+                                <param name="url">/manager/$sideview.currentApp$/data/ui/views</param>
+                                <param name="arg.search">$dashboardName$</param>
+                              </module>
+                            </module>
+
+                            <module name="ShowHide">
+                              <param name="hide">.createDashboardFields</param>
+                            </module>
+
+                          </module>
+
+                          <module name="HTML" group="failure">
+                            <param name="html"><![CDATA[
+                              Error creating dashboard:<br>
+                              $createDashboardRest.errorMessage$
+                            ]]></param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+
+              <module name="Pulldown" group="existing">
+                <param name="name">existingDashboard</param>
+                <param name="label">dashboard name</param>
+                <param name="valueField">title</param>
+                <param name="labelField">label</param>
+                <param name="staticOptions" />
+                <param name="cssClass">createDashboardFields</param>
+
+                <module name="TextField">
+                  <param name="name">panelTitle</param>
+                  <param name="label">panel title</param>
+                  <param name="cssClass">createDashboardFields</param>
+
+                  <module name="Button">
+                    <param name="label">Create</param>
+                    <param name="cssClass">createDashboardFields</param>
+
+
+                    <module name="Search">
+                      <param name="search"><![CDATA[
+| rest /servicesNS/$sideview.currentUser$/$sideview.currentApp$/data/ui/views/$existingDashboard$ splunk_server=local
+| fields eai:data eai:acl.owner eai:acl.sharing
+| rename eai:data as eaiData eai:acl.owner as dashboardOwner eai:acl.sharing as sharing
+| appendcols [
+| rest /services/authentication/current-context splunk_server=local | fields username | rename username as user
+]
+| eval correctEaiUserName=if(user==dashboardOwner AND sharing="user",user,"nobody")
+                      ]]></param>
+
+                      <module name="ResultsValueSetter">
+                        <param name="fields">eaiData,correctEaiUserName</param>
+
+                        <module name="CustomBehavior">
+                          <param name="customBehavior">createNewDashboardPanel</param>
+
+                          <module name="CustomBehavior">
+                            <param name="customBehavior">insertNewPanelWithinEaiData</param>
+
+                            <module name="REST">
+                              <param name="name">updateExistingDashboardRest</param>
+                              <param name="uri">/splunkd/__raw/servicesNS/$correctEaiUserName$/$sideview.currentApp$/data/ui/views/$existingDashboard$</param>
+                              <param name="arg.eai:data">$eaiData$</param>
+
+                              <module name="Switcher">
+                                <param name="selectedGroup">$updateExistingDashboardRest.state$</param>
+
+                                <module name="NullModule" group="success">
+                                  <module name="HTML">
+                                    <param name="html"><![CDATA[
+                                        Your dashboard panel was successfully added.
+                                    ]]></param>
+                                    <param name="customBehavior">reloadViewsInNav</param>
+                                  </module>
+                                  <module name="Link">
+                                    <param name="label">You can edit the dashboard directly using Splunk's Dashboard Editor</param>
+
+                                    <module name="Redirector">
+                                      <param name="url">/app/$sideview.currentApp$/$existingDashboard$/edit</param>
+                                    </module>
+                                  </module>
+
+                                  <module name="ShowHide">
+                                    <param name="hide">.createDashboardFields</param>
+                                  </module>
+                                </module>
+
+                                <module name="HTML" group="failure">
+                                  <param name="html"><![CDATA[
+                                    Error updating existing dashboard:<br>
+                                    $updateExistingDashboardRest.errorMessage$
+                                  ]]></param>
+                                </module>
+
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</module>

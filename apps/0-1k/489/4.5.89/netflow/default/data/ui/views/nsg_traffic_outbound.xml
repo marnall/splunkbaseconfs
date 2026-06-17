@@ -1,0 +1,465 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Azure Outbound Traffic (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Exporter (Virtual Network)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_nsg_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_nsg_name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_vm" id="src_input" searchWhenChanged="False">
+      <label>Source VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_vm" id="dest_input" searchWhenChanged="False">
+      <label>Dest. VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <!--
+    <input type="checkbox" token="show_dest_port" searchWhenChanged="False">
+      <label>Topology</label>
+      <choice value="*">Show dest port</choice>
+      <change>
+        <condition label="Show dest port">
+          <set token="show_dest_port">| eval dest_ip=dest_ip.":".dest_port</set>
+        </condition>
+        <condition>
+          <set token="show_dest_port"></set>
+        </condition>
+      </change>
+    </input>
+-->
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20467` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <set token="showbase">1</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <set token="show">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+			`basesearch_20467("$nfo_hostname$","$exp_ip$","$advanced_filter$","$src_vm$","$src_port$","$dest_vm$","$dest_port$","$protocol_name$","$span_token$")`
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$" id="tabs">
+    <panel>
+      <input type="link" token="unused">
+        <label>Choose a view</label>
+        <choice value="table">Table</choice>
+        <choice value="topology">Topology</choice>
+        <choice value="bubble">Bubble</choice>
+        <default>Table</default>
+        <change>
+          <condition value="table">
+            <set token="showTable">true</set>
+            <unset token="showTopology"></unset>
+            <unset token="showBubble"></unset>
+          </condition>
+          <condition value="topology">
+            <set token="showTopology">true</set>
+            <unset token="showTable"></unset>
+            <unset token="showBubble"></unset>
+          </condition>
+          <condition value="bubble">
+            <set token="showBubble">true</set>
+            <unset token="showTopology"></unset>
+            <unset token="showTable"></unset>
+          </condition>
+        </change>
+      </input>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTable$" id="timechart">
+    <panel>
+      <chart>
+        <title>Azure Outbound Traffic</title>
+        <search base="baseSearch">
+          <query>
+						| search direction=outbound
+            | `format_ip_column(src_ip,src_ip,src_vm_name)` 
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+            | strcat src_ip " - " dest_ip host_pair 
+            | `per_second_chart(sum(sum_bytes) by host_pair,"$span_token$",$span_int$)`
+					</query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$,$showTable$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <search base="baseSearch">
+          <query>
+						| search direction=outbound
+						| fields - $showTable$
+						| `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+            | stats sum(sum_bytes) as sumbytes
+                    sum(sum_bytes_in) as sumbytesin 
+                    sum(sum_bytes_out) as sumbytesout 
+                    sum(sum_packets_in) as sumpacketsin 
+                    sum(sum_packets_out) as sumpacketsout 
+                    sum(sum_flow_count) as sumflowcount 
+                        by nfo_hostname exp_ip vnet_name sum_by_exp src_ip src_port dest_ip dest_port _time
+						`nsg_traffic_by_host_pairs_table($span_int$,$range$)`
+					</query>
+          <done>
+            <condition>
+              <unset token="Source IP"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <search>
+          <query>
+            `netflow_search_rule_20467` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" direction=outbound
+						| fields - $showTable$
+      			| eventstats sum(bytes) as sum_by_exp by exp_ip nfo_hostname
+      			| search $advanced_filter$
+      			| search src_port="$src_port$" (src_ip="$src_vm$" OR src_vm_name="$src_vm$") (dest_ip="$dest_vm$" OR dest_vm_name="$dest_vm$") dest_port="$dest_port$"
+      			| fillnull value="" transport src_vm_name dest_vm_name 
+      			| search transport="$protocol_name$"
+      	    | eval vnet_name=mvappend(src_vnet_name,dest_vnet_name,vnet_name)
+      	    | mvexpand vnet_name
+						| `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+			      | bin _time $span_token$
+            | stats sum(bytes) as sum_bytes
+                    sum(bytes_in) as sum_bytes_in
+                    sum(bytes_out) as sum_bytes_out
+                    sum(packets_in) as sum_packets_in
+                    sum(packets_out) as sum_packets_out
+                    sum(flow_count) as sum_flow_count
+                        by nfo_hostname exp_ip vnet_name src_ip src_port src_vm_name dest_ip dest_port dest_vm_name direction transport sum_by_exp _time 
+            | stats sum(sum_bytes) as sumbytes
+                    sum(sum_bytes_in) as sumbytesin 
+                    sum(sum_bytes_out) as sumbytesout 
+                    sum(sum_packets_in) as sumpacketsin 
+                    sum(sum_packets_out) as sumpacketsout 
+                    sum(sum_flow_count) as sumflowcount 
+                        by  exp_ip nfo_hostname sum_by_exp vnet_name src_ip src_port dest_ip dest_port _time
+						`nsg_traffic_by_host_pairs_table($span_int$,$range$)`
+					</query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+          <done>
+            <condition>
+              <unset token="Source IP"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showBubble$,$showbase$" id="bubble_1">
+    <panel>
+      <chart>
+        <search base="baseSearch">
+          <query>
+						| search direction=outbound
+						| fields - $showBubble$
+						`nsg_traffic_bubble`
+					</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">480</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showBubble$" rejects="$showbase$" id="bubble_2">
+    <panel>
+      <chart>
+        <search>
+          <query>
+            `netflow_search_rule_20467` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" $advanced_filter$ direction=outbound
+						| fields - $showBubble$
+      			| search src_port="$src_port$" (src_ip="$src_vm$" OR src_vm_name="$src_vm$") (dest_ip="$dest_vm$" OR dest_vm_name="$dest_vm$") dest_port="$dest_port$"
+      			| fillnull value="" transport src_vm_name dest_vm_name 
+      			| search transport="$protocol_name$"
+            | `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+            | stats dc(dest_ip) as "# of Destination IPs"
+                sum(sum_bytes_in) as "Total Bytes" sum(sum_flow_count) as "Flow Count"
+                    by src_ip
+            | sort - "Total Bytes"
+            | head 25
+            | table src_ip "# of Destination IPs" "Flow Count" "Total Bytes"
+					</query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="height">480</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTopology$,$showbase$" id="topology_1">
+    <panel>
+      <viz type="force_directed_viz.force_directed">
+        <title>Topology</title>
+        <search base="baseSearch">
+          <query> 
+						| search direction=outbound
+						| fields - $showTopology$
+<!--						 $show_dest_port$   -->
+						`nsg_traffic_topology`
+					</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMax">200</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMin">60</option>
+        <option name="force_directed_viz.force_directed.AttractForceStrength">-300</option>
+        <option name="force_directed_viz.force_directed.CollisionIterations">1</option>
+        <option name="force_directed_viz.force_directed.CollisionRadius">40</option>
+        <option name="force_directed_viz.force_directed.CollisionStrength">0.7</option>
+        <option name="force_directed_viz.force_directed.ColorRange1">100</option>
+        <option name="force_directed_viz.force_directed.ColorRange1Code">#65a637</option>
+        <option name="force_directed_viz.force_directed.ColorRange2">500</option>
+        <option name="force_directed_viz.force_directed.ColorRange2Code">#6db7c6</option>
+        <option name="force_directed_viz.force_directed.ColorRange3">1000</option>
+        <option name="force_directed_viz.force_directed.ColorRange3Code">#f7bc38</option>
+        <option name="force_directed_viz.force_directed.ColorRange4">10000</option>
+        <option name="force_directed_viz.force_directed.ColorRange4Code">#f58f39</option>
+        <option name="force_directed_viz.force_directed.ColorRange5">1000000</option>
+        <option name="force_directed_viz.force_directed.ColorRange5Code">#d93f3c</option>
+        <option name="force_directed_viz.force_directed.ForceCollision">20</option>
+        <option name="force_directed_viz.force_directed.LineColor">disabled</option>
+        <option name="force_directed_viz.force_directed.LinkDistance">100</option>
+        <option name="force_directed_viz.force_directed.LinkLength">1</option>
+        <option name="force_directed_viz.force_directed.PanZoom">enabled</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMax">50</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMin">10</option>
+        <option name="force_directed_viz.force_directed.RepelForceStrength">-140</option>
+        <option name="force_directed_viz.force_directed.SWRange1">1</option>
+        <option name="force_directed_viz.force_directed.SWRange2">1</option>
+        <option name="force_directed_viz.force_directed.SWRange3">1</option>
+        <option name="force_directed_viz.force_directed.SWRange4">1</option>
+        <option name="force_directed_viz.force_directed.SWRange5">1</option>
+        <option name="force_directed_viz.force_directed.StrokeWidth">1</option>
+        <option name="force_directed_viz.force_directed.arrows">enabled</option>
+        <option name="force_directed_viz.force_directed.lowerRange">5</option>
+        <option name="force_directed_viz.force_directed.theme">dark</option>
+        <option name="force_directed_viz.force_directed.upperRange">5</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_content$,$showTopology$" rejects="$showbase$" id="topology_2">
+    <panel>
+      <viz type="force_directed_viz.force_directed">
+        <title>Topology</title>
+        <search>
+          <query>
+            `netflow_search_rule_20467` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" $advanced_filter$ direction=outbound
+						| fields - $showTopology$
+      			| search src_port="$src_port$" (src_ip="$src_vm$" OR src_vm_name="$src_vm$") (dest_ip="$dest_vm$" OR dest_vm_name="$dest_vm$") dest_port="$dest_port$"
+      			| fillnull value="" transport src_vm_name dest_vm_name
+      			| search transport="$protocol_name$"
+            | `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+						| stats sum(bytes) as TrafficBytes by dest_ip, src_ip 
+						| sort - TrafficBytes 
+						| head 100
+					</query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMax">200</option>
+        <option name="force_directed_viz.force_directed.AttractDistanceMin">60</option>
+        <option name="force_directed_viz.force_directed.AttractForceStrength">-300</option>
+        <option name="force_directed_viz.force_directed.CollisionIterations">1</option>
+        <option name="force_directed_viz.force_directed.CollisionRadius">40</option>
+        <option name="force_directed_viz.force_directed.CollisionStrength">0.7</option>
+        <option name="force_directed_viz.force_directed.ColorRange1">100</option>
+        <option name="force_directed_viz.force_directed.ColorRange1Code">#65a637</option>
+        <option name="force_directed_viz.force_directed.ColorRange2">500</option>
+        <option name="force_directed_viz.force_directed.ColorRange2Code">#6db7c6</option>
+        <option name="force_directed_viz.force_directed.ColorRange3">1000</option>
+        <option name="force_directed_viz.force_directed.ColorRange3Code">#f7bc38</option>
+        <option name="force_directed_viz.force_directed.ColorRange4">10000</option>
+        <option name="force_directed_viz.force_directed.ColorRange4Code">#f58f39</option>
+        <option name="force_directed_viz.force_directed.ColorRange5">1000000</option>
+        <option name="force_directed_viz.force_directed.ColorRange5Code">#d93f3c</option>
+        <option name="force_directed_viz.force_directed.ForceCollision">20</option>
+        <option name="force_directed_viz.force_directed.LineColor">disabled</option>
+        <option name="force_directed_viz.force_directed.LinkDistance">100</option>
+        <option name="force_directed_viz.force_directed.LinkLength">1</option>
+        <option name="force_directed_viz.force_directed.PanZoom">enabled</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMax">50</option>
+        <option name="force_directed_viz.force_directed.RepelDistanceMin">10</option>
+        <option name="force_directed_viz.force_directed.RepelForceStrength">-140</option>
+        <option name="force_directed_viz.force_directed.SWRange1">1</option>
+        <option name="force_directed_viz.force_directed.SWRange2">1</option>
+        <option name="force_directed_viz.force_directed.SWRange3">1</option>
+        <option name="force_directed_viz.force_directed.SWRange4">1</option>
+        <option name="force_directed_viz.force_directed.SWRange5">1</option>
+        <option name="force_directed_viz.force_directed.StrokeWidth">1</option>
+        <option name="force_directed_viz.force_directed.arrows">enabled</option>
+        <option name="force_directed_viz.force_directed.lowerRange">5</option>
+        <option name="force_directed_viz.force_directed.theme">dark</option>
+        <option name="force_directed_viz.force_directed.upperRange">5</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </viz>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10467: Azure NSG Top Traffic Monitor”</b> (syslogs with nfc_id=20467). This Module identifies Azure VMs with the most traffic. It consolidates NSG Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “Azure NSG Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+    </panel>
+  </row>
+</form>

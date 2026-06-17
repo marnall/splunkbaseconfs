@@ -1,0 +1,138 @@
+<module name="CustomBehavior">
+
+  <module name="Link">
+    <param name="label">settings</param>
+    <param name="float">right</param>
+    <param name="cssClass">menuOpener</param>
+    <param name="hideUntilPushReceived">False</param>
+
+    <module name="Layer">
+      <param name="cssClass">settingsLayer</param>
+
+      <!-- yep, the big eval should be a lookup. you are correct. -->
+      <module name="Search">
+        <param name="search"><![CDATA[
+  | rest /servicesNS/$sideview.currentUser$/$sideview.currentApp$/data/ui/manager splunk_server=local
+  | where title!="apps_local"
+  | stats count by menu.label title menu.url
+  | lookup manager_sections page as title OUTPUT section
+  | eval comment="These appear to have been hacked in by splunk engineers unfamiliar with how to add sections to EAI/manager."
+  | append [
+    | makeresults
+    | eval extras=split("rapidDiag,Instrumentation",",")
+    | mvexpand extras
+    | rename extras as menu.label
+    | eval category="Instrumentation"
+  ]
+  | rename menu.label as label menu.url as manager_url
+  | eval url="$sideview.rootEndpoint$" + replace(manager_url,"%\(namespace\)s", "$sideview.currentApp$")
+
+        ]]></param>
+        <module name="PostProcess">
+          <param name="search"><![CDATA[
+| stats count by section
+| eval order=case(section=="Knowledge",1,section="System",2,section="Data",3,section="Distributed Environment",4,section="Users and Authentication",5)
+| sort + order
+| fields - order
+          ]]></param>
+
+          <module name="Multiplexer">
+            <param name="fields">section</param>
+
+            <module name="CustomBehavior">
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <h3>$section$</h3>
+                ]]></param>
+              </module>
+
+              <module name="PostProcess">
+                <param name="search"><![CDATA[
+| search section="$section$"
+                ]]></param>
+
+                <module name="Multiplexer">
+                  <param name="fields">label, url</param>
+
+                  <module name="Link">
+                    <param name="label">$label$</param>
+
+                    <module name="Redirector">
+                      <param name="url">$url$</param>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+  <module name="Link">
+    <param name="label">help</param>
+    <param name="float">right</param>
+    <param name="cssClass">menuOpener</param>
+    <param name="hideUntilPushReceived">False</param>
+
+    <module name="Layer">
+      <param name="cssClass">menu topNav</param>
+
+      <module name="Link">
+        <param name="cssClass">menuItem external</param>
+        <param name="label">product tour (NEW)</param>
+        <module name="Redirector">
+          <param name="url">tour</param>
+          <param name="popup">True</param>
+          <param name="target">tourWindow</param>
+          <param name="windowFeatures">popup=true,left=20,top=20,width=600,height=600</param>
+        </module>
+      </module>
+
+      <module name="Link">
+        <param name="cssClass">menuItem external</param>
+        <param name="label">user documentation</param>
+        <module name="Redirector">
+          <param name="url">https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-user-documentation</param>
+          <param name="target">_blank</param>
+        </module>
+      </module>
+
+      <module name="Link">
+        <param name="cssClass">menuItem external</param>
+        <param name="label">install/setup documentation</param>
+        <module name="Redirector">
+          <param name="url">https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation</param>
+          <param name="target">_blank</param>
+        </module>
+      </module>
+
+      <module name="Link">
+        <param name="cssClass">menuItem external</param>
+        <param name="label">contact Sideview support</param>
+        <module name="Redirector">
+          <param name="url">https://sideviewapps.com/support</param>
+          <param name="target">_blank</param>
+        </module>
+      </module>
+
+      <module name="Link">
+        <param name="cssClass">menuItem</param>
+        <param name="label">system and usage information</param>
+        <module name="Redirector">
+          <param name="url">infodump</param>
+        </module>
+      </module>
+
+    </module>
+  </module>
+
+
+
+  <module name="TopNav">
+    <param name="includeSettingsLink">False</param>
+  </module>
+  <module name="AppNav" />
+</module>

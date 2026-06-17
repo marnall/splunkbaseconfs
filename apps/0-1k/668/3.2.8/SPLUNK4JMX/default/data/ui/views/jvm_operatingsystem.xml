@@ -1,0 +1,119 @@
+<form version="1.1">
+    <label>Operating System</label>
+    <fieldset autoRun="true">
+        <input type="dropdown" token="host">
+            <label>Choose host</label>
+            <prefix>host="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>host</fieldForValue>
+            <fieldForLabel>host</fieldForLabel>
+            <search>
+                <query>
+                | metadata type=hosts index=main | dedup host | table host
+                </query> 
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="dropdown" token="jvmDescription">
+            <label>Choose JVM Description</label>
+            <prefix>jvmDescription="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>jvmDescription</fieldForValue>
+            <fieldForLabel>jvmDescription</fieldForLabel>
+            <search>
+                <query>
+                index=main sourcetype=jmx $host$ | dedup jvmDescription | table jvmDescription
+                </query>
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="time">
+            <default>Last 4 hours</default>
+        </input>
+    </fieldset>
+    <search id="base_search">
+        <query>
+        index=main sourcetype=jmx $host$ $jvmDescription$ mbean_domain="java.lang" mbean_property_type="OperatingSystem" OR "Runtime"
+        | eval swapUsed=swapSpace-freeSwap
+        | eval memoryUsed=physMem-freePhysMem 
+        | bucket _time span=1m 
+        | stats first(name) as name first(version) as version first(arch) as arch first(jvmUptime) as jvmUptime first(cpuTime) as cpuTime first(processors) as cpus first(sysLoad) as sysLoad first(openFD) as openFD first(maxFD) as maxFD first(physMem) as physMem first(memoryUsed) as memoryUsed first(swapSpace) as swapSpace first(swapUsed) as swapUsed first(committed) as committed by _time host jvmDescription
+    </query></search>
+    <row>
+        <table>
+            <title>Operating System Overview</title>
+            <search base="base_search"><query>stats first(name) as OS first(version) as Version first(arch) as Architecture by host jvmDescription | sort jvmDescription
+            </query></search>
+        </table>
+    </row>
+    <row>
+        <chart>
+            <title>CPU Usage</title>
+            <search base="base_search"><query>streamstats current=f global=f window=1 first(jvmUptime) as next_uptime first(cpuTime) as next_cputime by jvmDescription 
+                | eval d_uptime=jvmUptime-next_uptime 
+                | eval d_cputime=cpuTime-next_cputime 
+                | eval cpu=(d_cputime/(d_uptime*10000*cpus)) 
+                | timechart max(cpu) by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">CPU %</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>System Load</title>
+            <search base="base_search"><query>timechart avg(sysLoad) as "Load Factor" by host
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Load Factor</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>File Descriptors(*Nix Hosts only)</title>
+            <search base="base_search"><query> timechart max(openFD) as "Open File Descriptors" max(maxFD) as "Max File Descriptors" by host
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Count</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Physical Memory</title>
+            <search base="base_search"><query> timechart max(physMem) as "Total Memory" max(memoryUsed) as "Used Memory" by host
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Memory (Bytes)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Swap Space</title>
+            <search base="base_search"><query> timechart span=5m max(swapSpace) as "Total Swap" max(swapUsed) as "Used Swap" by host
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Swap (Bytes)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Committed Virtual Memory</title>
+            <search base="base_search"><query>timechart avg(committed) as "Committed Virtual Memory" by host
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Committed (Bytes)</option>
+        </chart>
+    </row>
+</form>

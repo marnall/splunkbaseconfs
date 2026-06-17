@@ -1,0 +1,155 @@
+<module name="Search">
+  <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/data/ui/views splunk_server=local
+
+| search (eai:acl.app="cisco_cdr" OR eai:appName="cisco_cdr") NOT author="nobody" isDashboard=1 OR isForm=1
+| rename eai:acl.sharing as sharing eai:data as xml eai:acl.app as app author as owner title as dashboard
+
+| rex field=xml "<(?<node>chart|table|single)>" max_match=0
+| eval panels=mvcount(node)
+| eval updated_epoch=strptime(updated,"%Y-%m-%dT%H:%M:%S")
+| eval updated=strftime(updated_epoch, "%Y-%m-%d")
+| join type="left" dashboard [
+  | rest /servicesNS/-/cisco_cdr/scheduled/views splunk_server=local
+  | rename action.email.pdfview as dashboard
+  | eval scheduled=if(is_scheduled==1,"yes",null())
+  | fields dashboard scheduled
+]
+| eval uri=replace(id,"^.+/servicesNS","/servicesNS")
+| table dashboard panels owner sharing scheduled updated disabled uri
+  ]]></param>
+
+  <module name="HTML">
+    <param name="clear">left</param>
+    <param name="html"><![CDATA[
+
+      <h3>Your Dashboards</h3>
+
+    ]]></param>
+  </module>
+  <!-- assumption that seems to be true.  eai:appName is always the same as eai:acl.app
+  see:
+        | rest /servicesNS/-/-/data/ui/views splunk_server=local
+        |  rename eai:acl.app as acl_app,  eai:appName as appName
+        |  fields - eai:data
+        |  where acl_app!=appName
+        |  table title owner acl_app appName *
+  -->
+  <module name="ProgressIndicator" />
+
+  <module name="Pager">
+    <module name="Table">
+      <!-- replace this with
+      <param name="noResultsFoundMessage">You haven't created any saved dashboards yet, nor are there any shared with you by colleagues.</param>
+      whenever Canary 2.1 has been around for a long time (the release when this param was introduced) -->
+      <param name="customBehavior">yourSavedDashboardsTable</param>
+      <param name="hiddenFields">uri</param>
+
+      <module name="Layer">
+        <param name="cssClass">menu</param>\
+
+        <module name="Link">
+          <param name="cssClass">menuItem</param>
+          <param name="label">view dashboard</param>
+          <module name="Redirector">
+            <param name="url">../../../../../app/cisco_cdr/$row.fields.dashboard$</param>
+          </module>
+        </module>
+
+        <module name="Link">
+          <param name="cssClass">menuItem</param>
+          <param name="label">load dashboard in edit mode</param>
+          <module name="Redirector">
+            <param name="url">../../../../../app/cisco_cdr/$row.fields.dashboard$/edit</param>
+          </module>
+        </module>
+
+        <module name="Link">
+          <param name="cssClass">menuItem</param>
+          <param name="label">delete dashboard</param>
+
+          <module name="Layer">
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                <br>
+                Are you sure you wish to delete this dashboard?<br>
+                <br>
+                (hit the escape key, or click away, or click the 'x' to cancel)<br>
+                <br>
+              ]]></param>
+            </module>
+
+            <module name="Button">
+              <param name="label">yes</param>
+
+              <module name="REST">
+                <param name="name">deleteDashboardRest</param>
+                <param name="method">DELETE</param>
+                <param name="uri">/splunkd/__raw/$row.fields.uri$</param>
+
+                <module name="Switcher">
+                  <param name="selectedGroup">$deleteDashboardRest.state$</param>
+
+                  <module name="NullModule" group="success">
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                          Your saved dashboard was deleted.
+                      ]]></param>
+                      <param name="customBehavior">reloadViewsInNav</param>
+                    </module>
+                  </module>
+                  <module name="HTML" group="failure">
+                    <param name="html"><![CDATA[
+                      Error deleting dashboard:<br>
+                      $deleteDashboardRest.errorMessage$
+                    ]]></param>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                <br><br>
+              ]]></param>
+            </module>
+          </module>
+
+
+
+        </module>
+
+
+
+      </module>
+    </module>
+  </module>
+
+  <module name="Link">
+    <param name="label">&#187; start the dashboard tutorial</param>
+
+    <module name="Redirector">
+      <param name="url">tour</param>
+      <param name="arg.selectedTab">static</param>
+      <param name="arg.staticTutorial">creating_dashboards</param>
+      <param name="popup">True</param>
+      <param name="target">tourWindow</param>
+      <param name="windowFeatures">popup=true,left=20,top=20,width=600,height=800</param>
+    </module>
+  </module>
+
+
+
+  <module name="Link">
+    <param name="label">&#187; view and edit dashboards in Splunk Manager</param>
+
+    <module name="Redirector">
+      <param name="url">../../../../../manager/cisco_cdr/data/ui/views</param>
+      <param name="arg.ns">cisco_cdr</param>
+      <param name="arg.app_only">1</param>
+      <param name="arg.count">25</param>
+    </module>
+  </module>
+
+
+
+</module>

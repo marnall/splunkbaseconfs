@@ -1,0 +1,289 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>ICA Session Inspector</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">ICA Session Inspector</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report compares the ICA Session Bandwidth and Latency to a selected WindowsPerfMon counter. Enter the hostname of the virtual desktop and a user, select a timerange and press Submit. Span refers to the size of the time buckets for the selected performance counter and desktop. For example span=1h with a time range of Last 24 hours will bucket the results into 24 one-hour time buckets.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row3_col1_grp1">
+    <param name="selected">Last 60 minutes</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Desktop Name:</param>
+      <param name="field">vm_name</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="vm_name">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="vm_name">
+            <param name="default"/>
+            <param name="prefix">vm_name="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">User Name:</param>
+        <param name="field">user</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="user">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="user">
+              <param name="default"/>
+              <param name="prefix">user="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">Span:</param>
+          <param name="field">span</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="span">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="span">
+                <param name="default"/>
+                <param name="prefix">span="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="SubmitButton" layoutPanel="panel_row3_col1_grp2">
+            <param name="allowSoftSubmit">False</param>
+            <param name="label">Submit</param>
+            <module name="StaticSelect" layoutPanel="panel_row2_col1_grp4">
+              <param name="settingToCreate">counter</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">Select...</param>
+                </list>
+                <list>
+                  <param name="label">% Processor Time</param>
+                  <param name="value">% Processor Time</param>
+                </list>
+                <list>
+                  <param name="label">Available Bytes</param>
+                  <param name="value">Available Bytes</param>
+                </list>
+                <list>
+                  <param name="label">Disk Writes/Sec</param>
+                  <param name="value">Disk Writes/Sec</param>
+                </list>
+                <list>
+                  <param name="label">Disk Reads/Sec</param>
+                  <param name="value">Disk Reads/Sec</param>
+                </list>
+                <list>
+                  <param name="label">Split IO/Sec</param>
+                  <param name="value">Split IO/Sec</param>
+                </list>
+                <list>
+                  <param name="label">Disk Transfers/Sec</param>
+                  <param name="value">Disk Transfers/Sec</param>
+                </list>
+                <list>
+                  <param name="label">Disk Bytes/Sec</param>
+                  <param name="value">Disk Bytes/Sec</param>
+                </list>
+                <list>
+                  <param name="label">Bytes Sent/sec</param>
+                  <param name="value">Bytes Sent/sec</param>
+                </list>
+                <list>
+                  <param name="label">Bytes Received/sec</param>
+                  <param name="value">Bytes Received/sec</param>
+                </list>
+              </param>
+              <module name="ConvertToIntention">
+                <param name="settingToConvert">counter</param>
+                <param name="intention">
+                  <param name="name">stringreplace</param>
+                  <param name="arg">
+                    <param name="counter">
+                      <param name="default"/>
+                      <param name="prefix">counter="</param>
+                      <param name="suffix">"</param>
+                      <param name="fillOnEmpty">false</param>
+                      <param name="value">$target$</param>
+                    </param>
+                  </param>
+                </param>
+                <module name="HiddenSearch" layoutPanel="panel_row5_col1">
+                  <param name="search">`perfmon_index` sourcetype!="Perfmon:RunningProcesses" $counter$ [search `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ] | timechart $span$ min(Value) as "Min" avg(Value) as "Avg" max(Value) as "Max"</param>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="label">View Counter Results</param>
+                  </module>
+                  <module name="JobProgressIndicator"/>
+                  <module name="EnablePreview">
+                    <param name="enable">True</param>
+                    <param name="display">False</param>
+                  </module>
+                  <module name="LinkSwitcher" layoutPanel="panel_row5_col1" group="PerfMon Counter vs ICA Bandwith/Latency">
+                    <param name="mode">independent</param>
+                    <param name="label">_</param>
+                    <module name="NullModule" group="Timechart" layoutPanel="panel_row5_col1">
+                      <module name="HiddenChartFormatter">
+                        <param name="chart">line</param>
+                        <param name="chart.stackMode">none</param>
+                        <param name="legend.placement">bottom</param>
+                        <module name="JSChart">
+                          <param name="width">100%</param>
+                          <module name="ConvertToDrilldownSearch">
+                            <module name="ViewRedirector">
+                              <param name="viewTarget">flashtimeline</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="NullModule" group="Table" layoutPanel="panel_row5_col1">
+                      <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row5_col1">
+                        <param name="displayMenu">true</param>
+                        <param name="count">100</param>
+                        <param name="drilldown">row</param>
+                        <param name="entityName">results</param>
+                        <param name="displayRowNumbers">False</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenSearch" layoutPanel="panel_row5_col1">
+              <param name="search">`xendesktop_index` `xd_ica` $vm_name$ $user$ InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression UserName!="" [search `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ] | timechart $span$ avg(LatencySessionAverage) as LatencySessionAverage avg(InputSessionBandwidth) as InputSessionBandwidth avg(OutputSessionBandwidth) as OutputSessionBandwidth</param>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View ICA Session Counters</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="EnablePreview">
+                <param name="enable">True</param>
+                <param name="display">False</param>
+              </module>
+              <module name="LinkSwitcher" layoutPanel="panel_row5_col1" group="ICA Session Inspector">
+                <param name="mode">independent</param>
+                <param name="label">_</param>
+                <module name="NullModule" group="Timechart" layoutPanel="panel_row5_col1">
+                  <module name="HiddenChartFormatter">
+                    <param name="chart">column</param>
+                    <param name="chart.stackMode">stacked</param>
+                    <param name="legend.placement">bottom</param>
+                    <module name="JSChart">
+                      <param name="width">100%</param>
+                      <module name="ConvertToDrilldownSearch">
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">flashtimeline</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                <module name="NullModule" group="Table" layoutPanel="panel_row5_col1">
+                  <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row5_col1">
+                    <param name="displayMenu">true</param>
+                    <param name="count">100</param>
+                    <param name="drilldown">row</param>
+                    <param name="entityName">results</param>
+                    <param name="displayRowNumbers">False</param>
+                    <module name="ConvertToDrilldownSearch">
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">flashtimeline</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenSearch" layoutPanel="panel_row6_col1">
+              <param name="search">`xendesktop_index` `xd_sessions_sourcetype` [search `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name user ] | `session_desktop_lookup` | `client_name` | `get_times` | `xd5_sessions_uniq`</param>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">Session Details</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="EnablePreview">
+                <param name="enable">True</param>
+                <param name="display">False</param>
+              </module>
+              <module name="LinkSwitcher" layoutPanel="panel_row6_col1" group="Session Details">
+                <param name="mode">independent</param>
+                <param name="label">_</param>
+                <module name="NullModule" group="Table" layoutPanel="panel_row6_col1">
+                  <module name="HiddenPostProcess" layoutPanel="panel_row6_col1">
+                    <param name="search">| dedup StartTime SessionStateChangeTime vm_name user | table _time user vm_name SessionState BrokeringTime StartTime SessionStateChangeTime duration load_time CatalogName ClientAddress ClientName ClientVersion ControllerDNSName DesktopSID DeviceId HardwareId HostingServerName Protocol UserSID client_dvc_type</param>
+                    <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row6_col1">
+                      <param name="displayMenu">true</param>
+                      <param name="count">100</param>
+                    </module>
+                  </module>
+                </module>
+                <module name="NullModule" group="Timechart" layoutPanel="panel_row6_col1">
+                  <module name="HiddenPostProcess" layoutPanel="panel_row6_col1">
+                    <param name="search">timechart dc(user) as Sessions by SessionState</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">column</param>
+                      <param name="chart.stackMode">none</param>
+                      <param name="legend.placement">bottom</param>
+                      <module name="JSChart" layoutPanel="panel_row6_col1">
+                        <param name="width">100%</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

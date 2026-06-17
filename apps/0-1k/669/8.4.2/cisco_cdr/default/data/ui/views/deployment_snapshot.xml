@@ -1,0 +1,153 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view template="dashboard.html" stylesheet="custom.css" isVisible="false" >
+  <label>CUCM Deployment Snapshot</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+      <h1><a href="home">Home</a> &gt; Setup &gt; CUCM Deployment Snapshot</h1>
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="mainSearchControls">
+
+    <module name="TimePicker">
+      <param name="default">Last 30 days</param>
+
+
+
+
+      <module name="Search" layoutPanel="panel_row1_col1">
+        <param name="search"><![CDATA[
+| tstats prestats=t count WHERE `custom_index` GROUPBY origIpAddr, destIpAddr, origDeviceName, destDeviceName, globalCallID_callId, globalCallID_callManagerId, globalCallId_ClusterID
+
+| stats count by origIpAddr, destIpAddr, origDeviceName, destDeviceName, globalCallID_callId, globalCallID_callManagerId, globalCallId_ClusterID
+| eval globalCallID_callManagerId=globalCallId_ClusterID + "::" + globalCallID_callManagerId
+| `get_call_id`
+| eval ip=mvappend(origIpAddr,destIpAddr)
+| eval device=mvappend(origDeviceName,destDeviceName)
+| stats dc(call_id) as calls dc(device) as devices dc(ip) as ip_addresses dc(globalCallID_callManagerId) as call_managers dc(globalCallId_ClusterID) as clusters
+        ]]></param>
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+            <h3>Your data $search.timeRange.label$</h3>
+          ]]></param>
+        </module>
+
+        <module name="Pager">
+          <module name="Table"/>
+        </module>
+
+
+
+
+
+
+
+
+        <module name="Search" layoutPanel="panel_row2_col1">
+          <param name="search"><![CDATA[
+
+| tstats prestats=t count WHERE `custom_index` GROUPBY origIpAddr, destIpAddr, origDeviceName, destDeviceName, globalCallID_callId, globalCallID_callManagerId, globalCallId_ClusterID, _time span=1d
+| stats count by origIpAddr, destIpAddr, origDeviceName, destDeviceName, globalCallID_callId, globalCallID_callManagerId, globalCallId_ClusterID, _time
+| eval globalCallID_callManagerId=globalCallId_ClusterID + "::" + globalCallID_callManagerId
+| `get_call_id`
+| eval ip=mvappend(origIpAddr,destIpAddr)
+| eval device=mvappend(origDeviceName,destDeviceName)
+| eval day=_time
+| bin day span=1d
+| eval day_of_week=lower(strftime(day,"%A"))
+| stats earliest(_time) as earliest latest(_time) as latest dc(call_id) as calls dc(device) as devices dc(ip) as ip_addresses dc(globalCallID_callManagerId) as call_managers dc(globalCallId_ClusterID) as clusters by day day_of_week
+| eval hours_of_data=(latest-earliest)/3600
+| eval time=strftime(day,"%m/%d/%Y (%A)")
+| fields time clusters call_managers devices ip_addresses calls hours_of_data]]></param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <h3>Your data, day by day</h3>
+
+            ]]></param>
+          </module>
+
+          <module name="Pager">
+            <module name="Table" />
+          </module>
+
+
+        </module>
+
+
+        <module name="Search" layoutPanel="panel_row3_col1">
+          <param name="search"><![CDATA[
+| inputlookup clusters | stats count | rename count as clusters
+| appendcols [ | inputlookup groups | stats count as extensions]
+| appendcols [ | inputlookup groups | stats dc(group) as groups]
+| appendcols [ | inputlookup cidr | stats count as "subnets (via sites)"]
+| appendcols [ | inputlookup cidr | stats dc(site_name) as sites ]
+| appendcols [ | inputlookup devices | stats count as "devices"]
+| appendcols [ | inputlookup devices | stats dc(devicePool) as "devicePools (via devices)"]
+
+| fields clusters sites subnets* extensions devices devicePools* custom* *
+          ]]></param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <h3>Your lookups</h3>
+
+            ]]></param>
+          </module>
+
+          <module name="Pager">
+            <module name="Table" />
+          </module>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              For more detail consult the "Lookup Summary" section on the <a href="home">app's landing page</a>.  Also the administration pages for these lookups can be found in the app navigation above, under "App Settings".
+            ]]></param>
+          </module>
+
+        </module>
+
+
+        <module name="Search" layoutPanel="panel_row4_col1">
+          <param name="search"><![CDATA[
+
+| rest /servicesNS/$sideview.currentUser$/cisco_cdr/data/transforms/extractions splunk_server=local
+| rename eai:acl.owner as owner
+| search title=cisco-cdr-* FORMAT=*device_type::* disabled=0
+| rex field=FORMAT "device_type::(?<device_type>[^\s]+)"
+| fields device_type title owner FORMAT REGEX SOURCE_KEY
+| stats count values(*) as * by device_type
+| search device_type!="gateway"
+| eval actions="replaced at runtime"
+| eval type=if(owner=="nobody","app", "custom")
+| search type=="custom"
+| stats count as "custom device types"
+| appendcols [| rest /servicesNS/millicent/cisco_cdr/saved/eventtypes
+  | search title="leg_type_*"
+  | eval type=if(owner=="nobody","app", "custom")
+  | search type="custom"
+  | stats count as "leg types"
+]
+
+          ]]></param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <h3>Other config</h3>
+
+            ]]></param>
+          </module>
+
+          <module name="Pager">
+            <module name="Table" />
+          </module>
+        </module>
+
+      </module>
+    </module>
+  </module>
+</view>

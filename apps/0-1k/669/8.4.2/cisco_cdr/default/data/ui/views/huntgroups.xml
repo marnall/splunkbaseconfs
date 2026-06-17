@@ -1,0 +1,270 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Huntgroups</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <pattern name="display_saved_report_name" />
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Huntgroups</h1>
+      ]]></param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_huntgroupsPage</param>
+    </module>
+
+    <module name="Search" layoutPanel="mainSearchControls">
+      <param name="search">| inputlookup groups | search NOT group="PLACEHOLDER GROUP" | fillnull subgroup value="EXPLICIT_NULL" | stats count by group subgroup | sort 0 group</param>
+
+      <module name="TimePicker">
+        <param name="default">Last 60 minutes</param>
+
+
+        <module name="TextField">
+          <param name="name">huntPilotDN</param>
+          <param name="label">hunt pilot</param>
+          <param name="template">$name$="$value$"</param>
+          <param name="width">150px</param>
+
+
+          <module name="TextField">
+            <param name="name">searchterms</param>
+            <param name="label">search filters</param>
+            <param name="width">334px</param>
+
+            <pattern name="cluster_controls">
+
+
+              <module name="CheckboxPulldown">
+                <param name="name">modifiers</param>
+                <param name="label">options</param>
+                <param name="selectedByDefault">False</param>
+                <param name="sticky">True</param>
+                <param name="staticOptions">
+
+                  <list>
+                    <param name="value">callsWithZeroDuration</param>
+                    <param name="label">count calls with zero duration</param>
+                  </list>
+                  <list>
+                    <param name="value">fred</param>
+                    <param name="label">(unused)</param>
+                  </list>
+                </param>
+
+                <module name="Button">
+                  <param name="allowSoftSubmit">True</param>
+
+                  <module name="CustomBehavior">
+                    <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+                    <module name="CustomBehavior">
+                      <param name="customBehavior">getKeysForModifiers</param>
+
+                      <module name="ValueSetter">
+                        <param name="name">genericNameTerm</param>
+                        <param name="requiredKeys">name.rawValue</param>
+                        <param name="value">name="$name.rawValue$"</param>
+
+<!--
+
+note the "unused" in the options pulldown.
+
+what happens when there's a leg_type_transferred_away   or leg_type_failed   do we let it override?
+
+-->
+                        <module name="Search">
+                          <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+| search title="leg_type_*" disabled=0
+| eval leg_type=replace(title,"leg_type_", "")
+| stats values(leg_type) as leg_types
+
+                          ]]></param>
+
+                          <!--
+                            We get this via RVS instead of with a subsearch.
+                            The reason is so that we can have the $leg_types$
+                            token to later ALSO do a fillnull.
+                            If we don't do that fillnull,  then if no matching
+                            huntPilots have ANY calls that match that particular
+                            leg type, then there is never a <leg_type>_call_id
+                            for it, and then the field doesn't exist at all in the
+                            output and the column becomes undisplayable.
+                            Conversely with the fillnull there's a 0
+                          -->
+                          <module name="ResultsValueSetter">
+                            <param name="fields">leg_types</param>
+
+
+
+                            <module name="Search" layoutPanel="resultsHeaderPanel">
+                              <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("huntPilotDN,huntPilotName,huntPilotGroup,huntPilotSubgroup,calls,site,failed,pct_failed,incoming,internal,total_duration,incoming_duration,internal_duration,total_duration_min,incoming_duration_min,internal_duration_min,transferred_away,business_hours,off_hours,business_hours_duration,off_hours_duration,audio,video,audio_duration,video_duration,$leg_types$",",")
+| mvexpand field
+                              ]]></param>
+
+                              <module name="Fields">
+                                <param name="fields">huntPilotDN,huntPilotName,calls,site,failed,pct_failed,transferred_away,incoming,internal,total_duration,incoming_duration,internal_duration</param>
+                                <param name="float">right</param>
+
+                                <module name="Search">
+                                  <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr cause_description!="Unallocated (unassigned) number" $clusterGroup$ $clusterId$ $group$ $subgroup$ $name$ $huntPilotNumberTerms$ $excludeCallsWithZeroDuration$ huntPilotDN=* NOT huntPilotDN=""
+| `customizable_sites_extractions` | `get_sites`
+| `get_custom_type_fields`
+| fillnull duration value="0"
+| eval {type}_duration=duration
+| eval {type}_call_id=call_id
+| eval {bh_type}_duration=duration
+| eval {bh_type}_call_id=call_id
+| eval {callMediaType}_duration=duration
+| eval {callMediaType}_call_id=call_id
+| eval failure_type=if(call_failed==1,"failed","completed")
+| eval {failure_type}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+| eval transfer_call_id=if(cause_description=="Call split",call_id,null())
+| `calculate_all_internal_parties`
+| stats dc(*_call_id) as * dc(call_id) as calls sum(incoming_duration) as incoming_duration sum(outgoing_duration) as outgoing_duration sum(internal_duration) as internal_duration sum(duration) as total_duration sum(off_hours_duration) as off_hours_duration sum(business_hours_duration) as business_hours_duration sum(audio_duration) as audio_duration sum(video_duration) as video_duration values(partyName) as name values(site) as site by huntPilotDN
+| fillnull site value="(none)" \
+| lookup groups number as huntPilotDN output name as huntPilotName group as huntPilotGroup subgroup as huntPilotSubgroup
+| rename transfer as transferred_away
+| fillnull calls incoming outgoing internal failed $leg_types$
+| eval pct_failed = if(failed==0,"0%",round((100 * failed / calls), 2) . "%")
+| search * $genericNumberTerms$ $genericGroupTerms$ $genericSubgroupTerms$ $genericNameTerm$ $genericSiteTerms$ $huntPilotNumberTerms$ $searchterms$
+| `get_durations_for_internal_parties`
+| `replace_zeros_with_nulls`
+
+                                  ]]></param>
+
+                                  <module name="ProgressIndicator" layoutPanel="resultsAreaLeft"></module>
+
+                                  <pattern name="save_create_buttons" />
+
+                                  <module name="SearchControls" layoutPanel="resultsHeaderPanel">
+                                    <param name="sections">jobControls info export print</param>
+                                    <param name="float">right</param>
+                                  </module>
+
+                                  <module name="HTML" layoutPanel="resultsHeaderPanel">
+                                    <param name="html"><![CDATA[
+
+                                    <h2>$qualifier$ $results.count$ huntPilot numbers found $search.timeRange.label$ </h2>
+
+                                    ]]></param>
+                                    <param name="customBehavior">qualifyNumberOfResults</param>
+                                  </module>
+
+                                  <module name="Pulldown" layoutPanel="resultsAreaLeft">
+                                    <param name="name">results.count</param>
+                                    <param name="label">results per page</param>
+                                    <param name="float">right</param>
+                                    <param name="staticOptions">
+                                      <list><param name="value">10</param></list>
+                                      <list><param name="value">20</param><param name="selected">True</param></list>
+                                      <list><param name="value">50</param></list>
+                                      <list><param name="value">100</param></list>
+                                      <list><param name="value">200</param></list>
+                                    </param>
+
+                                    <module name="PostProcess">
+                                      <param name="search">fields $results.fields$</param>
+
+                                      <module name="Pager">
+
+                                        <module name="Table">
+
+                                          <module name="Layer">
+                                            <param name="cssClass">menu</param>
+
+                                            <module name="Link">
+                                              <param name="cssClass">menuItem</param>
+                                              <param name="label">investigate calls to this huntpilot number</param>
+
+                                              <module name="Redirector">
+                                                <param name="url">calls</param>
+                                                <param name="mergeDrilldownKeys">False</param>
+                                                <param name="arg.number">$row.fields.huntPilotDN$</param>
+                                                <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                                <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                <param name="arg.latest">$search.timeRange.latest$</param>
+                                                <param name="arg.searchterms">huntPilotDN="$row.fields.huntPilotDN$"</param>
+                                              </module>
+                                            </module>
+
+                                            <module name="Link">
+                                              <param name="cssClass">menuItem</param>
+                                              <param name="label">view extensions involved in calls to this huntPilot</param>
+
+                                              <module name="Redirector">
+                                                <param name="url">extensions</param>
+                                                <param name="mergeDrilldownKeys">False</param>
+
+                                                <param name="arg.huntPilotDN">$row.fields.huntPilotDN$</param>
+                                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                <param name="arg.latest">$search.timeRange.latest$</param>
+                                                <param name="arg.modifiers"> </param>
+
+                                              </module>
+
+                                            </module>
+
+                                            <module name="Link">
+                                              <param name="cssClass">menuItem</param>
+                                              <param name="label">view huntgroup details</param>
+
+                                              <module name="Redirector">
+                                                <param name="url">huntgroup_detail</param>
+                                                <param name="mergeDrilldownKeys">False</param>
+
+                                                <param name="arg.huntPilotDN">$row.fields.huntPilotDN$</param>
+                                                <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                                <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                <param name="arg.latest">$search.timeRange.latest$</param>
+
+                                                <param name="arg.bc_earliest">$search.timeRange.earliest$</param>
+                                                <param name="arg.bc_latest">$search.timeRange.latest$</param>
+                                                <param name="arg.bc_name">$name.rawValue$</param>
+                                                <param name="arg.bc_huntPilotDN">$huntPilotDN.rawValue$</param>
+                                                <param name="arg.bc_searchterms">$searchterms.rawValue$</param>
+                                                <param name="arg.bc_clusterId">$clusterId.rawValue$</param>
+                                                <param name="arg.bc_clusterGroup">$clusterGroup.rawValue$</param>
+
+                                              </module>
+
+                                            </module>
+                                          </module>
+                                        </module>
+
+                                        <pattern name="see_raw_search_syntax" />
+
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </pattern>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+</view>

@@ -1,0 +1,109 @@
+<form version="1.1">
+    <label>Memory</label>
+    <fieldset autoRun="true">
+        <input type="dropdown" token="host">
+            <label>Choose host</label>
+            <prefix>host="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>host</fieldForValue>
+            <fieldForLabel>host</fieldForLabel>
+            <search>
+                <query>
+                | metadata type=hosts index=main | dedup host | table host
+                </query> 
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="dropdown" token="jvmDescription">
+            <label>Choose JVM Description</label>
+            <prefix>jvmDescription="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+           <fieldForValue>jvmDescription</fieldForValue>
+            <fieldForLabel>jvmDescription</fieldForLabel>
+            <search>
+                <query>
+                index=main sourcetype=jmx $host$ | dedup jvmDescription | table jvmDescription
+                </query>
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="time">
+            <default>Last 4 hours</default>
+        </input>
+    </fieldset>
+     <search id="base_search">
+        <query>
+        index=main sourcetype=jmx $host$ $jvmDescription$ mbean_domain="java.lang" mbean_property_type="Memory"
+        | bucket _time span=1m
+        | stats first(objectsPending) as objectsPending first(heapUsed) as heapUsed first(heapMax) as heapMax first(heapCommitted) as heapCommitted first(nonHeapUsed) as nonHeapUsed first(nonHeapMax) as nonHeapMax first(nonHeapCommitted) as nonHeapCommitted  by _time host jvmDescription
+    </query></search>
+    <row>
+        <table>
+            <title>Memory Overview</title>
+            <search base="base_search"><query> stats first(objectsPending) as "Objects Pending Collection" first(heapUsed) as "Heap Usage (Bytes)" first(nonHeapUsed) as "Non Heap Usage (Bytes)" by host jvmDescription 
+                | sort jvmDescription
+            </query></search>
+        </table>
+    </row>
+    <row>
+        <chart>
+            <title>JVM Heap Memory</title>
+            <search base="base_search"><query> timechart max(heapMax) as "Heap Maximum" max(heapUsed) as "Heap Used" by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Heap Memory(Bytes)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>JVM Memory Committed</title>
+            <search base="base_search"><query> timechart max(heapCommitted) as "Heap Committed" ,max(nonHeapCommitted) as "Non Heap Committed" by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Committed Memory(Bytes)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Percentage of Heap Memory Used</title>
+            <search base="base_search"><query> eval memoryPercentUsed=round(((heapUsed/heapMax) * 100),2) | timechart max(memoryPercentUsed) by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Percentage Heap Used</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>JVM Non Heap Memory</title>
+            <search base="base_search"><query> timechart max(nonHeapMax) as "Non Heap Maximum" ,max(nonHeapUsed) as "Non Heap Used" by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Non Heap Memory(Bytes)</option>
+        </chart>
+    </row>
+    <row>
+        <chart>
+            <title>Percentage of Non Heap Memory Used</title>
+            <search base="base_search"><query> eval memoryPercentUsed=round(((nonHeapUsed/nonHeapMax) * 100),2) | timechart max(memoryPercentUsed) by jvmDescription
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Percentage Non Heap Used</option>
+        </chart>
+    </row>
+</form>

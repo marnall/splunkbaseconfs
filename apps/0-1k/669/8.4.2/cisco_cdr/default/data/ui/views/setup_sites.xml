@@ -1,0 +1,546 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css" customJS="lib/custom_behaviors/setup_pages.js">
+  <label>Settings > Sites</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+    <h1><a href="home">Home</a> &gt; App Settings &gt; Sites</h1>
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="panel_row1_col1">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <div class="error">$error$</div>
+
+        <div class="info">$message$</div>
+      ]]></param>
+    </module>
+
+
+
+    <module name="ValueSetter" layoutPanel="mainSearchControls">
+      <param name="arg.app">cisco_cdr</param>
+      <param name="arg.app.rawValue">cisco_cdr</param>
+      <param name="arg.lookupName">cidr</param>
+      <param name="arg.lookupName.rawValue">cidr</param>
+      <param name="arg.exportFileName">cidr.csv</param>
+      <param name="arg.fieldOrder">subnet site_name country subnet_description lat long</param>
+
+      <module name="CustomBehavior">
+        <param name="customBehavior">reloader</param>
+
+        <module name="Tabs">
+          <param name="name">selectedTab</param>
+          <param name="staticTabs">
+            <list>
+              <param name="value">about</param>
+              <param name="label">About</param>
+            </list>
+            <list>
+              <param name="value">edit</param>
+              <param name="label">Edit/Delete Sites</param>
+            </list>
+            <list>
+              <param name="value">add</param>
+              <param name="label">Add New Site</param>
+            </list>
+            <list>
+              <param name="value">download</param>
+              <param name="label">Download CSV</param>
+            </list>
+            <list>
+              <param name="value">reupload</param>
+              <param name="label">Upload CSV</param>
+            </list>
+            <list>
+              <param name="value">find</param>
+              <param name="label">Find Sites to add</param>
+            </list>
+          </param>
+
+          <module name="Switcher" layoutPanel="panel_row1_col1">
+            <param name="selectedGroup">$selectedTab$</param>
+
+
+            <module name="NullModule" group="about">
+
+
+              <!-- One Big Happy Flow Chart START -->
+              <module name="Search">
+                <param name="search"><![CDATA[
+                | inputlookup cidr | eval network_bits=mvindex(split(subnet,"/"),1) | delta network_bits as network_bits_delta | search network_bits_delta>0 | stats count | eval group=if(count>0,"wrong sort order","right sort order")
+                ]]></param>
+
+                <module name="ResultsValueSetter">
+                  <param name="fields">group</param>
+
+                  <module name="Switcher">
+                    <param name="selectedGroup">$group$</param>
+
+                    <module name="NullModule" group="wrong sort order">
+
+                      <module name="Search">
+                        <param name="search">
+| rest /services/authentication/current-context splunk_server=local
+| search capabilities=output_file
+| stats count
+| eval group=if(count>0,"can run outputlookup","cannot run outputlookup")
+                        </param>
+
+                        <module name="ResultsValueSetter">
+                          <param name="fields">group</param>
+
+                          <module name="Switcher">
+                            <param name="selectedGroup">$group$</param>
+
+                            <module name="Search" group="can run outputlookup">
+                              <param name="search">| inputlookup cidr | eval network_bits=mvindex(split(subnet,"/"),1) | sort 0 - network_bits | fields site_name subnet subnet_description country lat long | outputlookup cidr create_empty=false override_if_empty=false </param>
+                              <module name="ProgressIndicator"></module>
+
+                              <module name="HTML">
+                                <param name="html"><![CDATA[
+                                <div style="border:1px solid #ccc; padding:5px 10px;"><strong style="color:#c00">THE SITES LOOKUP WAS FOUND TO BE IN THE WRONG SORT ORDER.</strong>  <br>
+                                However the good news is that we were just able to repair the problem. This error message should go away if you refresh the page and the corresponding health check (see Setup > Run Health Checks) should no longer fail.
+                                </div>
+                                ]]></param>
+                              </module>
+                            </module>
+
+                            <module name="HTML" group="cannot run outputlookup">
+                              <param name="html"><![CDATA[
+                              <div style="border:1px solid #ccc; padding:5px 10px;"><strong style="color:#c00">THE SORT ORDER INSIDE THE SITES LOOKUP IS WRONG.</strong><br>
+                              Unfortunately your Splunk user account is not able to run the outputlookup command (technically you do not have the "output_file" capability), so to make a long story short this page was unable to fix the problem for you.  Please tell a Splunk Administrator to navigate to this page, and for good measure to also then run the "Setup > Run Health Checks" page for you.
+                              </div>
+                              ]]></param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+
+                    <module name="Search">
+                      <param name="search">| inputlookup cidr | eval network_bits=mvindex(split(subnet,"/"),1) | sort 0 - network_bits | fields site_name subnet subnet_description country lat long | outputlookup cidr create_empty=false override_if_empty=false </param>
+                      <module name="ProgressIndicator"></module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <!-- One Big Happy Flow Chart END-->
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <p>
+                    The tabs on this page allow you to define physical locations for all your internal endpoints, essentially by subnet.
+                  </p>
+                  <p>
+                    You can either add your "sites" one by one by going to "Add new Site", or add them all at once by downloading, editing and uploading a CSV file.
+                  </p>
+
+                  <h3>What's the end result?</h3>
+                  <ul>
+                    <li>In <a href="calls">Investigate &gt; Calls</a> this will populate values for the "origSite", "destSite" and "site" fields. Likewise the site names will appear in the general location fields "from" and "to" when appropriate.</li>
+
+                    <li>Likewise in the "Chart" tab of that page, you'll be able to use these fields in ad-hoc charts and reports.</li>
+
+                    <li>In <a href="sites">Investigate &gt; Sites</a> you will see call stats and rollups for each of your sites, with drilldown to a "Site Detail" page.</li>
+
+                  </ul>
+
+                  <p>
+                    Make sure to read the <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-sites">setup documentation for this on our website</a>.
+                  </p>
+                ]]></param>
+              </module>
+
+              <module name="Button">
+                <param name="label">Next</param>
+                <module name="Redirector">
+                  <param name="url">?</param>
+                  <param name="arg.selectedTab">edit</param>
+                </module>
+              </module>
+
+
+            </module>
+
+
+
+            <module name="Filters" group="edit">
+              <param name="name">filters</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <p>
+                    Note: lat, long, country and subnet_description are optional and can be left blank.<br>
+                     (country and subnet_description are currently only exposed so that you can use them as labels to differentiate the blocks)
+                  </p>
+                ]]></param>
+              </module>
+
+
+              <module name="Search">
+                <param name="search">| inputlookup $lookupName$ | head 100 | stats dc(*) as * dc(_*) as _* | transpose | rename column as field | table field</param>
+
+
+                <module name="Pulldown">
+                  <param name="name">field</param>
+                  <param name="valueField">field</param>
+                  <param name="float">left</param>
+
+                  <param name="staticOptions">
+                    <list><param name="label">Add new filter ...</param><param name="value"></param></list>
+                  </param>
+                  <param name="customBehavior">hideDownstreamModulesUntilFieldSelected</param>
+
+                  <module name="Pulldown">
+                    <param name="name">operator</param>
+                    <param name="float">left</param>
+                    <param name="staticOptions">
+                      <list><param name="value">=</param></list>
+                      <list><param name="value">&gt;</param></list>
+                      <list><param name="value">&lt;</param></list>
+                      <list><param name="value">!=</param></list>
+                    </param>
+
+                    <module name="Search">
+                      <param name="search">| inputlookup $lookupName$ | head 500 | stats count by $field$ | fields - count | sort 0 $field$ | rename $field$ as value</param>
+
+
+                      <module name="Pulldown">
+                        <param name="name">value</param>
+                        <param name="valueField">value</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list><param name="value"></param><param name="label">enter value manually...</param></list>
+                        </param>
+
+                        <module name="TextField">
+                          <param name="name">value</param>
+                          <param name="float">left</param>
+                          <param name="customBehavior">activeOnlyIfManualEntrySelected</param>
+
+                          <module name="Button">
+                            <param name="label">+</param>
+                            <param name="allowSoftSubmit">False</param>
+                            <param name="allowAutoSubmit">False</param>
+                            <module name="CustomBehavior">
+                              <param name="customBehavior">addNewFilterToFilterBar</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <module name="ValueSetter">
+                <param name="name">templatedFilters</param>
+                <param name="value">| search $filters$</param>
+                <param name="requiredKeys">filters</param>
+
+                <module name="Search">
+                  <param name="search">| inputlookup $lookupName$ $templatedFilters$ | table $fieldOrder$</param>
+
+                  <module name="CustomBehavior">
+                    <param name="customBehavior">changeResultsOffset</param>
+                    <module name="Pulldown">
+                      <param name="name">results.count</param>
+                      <param name="label">Results per page:</param>
+                      <param name="float">right</param>
+                      <param name="staticOptions">
+                        <list><param name="value">10</param></list>
+                        <list><param name="value">20</param></list>
+                        <list><param name="value">50</param></list>
+                        <list><param name="value">100</param></list>
+                      </param>
+
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                          <br clear="all" /><h2 style="margin:0px;padding:0px;">$results.count$ rows found.</h2>
+                        ]]></param>
+                      </module>
+
+                      <module name="Pager">
+                        <module name="Table">
+                          <param name="customBehavior">editableTable</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+
+            <module name="NullModule" group="add">
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                 <p>
+                   Enter new sites one at a time.  Be careful to only click the "Add" button once for each.
+                 </p>
+                ]]></param>
+              </module>
+              <module name="Search">
+                <param name="search">| inputlookup $lookupName$ | table $fieldOrder$ | head 1 | transpose | rename column as key "row 1" as value | fields - value</param>
+
+
+                <module name="Multiplexer">
+                  <param name="field">key</param>
+
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                      <div class="addNewRow">
+                        <label>$key$</label>
+                        <input type="text" name="$key$" onblur="Sideview.clearMessages()">
+                      </div>
+                    ]]></param>
+                  </module>
+                </module>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                  <br>
+                  ]]></param>
+                </module>
+
+                <module name="Button">
+                  <param name="allowSoftSubmit">False</param>
+                  <param name="allowAutoSubmit">False</param>
+                  <param name="label">Add</param>
+
+                  <module name="Search">
+                    <param name="search">replaced at runtime by customBehavior</param>
+                    <param name="customBehavior">addNewRow</param>
+
+                    <module name="CustomBehavior">
+                      <param name="customBehavior">confirmNewRowAdded</param>
+                      <param name="requiresDispatch">True</param>
+
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+
+
+
+
+
+
+
+
+            <module name="HTML" group="reupload">
+              <param name="html"><![CDATA[
+
+  <form id="lookupUpdater" method="POST" action="REPLACED_AT_RUNTIME" enctype="multipart/form-data" >
+    <p>
+      If you wish you can upload a fresh csv to replace the one loaded.
+    </p>
+    <p>
+      Note that the best way to start, is to first use the "Download CSV" tab to get the existing CSV file as a starting point.  That way your CSV file will already have the exact column names you need (and any rows already added by your colleagues).
+    </p>
+    <label class="inputFileLabel">Local csv file:</label>
+
+    <input type="file"   name="lookupFile" />
+    <input type="hidden" name="lookupName" />
+    <input type="hidden" name="currentView" />
+    <!--
+    Sideview OEM customers building custom views based on the
+    Lookup Updater, or otherwise using the lookup controller,
+    can pass the following variable to control the redirect
+    after POST'ing to the controller.
+    <input type="hidden" name="redirectOverride" value="/app/sideview_utils/framework_intro"/>
+    -->
+
+
+    <input type="hidden" name="splunk_form_key" value="FILLED BY JAVASCRIPT ONSUBMIT" />
+    <br>
+    <br>
+
+
+    <fieldset>
+      <input type="submit" class="splButton-primary" value="Update" />
+    </fieldset>
+
+
+
+  </form>
+              ]]></param>
+              <param name="customBehavior">neverReload</param>
+            </module>
+
+
+
+            <module name="Search" group="download">
+              <param name="search">| inputlookup $lookupName$ | table $fieldOrder$</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <p>
+                    To download a copy of the sites lookup as a csv file or to open it in Excel just click the icon below:
+                  </p>
+                ]]></param>
+              </module>
+
+              <module name="SearchControls">
+                <param name="sections">export</param>
+              </module>
+            </module>
+
+
+
+            <module name="NullModule" group="find">
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <p>
+                    Use this to find which subnets, devices and IP addresses are not already matching the sites you've defined so far.  This can help you find which site names and CIDR expressions to add next.
+                  </p>
+
+                ]]></param>
+              </module>
+
+              <module name="TimePicker">
+                <param name="default">Last 60 minutes</param>
+                <param name="label"></param>
+
+                <module name="Pulldown">
+                  <param name="name">optionalHeadCommand</param>
+                  <param name="staticOptions">
+                    <list>
+                      <param name="label">search only the 100 most recent matching call legs</param>
+                      <param name="value">100</param>
+                    </list>
+                    <list>
+                      <param name="label">search only the 1000 most recent matching call legs</param>
+                      <param name="value">1000</param>
+                      <param name="selected">True</param>
+                    </list>
+                    <list>
+                      <param name="label">search only the 10000 most recent matching call legs</param>
+                      <param name="value">10000</param>
+                    </list>
+                    <list>
+                      <param name="label">search only the 100000 most recent matching call legs</param>
+                      <param name="value">100000</param>
+                    </list>
+                    <list>
+                      <param name="label">all records</param>
+                      <param name="value">all</param>
+                    </list>
+                  </param>
+                  <!-- unfortunately we need the "all records" value to have a real value
+                  and not "",  in order for links to prepopulate it to the all selection.
+                  This ValueSetter is to whack away the token if it's equal to all.-->
+                  <module name="ValueSetter">
+                    <param name="name">optionalHeadCommand</param>
+                    <param name="if.$optionalHeadCommand.rawValue$=all"></param>
+                    <param name="default">| head $optionalHeadCommand$</param>
+
+                    <module name="Search">
+                      <param name="search">
+`custom_index` sourcetype=cucm_cdr
+$optionalHeadCommand$
+| `customizable_sites_extractions`
+| `get_sites`
+| search NOT origSite=* OR NOT destSite=*
+| eval number=case(isnull(origSite) and isnull(destSite),mvappend(callingPartyNumber,finalCalledPartyNumber),isnull(origSite),callingPartyNumber,isnull(destSite),finalCalledPartyNumber)
+| eval ipAddr=case(isnull(origSite) and isnull(destSite),mvappend(`customizable_orig_site_ip`,`customizable_dest_site_ip`),isnull(origSite),`customizable_orig_site_ip`,isnull(destSite),`customizable_dest_site_ip`)
+| eval device=case(isnull(origSite) and isnull(destSite),mvappend(origDeviceName,destDeviceName),isnull(origSite),origDeviceName,isnull(destSite),destDeviceName)
+| eval device_type=case(isnull(origSite) and isnull(destSite),mvappend(orig_device_type,dest_device_type),isnull(origSite),orig_device_type,isnull(destSite),dest_device_type)
+| fillnull device value="(no device name listed in CDR)"
+| fillnull device value="(no device type extracted)"
+| fillnull number value="(no number listed in CDR)"
+| fillnull ipAddr value="(no ip address extracted)"
+| search NOT ipAddr="0.0.0.0" NOT device_type="gateway"
+| stats values(call_id) as call_id sum(duration) as duration count by number ipAddr device device_type
+                      </param>
+
+                      <module name="Pulldown">
+                        <param name="name">report</param>
+                        <param name="label">and show</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">Ip Addresses</param>
+                            <param name="value">stats dc(call_id) as calls dc(number) as numbers values(device_type) as device_types by ipAddr | sort 0 - calls</param>
+                          </list>
+                          <list>
+                            <param name="label">Devices</param>
+                            <param name="value">stats dc(call_id) as calls by device | sort 0 - calls</param>
+                          </list>
+                          <list>
+                            <param name="label">Device Types</param>
+                            <param name="value">stats dc(call_id) as calls dc(number) as numbers by device_type |  sort 0 - calls</param>
+                          </list>
+                          <list>
+                            <param name="label">Extensions/DNs</param>
+                            <param name="value">stats dc(call_id) as calls by number | sort 0 - calls</param>
+                          </list>
+                        </param>
+
+                        <module name="PostProcess" layoutPanel="panel_row1_col1">
+                          <param name="search">$report$  | sort 0 - count</param>
+
+
+                          <module name="ProgressIndicator" />
+                          <pattern name="see_raw_search_syntax" />
+                          <module name="Pager">
+                            <module name="Table" />
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search">replaced at runtime by customBehavior</param>
+    <param name="customBehavior">receivePushesForRowUpdates</param>
+
+    <module name="ProgressIndicator"></module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">reloadEditedLookup</param>
+    </module>
+    <!--
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        $search$
+      ]]></param>
+    </module>
+    -->
+  </module>
+
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search">replaced at runtime by customBehavior</param>
+    <param name="customBehavior">receivePushesForRowDeletes</param>
+
+    <module name="ProgressIndicator"></module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">reloadEditedLookup</param>
+    </module>
+    <!--
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        $search$
+      ]]></param>
+    </module>
+    -->
+  </module>
+
+</view>

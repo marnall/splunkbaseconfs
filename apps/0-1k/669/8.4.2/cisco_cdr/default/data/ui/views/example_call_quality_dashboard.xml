@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css">
+  <label>Example Call Quality Dashboard</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+      <h1>Call Quality Examples</h1>
+    ]]></param>
+  </module>
+
+  <module name="HTML" layoutPanel="panel_row1_col1">
+    <param name="html"><![CDATA[
+
+      <p>
+        Below are various examples of different charts that are just about call quality.  You may find some of them more interesting than others! For any of them, you can use the button that says "Customize" to load it in the "Chart" view.  After customizing it a bit, narrowing it to particular numbers or tweaking it's settings, you can click "Create Dashboard Panel" to add it to your own dashboard.
+      </p>
+      <h3>NOTES / CAVEATS</h3>
+      <ol>
+        <li>None of these examples incorporate anything specific about your infrastructure. These examples are broad examples included in the app itself.  Therefore you almost certainly will want to tweak these by clicking the "customize" button and entering extensions, huntgroups, call handlers, and more search terms.</li>
+
+        <li>if there is a particular chart you hoped to see here, please tell us about it at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a> and we can probably add it as an example in the next release.
+
+        <li>If you don't like this page, just wait a few weeks and update the app!  This is an active area of development so it will change over time.</li>
+      </ol>
+
+    ]]></param>
+  </module>
+
+  <module name="TimePicker" layoutPanel="panel_row2_col1">
+    <param name="default">Last 4 hours</param>
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row3_col1">
+      <param name="title"><![CDATA[
+        <h1>call quality levels over time</h1>
+      ]]></param>
+      <param name="zField">quality</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | `get_quality`
+        | stats earliest(_time) as _time sum(duration) as duration_total values(call_failed) as call_failed values(quality) as quality by call_id
+        | search  duration_total>0 call_failed=0
+        | timechart bins=250 dc(call_id) by quality
+      ]]></param>
+    </pattern>
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row3_col2">
+      <param name="title"><![CDATA[
+        <h1>call quality by call type</h1>
+      ]]></param>
+      <param name="xField">type</param>
+      <param name="zField">quality</param>
+      <param name="chartType">bar</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | `get_quality`
+        | stats values(duration) as duration_total values(call_failed) as call_failed values(type) as type values(quality) as quality by `id_fields`
+        | search duration_total>0 call_failed=0
+        | chart count over type by quality
+      ]]></param>
+    </pattern>
+
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row4_col1">
+      <param name="title"><![CDATA[
+        <h1>95th percentile of the ratio of severely concealed seconds to total seconds</h1>
+      ]]></param>
+      <param name="chartType">line</param>
+      <param name="stat">perc95</param>
+      <param name="yField">SCSR_overall</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | stats sum(SCS) as SCS_total min(_time) as _time sum(duration) as duration_total values(call_failed) as call_failed by globalCallID_callId globalCallID_callManagerId globalCallId_ClusterID
+        | search duration_total>0 call_failed=0
+        | eval SCSR_overall=case(SCS_total>duration_total,1,duration_total>0,round(SCS_total/duration_total,5),true(),null())
+        | eval SCS_total=if(isnotnull(SCS_total),min(SCS_total,duration_total),null())
+        | timechart bins=250 perc95(SCSR_overall)
+      ]]></param>
+    </pattern>
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row4_col2">
+      <param name="title"><![CDATA[
+        <h1>5th percentile MLQK over time</h1>
+      ]]></param>
+      <param name="chartType">line</param>
+      <param name="stat">perc5</param>
+      <param name="yField">MLQK</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | stats list(MLQK) as MLQK min(_time) as _time sum(duration) as duration_total values(call_failed) as call_failed by globalCallID_callId globalCallID_callManagerId globalCallId_ClusterID
+        | search duration_total>0 call_failed=0
+        | timechart bins=250 perc5(MLQK)
+      ]]></param>
+    </pattern>
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row5_col1">
+      <param name="title"><![CDATA[
+        <h1>Total seconds of Severely Concealed Speech (SCS) over time</h1>
+      ]]></param>
+      <param name="stat">sum</param>
+      <param name="yField">SCS</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | stats sum(SCS) as SCS_total min(_time) as _time sum(duration) as duration_total values(call_failed) as call_failed values(type) as type by globalCallID_callId globalCallID_callManagerId globalCallId_ClusterID
+        | search duration_total>0 call_failed=0
+        | timechart bins=250 sum(SCS_total)
+      ]]></param>
+    </pattern>
+
+    <pattern name="cisco_cdr_dashboard_panel_chart" layoutPanel="panel_row5_col2">
+      <param name="title"><![CDATA[
+        <h1>call quality over time for calls involving one or more jabber devices</h1>
+      ]]></param>
+      <param name="searchterms">device_type=jabber*</param>
+      <param name="zField">quality</param>
+      <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes`
+        | `get_quality`
+        | eval device_type=mvdedup(mvappend(orig_device_type,dest_device_type))
+        | stats min(_time) as _time first(call_id) as call_id values(dest_device_type) as dest_device_type values(device_type) as device_type list(jitter) as jitter list(latency) as latency list(numberPacketsLost) as numberPacketsLost list(numberPacketsSent) as numberPacketsSent values(orig_device_type) as orig_device_type values(quality) as quality sum(duration) as duration_total values(call_failed) as call_failed by globalCallID_callId globalCallID_callManagerId globalCallId_ClusterID
+        | search duration_total>0 call_failed=0 device_type=jabber*
+        | timechart bins=250 dc(call_id) by quality
+      ]]></param>
+    </pattern>
+
+  </module>
+
+</view>

@@ -1,0 +1,392 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Devices</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <pattern name="display_saved_report_name" />
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Devices</h1>
+      ]]></param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_devicesPage</param>
+    </module>
+
+
+
+    <module name="Search">
+      <param name="search"><![CDATA[
+| makeresults
+| appendcols [| rest /services/apps/local/SA_cisco_cdr_axl splunk_server=local | stats count | eval axlExists=if(count>0,"yes","no") | table axlExists]
+| appendcols [| inputlookup devices.csv | search name!="PLACEHOLDER_DEVICE" | stats count | eval realDevicesExistInDevicesLookup=if(count>0,"yes","no") | table realDevicesExistInDevicesLookup]
+| fields - _time
+      ]]></param>
+
+
+
+      <module name="ResultsValueSetter">
+        <param name="fields">axlExists, realDevicesExistInDevicesLookup</param>
+
+        <module name="TimePicker">
+          <param name="default">Last 24 hours</param>
+
+          <module name="ValueSetter">
+            <param name="arg.cachedEarliest">$search.timeRange.earliest$</param>
+            <param name="arg.cachedLatest">$search.timeRange.latest$</param>
+
+            <module name="Search">
+              <!-- This search will just get the configured regexes in transforms . And only if the stanzas make sure to follow our cisco-cdr-* naming scheme..-->
+
+              <param name="search"><![CDATA[
+| rest /servicesNS/$sideview.currentUser$/cisco_cdr/data/transforms/extractions splunk_server=local
+| search title=cisco-cdr-* FORMAT=*device_type::* disabled=0
+| fields FORMAT
+| rex field=FORMAT "device_type::(?<device_type>[^\s]+)"
+| stats count by device_type
+| fields device_type
+| eval count=0
+| search device_type!="gateway"
+          ]]></param>
+
+              <module name="CheckboxPulldown">
+                <param name="name">device_type</param>
+                <param name="label">device types</param>
+                <param name="template">(orig_device_type="$value$" OR dest_device_type="$value$")</param>
+                <param name="nullTemplate">NOT $name$=*</param>
+                <param name="outerTemplate">( $value$ )</param>
+                <param name="separator">+OR+</param>
+                <param name="valueField">$name$</param>
+                <param name="selectAllOptimization">omit</param>
+                <param name="staticOptions">
+                  <list>
+                    <param name="value"/>
+                    <param name="label">devices with no device_type assigned</param>
+                    <param name="selected">True</param>
+                  </list>
+                </param>
+
+                <module name="TextField">
+                  <param name="name">deviceFilter</param>
+                  <param name="label">device</param>
+                  <param name="template">(origDeviceName="$value$" OR destDeviceName="$value$")</param>
+                  <param name="width">150px</param>
+
+                  <module name="TextField">
+                    <param name="name">number</param>
+                    <param name="label">$name$</param>
+                    <param name="width">150px</param>
+
+                    <module name="TextField">
+                      <param name="name">searchterms</param>
+                      <param name="label">search filters</param>
+                      <param name="width">334px</param>
+
+                      <pattern name="cluster_controls">
+                        <!-- this makes the genericClusterTerms filter canonical -->
+                        <param name="selectAllOptimization">False</param>
+
+                        <module name="Search">
+                          <param name="search">| inputlookup cidr | stats count by site_name | sort + site_name</param>
+
+                          <module name="CheckboxPulldown">
+                            <param name="name">sites</param>
+                            <param name="label">sites</param>
+                            <param name="valueField">site_name</param>
+                            <param name="selectAllOptimization">omit</param>
+                            <param name="template">(origSite="$value$" OR destSite="$value$")</param>
+                            <param name="nullTemplate">(NOT origSite=* OR NOT destSite=*)</param>
+                            <param name="outerTemplate"> | search ( $value$ )</param>
+                            <param name="staticOptions">
+                              <list>
+                                <param name="value"/>
+                                <param name="label">no site extracted</param>
+                                <param name="selected">True</param>
+                              </list>
+                            </param>
+
+                            <module name="ArrayValueSetter">
+                              <param name="name">genericDeviceTypeTerms</param>
+                              <param name="array">$device_type.rawValue$</param>
+                              <param name="template">type="$value$"</param>
+                              <param name="nullTemplate">NOT type="*"</param>
+                              <param name="separator">+OR+</param>
+                              <param name="outerTemplate">( $value$ )</param>
+
+                              <module name="ArrayValueSetter">
+                                <param name="name">genericSiteTerms</param>
+                                <param name="array">$sites.rawValue$</param>
+                                <param name="template">site="$value$"</param>
+                                <param name="nullTemplate">site="unknown"</param>
+                                <param name="separator">+OR+</param>
+                                <!-- note null selection from the sites lookup above,
+                                means the user has said they WANT to look for devices that exist but whose
+                                calls aren't on subnets represented in the sites lookup.
+                                This funny "OR NOT site=*" below, is different,  and it represents the fact
+                                that the user may have "include devices with zero calls" on, in which case those
+                                devices enter the list just by being copied from the devices lookup, and there
+                                will NEVER be a site on them. so it wont have been fillnull'ed to "unknown"
+                                -->
+                                <param name="outerTemplate">( $value$ OR NOT site=*)</param>
+
+                                <module name="ArrayValueSetter">
+                                  <param name="name">genericClusterTerms</param>
+                                  <param name="array">$clusterId.rawValue$</param>
+                                  <param name="template">clusterId="$value$"</param>
+                                  <param name="nullTemplate">NOT clusterId="*"</param>
+                                  <param name="separator">+OR+</param>
+                                  <param name="outerTemplate">( $value$ )</param>
+
+                                  <module name="CheckboxPulldown">
+                                    <param name="name">modifiers</param>
+                                    <param name="label">options</param>
+                                    <param name="sticky">True</param>
+                                    <param name="staticOptions">
+                                      <list>
+                                        <param name="label">include devices with zero calls</param>
+                                        <param name="value">devicesWithZeroCalls</param>
+                                        <param name="selected">False</param>
+                                      </list>
+                                      <list>
+                                        <param name="label">count calls with zero duration</param>
+                                        <param name="value">callsWithZeroDuration</param>
+                                        <param name="selected">False</param>
+                                      </list>
+                                    </param>
+                                    <module name="CustomBehavior">
+                                      <param name="customBehavior">getKeysForModifiers</param>
+
+                                      <module name="Button">
+                                        <param name="allowSoftSubmit">True</param>
+
+                                        <module name="CustomBehavior">
+                                          <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+                                          <module name="ValueSetter">
+                                            <param name="name">genericDeviceNameTerm</param>
+                                            <param name="requiredKeys">deviceFilter.rawValue</param>
+                                            <param name="value">device="$deviceFilter.rawValue$"</param>
+
+                                            <!-- somewhat crazy.
+                                              This goes and gets the stanza names of all the device_name extractions from transforms.conf.
+                                              Then uses format to create a big extract command clause.
+                                              Then ResultsValueSetter pulls this down as $extractCommandToGetDeviceTypes$
+                                              and that gets plugged into the main search.
+                                              the end result is that we have the "type" field populated with
+                                              matching device_type regexes even for devices that have no CDR data indexed.
+                                            -->
+                                            <module name="Search">
+                                              <param name="search"><![CDATA[
+| rest /servicesNS/$sideview.currentUser$/cisco_cdr/data/transforms/extractions splunk_server=local
+| search title="cisco-cdr-orig*" FORMAT=*device_type::* disabled=0
+| fields title
+| rename title as search
+| format "| eval origDeviceName=device | extract","" ,"", "", "" , " | rename orig_device_type as type"
+| rename search as extractCommandToGetDeviceTypes
+| appendcols [
+  | rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+  | search title="leg_type_*" disabled=0
+  | eval leg_type=replace(title,"leg_type_", "")
+  | stats values(leg_type) as leg_types
+]
+                                              ]]></param>
+
+                                              <module name="ResultsValueSetter">
+                                                <param name="fields">extractCommandToGetDeviceTypes leg_types</param>
+
+
+
+
+                                                <module name="Search" layoutPanel="resultsHeaderPanel">
+                                                  <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("device,department,productName,description,type,className,subclassName,devicePool,mailId,userFullName,userId,callingSearchSpaceName,protocol,securityProfileName,directoryNumber,site,numbers,users,calls,incoming,outgoing,internal,incoming_duration,outgoing_duration,internal_duration,clusterId,last_seen,$leg_types$",",")
+| mvexpand field
+                                                  ]]></param>
+
+                                                  <module name="Fields" layoutPanel="resultsHeaderPanel">
+
+                                                    <param name="fields">device productName type userFullName site calls incoming outgoing internal incoming_duration, outgoing_duration, internal_duration, last_seen</param>
+                                                    <param name="float">right</param>
+
+                                                    <module name="Search">
+<!--
+NOTE:: $excludeCallsWithZeroDuration$ as implemented below will exclude CALL LEGS with zero duration from the analysis
+A different arguably more accurate interpretion would be to aggregate the legs into calls, and then exclude the calls that had a total_duration of zero.
+-->
+                                                      <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $deviceFilter$ $numberTerms$ $device_type$ $clusterGroup$ $clusterId$ $excludeCallsWithZeroDuration$
+| fillnull duration value="0"
+| `customizable_sites_extractions` | `get_sites`
+| `fill_null_fields_for_devices_page`
+| `get_custom_type_fields`
+| eval {type}_duration=duration
+| eval {type}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+| eval origDeviceNumberUserTypeSiteCluster=case(type=="internal" OR type="outgoing",origDeviceName + "::::" + callingPartyNumber + "::::" + callingPartyUnicodeLoginUserID + "::::" + orig_device_type + "::::" + origSite + "::::" + globalCallId_ClusterID)
+| eval destDeviceNumberUserTypeSiteCluster = case(type=="internal" OR type=="incoming",destDeviceName + "::::" + finalCalledPartyNumber + "::::" + finalCalledPartyUnicodeLoginUserID + "::::" + dest_device_type + "::::" + destSite + "::::" + globalCallId_ClusterID)
+| eval deviceRow=if(isnull(origDeviceNumberUserTypeSiteCluster) AND isnull(destDeviceNumberUserTypeSiteCluster),"TANDEM CALL",mvappend(origDeviceNumberUserTypeSiteCluster,destDeviceNumberUserTypeSiteCluster))
+| mvexpand deviceRow
+| search deviceRow!="TANDEM CALL"
+
+| stats values(call_id) as call_id values(*_call_id) as *_call_id sum(*_duration) as *_duration max(_time) as last_seen by deviceRow
+| eval deviceRow = split(deviceRow, "::::")
+| eval device=mvindex(deviceRow,0)
+| eval number=mvindex(deviceRow,1)
+| eval user=mvindex(deviceRow,2)
+| eval type=mvindex(deviceRow,3)
+| eval site=mvindex(deviceRow,4)
+| eval clusterId=mvindex(deviceRow,5)
+| search device=* device!=""
+$addDevicesWithNoCalls$
+| stats dc(incoming) as incoming dc(outgoing) as outgoing dc(internal) as internal dc(call_id) as calls dc(*_call_id) as * sum(*_duration) as *_duration values(type) as type dc(user) as users values(site) as site dc(number) as numbers values(number) as number max(last_seen) as last_seen by device clusterId
+| lookup devices name as device clusterId as clusterId
+$extractCommandToGetDeviceTypes$
+| search NOT type=gateway $genericDeviceTypeTerms$ $genericNumberTerms$ $genericClusterTerms$ $genericSiteTerms$ $genericDeviceNameTerm$
+| eval hiddenCluster=clusterId
+| fillnull last_seen
+| search device=* $searchterms$
+| fieldformat last_seen=case(last_seen==0, "Not in this timeframe", strftime(now(), "%m/%d/%Y")==strftime(last_seen, "%m/%d/%Y"), strftime(last_seen, "today at %H:%M:%S"), true(), strftime(last_seen, "%b %d %Y, %H:%M:%S"))
+
+| `get_durations_for_internal_parties`
+| `replace_zeros_with_nulls`
+
+                                                      ]]></param>
+
+
+
+                                                      <pattern name="save_create_buttons"/>
+
+                                                      <module name="SearchControls">
+                                                        <param name="sections">jobControls info export print saveMenu</param>
+                                                        <param name="saveMenu">saveSearch</param>
+                                                        <param name="float">right</param>
+                                                      </module>
+
+                                                      <module name="HTML" >
+                                                        <param name="html"><![CDATA[
+                                                          <h3>$results.count$ devices found $search.timeRange.label$</h3>
+                                                        ]]></param>
+                                                      </module>
+
+                                                      <module name="CustomBehavior">
+                                                        <param name="customBehavior">showUserWarningsAndNotices</param>
+                                                      </module>
+
+                                                      <module name="Pulldown" layoutPanel="pageControls">
+                                                        <param name="label">results per page</param>
+                                                        <param name="name">results.count</param>
+                                                        <param name="float">right</param>
+                                                        <param name="staticOptions">
+                                                          <list>
+                                                            <param name="value">10</param>
+                                                          </list>
+                                                          <list>
+                                                            <param name="value">20</param>
+                                                            <param name="selected">True</param>
+                                                          </list>
+                                                          <list>
+                                                            <param name="value">50</param>
+                                                          </list>
+                                                          <list>
+                                                            <param name="value">100</param>
+                                                          </list>
+                                                          <list>
+                                                            <param name="value">200</param>
+                                                          </list>
+                                                        </param>
+
+                                                        <module name="ProgressIndicator" layoutPanel="resultsAreaLeft" />
+
+                                                        <module name="PostProcess" layoutPanel="resultsAreaLeft">
+                                                          <param name="search">fields $results.fields$ hiddenCluster</param>
+
+                                                          <module name="Pager" layoutPanel="pageControls">
+
+                                                            <module name="Table">
+                                                              <param name="hiddenFields">hiddenCluster</param>
+
+                                                              <module name="Layer">
+                                                                <param name="cssClass">menu</param>
+
+                                                                <module name="Link">
+                                                                  <param name="cssClass">menuItem</param>
+                                                                  <param name="label">investigate calls to/from this device</param>
+
+                                                                  <module name="Redirector">
+                                                                    <param name="url">calls</param>
+                                                                    <param name="arg.searchterms">(origDeviceName="$row.fields.device.rawValue$" OR destDeviceName="$row.fields.device.rawValue$")</param>
+                                                                    <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                                                    <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                                                    <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                                    <param name="arg.latest">$search.timeRange.latest$</param>
+                                                                  </module>
+                                                                </module>
+
+                                                                <module name="Link">
+                                                                  <param name="cssClass">menuItem</param>
+                                                                  <param name="label">view device details</param>
+                                                                  <module name="Redirector">
+                                                                    <param name="url">device_detail</param>
+                                                                    <param name="arg.device">$row.fields.device.rawValue$</param>
+                                                                    <param name="arg.clusterId">$row.fields.hiddenCluster.rawValue$</param>
+
+                                                                    <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                                    <param name="arg.latest">$search.timeRange.latest$</param>
+                                                                    <param name="arg.autoRun">True</param>
+                                                                    <!--  filing away things for if the user later clicks the breadcrumb link -->
+                                                                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                                    <param name="arg.bc_latest">$cachedLatest$</param>
+
+                                                                    <param name="arg.bc_device_type">$device_type.rawValue$</param>
+
+                                                                    <param name="arg.bc_deviceFilter">$deviceFilter.rawValue$</param>
+                                                                    <param name="arg.bc_number">$number.rawValue$</param>
+                                                                    <param name="arg.bc_searchterms">$searchterms.rawValue$</param>
+                                                                    <param name="arg.bc_clusterId">$clusterId.rawValue$</param>
+                                                                    <param name="arg.bc_sites">$sites.rawValue$</param>
+
+                                                                  </module>
+                                                                </module>
+                                                              </module>
+                                                            </module>
+                                                            <module name="Pager"/>
+                                                          </module>
+
+                                                          <pattern name="see_raw_search_syntax" />
+
+                                                        </module>
+                                                      </module>
+                                                    </module>
+                                                  </module>
+                                                </module>
+                                              </module>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </pattern>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

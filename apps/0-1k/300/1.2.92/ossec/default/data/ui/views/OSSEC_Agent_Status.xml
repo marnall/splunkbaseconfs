@@ -1,0 +1,153 @@
+<view template="dashboard.html">
+	<label>OSSEC Agent Status</label>
+	
+	<module name="AccountBar" layoutPanel="navigationHeader"/>
+	<module name="AppBar" layoutPanel="navigationHeader"/>
+	<module name="Message" layoutPanel="messaging">
+		<param name="filter">splunk.search.error</param>
+		<param name="clearOnJobDispatch">False</param>
+		<param name="maxSize">1</param>
+	</module>
+
+	<module name="TitleBar" layoutPanel="viewHeader">
+		<param name="actionsMenuFilter">dashboard</param>
+	</module>
+	
+	<module name="SearchSelectLister" layoutPanel="splSearchControls-inline">
+		<param name="label">OSSEC Server</param>
+		<param name="settingToCreate">host_setting</param>
+
+		<param name="search">| inputlookup lookup_ossec_servers | sort description</param>
+		<param name="searchWhenChanged">True</param>
+		<param name="searchFieldsToDisplay">
+			<list>
+				<param name="label">description</param>
+				<param name="value">ossec_server</param>
+			</list>
+		</param>
+		<module name="ConvertToIntention">
+			<param name="settingToConvert">host_setting</param>
+			<param name="intention">
+				<param name="name">stringreplace</param>
+				<param name="arg">
+					<param name="ossec_server">
+						<param name="fillOnEmpty">True</param>
+						<param name="prefix">ossec_server=</param>
+						<param name="value">$target$</param>
+					</param>
+				</param>
+			</param>
+
+			
+			<!-- Current Agent Status Chart -->
+			<module name="HiddenSearch" layoutPanel="panel_row1_col1">
+				<module name="GenericHeader"><param name="label">Current Agent Status (Overview)</param></module>
+				<module name="JobProgressIndicator" />
+				<param name="earliest">-2h</param>
+				<param name="search">sourcetype="ossec_agent_control" $ossec_server$ | sort -_time | sort agent_id | stats first(status) as status by ossec_server, agent_id, reporting_host | top status</param>
+				<module name="HiddenChartFormatter">						
+					<param name="chart">pie</param>
+					<module name="JSChart">
+						<param name="height">230px</param>
+						<param name="width">100%</param>
+						<module name="ConvertToDrilldownSearch">
+							<module name="ViewRedirector">
+								<param name="viewTarget">search</param>
+							</module>							
+						</module>
+						<module name="ViewRedirectorLink">
+							<param name="viewTarget">search</param>
+							<param name="label">View full results</param>
+						</module>
+					</module>
+				</module>
+			</module>
+			
+			
+			<!-- Current Agent Status Table -->
+			<module name="HiddenSearch" layoutPanel="panel_row1_col2">
+				<module name="GenericHeader"><param name="label">Current Agent Status (By Agent)</param></module>
+				<module name="JobProgressIndicator" />
+				<param name="earliest">-2h</param>
+				<!-- For drilldown to work properly, reporting_host must be the first field in the search output-->
+				<param name="search">sourcetype="ossec_agent_control" $ossec_server$ | sort -_time | stats first(status) as status by reporting_host, agent_id, ossec_server | sort ossec_server,agent_id</param>
+
+				<module name="Paginator">
+					<param name="count">6</param>
+					<param name="maxPages">15</param>
+					<param name="entityName">results</param>
+
+					<module name="SimpleResultsTable">
+						<!-- For drilldown to work properly, reporting_host must be first (see above) -->
+						<param name="fields">reporting_host, agent_id, ossec_server, status</param>
+						<param name="drilldown">row</param>
+						
+						<!-- TODO: For some reason, the timechart command isn't being passed through
+									to the drilldown view.
+						-->
+						<module name="HiddenSearch" layoutPanel="panel_row1_col2" autoRun="True">
+							<param name="search">sourcetype="ossec_agent_control" | timechart avg(active) by reporting_host</param>
+							<module name="ConvertToIntention">
+								<param name="intention">
+									<param name="name">addterm</param>
+									<param name="arg">
+										<param name="reporting_host">$click.value$</param>
+									</param>
+								</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">report_builder_display</param>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					<module name="ViewRedirectorLink">
+						<param name="viewTarget">search</param>
+						<param name="label">View full results</param>
+					</module>
+				</module>
+			</module>
+			
+			
+			<!-- Agent Status Over Time -->
+			<module name="GenericHeader" layoutPanel="panel_row2_col1">
+				<param name="label">Agent Status Over Time</param>
+
+				<module name="TimeRangePicker">
+					<param name="searchWhenChanged">True</param>
+					<param name="selected">Last 24 Hours</param>
+					
+					<module name="HiddenSearch">
+						<module name="JobProgressIndicator" />
+						<param name="search">sourcetype="ossec_agent_control" $ossec_server$ | timechart distinct_count(reporting_host) by status</param>
+
+						<module name="HiddenChartFormatter">						
+							<param name="chart">column</param>
+							<param name="legend.placement">bottom</param>
+							
+							<!-- Try to hide the label... -->
+							<param name="primaryAxisTitle.text"></param>
+							<param name="charting.primaryAxisTitle.visible">False</param>
+							
+							<module name="JSChart">
+								<param name="height">200px</param>
+								<param name="width">100%</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>							
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+				</module>
+			</module>
+		</module>
+	</module>
+</view>

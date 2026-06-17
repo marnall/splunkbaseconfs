@@ -1,0 +1,277 @@
+<!-- Copyright (C) 2025-2025 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Outside Parties</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <pattern name="display_saved_report_name" />
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Outside Parties</h1>
+      ]]></param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_outsidePartiesPage</param>
+    </module>
+
+    <module name="TimePicker">
+      <param name="default">Last 60 minutes</param>
+
+      <module name="TextField">
+        <param name="name">number</param>
+        <param name="label">number</param>
+        <param name="width">150px</param>
+
+        <module name="TextField">
+          <param name="name">searchterms</param>
+          <param name="label">search filters</param>
+          <param name="width">334px</param>
+
+          <pattern name="cluster_controls">
+
+            <module name="Search">
+              <param name="search">| inputlookup cidr | stats count by site_name | sort + site_name</param>
+
+              <module name="CheckboxPulldown">
+                <param name="name">sites</param>
+                <param name="label">sites</param>
+                <param name="valueField">site_name</param>
+                <param name="selectAllOptimization">omit</param>
+                <param name="template">(origSite="$value$" OR destSite="$value$")</param>
+                <param name="nullTemplate">(NOT origSite=* OR NOT destSite=*)</param>
+                <param name="outerTemplate">( $value$ )</param>
+                <param name="staticOptions">
+                  <list>
+                    <param name="value"/>
+                    <param name="label">no site extracted</param>
+                    <param name="selected">True</param>
+                  </list>
+                </param>
+
+                <module name="CheckboxPulldown">
+                  <param name="name">modifiers</param>
+                  <param name="label">options</param>
+                  <param name="selectedByDefault">False</param>
+                  <param name="sticky">True</param>
+                  <param name="staticOptions">
+                    <list>
+                      <param name="value">callsWithZeroDuration</param>
+                      <param name="label">count calls with zero duration</param>
+                    </list>
+                    <list>
+                      <param name="value">fred</param>
+                      <param name="label">(unused)</param>
+                    </list>
+                  </param>
+
+                  <module name="Button">
+                    <param name="allowSoftSubmit">True</param>
+
+                    <module name="CustomBehavior">
+                      <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+                      <module name="CustomBehavior">
+                        <param name="customBehavior">getKeysForModifiers</param>
+
+
+                        <module name="ArrayValueSetter">
+                          <param name="name">genericSiteTerms</param>
+                          <param name="array">$sites.rawValue$</param>
+                          <param name="template">site="$value$"</param>
+                          <param name="nullTemplate">site="unknown"</param>
+                          <param name="separator">+OR+</param>
+
+                          <module name="Search">
+                            <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+| search title="leg_type_*" disabled=0
+| eval leg_type=replace(title,"leg_type_", "")
+| stats values(leg_type) as leg_types
+
+                            ]]></param>
+
+                            <!--
+                              We get this via RVS instead of with a subsearch.
+                              The reason is so that we can have the $leg_types$
+                              token to later ALSO do a fillnull.
+                              If we don't do that fillnull,  then it's possible
+                              that the the field doesn't exist at all in the
+                              output and the column becomes undisplayable.
+                              Conversely with the fillnull there's a 0
+                            -->
+                            <module name="ResultsValueSetter">
+                              <param name="fields">leg_types</param>
+
+
+                              <module name="Search" layoutPanel="resultsHeaderPanel">
+                                <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("number,calls,failed,pct_failed,internal_numbers_called,site,sites_called,countryCode,country,areaCode,exchange,city,state,incoming,outgoing,tandem,total_duration,incoming_duration,outgoing_duration,tandem_duration,total_duration_min,incoming_duration_min,outgoing_duration_min,tandem_duration_min,business _hours,off_hours,business_hours_duration,off_hours_duration,audio,video,audio_duration,video_duration,stateAbbr,companyName,companyType,numberType,CLLI,LATA,OCN,lat,long,$leg_types$",",")
+| mvexpand field
+                                ]]></param>
+
+
+                                <module name="Fields">
+                                  <param name="fields">number,calls,failed,pct_failed,internal_numbers_called,incoming,outgoing,tandem,total_duration,incoming_duration,outgoing_duration,tandem_duration</param>
+                                  <param name="float">right</param>
+
+
+                                  <module name="Search" layoutPanel="resultsHeaderPanel">
+                                    <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr cause_description!="Unallocated (unassigned) number" $clusterGroup$ $clusterId$ $group$ $subgroup$ $name$ $externalPartyNumberTerms$ $huntPilotSubsearch$ $excludeCallsWithZeroDuration$
+| `customizable_sites_extractions` | `get_sites` | search * $sites$
+| fillnull duration value="0"
+| `get_custom_type_fields`
+| eval {type}_duration=duration
+| eval {type}_call_id=call_id
+| eval {bh_type}_duration=duration
+| eval {bh_type}_call_id=call_id
+| eval {callMediaType}_duration=duration
+| eval {callMediaType}_call_id=call_id
+| eval failure_type=if(call_failed==1,"failed","completed")
+| eval {failure_type}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+| eval transfer_call_id=if(cause_description=="Call split",call_id,null())
+| `get_external_party_numbers`
+| `get_internal_party_numbers`
+$includeNumbersWithZeroCalls$
+| eval number=external_party_number
+| eval number=mvfilter(isnotnull(number) AND number!="")
+
+| eval inbound_ocp = if(type=="incoming", originalCalledPartyNumber, null())
+| eventstats last(inbound_ocp) as first_inbound_ocp by call_id
+
+| stats dc(call_id) as calls dc(*_call_id) as * sum(incoming_duration) as incoming_duration sum(outgoing_duration) as outgoing_duration sum(internal_duration) as internal_duration sum(duration) as total_duration dc(first_inbound_ocp) as internal_numbers_called  values(first_inbound_ocp) as foo dc(transfer_call_id) as transfers sum(off_hours_duration) as off_hours_duration sum(business_hours_duration) as business_hours_duration dc(business_hours_call_id) as business_hours dc(off_hours_call_id) as off_hours dc(failed_call_id) as failed sum(audio_duration) as audio_duration sum(video_duration) as video_duration dc(audio_call_id) as audio dc(video_call_id) as video values(site) as site dc(site) as sites_called last(clusterLocale) as clusterLocale by number
+
+| `set_failsafe_cluster_locale`
+| eval callingPartyNumber=number
+| eval finalCalledPartyNumber="workaround"
+| lookup parse_phone_numbers callingPartyNumber finalCalledPartyNumber clusterLocale
+| `location_lookup(callingParty)`
+| `na_states_lookup(callingParty)`
+| fields - callingPartyNumber finalCalledParty*
+| rename callingParty* as *
+| rename AreaCode as areaCode Exchange as exchange City as city CompanyName as companyName CompanyType as companyType CountryCode as countryCode Lat as lat Long as long NumberType as numberType State as state StateAbbr as stateAbbr Zip as zip
+| lookup country_codes code as countryCode nanpa_region as stateAbbr output country as country
+
+| fillnull site value="(none)"
+| fillnull calls incoming outgoing internal failed $leg_types$
+| eval pct_failed = if(failed==0,"0%",round((100 * failed / calls), 2) . "%")
+| search * $genericNumberTerms$ $genericSiteTerms$ $searchterms$
+| `get_durations_for_internal_parties`
+| `replace_zeros_with_nulls`
+                                    ]]></param>
+
+
+                                    <pattern name="save_create_buttons" />
+
+                                    <module name="SearchControls" layoutPanel="resultsHeaderPanel">
+                                      <param name="sections">jobControls info export print</param>
+                                      <param name="float">right</param>
+                                    </module>
+
+                                    <module name="HTML" layoutPanel="resultsHeaderPanel">
+                                      <param name="html"><![CDATA[
+
+                                      <h2>$qualifier$ $results.count$ outside parties found $search.timeRange.label$ </h2>
+
+                                      ]]></param>
+                                      <param name="customBehavior">qualifyNumberOfResults</param>
+                                    </module>
+
+                                    <module name="Pulldown" layoutPanel="resultsAreaLeft">
+                                      <param name="name">results.count</param>
+                                      <param name="label">results per page</param>
+                                      <param name="float">right</param>
+                                      <param name="staticOptions">
+                                        <list><param name="value">10</param></list>
+                                        <list><param name="value">20</param><param name="selected">True</param></list>
+                                        <list><param name="value">50</param></list>
+                                        <list><param name="value">100</param></list>
+                                        <list><param name="value">200</param></list>
+                                      </param>
+
+                                      <module name="ProgressIndicator" />
+
+                                      <module name="PostProcess">
+                                        <param name="search">fields $results.fields$</param>
+
+                                        <module name="Pager">
+
+                                          <module name="Table">
+
+                                            <module name="Layer">
+                                              <param name="cssClass">menu</param>
+
+                                              <module name="Link">
+                                                <param name="cssClass">menuItem</param>
+                                                <param name="label">investigate calls to/from this outside party</param>
+
+                                                <module name="Redirector">
+                                                  <param name="url">calls</param>
+                                                  <param name="mergeDrilldownKeys">False</param>
+                                                  <param name="arg.number">$row.fields.number$</param>
+                                                  <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                                  <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                                  <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                  <param name="arg.latest">$search.timeRange.latest$</param>
+                                                  <param name="arg.searchterms">$excludeCallsWithZeroDuration$ $sites$ </param>
+                                                </module>
+                                              </module>
+                                              <module name="Link">
+                                                <param name="cssClass">menuItem</param>
+                                                <param name="label">view outside party number details</param>
+
+                                                <module name="Redirector">
+                                                  <param name="url">outside_party_detail</param>
+                                                  <param name="arg.number">$row.fields.number$</param>
+                                                  <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                                  <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                                  <param name="arg.earliest">$cachedEarliest$</param>
+                                                  <param name="arg.latest">$cachedLatest$</param>
+
+                                                  <!--  things for breadcrumb links -->
+                                                  <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                  <param name="arg.bc_latest">$cachedLatest$</param>
+                                                  <param name="arg.bc_number">$number.rawValue$</param>
+                                                  <param name="arg.bc_searchterms">$searchterms.rawValue$</param>
+                                                  <param name="arg.bc_sites">$sites.rawValue$</param>
+                                                  <param name="arg.bc_clusterId">$clusterId.rawValue$</param>
+                                                  <param name="arg.bc_clusterGroup">$clusterGroup.rawValue$</param>
+
+                                                </module>
+                                              </module>
+
+
+                                            </module>
+                                          </module>
+
+                                          <pattern name="see_raw_search_syntax" />
+
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </pattern>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

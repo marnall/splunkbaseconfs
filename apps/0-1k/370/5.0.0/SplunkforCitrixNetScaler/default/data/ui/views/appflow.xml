@@ -1,0 +1,105 @@
+<form>
+    <label>AppFlow Overview</label>
+
+    <fieldset autoRun="true">
+
+            <input type="time">
+              <label>Time Range:</label>
+              <default>Last 24 hours</default>
+            </input>
+
+    </fieldset>
+    
+    <row>
+        <chart>
+            <title>Top 10 HTTP Browsers</title>
+            <searchString>
+                    eventtype=netscaler_appflow httpUserAgent!="" httpUserAgent!="0" |
+                    bin _time span=5m |
+                    rex field=httpUserAgent "((?&lt;browser_ff&gt;Firefox\S+)|(?&lt;browser_ie&gt;MSIE [\d\.]+)|(?&lt;browser_opera&gt;Opera)|(?&lt;browser_chrome&gt;Chrome)|(?&lt;browser_PNA&gt;PNAMAIN.EXE)|(?&lt;browser_safari&gt;Safari)|(?&lt;browser_java&gt;Java\S+)|(?&lt;browser_nagios&gt;nagios\S+)|(?&lt;browser_nessus&gt;[Nn][Ee][Ss][Ss][Uu][Ss])|(?&lt;browser_apache&gt;Apache\S+))"
+                    | eval browser_none=if(httpUserAgent =="-","None","")
+                    | fillnull value="" browser_ff browser_ie browser_chrome browser_safari browser_opera browser_java browser_nagios browser_nessus browser_apache browser_PNA
+                    | eval browser = browser_ff.browser_ie.browser_chrome.browser_safari.browser_opera.browser_java.browser_nagios.browser_nessus.browser_apache.browser_PNA
+                    | replace "" with "Other/Unknown" in browser
+                    | top 10 browser
+            </searchString>
+            <option name="charting.chart">pie</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+        
+        <table>
+            <title>Top 10 Request URL</title>
+            <searchString>
+                eventtype=netscaler_appflow
+                    httpRequestUrl!="" httpRequestUrl!="0" httpRequestUrl!="*jpg" httpRequestUrl!="*png"
+                    httpRequestUrl!="*.css" httpRequestUrl!="*gif" httpRequestUrl!="*.js" |
+                top limit=10 httpRequestUrlPath |
+                eval percent=round(percent,2)
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <table>
+            <label>Number of Transactions and Flows per Observation ID</label>
+            <searchName>Transaction and Flow per Observation ID</searchName>
+            <earliestTime>$earliest$</earliestTime>
+            <latestTime>$latest$</latestTime>
+        </table>
+    </row>
+    
+    <row>
+        <chart>
+            <title>Avgerage Transaction Time</title>
+            <searchString>
+                eventtype=netscaler_appflow | eval transactionTime=abs(flowEndMicroSeconds-flowStartMicroSeconds) | timechart avg(transactionTime) AS AvgTransactionTime by sourceIPv4Address
+            </searchString>
+            <option name="charting.chart">line</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+    </row>
+    
+    <row>
+        <chart>
+            <title>Top 10 Dst IP</title>
+            <searchString>
+                eventtype=netscaler_appflow | 
+                top limit=10 destinationIPv4Address | fields - percent
+            </searchString>
+            <option name="charting.chart">bar</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+        
+        <chart>
+            <title>Top 10 Dst Port</title>
+            <searchString>
+                eventtype=netscaler_appflow | 
+                top limit=10 tcpDestinationPort | fields - percent
+            </searchString>
+            <option name="charting.chart">bar</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+    </row>
+    
+    <row>
+        <chart>
+            <title>Top 10 Src IP</title>
+            <searchString>
+                eventtype=netscaler_appflow | 
+                top limit=10 sourceIPv4Address | fields - percent
+            </searchString>
+            <option name="charting.chart">bar</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+        
+        <chart>
+            <title>Top 10 Src Port</title>
+            <searchString>
+                eventtype=netscaler_appflow | 
+                top limit=10 tcpSourcePort | fields - percent
+            </searchString>
+            <option name="charting.chart">bar</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+    </row>
+</form>

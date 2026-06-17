@@ -1,0 +1,104 @@
+<dashboard version="1.1">
+  <label>Top Talkers Report Simplified last 24h</label>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <row>
+    <single>
+      <search>
+        <query>
+         `netflow_search_rule_20067` 
+         | head 1 
+         | addinfo 
+         | eval selection_duration=strftime(info_min_time, "%m/%d/%Y %I:%M:%S %p") . " - " . strftime(info_max_time, "%m/%d/%Y %I:%M:%S %p") 
+         | table selection_duration
+                </query>
+        <earliest>-24h@h</earliest>
+        <latest>@h</latest>
+      </search>
+      <option name="field">selection_duration</option>
+      <title>Top Talkers</title>
+    </single>
+  </row>
+  <row>
+    <chart>
+      <search>
+        <query>
+          `netflow_search_rule_20067` 
+          | `sampling(bytes_in)`  
+          | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+          | `format_ip_column(src_ip, src_ip, l_src_host)`
+          | `per_second_chart(sum(bytes_in) by src_ip,"span=720s",720)`
+                </query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <option name="charting.chart">$charting.chart_value$</option>
+      <option name="charting.chart.nullValueMode">zero</option>
+      <option name="charting.axisTitleX.text">Time</option>
+      <option name="charting.axisTitleY.text">Mbps</option>
+      <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+      <option name="charting.legend.placement">bottom</option>
+    </chart>
+  </row>
+  <row>
+    <table>
+      <title>Top Talkers Details</title>
+      <search>
+        <query>
+          `netflow_search_rule_20067` 
+          | `sampling(bytes_in)` 
+          | `sampling(packets_in)` 
+          | `sampling(flow_count)`
+          | fillnull value="" src_host 
+          | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+          | bin span=720s _time
+          | stats  sum(bytes_in) as sumbytes 
+              sum(packets_in) as sumpacketsin 
+              sum(flow_count) as sumflowcount 
+                  by nfo_hostname exp_ip src_ip l_src_host _time
+          | eval avgbits= sumbytes*8/(720)
+          | stats sum(sumbytes) as TrafficAmount 
+              sum(sumpacketsin) as PacketsAmount 
+              sum(sumflowcount) as Connections 
+              max(avgbits) as MaxTraffic
+                  by nfo_hostname exp_ip src_ip l_src_host 
+          | sort 0 - TrafficAmount 
+          | head 20 
+          | eval AverageSpeed=(TrafficAmount)*8/84600
+          | eval PacketsSpeed=(PacketsAmount)/84600
+          | eval TrafficSpeed=AverageSpeed/1000000
+          | eval TrafficAmount=TrafficAmount/1024/1024
+          | eval MaxTraffic=MaxTraffic/1000000
+          | `commas_formatting(Avg Mbps, TrafficSpeed, 2)`
+          | `commas_formatting(Total Traffic MB, TrafficAmount, 2)`
+          | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+          | `commas_formatting(Avg Packets/s, PacketsSpeed, 2)`
+          | `commas_formatting(Total Packets, PacketsAmount)`
+          | `commas_formatting(Total Conns, Connections)`
+          | `get_exporter_name(exp_ip_name)`
+          | table nfo_hostname exp_ip_name src_ip l_src_host "Max Mbps" "Avg Mbps" "Total Traffic MB" "Avg Packets/s" "Total Packets" "Total Conns"
+          | rename nfo_hostname as "NFO" 
+          | rename exp_ip_name as "Device" 
+          | rename src_ip as "Source IP"  
+          | rename l_src_host as "Source Host"
+        </query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+			<option name="drilldown">none</option>
+      <option name="wrap">false</option>
+      <option name="rowNumbers">true</option>
+      <option name="count">20</option>
+      <option name="showPager">false</option>
+    </table>
+  </row>
+</dashboard>

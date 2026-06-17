@@ -1,0 +1,370 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>HTTP Response Times For splunkd</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">HTTP Response Times For splunkd</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">performance_splunkd_http.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+          
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 24 hours</param>
+          <param name="searchWhenChanged">True</param>
+
+          <!-- COMMON CONTROLS END   -->
+
+          <!-- Begin shameful hack to set timechart bucket width ($span$) for 'bins=200' based on the user's TimeRangePicker choice  -->
+          <module name="Search">
+            <param name="search">`set_internal_index` | head 1 | timechart bins=200 count | eval span=_span</param>
+            <module name="ResultsValueSetter">
+              <param name="fields">span</param>
+ 
+              <!-- Start Panel: Base Search -->
+
+              <module name="Search" layoutPanel="panel_row1_col1">
+                <param name="search"><![CDATA[
+                `set_internal_index` $host$ source=*splunkd_access.log* NOT "/streams/" spent>999
+                | eval spent=ceiling(spent/1000)
+                | eval desc=case(spent<=1, "OKAY", spent<30, "WARNING", spent>29, "DANGER")
+                | stats count by uri_path, spent, desc, _time
+                ]]></param>
+                <module name="JobProgressIndicator"></module>
+
+                <!-- Start Panel: High Response Times -->
+
+                <module name="TextField" group="High response times">
+                  <param name="width">20px</param>
+                  <param name="name">spent_threshold</param>
+                  <param name="float">left</param>
+                  <param name="template">spent>=$value$</param>
+                  <param name="label">Only show response times (seconds) greater or equal than:</param>
+                  <param name="default">1</param>
+                  <module name="Checkbox">
+                    <param name="name">aggregate_results</param>
+                    <param name="checked">True</param>
+                    <param name="label">Aggregate results</param>
+                    <param name="labelPosition">right</param>
+                    <param name="onValue">| rex mode=sed field=uri_path "s/\/servicesNS\/[^\/]*\/[^\/]*\//\/servicesNS\/{USER}\/{APP}\//g" | rex mode=sed field=uri_path "s/(\/search\/jobs|\/admin\/summarization|\/saved\/searches)\/[^\/]*/\1\/{SID}/g" | bin span=10 spent</param>
+                    <module name="PostProcess">
+                      <param name="search"><![CDATA[
+                      | search $spent_threshold$
+                      $aggregate_results$
+                      | stats sum(count) as count max(_time) AS latest_time by uri_path, spent, desc
+                      | eval status = desc
+                      | table status, uri_path, spent, count, latest_time
+                      | sort - spent
+                      | convert ctime(latest_time)
+                      | rename spent AS "response time (s)" latest_time AS "Latest occurrence" uri_path AS URI count AS "Request count"
+                      ]]></param>
+                      <module name="Count">
+                        <param name="options">
+                          <list>
+                            <param name="text">10</param>
+                            <param name="value">10</param>
+                          </list>
+                          <list>
+                            <param name="text">20</param>
+                            <param name="value">20</param>
+                          </list>
+                          <list>
+                            <param name="text">50</param>
+                            <param name="value">50</param>
+                          </list>
+                        </param>
+                        <module name="Pager">
+                          <param name="count">10</param>
+                          <param name="entityName">results</param>
+                          <param name="maxPages">5</param>
+                          <module name="SimpleResultsTable">
+                            <param name="displayRowNumbers">off</param>
+                          </module>
+                          <module name="ViewRedirectorLink">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+
+                <!-- End Panel: HTTP Response Times-->
+
+                <!-- Start Panel: Timechart Responsiveness -->
+
+                <module name="TextField" layoutPanel="panel_row2_col1" group="High response times over time">
+                  <param name="width">20px</param>
+                  <param name="name">spent_threshold</param>
+                  <param name="float">left</param>
+                  <param name="template">spent>=$value$</param>
+                  <param name="label">Only show response times (seconds) greater or equal than:</param>
+                  <param name="default">1</param>
+                  <module name="PostProcess">
+                    <param name="search"><![CDATA[
+                    | search $spent_threshold$
+                    | timechart bins=200 median(spent) AS Median perc90(spent) AS "90th Percentile" max(spent) AS Maximum
+                    | eval DANGER=30
+                    | rename DANGER AS "Splunk Web timeout threshold"
+                    ]]></param>
+                    <module name="JobProgressIndicator"></module>     
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">line</param>
+                      <param name="charting.chart.nullValueMode">connect</param>
+                      <param name="charting.legend.placement">right</param>
+                      <param name="primaryAxisTitle.text">Time</param>
+                      <param name="charting.TimeoutBrush">dashedStroke</param>
+                      <param name="charting.TimeoutBrush.color">0x9d261d</param>
+                      <param name="charting.TimeoutBrush.thickness">2</param>
+                      <param name="charting.TimeoutFillBrush">solidFill</param>
+                      <param name="charting.TimeoutFillBrush.color">0x9d261d</param>
+                      <param name="charting.myBrushPalette">field</param>
+                      <param name="charting.myBrushPalette.fieldBrushes">{"Splunk Web timeout threshold":@TimeoutBrush}</param>
+                      <param name="charting.myBrushPalette.defaultBrushPalette">@lineBrushPalette</param>
+                      <param name="charting.myFillBrushPalette">field</param>
+                      <param name="charting.myFillBrushPalette.fieldBrushes">{"Splunk Web timeout threshold":@TimeoutFillBrush}</param>
+                      <param name="charting.myFillBrushPalette.defaultBrushPalette">@fillBrushPalette</param>
+                      <param name="charting.chart.lineBrushPalette">@myBrushPalette</param>
+                      <param name="charting.chart.markerBrushPalette">@myFillBrushPalette</param>
+                      <param name="secondaryAxisTitle.text">Response time (s)</param>
+                      <param name="charting.axisY.scale">log</param> 
+                      <module name="FlashChart">
+                        <param name="height">300px</param>
+                        <module name="Redirector">
+                          <param name="popup">true</param>
+                          <param name="url">flashtimeline</param>
+                          <param name="arg.q">`set_internal_index` $host$ source=*splunkd_access.log* [stats count| eval earliest=strptime("$click.value$","%Y-%m-%dT%H:%M:%S.%3N") | eval latest=earliest+$span$ | fields earliest latest | format "" "" "" "" "" ""] | eval spent=ceiling(spent/1000) | eval spent_threshold=if("$click.value$"=="Splunk Web timeout threshold",30,$click.value2$) | where spent>=spent_threshold</param>
+                        </module>
+                      </module>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+  
+                <!-- End Panel: Timechart Responsiveness -->
+
+                <!-- Start Panel: Timechart Responsiveness with overlay -->
+
+                <module name="TextField" layoutPanel="panel_row3_col1" group="High response times against other metrics">
+                  <param name="width">20px</param>
+                  <param name="name">spent_threshold</param>
+                  <param name="float">left</param>
+                  <param name="template">spent>=$value$</param>
+                  <param name="label">Only show response times (seconds) greater or equal than:</param>
+                  <param name="default">1</param>
+                  <module name="Pulldown">
+                    <param name="name">function</param>
+                    <param name="float">left</param>
+                    <param name="label">Statistical function:</param>
+                    <param name="template">$value$</param>
+                    <param name="staticFieldsToDisplay">
+                      <list>
+                        <param name="value">perc90</param>
+                        <param name="label">90th percentile</param>
+                      </list>
+                      <list>
+                        <param name="value">max</param>
+                        <param name="label">maximum</param>
+                      </list>
+                      <list>
+                        <param name="value">median</param>
+                        <param name="label">median</param>
+                      </list>
+                      <list>
+                        <param name="value">avg</param>
+                        <param name="label">average</param>
+                      </list>
+                    </param>
+                    <module name="Pulldown">
+                      <param name="name">overlay_search</param>
+                      <param name="template">$value$</param>
+                      <param name="float">left</param>
+                      <param name="label">Overlay with:</param>
+                      <param name="staticFieldsToDisplay">
+                        <list>
+                          <param name="label">median system load average</param>
+                          <param name="value">
+                            `set_internal_index` source=*metrics.log* group=thruput
+                            | bin _time bins=200
+                            | chart max(load_average) AS load_average over _time]
+                          | timechart bins=200 median(load_average) AS "Load average"
+                          </param>
+                        </list>
+                        <list>
+                          <param name="label">search concurrency</param>
+                          <param name="value"><![CDATA[
+                            `set_sos_index` sourcetype="ps" search
+                            | multikv
+                            | `get_splunk_process_type`
+                            | search type=searches
+                            | rex field=ARGS "search(_|\s)--id=(?<sid>[_-\w\.]+)(_|\s)--"
+                            | bin _time bins=200
+                            | stats dc(sid) AS sc by _time
+                            | timechart bins=200 max(sc) AS sc per_minute(sc) as spm]
+                          | timechart bins=200 max(sc) AS "Search count" max(eval(round(spm,2))) AS "Searches/minute"
+                          ]]></param>
+                        </list>
+                        <list>
+                          <param name="label">Splunk Web timeout events</param>
+                          <param name="value">
+                            `set_internal_index` source=*web_service.log* ("Splunkd daemon is not responding" OR "The read operation timed out")
+                            | bin _time bins=200
+                            | chart count  AS sw_timeout_count over _time]
+                          | timechart bins=200 sum(sw_timeout_count) AS "Splunk Web timeouts"
+                          </param>
+                        </list>
+                        <list>
+                          <param name="label">splunkd HTTP request count</param>
+                          <param name="value">
+                            `set_internal_index` source=*splunkd_access.log*
+                            | bin _time bins=200
+                            | chart count AS request_count over _time]
+                          | timechart bins=200 sum(request_count) AS "HTTP request count"
+                          </param>
+                        </list>
+                      </param>
+    
+                      <module name="PostProcess">
+                        <param name="search"><![CDATA[
+                        | search $spent_threshold$
+                        | bin _time bins=200
+                        | append [search $host$ $overlay_search$
+                        $function$(spent) AS "HTTP response time" 
+                        | eval DANGER=30
+                        | rename DANGER AS "Splunk Web timeout threshold"
+                        ]]></param>
+                        <module name="JobProgressIndicator"></module>     
+      
+                        <module name="HiddenChartFormatter">
+                          <param name="charting.chart">line</param>
+                          <param name="charting.chart.nullValueMode">connect</param>
+                          <param name="charting.legend.placement">right</param>
+                          <param name="primaryAxisTitle.text">Time</param>
+                          <param name="charting.axisY.scale">log</param> 
+                          <param name="charting.TimeoutBrush">dashedStroke</param>
+                          <param name="charting.TimeoutBrush.color">0x9d261d</param>
+                          <param name="charting.TimeoutBrush.thickness">2</param>
+                          <param name="charting.TimeoutFillBrush">solidFill</param>
+                          <param name="charting.TimeoutFillBrush.color">0x9d261d</param>
+                          <param name="charting.myBrushPalette">field</param>
+                          <param name="charting.myBrushPalette.fieldBrushes">{"Splunk Web timeout threshold":@TimeoutBrush}</param>
+                          <param name="charting.myBrushPalette.defaultBrushPalette">@lineBrushPalette</param>
+                          <param name="charting.myFillBrushPalette">field</param>
+                          <param name="charting.myFillBrushPalette.fieldBrushes">{"Splunk Web timeout threshold":@TimeoutFillBrush}</param>
+                          <param name="charting.myFillBrushPalette.defaultBrushPalette">@fillBrushPalette</param>
+                          <param name="charting.chart.lineBrushPalette">@myBrushPalette</param>
+                          <param name="charting.chart.markerBrushPalette">@myFillBrushPalette</param>
+                          <module name="FlashChart">
+                            <param name="height">300px</param>
+
+                            <module name="Search">
+                              <param name="search"><![CDATA[
+                              | stats count
+                              | eval earliest=strptime("$click.value$","%Y-%m-%dT%H:%M:%S.%3N")
+                              | eval latest=earliest+$span$
+                              ]]></param>
+                              <module name="PostProcess">
+                                <param name="search"></param>
+                                <module name="ResultsValueSetter">
+                                  <param name="fields">earliest, latest</param>
+                                  <module name="Search">
+                                    <param name="search"><![CDATA[
+                                    | stats count
+                                    | eval series="$click.name2$"
+                                    | eval q=case(
+                                      series=="Splunk Web timeout threshold","`set_internal_index` host=\"$host.rawValue$\" source=*splunkd_access.log* | eval spent=ceiling(spent/1000) | search spent>=30",
+                                      series=="HTTP response time","`set_internal_index` host=\"$host.rawValue$\" source=*splunkd_access.log* | eval spent=ceiling(spent/1000) | search spent>=$click.value2$",
+                                      series=="Load average","`set_internal_index` host=\"$host.rawValue$\" source=*metrics.log* group=thruput",
+                                      series=="Search count" OR series=="Searches/minute","`set_sos_index` host=\"$host.rawValue$\" sourcetype=ps search | multikv | `get_splunk_process_type` | search type=searches",
+                                      series=="Splunk Web timeouts","`set_internal_index` host=\"$host.rawValue$\" source=*web_service.log* ('Splunkd daemon is not responding' OR 'The read operation timed out')",
+                                      series=="HTTP request count","`set_internal_index` host=\"$host.rawValue$\" source=*splunkd_access.log*")
+                                    ]]></param>
+                                    <module name="PostProcess">
+                                      <param name="search"></param>
+                                      <module name="ResultsValueSetter">
+                                        <param name="fields">q</param>
+                                        <module name="Redirector">
+                                          <param name="popup">true</param>
+                                          <param name="url">flashtimeline</param>
+                                          <param name="arg.q">$q$</param>
+                                          <param name="arg.earliest">$earliest$</param>
+                                          <param name="arg.latest">$latest$</param>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                          <module name="ViewRedirectorLink">
+                            <param name="viewTarget">flashtimeline</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+  
+                <!-- End Panel: Timechart Responsiveness -->
+
+              </module>
+
+              <!-- End Panel: Base Search -->
+
+            </module>
+          </module>
+
+          <!-- End shameful hack to set $span$ -->
+
+       </module>
+     </module>
+   </module>
+  </module>      
+</view>

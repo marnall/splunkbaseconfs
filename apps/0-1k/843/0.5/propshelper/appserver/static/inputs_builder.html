@@ -1,0 +1,127 @@
+<p>Generate an optimum Splunk props.conf file given a TIME_FORMAT and TIME_PREFIX. See the reference in the <a href="http://docs.splunk.com/Documentation/Splunk/latest/Admin/Propsconf">props.conf</a> documentation.</p>
+
+<hr/>
+
+<form>
+<!--  <h2>Sample entries</h2>
+  <textarea rows="6" cols="80" name="sample"></textarea>
+-->
+  <table>
+
+   <tr>
+    <td class="props_formlabel">sourcetype</td>
+    <td class="props_forminput"><input size="50" name="SOURCETYPE" value="mysourcetype" /></td>
+   </tr>
+
+   <tr>
+    <td class="props_formlabel">TIME_FORMAT</td>
+    <td class="props_forminput"><input size="50" name="TIME_FORMAT" value="%Y-%m-%d %H:%M:%S.%3N %:z" /></td>
+    <td class="props_example" id="TIME_FORMAT_example"></td>
+   </tr>
+
+<!-- TIME_PREFIX -->
+   <tr>
+    <td class="props_formlabel" colspan="3"><input type="checkbox" name="beginningOfLine" checked="true" /> Time falls at the beginning of line.</td>
+   </tr>
+
+   <tr id="timePrefixRow" style="display:none">
+    <td class="props_formlabel">TIME_PREFIX</td>
+    <td class="props_forminput"><input size="30" value="^" name="TIME_PREFIX" value="^" /></td>
+    <td class="props_example" id="TIME_PREFIX_example"></td>
+   </tr>
+
+   <tr>
+    <td class="props_formlabel" colspan="3"><input type="checkbox" name="alwaysSingleLine" /> log messages are ALWAYS single line. (Be certain of this.)</td>
+   </tr>
+
+   <tr>
+    <td class="props_formlabel" colspan="3"><input type="checkbox" name="showComments" checked="true" /> Show comments</td>
+   </tr>
+
+  </table>
+
+<br/>
+<hr />
+<br/>
+
+  <h2>Suggested configuration*</h2>
+  <div id="suggested" style="padding-left:16px;"></div>
+  <!--<textarea rows="20" cols="100" name="config" readonly="true" style="font-family:monospace;font-size:12px;"></textarea>-->
+
+</form>
+
+<p><i>* There are always edge cases, so make sure you understand what these settings do.</i></p>
+
+<p>Notes about what to do with this stuff...</p>
+
+<script>
+$(document).ready(function() {
+
+function buildLineBreaker(timeformat,timeprefix) {
+  if( timeprefix.indexOf("^") == 0 ) {
+    timeprefix = timeprefix.substring(1);
+  }
+  return "([\\r\\n]+)" + "(?=" +  timeprefix + buildRegexFromDateFormat(timeformat) + ")";
+}
+
+function comment(c) {
+  if( $('input[name=showComments]').is(':checked') ) {
+	  return '<div class="props_comment"> ## ' + c + '</div>\n';
+  }
+  return "";
+}
+
+function buildConfig(){
+  var result = '<div class="props_sourcetype">['+$("input[name=SOURCETYPE]").val()+']</div>\n';
+  var timeformat = $("input[name=TIME_FORMAT]").val();
+  var timeprefix = $("input[name=TIME_PREFIX]").val();
+
+  result += '<div class="props_value">TIME_FORMAT = ' + timeformat + '</div>\n';
+  var exampleDate = buildDateExampleFromDateFormat(timeformat);
+  result += comment( 'example: ' + exampleDate )
+  result += '<div class="props_value">MAX_TIMESTAMP_LOOKAHEAD = ' +  ( exampleDate.length + 2 ) + '</div>\n';
+
+  if( $('input[name=beginningOfLine]').is(':checked') ) {
+    //result += '<div class="props_value">TIME_PREFIX = ^\</div>\n';
+    timeprefix = "";
+  } else {
+    result += '<div class="props_value">TIME_PREFIX = ' + timeprefix + '</div>\n';
+  }
+  result += comment( 'If nothing else, you want these three settings.' );
+
+  result += '<div class="props_value">SHOULD_LINEMERGE = False</div>\n';
+//  result += "#This disables Splunk's default behavior of trying to intelligently gather multiple related lines together. When using this setting, to correctly group multiline events together, a valid LINE_BREAKER is needed.\n";
+
+  if( $('input[name=alwaysSingleLine]').is(':checked') ) {
+    log("alwaysSingleLine is checked");
+  }
+
+  if( ! $('input[name=alwaysSingleLine]').is(':checked') ) {
+    result += '<div class="props_value">LINE_BREAKER = ' + escapeHTML( buildLineBreaker(timeformat,timeprefix) ) + '</div>\n';
+    result += '<div class="props_value">TRUNCATE = 1024000</div>\n';
+//    result += "#The default LINE_BREAKER is ([\\r\\n]+). If possible, specifying \n";
+  }
+
+// format = replaceWithFunctionResult( unquote(format),extractPatternFunctions );
+  $("#suggested").html(result);
+//  $("textarea[name=config]").val(result);
+}
+
+
+  $("input[name=beginningOfLine]").click(function () { $("#timePrefixRow").toggle(); });
+//  $("input[name=beginningOfLine]").bind("click",
+//    function () {
+//      if( $("input[name=beginningOfLine]:checked") ) {
+//        $("input[name=TIME_PREFIX]").attr("disabled", "true"); 
+//      } else {
+//        $("input[name=TIME_PREFIX]").removeAttr("disabled");
+//      }
+//    });
+
+  $("input").bind("change",buildConfig);
+  $("input").bind("keyup",buildConfig);
+  $("input").bind("click",buildConfig);
+  buildConfig();
+
+});
+</script>

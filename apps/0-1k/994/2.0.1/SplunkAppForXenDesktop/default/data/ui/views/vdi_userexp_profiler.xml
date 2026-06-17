@@ -1,0 +1,338 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>User Experience</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">User Experience</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report allows you to profile and score a user’s virtual desktop session experience. A user experience score of 1 (lowest) - 5 (highest) is assigned to the various components monitored as part of that VDI session. To get started, enter a username, desktop, and hostname, and select a time range below.</param>
+  </module>
+  <module name="ServerSideInclude" layoutPanel="panel_row1_col1">
+    <param name="src">usrexp_key.html</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row2_col1_grp1">
+    <param name="selected">Last 15 Minutes</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+      <param name="label">User: </param>
+      <param name="field">user</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="user">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="user">
+            <param name="default"/>
+            <param name="prefix">user="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+        <param name="label">Desktop Name: </param>
+        <param name="field">vm_name</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="vm_name">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="vm_name">
+              <param name="default"/>
+              <param name="prefix">vm_name="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="SubmitButton" layoutPanel="panel_row2_col1_grp4">
+          <param name="allowSoftSubmit">False</param>
+          <param name="label">Submit</param>
+          <module name="HiddenSearch" layoutPanel="panel_row4_col1" >
+            <param name="search">`xendesktop_index` `xd_ica` InputSessionBandwidth OutputSessionBandwidth LatencySessionAverage InputSessionCompression OutputSessionCompression  UserName!="" user!="_Server Total" [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name user ]  | eval SessionBandwidth=InputSessionBandwidth+OutputSessionBandwidth  | timechart span=1m max(SessionBandwidth) as MaxSessionBandwidth min(SessionBandwidth) as MinSessionBandwidth median(SessionBandwidth) as "AvgSessionBandwidth"  Max(LatencySessionAverage) as "LatencySessionAverage" | eval AvgSessionBandwidth = round(AvgSessionBandwidth,2) | sort - _time</param>
+            <module name="JobProgressIndicator"/>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="label">Session Counters</param>
+            </module>
+            <!-- Start Switcher -->
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col1">
+              <param name="search"> | timechart span=1m avg(AvgSessionBandwidth) as ICA_Bandwidth</param>
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.stackMode">none</param>
+                <param name="chart.nullValueMode">connect</param>
+                <param name="legend.placement">bottom</param>
+                <module name="JSChart">
+                  <param name="width">100%</param>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col2">
+              <param name="search">| timechart span=1m Max(LatencySessionAverage) as "ICA_Latency"</param>
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.nullValueMode">connect</param>
+                <param name="chart.stackMode">none</param>
+                <param name="legend.placement">bottom</param>
+                <module name="JSChart">
+                  <param name="width">100%</param>
+                  <module name="ConvertToDrilldownSearch">
+                    <module name="ViewRedirector">
+                      <param name="viewTarget">flashtimeline</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="ICA Session Info">
+              <param name="search">| stats avg(AvgSessionBandwidth) as SessionBandwidth | eval SessionBandwidth = round(SessionBandwidth,2) |   `usrexp_icabw`  | eval usrexp="usrexp"+usrexp</param>
+              <module name="SingleValue">
+                <param name="field">SessionBandwidth</param>
+                <param name="classField">usrexp</param>
+                <param name="format">count</param>
+                <param name="beforeLabel">ICA Session Bandwidth: </param>
+                <param name="afterLabel">kbs</param>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp2" group="ICA Session Info">
+              <param name="search">| stats median(LatencySessionAverage) as LatencySessionAverage | eval LatencySessionAverage = round(LatencySessionAverage,2) | `usrexp_icalatency`  | eval usrexp="usrexp"+usrexp</param>
+              <module name="SingleValue">
+                <param name="field">LatencySessionAverage</param>
+                <param name="classField">usrexp</param>
+                <param name="format">count</param>
+                <param name="beforeLabel">ICA Session Latency: </param>
+              </module>
+            </module>
+            <!-- End Switcher -->
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row6_col1" group="% CPU">
+            <param name="search">`perfmon_cpu` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ] | bin _time span=1m | stats first(Value) as Value  by _time vm_name  </param>
+            <module name="JobProgressIndicator"/>
+            <module name="HiddenPostProcess" layoutPanel="panel_row6_col1" group="% CPU Utilization">
+              <param name="search">| timechart span=1m avg(Value) as "% CPU" </param>
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.nullValueMode">connect</param>
+                <param name="chart.stackMode">none</param>
+                <param name="legend.placement">bottom</param>
+                <module name="JSChart">
+                  <param name="width">100%</param>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp1">
+              <param name="search"> | stats median(Value) as Value | eval Value=round(Value,2)   | `usrexp_cpu`| eval usrexp="usrexp"+usrexp</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">usrexp</param>
+                <param name="format">count</param>
+                <param name="beforeLabel">% Processor Time: </param>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row6_col2" group="Available Memory in Megabytes">
+            <param name="search">`perfmon_mem` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ] |  bin _time span=1m  | stats first(Value) as Value  by _time vm_name  </param>
+            <module name="JobProgressIndicator"/>
+            <module name="HiddenPostProcess" layoutPanel="panel_row6_col2" group="Available Memory in Megabytes">
+              <param name="search">| eval Value=Value/1024/1024 | timechart span=1m avg(Value) as MBFree | eval MBFree= round(MBFree,2)</param>
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.nullValueMode">connect</param>
+                <param name="chart.stackMode">none</param>
+                <param name="legend.placement">bottom</param>
+                <module name="JSChart">
+                  <param name="width">100%</param>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp2">
+              <param name="search"> | eval Value=Value/1024/1024 | stats median(Value) as Value | eval Value=round(Value,2)   | `usrexp_mem`| eval usrexp="usrexp"+usrexp</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">usrexp</param>
+                <param name="format">count</param>
+                <param name="beforeLabel">Available Memory in Megabytes: </param>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row6_col3" group="Disk Transfers/Sec">
+            <param name="search">counter="Disk Transfers/Sec"  `perfmon_logdisk` object=LogicalDisk [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ |  bin _time span=1m |  stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ] | stats first(Value) as Value  by _time vm_name | bin _time span=1m </param>
+            <module name="JobProgressIndicator"/>
+            <module name="HiddenPostProcess" layoutPanel="panel_row6_col3" group="Disk Transfers/Sec">
+              <param name="search">| timechart span=1m avg(Value) as avg | eval avg = round(avg,2) | rename avg as "Disk Transfers/Sec"</param>
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.nullValueMode">connect</param>
+                <param name="chart.stackMode">none</param>
+                <param name="legend.placement">bottom</param>
+                <module name="JSChart">
+                  <param name="width">100%</param>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp3">
+              <param name="search">| stats median(Value) as Value | eval Value=round(Value,2)   | `usrexp_io`| eval usrexp="usrexp"+usrexp</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">usrexp</param>
+                <param name="format">count</param>
+                <param name="beforeLabel">Disk Transfers/Sec: </param>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row7_col1" group="Windows WinEvent Log">
+            <param name="search">`win_index` Type=Error sourcetype="WinEventLog:*"   [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ]    |stats values(SourceName) as "Source(s)"   values(Message) as "Message(s)" by Type vm_name | head 10 | sort - count</param>
+            <module name="SimpleResultsTable">
+              <param name="drilldown">row</param>
+              <param name="entityName">results</param>
+              <param name="count">15</param>
+              <param name="displayRowNumbers">False</param>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="label">View WinEvent Errors</param>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row8_col1_grp1" group="View Reports">
+            <param name="search">`xendesktop_index` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ]  | head 1  | eval Report="View Installed Applications" | stats first(Report) as Report by vm_name </param>
+            <module name="SimpleResultsTable" layoutPanel="panel_row8_col1_grp1">
+              <param name="displayMenu">true</param>
+              <param name="count">100</param>
+              <param name="drilldown">row</param>
+              <param name="entityName">results</param>
+              <param name="displayRowNumbers">False</param>
+              <module name="HiddenSearch">
+                <param name="search">`win_index` `wmi_installedsoftware`  Name!="----" earliest=-7d $vm_name$ | stats first(Version) as Version by Vendor Name</param>
+                <module name="ConvertToIntention">
+                  <param name="intention">
+                    <param name="name">stringreplace</param>
+                    <param name="arg">
+                      <param name="vm_name">
+                        <param name="prefix">vm_name=</param>
+                        <param name="fillOnEmpty">True</param>
+                        <param name="value">$click.value$</param>
+                      </param>
+                    </param>
+                  </param>
+                  <module name="ViewRedirector">
+                    <param name="viewTarget">vdi_installedapps_drilldown</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row8_col1_grp2" group="View Reports">
+            <param name="search">`xendesktop_index` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ]  | head 1  | eval Report="View Running Processes" | stats first(Report) as Report by vm_name</param>
+            <module name="SimpleResultsTable" layoutPanel="panel_row8_col1_grp2">
+              <param name="displayMenu">true</param>
+              <param name="count">100</param>
+              <param name="drilldown">row</param>
+              <param name="entityName">results</param>
+              <param name="displayRowNumbers">False</param>
+              <module name="HiddenSearch">
+                <param name="search">$vm_name$ `perfmon_process`  | table vm_name process_name Value counter instance   | eval mem = if(counter=="Virtual Bytes",Value,"")  | eval cpu = if(counter=="% Processor Time",Value,"") | eval ioread = if(counter="IO Read Operations/sec",Value,"") | eval iowrite = if(counter="IO Write Operations/sec",Value,"") 
+                  </param>
+                <module name="ConvertToIntention">
+                  <param name="intention">
+                    <param name="name">stringreplace</param>
+                    <param name="arg">
+                      <param name="vm_name">
+                        <param name="prefix">vm_name=</param>
+                        <param name="fillOnEmpty">True</param>
+                        <param name="value">$click.value$</param>
+                      </param>
+                    </param>
+                  </param>
+                  <module name="ViewRedirector">
+                    <param name="viewTarget">proc_detail_drilldown</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row8_col1_grp3" group="View Reports">
+            <param name="search">`xendesktop_index` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ]  | head 1  | eval Report="View Bios" | stats first(Report) as Report by vm_name</param>
+            <module name="SimpleResultsTable" layoutPanel="panel_row8_col1_grp3">
+              <param name="displayMenu">true</param>
+              <param name="count">100</param>
+              <param name="drilldown">row</param>
+              <param name="entityName">results</param>
+              <param name="displayRowNumbers">False</param>
+              <module name="HiddenSearch">
+                <param name="search">`win_index`  sourcetype=WMI:Win32BIOS   $vm_name$  earliest=-180d | head 1   | table  BIOSVersion BiosCharacteristics BuildNumber Caption CodeSet CurrentLanguage Description IdentificationCode InstallDate InstallableLanguages LanguageEdition ListOfLanguages Manufacturer Message Name OtherTargetOS PrimaryBIOS ReleaseDate SMBIOSBIOSVersion SMBIOSMajorVersion SMBIOSMinorVersion SMBIOSPresent SerialNumber SoftwareElementID SoftwareElementState Status TargetOperatingSystem Version wmi_type | transpose</param>
+                <module name="ConvertToIntention">
+                  <param name="intention">
+                    <param name="name">stringreplace</param>
+                    <param name="arg">
+                      <param name="vm_name">
+                        <param name="prefix">vm_name=</param>
+                        <param name="fillOnEmpty">True</param>
+                        <param name="value">$click.value$</param>
+                      </param>
+                    </param>
+                  </param>
+                  <module name="ViewRedirector">
+                    <param name="viewTarget">vdi_bios_drilldown</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row9_col1_grp1">
+            <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | head 1 | lookup xd5_desktops vm_name OUTPUT DesktopGroupName HostingServerName CatalogName ControllerDNSName  | fillnull DesktopGroupName HostingServerName CatalogName ControllerDNSName value="Unknown" | `get_device_type` | `xd_get_duration` | rename client_dvc_type as EndpointType | rename load_time as LoadTime | head 1 | `convert_active_duration` | `convert_total_duration` | table SessionState SessionStateChangeTime StartTime ActiveDuration TotalDuration UserName ClientName EndpointType ClientAddress Protocol ClientVersion LaunchedViaIP ConnectedViaIP | transpose | rename column as Name | rename "row 1" as Value </param>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="label">Session Details</param>
+            </module>
+            <module name="JobProgressIndicator"/>
+            <module name="SimpleResultsTable" group="Session Information" layoutPanel="panel_row9_col1_grp1">
+              <param name="displayMenu">true</param>
+              <param name="count">100</param>
+            </module>
+          </module>
+          <module name="HiddenSearch" layoutPanel="panel_row9_col1_grp2">
+            <param name="search">`xendesktop_index` `xd_desktops_sourcetype` [search  `xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | stats first(vm_name) as vm_name by user | head 1 | fields + vm_name ]| head 1  | table MachineName PowerState InMaintenanceMode DesktopGroupName CatalogName OSType IPAddress AgentVersion HostingServerName HypervisorConnectionName HostedMachineName LastDeregistrationReason LastDeregistrationTime LastDeregistrationReason | transpose | rename column as Name | rename "row 1" as Value</param>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="label">Desktop Details</param>
+            </module>
+            <module name="JobProgressIndicator"/>
+            <module name="SimpleResultsTable" group="Desktop Details" layoutPanel="panel_row9_col1_grp2">
+              <param name="displayMenu">true</param>
+              <param name="count">150</param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

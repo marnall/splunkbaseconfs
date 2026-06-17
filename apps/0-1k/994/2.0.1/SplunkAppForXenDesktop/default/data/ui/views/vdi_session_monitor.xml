@@ -1,0 +1,317 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Alerts</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Desktop Monitor</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This dashboard displays the User Experience Alerts that have fired in your desktop environment. These alerts have been configured to monitor the user experience by measuring thresholds of different aspects of the virtual desktop sessions. Click on a pie chart  to view the Alert details for the that alert category. Filter this view by entering values in the fields below and pressing Enter. To view the entire result set for this report or to manipulate the data further, click View Full Report below.</param>
+  </module>
+  <module name="StaticSelect" layoutPanel="panel_row1_col2">
+    <param name="settingToCreate">usrexp</param>
+    <param name="staticFieldsToDisplay">
+      <list>
+        <param name="label">--- ANY ---</param>
+        <param name="value">*</param>
+      </list>
+      <list>
+        <param name="label">CRITICAL</param>
+        <param name="value">1</param>
+      </list>
+      <list>
+        <param name="label">WARNING</param>
+        <param name="value">2</param>
+      </list>
+      <list>
+        <param name="label">Alerted</param>
+        <param name="value">3</param>
+      </list>
+      <list>
+        <param name="label">INFO-2</param>
+        <param name="value">4</param>
+      </list>
+      <list>
+        <param name="label">INFO-1</param>
+        <param name="value">5</param>
+      </list>
+    </param>
+    <param name="selected">INDEX</param>
+    <param name="label">Severity</param>
+    <module name="ConvertToIntention">
+      <param name="intention">
+        <param name="name">addterm</param>
+        <param name="arg">
+          <param name="usrexp">$usrexp$</param>
+        </param>
+      </param>
+      <module name="TimeRangePicker" layoutPanel="panel_row1_col2" autoRun="True">
+        <param name="selected">Last 24 Hours</param>
+        <param name="searchWhenChanged">True</param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+          <param name="label">Host Machine Server: </param>
+          <param name="field">HostingServerName</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="HostingServerName">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="HostingServerName">
+                <param name="default"/>
+                <param name="prefix">HostingServerName="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+            <param name="label">Catalog Name: </param>
+            <param name="field">CatalogName</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="CatalogName">
+                  <param name="value"/>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="CatalogName">
+                  <param name="default"/>
+                  <param name="prefix">CatalogName="</param>
+                  <param name="suffix">"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+              <param name="label">User: </param>
+              <param name="field">user</param>
+              <param name="replacementMap">
+                <param name="arg">
+                  <param name="user">
+                    <param name="value"/>
+                  </param>
+                </param>
+              </param>
+              <param name="intention">
+                <param name="name">stringreplace</param>
+                <param name="arg">
+                  <param name="user">
+                    <param name="default"/>
+                    <param name="prefix">user="</param>
+                    <param name="suffix">"</param>
+                    <param name="fillOnEmpty">false</param>
+                  </param>
+                </param>
+              </param>
+              <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+                <param name="label">Desktop Name: </param>
+                <param name="field">vm_name</param>
+                <param name="replacementMap">
+                  <param name="arg">
+                    <param name="vm_name">
+                      <param name="value"/>
+                    </param>
+                  </param>
+                </param>
+                <param name="intention">
+                  <param name="name">stringreplace</param>
+                  <param name="arg">
+                    <param name="vm_name">
+                      <param name="default"/>
+                      <param name="prefix">vm_name="</param>
+                      <param name="suffix">"</param>
+                      <param name="fillOnEmpty">false</param>
+                    </param>
+                  </param>
+                </param>
+                <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+                  <param name="search">`xendesktop_alerts` $vm_name$ $user$ | `perfmon_desktop_lookup` | search *  $CatalogName$  $HostingServerName$  | lookup xd5_usrexp usrexp OUTPUT Severity | stats count by _time alert_name Severity user Value vm_name</param>
+                  <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="label">View Full Report</param>
+                  </module>
+                  <module name="JobProgressIndicator"/>
+                  <module name="HiddenPostProcess" group="Alerts by Severity" layoutPanel="panel_row3_col1" autoRun="True">
+                    <param name="search">|timechart count by Severity</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">column</param>
+                      <param name="chart.stackMode">stacked</param>
+                      <param name="legend.placement">bottom</param>
+                      <module name="JSChart"></module>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row3_col2" group="Top Severity" autoRun="True">
+                    <param name="search">| stats sum(count) as count by Severity | head 15</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">pie</param>
+                      <module name="JSChart">
+                        <param name="height">200px</param>
+                        <module name="HiddenSearch">
+                          <param name="search">`xendesktop_alerts` | lookup xd5_usrexp usrexp OUTPUT Severity | search $Severity$  |  eval entity=Severity |   stats count by _time entity alert_name Severity user Value vm_name</param>
+                          <module name="ConvertToIntention">
+                            <param name="intention">
+                              <param name="name">stringreplace</param>
+                              <param name="arg">
+                                <param name="Severity">
+                                  <param name="prefix">Severity="</param>
+                                  <param name="suffix">"</param>
+                                  <param name="fillOnEmpty">True</param>
+                                  <param name="value">$click.value$</param>
+                                </param>
+                              </param>
+                            </param>
+                            <module name="ViewRedirector">
+                              <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" group="Alerts by Type" layoutPanel="panel_row3_col3" autoRun="True">
+                    <param name="search">| timechart count by alert_name</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">column</param>
+                      <param name="chart.stackMode">stacked</param>
+                      <param name="legend.placement">bottom</param>
+                      <module name="JSChart"></module>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row4_col1" group="Alerts Fired" autoRun="True">
+                    <param name="search">| stats count </param>
+                    <module name="SingleValue">
+                      <param name="field">count</param>
+                      <param name="classField">range</param>
+                      <param name="afterLabel">Alerts</param>
+                      <param name="format">count</param>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row4_col2" group="Affected Users" autoRun="True">
+                    <param name="search">| stats dc(user) as users | eval range="user"</param>
+                    <module name="SingleValue">
+                      <param name="field">users</param>
+                      <param name="classField">range</param>
+                      <param name="afterLabel">Users</param>
+                      <param name="format">count</param>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row4_col3" group="Affected VMs" autoRun="True">
+                    <param name="search">| stats dc(vm_name) as vms | eval range="session"</param>
+                    <module name="SingleValue">
+                      <param name="field">vms</param>
+                      <param name="classField">range</param>
+                      <param name="afterLabel">Virtual Machines</param>
+                      <param name="format">count</param>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row7_col1" group="Affected Users" autoRun="True">
+                    <param name="search">| stats sum(count) as count by user | head 15</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">pie</param>
+                      <module name="JSChart">
+                        <param name="height">200px</param>
+                        <module name="HiddenSearch">
+                          <param name="search"> `xendesktop_alerts` $user$ | eval entity=user | lookup xd5_usrexp usrexp OUTPUT Severity | stats count by _time alert_name entity  Severity user Value vm_name</param>
+                          <module name="ConvertToIntention">
+                            <param name="intention">
+                              <param name="name">stringreplace</param>
+                              <param name="arg">
+                                <param name="user">
+                                  <param name="prefix">user=</param>
+                                  <param name="fillOnEmpty">True</param>
+                                  <param name="value">$click.value$</param>
+                                </param>
+                              </param>
+                            </param>
+                            <module name="ViewRedirector">
+                              <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row7_col2" group="Top Alert" autoRun="True">
+                    <param name="search">| stats sum(count) as count by alert_name | head 15</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">pie</param>
+                      <module name="JSChart">
+                        <param name="height">200px</param>
+                        <module name="HiddenSearch">
+                          <param name="search"> `xendesktop_alerts` $alert_name$ | eval entity=alert_name | lookup xd5_usrexp usrexp OUTPUT Severity | stats count by _time alert_name entity Severity user Value vm_name</param>
+                          <module name="ConvertToIntention">
+                            <param name="intention">
+                              <param name="name">stringreplace</param>
+                              <param name="arg">
+                                <param name="alert_name">
+                                  <param name="prefix">alert_name="</param>
+                                  <param name="suffix">"</param>
+                                  <param name="fillOnEmpty">True</param>
+                                  <param name="value">$click.value$</param>
+                                </param>
+                              </param>
+                            </param>
+                            <module name="ViewRedirector">
+                              <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="HiddenPostProcess" layoutPanel="panel_row7_col3" group="Affected VMs" autoRun="True">
+                    <param name="search">| stats sum(count) as count by vm_name | head 15</param>
+                    <module name="HiddenChartFormatter">
+                      <param name="chart">pie</param>
+                      <module name="JSChart">
+                        <param name="height">200px</param>
+                        <module name="HiddenSearch">
+                          <param name="search"> `xendesktop_alerts` $vm_name$ | eval entity=vm_name | lookup xd5_usrexp usrexp OUTPUT Severity | stats count by _time alert_name Severity user Value vm_name</param>
+                          <module name="ConvertToIntention">
+                            <param name="intention">
+                              <param name="name">stringreplace</param>
+                              <param name="arg">
+                                <param name="vm_name">
+                                  <param name="prefix">vm_name=</param>
+                                  <param name="fillOnEmpty">True</param>
+                                  <param name="value">$click.value$</param>
+                                </param>
+                              </param>
+                            </param>
+                            <module name="ViewRedirector">
+                              <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

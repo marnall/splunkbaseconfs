@@ -1,0 +1,108 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css" customJS="lib/custom_behaviors/setup_pages.js">
+  <label>Enable/Disable Data Types</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+    <h1><a href="home">Home</a> &gt; Admin &gt; Enable/Disable Data Types</h1>
+    ]]></param>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="panel_row1_col1">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <div class="error">$error$</div>
+
+        <div class="info">$message$</div>
+      ]]></param>
+    </module>
+
+    <module name="Search" layoutPanel="panel_row1_col1">
+      <param name="search"><![CDATA[
+| inputlookup data_types
+| stats values(data_type) as current_data_type
+      ]]></param>
+
+      <module name="ResultsValueSetter">
+        <param name="fields">current_data_type</param>
+
+        <module name="HTML" layoutPanel="viewHeader">
+          <param name="html"><![CDATA[
+            These current data types are marked as selectable in the UI for all users:  <strong> $current_data_type$ </strong>
+          ]]></param>
+        </module>
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+| tstats count WHERE `custom_index` [
+    | rest /servicesNS/-/-/configs/conf-sideview_data_types splunk_server=local
+    | eval sourcetype=split(sourcetypes," ")
+    | fields sourcetype | format
+] GROUPBY sourcetype
+| append [
+    | rest /servicesNS/-/-/configs/conf-sideview_data_types splunk_server=local
+    | eval sourcetype=split(sourcetypes," ")
+    | rename eai:appName as app title as data_type
+    | fields label sourcetype app data_type detail_view object_ids streaming_extractions
+]
+| fillnull count
+| stats values(*) as * sum(count) as count values(sourcetype) as sourcetype by data_type app
+| eval comment="these three lines make cisco_cdr defer to any dupes from other Sideview SA apps"
+| eventstats dc(app) as overlap by data_type
+| search overlap<2 OR app!="cisco_cdr"
+| fields - overlap comment
+| rename count as events
+| fields label data_type app sourcetype events detail_view object_ids *
+          ]]></param>
+
+          <module name="CheckboxPulldown">
+            <param name="name">current_data_type</param>
+            <param name="label">select available data types</param>
+            <param name="template">data_type="$value$"</param>
+            <param name="valueField">data_type</param>
+            <param name="labelField">label</param>
+            <param name="allSelectedMessage">all</param>
+
+            <module name="PostProcess">
+              <param name="search">
+                search $current_data_type$
+              </param>
+              <module name="Pager">
+                <module name="Table">
+
+                </module>
+              </module>
+
+              <module name="Button">
+                <param name="label">Submit</param>
+                <param name="allowSoftSubmit">False</param>
+
+                <module name="PostProcess">
+                  <param name="search"><![CDATA[
+search $current_data_type$
+| rename sourcetype as sourcetypes
+| fields - events
+| outputlookup data_types create_empty=false override_if_empty=false
+| eval message="The data types lookup has been updated"
+                  ]]></param>
+                  <module name="HTML">
+                    <param name="html">$results[0].message$</param>
+                  </module>"
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>
+
+
+
+

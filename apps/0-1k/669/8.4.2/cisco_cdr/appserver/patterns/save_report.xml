@@ -1,0 +1,251 @@
+
+<!-- note some callers will pass this from outside.
+     and note that create_dashboard_panel has the same ValueSetter.  -->
+<module name="ValueSetter">
+  <param name="name">searchPlusFields</param>
+  <param name="if.$searchPlusFields$=*">$searchPlusFields$</param>
+  <param name="if.$selectedFields$=*">$search$ | fields $selectedFields$</param>
+  <param name="if.$results.fields$=*">$search$ | fields $results.fields$</param>
+  <param name="default">$search$</param>
+
+  <module name="CustomBehavior">
+    <param name="requiresDispatch">True</param>
+    <param name="customBehavior">setSerializedContext</param>
+
+    <module name="Button">
+      <param name="label">Save Report</param>
+      <param name="float">right</param>
+      <param name="allowAutoSubmit">False</param>
+
+      <!-- into wonderland we go.  All modules downstream of a Layer are clipped out of the DOM and moved into the Layer's layer. -->
+      <module name="Layer">
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+            <h3>Save Report</h3>
+          ]]></param>
+        </module>
+
+        <module name="Search">
+          <param name="search">
+| rest /servicesNS/-/$sideview.currentApp$/saved/searches splunk_server=local
+| search eai:acl.can_write="1" title=*
+| table title eai:acl.app eai:acl.owner eai:acl.sharing author displayview request.ui_context request.ui_dispatch_view request.ui_edit_view search dispatch.earliest_time dispatch.latest_time
+| rename eai:acl.owner as userName
+| eval app=coalesce('request.ui_dispatch_app', 'eai:acl.app')
+| search (userName="$sideview.currentUser$" OR userName="nobody")
+| eval label=title
+| append [| makeresults | fields - _time | eval title="none_found" | eval label="(no saved searches found)"]
+| stats values(*) as * by title
+| eventstats count as total
+| search (total=1 title="none_found") OR (total>1 title!="none_found")
+          </param>
+
+          <module name="Radio">
+            <param name="name">newOrExistingReport</param>
+            <param name="cssClass">saveReportFields</param>
+            <param name="staticRadios">
+              <list>
+                <param name="value">new</param>
+                <param name="label">new report</param>
+              </list>
+              <list>
+                <param name="value">existing</param>
+                <param name="label">existing report</param>
+              </list>
+            </param>
+
+            <module name="Switcher">
+              <param name="selectedGroup">$newOrExistingReport$</param>
+
+              <module name="TextField" group="new">
+                <param name="name">savedReportName</param>
+                <param name="label">name</param>
+                <param name="cssClass">saveReportFields</param>
+
+                <module name="Radio">
+                  <param name="name">sharing</param>
+                  <param name="cssClass">saveReportFields</param>
+                  <param name="staticRadios">
+                    <list>
+                      <param name="label">Keep search private</param>
+                      <param name="value"></param>
+                      <param name="selected">true</param>
+                    </list>
+                    <list>
+                      <param name="label">Share with all users of the app</param>
+                      <param name="value">app</param>
+                    </list>
+                  </param>
+
+                  <module name="Button">
+                    <param name="cssClass">saveReportFields</param>
+                    <param name="label">Save</param>
+
+                    <module name="REST">
+                      <param name="name">createReportRest</param>
+                      <param name="uri">/splunkd/__raw/servicesNS/$sideview.currentUser$/$sideview.currentApp$/saved/searches</param>
+                      <param name="arg.name">$savedReportName$</param>
+                      <param name="arg.search">$searchPlusFields$</param>
+                      <param name="arg.dispatch.earliest_time">$search.timeRange.earliest$</param>
+                      <param name="arg.dispatch.latest_time">$search.timeRange.latest$</param>
+                      <param name="arg.request.ui_dispatch_view">$sideview.currentView$</param>
+                      <param name="arg.request.ui_edit_view">$sideview.currentView$</param>
+                      <param name="arg.request.ui_context">$serializedContext$</param>
+
+                      <module name="Gate">
+                        <param name="requiredKeys">sharing</param>
+                        <module name="ValueSetter">
+                          <param name="arg.encodedSavedReportName">$savedReportName$</param>
+                          <param name="urlEncodeKeys">savedReportName</param>
+
+                          <module name="REST">
+                            <param name="name">setReportAclRest</param>
+                            <param name="uri">/splunkd/__raw/servicesNS/$sideview.currentUser$/$sideview.currentApp$/saved/searches/$encodedSavedReportName$/acl</param>
+                            <param name="arg.sharing">$sharing$</param>
+                            <param name="arg.owner">$sideview.currentUser$</param>
+                            <param name="arg.perms.read">*</param>
+                          </module>
+
+                        </module>
+                      </module>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$createReportRest.state$</param>
+
+                        <module name="NullModule" group="success">
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                                Your report was created successfully.
+                            ]]></param>
+                            <param name="customBehavior">reloadSavedSearchesInNav</param>
+                          </module>
+
+                          <module name="Link">
+                            <param name="label">You can set scheduling and alerting properties, and change permissions in the Admin section</param>
+
+                            <module name="Redirector">
+                              <param name="url">/manager/$sideview.currentApp$/saved/searches</param>
+                              <param name="arg.search">$savedReportName$</param>
+                              <param name="arg.ns">$sideview.currentApp$</param>
+                            </module>
+                          </module>
+                          <module name="ShowHide">
+                            <param name="hide">.saveReportFields</param>
+                          </module>
+                        </module>
+
+                        <module name="HTML" group="failure">
+                          <param name="html"><![CDATA[
+                            Error creating report:<br>
+                            $createReportRest.errorMessage$
+                          ]]></param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <module name="Pulldown" group="existing">
+                <param name="name">existingReport</param>
+                <param name="label">report name</param>
+                <param name="valueField">title</param>
+                <param name="labelField">label</param>
+                <param name="staticOptions" />
+                <param name="cssClass">saveReportFields</param>
+
+
+                <module name="ValueSetter">
+                  <param name="arg.encodedSavedReportName">$existingReport$</param>
+                  <param name="arg.results.fields"></param>
+                  <param name="urlEncodeKeys">existingReport</param>
+                  <param name="arg.escapedSPL">$searchPlusFields$</param>
+                  <param name="backslashEscapeKeys">searchPlusFields</param>
+
+                  <module name="PostProcess">
+                    <param name="search"><![CDATA[
+search title="$existingReport$"
+| eval user_changed=if(isnotnull(author) AND author!="$sideview.currentUser$",1,0)
+| eval view_changed=if(isnotnull('request.ui_dispatch_view') AND 'request.ui_dispatch_view'!="$sideview.currentView$",1,0)
+| eval app_changed=if(isnotnull(app) AND app!="$sideview.currentApp$",1,0)
+| eval timerange_changed=if('dispatch.earliest_time'!="$search.timeRange.earliest$" OR 'dispatch.latest_time'!="$search.timeRange.latest$",1,0)
+| eval new_spl="$escapedSPL$"
+| eval spl_changed=if(search!="$escapedSPL$",1,0)
+| eval changes=mvappend(if(user_changed==1,"ownership",null()), if(spl_changed==1,"search syntax",null()), if(view_changed==1,"the view it was saved in",null()), if(app_changed==1,"the app it was saved in",null()), if(timerange_changed==1,"timerange",null()))
+| eval confirmation=if(isnull(changes), "it looks like you haven't actually changed any settings for this report. Do you wish to overwrite it anyway?", "it looks like you have made the following changes to this report: " . mvjoin(changes,", ") . ". <br><br>If that sounds correct, click 'Save'.<br><br>")
+                    ]]></param>
+
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        $results[0].confirmation$
+                      ]]></param>
+                      <param name="cssClass">saveReportFields</param>
+                    </module>
+
+
+                    <module name="Button">
+                      <param name="label">Save</param>
+                      <param name="cssClass">saveReportFields</param>
+
+
+
+                      <module name="REST">
+                        <param name="name">saveExistingReportRest</param>
+                        <param name="uri">/splunkd/__raw/servicesNS/$sideview.currentUser$/$sideview.currentApp$/saved/searches/$encodedSavedReportName$</param>
+                        <!-- <param name="arg.name">$existingReport$</param> -->
+                        <param name="arg.search">$searchPlusFields$</param>
+                        <param name="arg.dispatch.earliest_time">$search.timeRange.earliest$</param>
+                        <param name="arg.dispatch.latest_time">$search.timeRange.latest$</param>
+                        <param name="arg.request.ui_dispatch_app">$sideview.currentApp$</param>
+                        <param name="arg.request.ui_dispatch_view">$sideview.currentView$</param>
+                        <param name="arg.request.ui_edit_view">$sideview.currentView$</param>
+                        <param name="arg.request.ui_context">$serializedContext$</param>
+
+                        <module name="Switcher">
+                          <param name="selectedGroup">$saveExistingReportRest.state$</param>
+
+                          <module name="NullModule" group="success">
+                            <module name="HTML">
+                              <param name="html"><![CDATA[
+                                  Your saved report was successfully edited.
+                              ]]></param>
+                              <param name="customBehavior">reloadSavedSearchesInNav</param>
+                            </module>
+                            <module name="Link">
+                              <param name="label">You can set scheduling and alerting properties, and change permissions in the Admin section</param>
+
+                              <module name="Redirector">
+                                <param name="url">/manager/$sideview.currentApp$/saved/searches</param>
+                                <param name="arg.search">$existingReport$</param>
+                                <param name="arg.ns">$sideview.currentApp$</param>
+                              </module>
+                            </module>
+
+                            <module name="ShowHide">
+                              <param name="hide">.saveReportFields</param>
+                            </module>
+                          </module>
+
+                          <module name="HTML" group="failure">
+                            <param name="html"><![CDATA[
+                              Error updating existing report:<br>
+                              $saveExistingReportRest.errorMessage$
+                            ]]></param>
+                          </module>
+
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+
+      </module>
+    </module>
+  </module>
+</module>

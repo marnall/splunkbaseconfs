@@ -1,0 +1,661 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css" isSticky="False">
+  <label>Device Detail</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Link">
+      <param name="label">Devices</param>
+
+      <module name="Redirector">
+        <param name="url">devices</param>
+        <param name="arg.earliest">$bc_earliest$</param>
+        <param name="arg.latest">$bc_latest$</param>
+        <param name="arg.device_type">$bc_device_type$</param>
+        <param name="arg.deviceFilter">$bc_deviceFilter$</param>
+        <param name="arg.number">$bc_number$</param>
+        <param name="arg.searchterms">$bc_searchterms$</param>
+        <param name="arg.clusterId">$bc_clusterId$</param>
+        <param name="arg.clusterGroup">$bc_clusterGroup$</param>
+        <param name="arg.sites">$bc_sites$</param>
+      </module>
+    </module>
+
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        <h1>&gt; Device Detail - $device$</h1>
+        ]]>
+      </param>
+    </module>
+
+    <module name="TextField" layoutPanel="mainSearchControls">
+      <param name="name">device</param>
+      <param name="label">device</param>
+      <param name="template">(origDeviceName="$value$" OR destDeviceName="$value$")</param>
+      <param name="width">150px</param>
+
+      <module name="TextField">
+        <param name="name">clusterId</param>
+        <param name="label">cluster</param>
+        <param name="template">globalCallId_ClusterID="$value$"</param>
+        <param name="width">150px</param>
+
+        <module name="TimePicker">
+          <param name="default">last 24 hours</param>
+
+          <module name="ValueSetter">
+            <param name="arg.cachedEarliest">$search.timeRange.earliest$</param>
+            <param name="arg.cachedLatest">$search.timeRange.latest$</param>
+
+            <module name="CustomBehavior">
+              <param name="customBehavior">onlySubmitIfFieldsAreSet</param>
+              <param name="arg.requiredKey">device.rawValue</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <div id="viewerPageInstructions" style="display:none;clear:both;">
+                  <br>
+                  <br>
+                  <b>This view is normally reached by clicking a row in the <a href="devices">Devices</a> page.  <br>
+                  <br>
+                  However you can also use this view manually by simply entering a device name in the "device" field above and hitting Enter.
+                  <br>
+                  <br>
+                  Be sure to enter the device name exactly how it appears in the CDR data. </b>
+                  <br>
+                  <br>
+                  <br>
+                  <br>
+                  </div>
+                ]]></param>
+              </module>
+
+              <!-- Layer 1: fetch custom leg types from eventtypes -->
+              <module name="Search" layoutPanel="panel_row1_col1">
+                <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+| search title="leg_type_*" disabled=0
+| eval leg_type=replace(title,"leg_type_", "")
+| stats values(leg_type) as leg_types
+                ]]></param>
+                <!--
+                  RVS so $leg_types$ is available for fillnull AND for the field list below.
+                  Without fillnull, leg_type columns with zero matches simply don't exist.
+                -->
+
+                <!-- Layer 2: extract leg_types token -->
+                <module name="ResultsValueSetter">
+                  <param name="fields">leg_types</param>
+
+                  <!-- Layer 3: generate the chooseable field list for the Fields picker -->
+                  <module name="Search">
+                    <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("calls,failed,incoming,outgoing,internal,tandem,total_duration,incoming_duration,outgoing_duration,internal_duration,tandem_duration,average_duration,total_duration_min,incoming_duration_min,outgoing_duration_min,internal_duration_min,tandem_duration_min,$leg_types$",",")
+| mvexpand field
+                    ]]></param>
+
+                    <!-- Layer 4: field picker (sticky — persists user selection) -->
+                    <module name="Fields">
+                      <param name="fields">calls,failed,incoming,outgoing,internal,tandem,total_duration,average_duration</param>
+                      <param name="float">right</param>
+
+                      <!-- Layer 5: summary stats search -->
+                      <module name="Search" layoutPanel="panel_row1_col1">
+                        <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $device$ $clusterId$
+| `get_custom_type_fields`
+| eval {type}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+| eval {type}_duration=duration
+| eval failed_call_id=if(call_failed=1,call_id,null())
+| stats dc(call_id) as calls dc(*_call_id) as * sum(incoming_duration) as incoming_duration sum(outgoing_duration) as outgoing_duration sum(internal_duration) as internal_duration sum(tandem_duration) as tandem_duration sum(duration) as total_duration
+| eval average_duration=tostring(round(total_duration/calls),"duration")
+| `get_durations_for_internal_parties`
+| fillnull calls
+| fields $results.fields$
+                        ]]></param>
+
+                        <pattern name="create_dashboard_panel">
+                          <param name="visualization">table</param>
+                        </pattern>
+
+                        <module name="ProgressIndicator" />
+
+                        <module name="Table"/>
+                      </module>
+
+
+                      <module name="HTML" layoutPanel="panel_row3_col1">
+                        <param name="float">left</param>
+                        <param name="html"><![CDATA[
+                          <h2>Calls over time, $search.timeRange.label$</h2>
+                          (Click a column to load those calls in the panels beneath)
+                        ]]></param>
+                      </module>
+
+                      <module name="Pulldown" layoutPanel="panel_row3_col1">
+                        <param name="name">chartSplitByField</param>
+                        <param name="label">split by</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">by type</param>
+                            <param name="value">type</param>
+                          </list>
+                          <list>
+                            <param name="label">by cause description</param>
+                            <param name="value">cause_description</param>
+                          </list>
+                          <list>
+                            <param name="label">by leg type</param>
+                            <param name="value">leg_type</param>
+                          </list>
+                        </param>
+
+                        <module name="Search">
+                          <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $device$ $clusterId$
+| `get_custom_type_fields`
+| fields _time call_id type cause_description leg_type
+| stats min(_time) as _time list(*) as * by call_id
+| timechart bins=100 count by $chartSplitByField$
+                          ]]></param>
+
+                          <module name="ValueSetter">
+                            <param name="arg.device">$device$</param>
+                            <param name="arg.xField">_time</param>
+                            <param name="arg.zField">$chartSplitByField$</param>
+                            <param name="arg.sideview.splitByField">$chartSplitByField$</param>
+                            <param name="arg.charting.chart">column</param>
+                            <param name="arg.charting.chart.stackMode">stacked</param>
+                            <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+                            <param name="arg.drilldownTarget">calls</param>
+                            <param name="arg.panelTitle">Calls to/from $device$ over time $chartSplitByField.label$, $search.timeRange.label$</param>
+
+                            <pattern name="create_dashboard_panel" />
+
+                            <module name="Link">
+                              <param name="label">&#187; view in Chart</param>
+                              <param name="float">right</param>
+                              <param name="clear">right</param>
+
+                              <module name="Redirector">
+                                <param name="url">calls</param>
+                                <param name="arg.mode">chart</param>
+                                <param name="arg.zField">$zField$</param>
+                                <param name="arg.searchterms">(origDeviceName="$device.rawValue$" OR destDeviceName="$device.rawValue$")</param>
+                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                <param name="arg.latest">$search.timeRange.latest$</param>
+                              </module>
+                            </module>
+
+                            <module name="ProgressIndicator" />
+
+                            <module name="Chart">
+                              <param name="enableResize">False</param>
+
+                              <module name="Gate">
+                                <param name="to">mainDisplay</param>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+
+                      <module name="HTML" layoutPanel="panel_row3_col2">
+                        <param name="float">left</param>
+                        <param name="html"><![CDATA[
+                          <h2>intraday pattern, $search.timeRange.label$</h2>
+                          (Click a point to load those calls in the panels beneath)
+                        ]]></param>
+                      </module>
+
+                      <module name="Pulldown" layoutPanel="panel_row3_col2">
+                        <param name="name">intradaySplitByField</param>
+                        <param name="label">split by</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">by day of week</param>
+                            <param name="value">day_of_week</param>
+                          </list>
+
+                          <list>
+                            <param name="label">by leg type</param>
+                            <param name="value">leg_type</param>
+                          </list>
+                        </param>
+
+                        <module name="ValueSetter">
+                          <param name="name">intradayReport</param>
+                          <param name="if.$intradaySplitByField$==day_of_week">
+                            | chart count over hour_of_day by day_of_week
+                            | fields hour_of_day Sun Mon Tue Wed Thu Fri Sat
+                          </param>
+                          <param name="default">
+                            | chart count over hour_of_day by leg_type
+                          </param>
+
+                          <module name="Search">
+                            <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $device$ $clusterId$
+| `get_custom_type_fields`
+| fields _time hour_of_day day_of_week type leg_type call_id
+| stats min(_time) as _time values(*) as * by call_id
+| append [| makeresults | eval hour_of_day=mvrange(0,24) | fields - _time | mvexpand hour_of_day | eval hour_of_day=printf("%02d",hour_of_day)]
+$intradayReport$
+                            ]]></param>
+
+                            <module name="ValueSetter">
+                              <param name="arg.device">$device$</param>
+                              <param name="arg.xField">hour_of_day</param>
+                              <param name="arg.zField">$intradaySplitByField$</param>
+                              <param name="arg.sideview.splitByField">$intradaySplitByField$</param>
+                              <param name="arg.charting.chart">line</param>
+                              <param name="arg.charting.chart.nullValueMode">zero</param>
+                              <param name="arg.drilldownTarget">calls</param>
+                              <param name="arg.panelTitle">Intraday pattern for $device$ split by $intradaySplitByField$, $search.timeRange.label$</param>
+
+                              <pattern name="create_dashboard_panel">
+                                <param name="visualization">line</param>
+                              </pattern>
+
+                              <module name="Link">
+                                <param name="label">&#187; view in Chart</param>
+                                <param name="float">right</param>
+                                <param name="clear">right</param>
+
+                                <module name="Redirector">
+                                  <param name="url">calls</param>
+                                  <param name="arg.mode">chart</param>
+                                  <param name="arg.charting.chart">line</param>
+                                  <param name="arg.charting.chart.nullValueMode">zero</param>
+                                  <param name="arg.xField">$xField$</param>
+                                  <param name="arg.zField">$zField$</param>
+                                  <param name="arg.searchterms">(origDeviceName="$device.rawValue$" OR destDeviceName="$device.rawValue$")</param>
+                                  <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                  <param name="arg.latest">$search.timeRange.latest$</param>
+                                </module>
+                              </module>
+
+                              <module name="ProgressIndicator" />
+
+                              <module name="Chart">
+                                <param name="enableResize">False</param>
+                                <module name="Gate">
+                                  <param name="to">mainDisplay</param>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+
+
+                        <module name="Gate" layoutPanel="panel_row4_col1">
+                          <param name="id">mainDisplay</param>
+
+                          <module name="ValueSetter">
+                            <param name="name">drilldownSearchHeader</param>
+                            <param name="if.$chart.searchTerms$=*">( for searchterms $chart.searchTerms$)</param>
+
+                            <module name="Search">
+                              <param name="search"><![CDATA[
+`get_field_list("sourcetype=cucm_cdr")`
+                              ]]></param>
+                              <module name="Fields">
+                                <param name="hiddenFields">_time</param>
+                                <!-- this is not actually used unless someone has deleted the keys in
+                                etc/apps/cisco_cdr/default/ui-prefs.conf, AND the user has no preference set  -->
+                                <param name="fields">duration type origDeviceName destDeviceName callingPartyNumber originalCalledPartyNumber finalCalledPartyNumber on_hook_party origSite destSite leg_type cause_description</param>
+                                <param name="float">right</param>
+
+                                <module name="Search">
+                                  <param name="search"><![CDATA[
+`custom_index` `cucm_sourcetypes` [ search `custom_index` sourcetype=cucm_cdr $device$ $clusterId$ | table `id_fields` ] $clusterId$
+| `get_custom_type_fields`
+| `get_quality`
+| `get_locations`
+| `get_to_and_from`
+| `customizable_sites_extractions`
+| `get_sites`
+| fields _time $results.fields$ day_of_week hour_of_day leg_type origSite destSite origDeviceName destDeviceName `id_fields`
+| `sort_call_legs` | eval durationStr=tostring(duration,"duration")
+| stats min(_time) as _time list(*) as * by `id_fields`
+| search $chart.searchTerms$
+| rename durationStr as duration
+| eval detailLatest=_time + duration
+| `get_time_window_for_detail_views`
+| fields _time $results.fields$ `id_fields`]]></param>
+
+                                  <module name="Link">
+                                    <param name="label">&#187; investigate these calls</param>
+                                    <param name="float">right</param>
+
+                                    <module name="Redirector">
+                                      <param name="url">calls</param>
+                                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                      <param name="arg.latest">$search.timeRange.latest$</param>
+                                      <param name="arg.searchterms">(origDeviceName="$device.rawValue$" OR destDeviceName="$device.rawValue$") $chart.searchTerms$</param>
+                                    </module>
+                                  </module>
+
+                                  <module name="HTML">
+                                    <param name="html"><![CDATA[
+                                      <h2>$results.count$ calls to/from $device$ $search.timeRange.label$ $drilldownSearchHeader$</h2>
+                                    ]]></param>
+                                  </module>
+
+                                  <module name="ProgressIndicator" />
+
+                                  <module name="Pager">
+
+                                    <module name="Table">
+                                      <param name="hiddenFields">globalCallID_callManagerId,globalCallID_callId,globalCallId_ClusterID,detailEarliest,detailLatest</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">call_detail</param>
+                                        <param name="arg.globalCallID_callId">$row.fields.globalCallID_callId$</param>
+                                        <param name="arg.globalCallID_callManagerId">$row.fields.globalCallID_callManagerId$</param>
+                                        <param name="arg.globalCallId_ClusterID">$row.fields.globalCallId_ClusterID$</param>
+                                        <param name="arg.selectedFields">$selectedFields$</param>
+                                        <param name="arg.earliest">$row.fields.detailEarliest$</param>
+                                        <param name="arg.latest">$row.fields.detailLatest$</param>
+                                        <param name="arg.autoRun">True</param>
+                                      </module>
+
+                                    </module>
+                                    <module name="Pager" />
+                                  </module>
+
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+                      <module name="Link">
+                        <param name="label">&#187; see all calls to and from this device</param>
+
+                        <module name="Redirector">
+                          <param name="url">calls</param>
+                          <param name="arg.searchterms">(origDeviceName="$device.rawValue$" OR destDeviceName="$device.rawValue$")</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                        </module>
+                      </module>
+
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+              <!-- Device details from AXL lookup -->
+              <module name="HTML" layoutPanel="panel_row2_col1">
+                <param name="html"><![CDATA[
+                  <h2>Device details</h2>
+                  <p>These fields only exist if the Devices lookup is populated.</p>
+                ]]></param>
+              </module>
+
+              <module name="Search" layoutPanel="panel_row2_col1">
+                <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("description,devicePool,productName,mailId,userFullName,userId,callingSearchSpaceName,protocol,securityProfileName,directoryNumber,department",",")
+| mvexpand field
+                ]]></param>
+
+                <module name="Fields">
+                  <param name="fields">description,devicePool,productName,mailId,userFullName,userId</param>
+                  <param name="float">right</param>
+
+                  <module name="Search" layoutPanel="panel_row2_col1">
+                    <param name="search"><![CDATA[
+| stats count | fields - count
+| eval name="$device.rawValue$"
+| eval clusterId="$clusterId.rawValue$"
+| lookup devices name clusterId OUTPUT department productName description devicePool mailId userFullName userId callingSearchSpaceName protocol securityProfileName directoryNumber
+| dedup name
+| fields $results.fields$
+                    ]]></param>
+
+                    <pattern name="create_dashboard_panel">
+                      <param name="visualization">table</param>
+                    </pattern>
+
+                    <module name="Table"/>
+                  </module>
+                </module>
+              </module>
+
+
+              <!-- Associated Extensions -->
+              <module name="Search" layoutPanel="panel_row5_col1">
+                <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $device$ $clusterId$
+| eval number=mvdedup(mvappend(if(origDeviceName=="$device.rawValue$",callingPartyNumber,null()),if(destDeviceName=="$device.rawValue$",mvappend(originalCalledPartyNumber,calledPartyNumber),null())))
+| stats dc(call_id) as calls by number
+| sort 0 - calls
+| lookup groups number OUTPUT name group subgroup
+| table number name group calls
+                ]]></param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Associated Extensions</h3>
+                  ]]></param>
+                </module>
+
+                <module name="Pager">
+                  <param name="count">10</param>
+                  <module name="Table">
+                    <module name="Redirector">
+                      <param name="url">extension_detail</param>
+                      <param name="arg.number">$row.fields.number$</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+              <!-- Associated Sites -->
+              <module name="Search" layoutPanel="panel_row5_col2">
+                <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $device$ $clusterId$
+| `customizable_sites_extractions` | `get_sites`
+| eval ip=mvappend(if(origDeviceName=="$device.rawValue$",origIpAddr,null()),if(destDeviceName=="$device.rawValue$",destIpAddr,null()))
+| eval site=mvappend(if(origDeviceName=="$device.rawValue$",origSite,null()),if(destDeviceName=="$device.rawValue$",destSite,null()))
+| stats dc(call_id) as calls dc(ip) as "IP addresses" by site
+| sort 0 - calls
+                ]]></param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Associated Sites</h3>
+                  ]]></param>
+                </module>
+
+                <module name="Pager">
+                  <param name="count">50</param>
+                  <module name="Table">
+                    <module name="Redirector">
+                      <param name="url">site_detail</param>
+                      <param name="arg.site">$row.fields.site$</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+              <!-- Realtime info from Cisco RIS (only shown if ciscoris command is installed) -->
+              <module name="Search" layoutPanel="panel_row6_col1">
+                <param name="search"><![CDATA[
+| rest /services/data/commands splunk_server="local" | search title="ciscoris" eai:acl.app="SA_cisco_cdr_axl"
+                ]]></param>
+
+                <module name="Multiplexer">
+                  <param name="fields">title</param>
+
+                  <module name="Search">
+                    <param name="search"><![CDATA[
+| makeresults | fields - _time
+| eval clusterName="$clusterId.rawValue$", name="$device.rawValue$"
+| ciscoris
+| fields - name clusterName
+| transpose
+| rename column as field "row 1" as value
+                    ]]></param>
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <h3>Realtime information (from Cisco RIS)</h3>
+                      ]]></param>
+                    </module>
+                    <module name="Pager">
+                      <param name="count">20</param>
+                      <module name="Table" />
+                      <module name="Pager" />
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+              <!-- Device registration and unregistration events (syslog) -->
+              <module name="Search" layoutPanel="panel_row7_col1">
+                <param name="search"><![CDATA[
+`custom_syslog_index` (DeviceTransientConnection OR DeviceRegistered OR DeviceUnregistered) Device_name="$device.rawValue$" Cluster_ID="$clusterId.rawValue$"
+| sort 0 - _time
+| table _time cucm_eventname cucm_eventdescription Device_name code Associated_directory_numbers Protocol
+                ]]></param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Device Registration and Unregistration events (syslog)</h3>
+                  ]]></param>
+                </module>
+
+                <module name="Pager">
+                  <param name="count">10</param>
+                  <module name="Table" />
+                  <module name="Pager" />
+                </module>
+
+                <pattern name="see_raw_search_syntax" />
+              </module>
+
+
+              <!-- Other data sources (device name found in non-CDR indexes) -->
+              <module name="Search" layoutPanel="panel_row8_col1">
+                <param name="search"><![CDATA[
+`customizable_other_notable_indexes` NOT (`cucm_sourcetypes`) $device.rawValue$
+| fillnull ciscoguid value="null"
+| eval ciscoguid=if(ciscoguid="","null",ciscoguid)
+| head 1000
+| stats count by sourcetype index ciscoguid
+                ]]></param>
+
+                <module name="PostProcess">
+                  <param name="search"><![CDATA[
+| stats dc(sourcetype) as count
+| eval content_to_show=if(count>0,"found_some","didnt_find_any")
+                  ]]></param>
+
+                  <module name="ResultsValueSetter">
+                    <param name="fields">content_to_show</param>
+
+                    <module name="Switcher">
+                      <param name="selectedGroup">$content_to_show$</param>
+
+                      <module name="HTML" group="didnt_find_any">
+                        <param name="html"><![CDATA[
+                          <h3>Other data sources</h3>
+                          <p>
+                            We searched for this device name in other sourcetypes and indexes but we didn't find any.
+                          </p>
+                          <p>
+                            If you're curious about what might someday appear here for you, here are some ideas:
+                          </p>
+                          <ul>
+                            <li><a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-ingesting-other-cm-data-via-syslog" target="_blank">syslog from CUCM</a></li>
+                            <li>data ingested from our <a href="https://sideviewapps.com/documentation/supporting-app-for-axl" target="_blank">Supporting App for AXL</a></li>
+                            <li>data from UCCE / UCCX ( <a href="https://sideviewapps.com//contact" target="_blank">Contact us if this is interesting</a>.)</li>
+                            <li>data from your SBC</li>
+                            <li>data from other telephony logs</li>
+                          </ul>
+                        ]]></param>
+                      </module>
+
+                      <module name="PostProcess" group="found_some">
+                        <param name="search"><![CDATA[
+| stats count by sourcetype index
+| fields - count
+                        ]]></param>
+
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                            <h3>Other data sources ($results.count$ sourcetypes found)</h3>
+                            <p>
+                              Click one of the rows below to explore where this device's name appears in the given sourcetype and index.
+                            </p>
+                          ]]></param>
+                        </module>
+
+                        <module name="Pager">
+                          <module name="Table">
+                            <module name="Redirector">
+                              <param name="url">search</param>
+                              <param name="arg.q">index="$row.fields.index$" sourcetype="$row.fields.sourcetype$" $device.rawValue$ | head 1000</param>
+                              <param name="arg.earliest">$search.timeRange.earliest$</param>
+                              <param name="arg.latest">$search.timeRange.latest$</param>
+                              <param name="target">_blank</param>
+                            </module>
+                          </module>
+                        </module>
+
+                        <module name="PostProcess">
+                          <param name="search"><![CDATA[
+| search ciscoguid!="null"
+| stats count values(sourcetype) as sourcetype by ciscoguid
+| eval drilldownSpl="ciscoguid=\"" + ciscoguid + "\" sourcetype=\"" + sourcetype + "\""
+| fields ciscoguid sourcetype count drilldownSpl
+                          ]]></param>
+
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                              <h3>Other ciscoguid values found ($results.count$)</h3>
+                            ]]></param>
+                          </module>
+
+                          <module name="Pager">
+                            <module name="Table">
+                              <param name="hiddenFields">drilldownSpl</param>
+
+                              <module name="Redirector">
+                                <param name="url">search</param>
+                                <param name="arg.q">index="*" $row.fields.drilldownSpl.rawValue$ | head 1000</param>
+                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                <param name="arg.latest">$search.timeRange.latest$</param>
+                                <param name="target">_blank</param>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

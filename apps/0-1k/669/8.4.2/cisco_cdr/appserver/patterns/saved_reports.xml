@@ -1,0 +1,512 @@
+<module name="Search">
+  <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/saved/searches splunk_server=local
+| search (eai:acl.app="cisco_cdr" OR eai:appName="cisco_cdr") NOT author="nobody" NOT title="_ScheduledView__*"
+| rename eai:acl.sharing as sharing eai:acl.app as app eai:acl.can_write as writable author as owner title as name is_scheduled as scheduled request.ui_dispatch_view as page
+| eval scheduled=if(scheduled==1,"yes",null())
+| eval updated_epoch=strptime(updated,"%Y-%m-%dT%H:%M:%S")
+| eval updated=strftime(updated_epoch, "%Y-%m-%d")
+| eval uri=replace(id,"^.+/servicesNS","/servicesNS")
+| eval page=if(isnull(page) OR page=="","search",page)
+| eval writable=if(writable=="1","writable","not writable")
+| eval status=if(disabled=="1","disabled",null())
+| appendcols [
+   | rest services/authentication/current-context splunk_server=local | fields capabilities | eval has_schedule_search=if(mvcount(mvfilter(match(capabilities, "schedule_search"))) > 0, "has_schedule_search", "lacks_schedule_search") | fields has_schedule_search
+]
+| filldown has_schedule_search
+| table name page owner sharing writable scheduled has_schedule_search updated status disabled alert_comparator alert_threshold action.email.to uri
+  ]]></param>
+
+  <module name="HTML">
+    <param name="clear">left</param>
+    <param name="html"><![CDATA[
+
+      <h3>Your Reports</h3>
+
+    ]]></param>
+  </module>
+
+  <module name="ProgressIndicator" />
+
+  <module name="Pager">
+
+    <module name="Table">
+      <param name="hiddenFields">writable disabled uri cron_schedule has_schedule_search alert_comparator alert_threshold action.email.to</param>
+      <!-- replace this with
+      <param name="noResultsFoundMessage">You haven't created any saved reports yet, nor are there any shared with you by colleagues.</param>
+      whenever Canary 2.1 has been around for a long time (the release when this param was introduced) -->
+      <param name="customBehavior">yourSavedReportsTable</param>
+
+      <module name="Layer">
+        <param name="cssClass">menu</param>
+
+        <module name="ValueSetter">
+          <param name="arg.encodedSavedReportName">$row.fields.name$</param>
+          <param name="arg.cron_schedule">$row.fields.cron_schedule$</param>
+          <param name="arg.custom_cron">$row.fields.cron_schedule$</param>
+          <param name="arg.alert_comparator">$row.fields.alert_comparator$</param>
+          <param name="arg.alert_threshold">$row.fields.alert_threshold$</param>
+          <param name="arg.action.email.to">$row.fields.action.email.to$</param>
+
+          <param name="urlEncodeKeys">row.fields.name</param>
+
+          <module name="ValueSetter">
+            <param name="name">is_scheduled</param>
+            <param name="if.$row.fields.scheduled$==yes">1</param>
+            <param name="default">0</param>
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">run report</param>
+
+              <module name="Redirector">
+                <!-- it's ok if we render "search" views here, because canary will catch it for us and redirect. -->
+                <param name="url">$row.fields.page$</param>
+                <param name="arg.search.name">$row.fields.name$</param>
+              </module>
+            </module>
+
+
+
+            <module name="Switcher">
+              <param name="selectedGroup">$row.fields.writable$</param>
+
+              <module name="Link" group="writable">
+                <param name="cssClass">menuItem</param>
+                <param name="label">edit report (splunk ui)</param>
+                <module name="Redirector">
+                  <param name="url">../../../../../manager/cisco_cdr/saved/searches?app=cisco_cdr</param>
+                  <param name="arg.search">$row.fields.name$</param>
+                </module>
+              </module>
+
+              <module name="Link" group="not writable">
+                <param name="cssClass">menuItem</param>
+                <param name="label">view all report properties (splunk ui)</param>
+                <module name="Redirector">
+                  <param name="url">../../../../../manager/cisco_cdr/saved/searches?app=cisco_cdr</param>
+                  <param name="arg.search">$row.fields.name$</param>
+                </module>
+              </module>
+
+
+              <module name="Switcher"  group="writable">
+                <param name="selectedGroup">$row.fields.has_schedule_search$</param>
+
+                <module name="Switcher" group="has_schedule_search">
+                  <param name="selectedGroup">$is_scheduled$</param>
+
+
+                  <module name="Link" group="0">
+                    <param name="cssClass">menuItem</param>
+                    <param name="label">convert to alert</param>
+
+
+                    <module name="Layer">
+
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                          <h3>Simplified Alert Settings</h3>
+                        ]]></param>
+                      </module>
+
+                      <module name="Pulldown">
+                        <param name="name">cron_type</param>
+                        <param name="label">run</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">on custom cron schedule</param>
+                            <param name="value"></param>
+                          </list>
+                          <list>
+                            <param name="label">every hour</param>
+                            <param name="value">0 * * * *</param>
+                          </list>
+                          <list>
+                            <param name="label">every week on Monday at 6am</param>
+                            <param name="value">0 6 * * 1</param>
+                          </list>
+                          <list>
+                            <param name="label">every day at 1am</param>
+                            <param name="value">0 1 * * *</param>
+                          </list>
+                        </param>
+
+                        <module name="TextField">
+                          <param name="name">custom_cron</param>
+                          <param name="width">100px</param>
+                          <param name="default">0 3 * * *</param>
+                          <param name="customBehavior">showHideCustomCron</param>
+
+                          <module name="ValueSetter">
+                            <param name="name">cron_schedule</param>
+
+                            <param name="if.$cron_type$==*">$cron_type$</param>
+                            <param name="default">$custom_cron$</param>
+
+
+                            <module name="TextField">
+                              <param name="name">email_address</param>
+                              <param name="label">send email to</param>
+                              <param name="clear">left</param>
+                              <param name="width">200px</param>
+
+
+                              <module name="Pulldown">
+                                <param name="name">alert_comparator</param>
+                                <param name="label">when number of results</param>
+                                <param name="float">left</param>
+                                <param name="staticOptions">
+                                  <list>
+                                    <param name="label">is greater than</param>
+                                    <param name="value">greater than</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">is less than</param>
+                                    <param name="value">less than</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">is equal to</param>
+                                    <param name="value">equal to</param>
+                                  </list>
+                                </param>
+
+                                <module name="TextField">
+                                  <param name="name">alert_threshold</param>
+                                  <param name="label"></param>
+                                  <param name="width">50px</param>
+                                  <param name="float">left</param>
+
+
+
+                                  <module name="Button">
+                                    <param name="clear">left</param>
+                                    <param name="label">Save as Alert</param>
+
+                                    <module name="REST">
+                                      <param name="name">convertToAlertREST</param>
+                                      <param name="uri">/splunkd/__raw/servicesNS/$row.fields.owner$/$sideview.currentApp$/saved/searches/$encodedSavedReportName$</param>
+
+                                      <param name="arg.alert.track">1</param>
+                                      <param name="arg.cron_schedule">$cron_schedule$</param>
+                                      <param name="arg.is_scheduled">1</param>
+                                      <param name="arg.alert_type">number of events</param>
+                                      <param name="arg.alert_comparator">$alert_comparator$</param>
+                                      <param name="arg.alert_threshold">$alert_threshold$</param>
+                                      <param name="arg.action.email">1</param>
+                                      <param name="arg.action.email.to">$email_address$</param>
+
+
+                                      <!-- not supported by this handler -->
+                                      <!-- <param name="arg.counttype">number of events</param>
+                                      <param name="arg.quantity">0</param>
+                                      <param name="arg.relation">greater than</param>-->
+
+                                      <module name="Switcher">
+                                        <param name="selectedGroup">$convertToAlertREST.state$</param>
+
+                                        <module name="NullModule" group="success">
+                                          <module name="HTML">
+                                            <param name="html"><![CDATA[
+                                                Success - this saved report has been converted to an alert.<br>
+                                                To make more advanced changes you may select 'edit report (splunk ui)'.
+                                            ]]></param>
+                                            <param name="customBehavior">reloadViewsInNav</param>
+                                          </module>
+                                        </module>
+                                        <module name="HTML" group="failure">
+                                          <param name="html"><![CDATA[
+                                            Error converting to Alert:<br>
+                                            $convertToAlertREST.errorMessage$
+                                          ]]></param>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+
+                      </module>
+                    </module>
+                  </module>
+
+
+
+                  <module name="Link" group="1">
+                    <param name="cssClass">menuItem</param>
+                    <param name="label">turn off alert scheduling</param>
+
+                    <module name="REST">
+                      <param name="name">convertToAlertREST</param>
+                      <param name="uri">/splunkd/__raw/servicesNS/$row.fields.owner$/$sideview.currentApp$/saved/searches/$encodedSavedReportName$</param>
+
+                      <param name="arg.is_scheduled">0</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$convertToAlertREST.state$</param>
+
+                        <module name="NullModule" group="success">
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                                Success - this Alert is no longer scheduled.
+                            ]]></param>
+                            <param name="customBehavior">reloadViewsInNav</param>
+                          </module>
+                        </module>
+                        <module name="HTML" group="failure">
+                          <param name="html"><![CDATA[
+                            Error attempting to disable this Alert's schedule:<br>
+                            $convertToAlertREST.errorMessage$
+                          ]]></param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+              <module name="Switcher" group="writable">
+                <param name="selectedGroup">$row.fields.disabled$</param>
+
+                <module name="Link" group="1">
+                  <param name="cssClass">menuItem</param>
+                  <param name="label">enable report</param>
+
+                  <module name="REST">
+                    <param name="name">enableReportRest</param>
+                    <param name="uri">/splunkd/__raw/$row.fields.uri$</param>
+                    <param name="arg.disabled">0</param>
+
+                    <module name="Switcher">
+                      <param name="selectedGroup">$enableReportRest.state$</param>
+
+                      <module name="NullModule" group="success">
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                              Success - You have enabled this report.
+                          ]]></param>
+                          <param name="customBehavior">reloadViewsInNav</param>
+                        </module>
+                      </module>
+                      <module name="HTML" group="failure">
+                        <param name="html"><![CDATA[
+                          Error enabling report:<br>
+                          $enableReportRest.errorMessage$
+                        ]]></param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+
+                <module name="Link" group="0">
+                  <param name="cssClass">menuItem</param>
+                  <param name="label">disable report</param>
+
+                  <module name="REST">
+                    <param name="name">disableReportRest</param>
+                    <param name="uri">/splunkd/__raw/$row.fields.uri$</param>
+                    <param name="arg.disabled">1</param>
+
+                    <module name="Switcher">
+                      <param name="selectedGroup">$disableReportRest.state$</param>
+
+                      <module name="NullModule" group="success">
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                              Success - You have disabled this report.
+                          ]]></param>
+                          <param name="customBehavior">reloadViewsInNav</param>
+                        </module>
+                      </module>
+                      <module name="HTML" group="failure">
+                        <param name="html"><![CDATA[
+                          Error disabling report:<br>
+                          $disableReportRest.errorMessage$
+                        ]]></param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+
+              <module name="Link" group="writable">
+                <param name="cssClass">menuItem</param>
+                <param name="label">delete report</param>
+
+                <module name="Layer">
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                      <br>
+                      Are you sure you wish to delete this saved report?<br>
+                      <br>
+                      (hit the escape key, or click away, or click the 'x' to cancel)<br>
+                      <br>
+
+                    ]]></param>
+                  </module>
+
+                  <module name="Button">
+                    <param name="label">yes</param>
+
+                    <module name="REST">
+                      <param name="name">deleteReportRest</param>
+                      <param name="method">DELETE</param>
+                      <param name="uri">/splunkd/__raw/$row.fields.uri$</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$deleteReportRest.state$</param>
+
+                        <module name="NullModule" group="success">
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                                Your saved report was deleted.
+                            ]]></param>
+                            <param name="customBehavior">reloadViewsInNav</param>
+                          </module>
+                        </module>
+                        <module name="HTML" group="failure">
+                          <param name="html"><![CDATA[
+                            Error deleting report:<br>
+                            $deleteReportRest.errorMessage$
+                          ]]></param>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                      <br><br>
+                    ]]></param>
+                  </module>
+                </module>
+              </module>
+            </module>
+
+            <!--
+              you can't blame me for trying.  It was possible that all this time the REST api actually did support it.
+              but we'll have to 'clone' the report by  -->
+            <!--
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">rename report</param>
+              <module name="Layer">
+
+                <module name="ValueSetter">
+                  <param name="arg.newName">$row.fields.name$</param>
+
+                  <module name="TextField">
+                    <param name="name">newName</param>
+                    <param name="label">new name</param>
+
+                    <module name="Button">
+                      <param name="label">rename</param>
+
+                      <module name="REST">
+                        <param name="name">renameReportRest</param>
+                        <param name="uri">$row.fields.uri$</param>
+                        <param name="arg.title">$newName$</param>
+
+                        <module name="Switcher">
+                          <param name="selectedGroup">$renameReportRest.state$</param>
+
+                          <module name="NullModule" group="success">
+                            <module name="HTML">
+                              <param name="html"><![CDATA[
+                                  Your saved report was renamed.
+                              ]]></param>
+                              <param name="customBehavior">reloadSavedSearchesInNav</param>
+                            </module>
+                          </module>
+                          <module name="HTML" group="failure">
+                            <param name="html"><![CDATA[
+                              Error updating existing report:<br>
+                              $saveExistingReportRest.errorMessage$
+                            ]]></param>
+                          </module>
+                        </module>
+                      </module>
+
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+            </module>
+            -->
+
+
+            <!--
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">edit report (sideview ui)</param>
+              <module name="Layer">
+
+                <module name="Search">
+                  <param name="search"><![CDATA[
+      | rest $row.fields.uri$ splunk_server=local
+      | rename eai:acl.sharing as sharing eai:acl.app as app author as owner title as name is_scheduled as scheduled request.ui_dispatch_view as page
+      | eval scheduled=if(is_scheduled==1,"yes",null())
+      | eval updated_epoch=strptime(updated,"%Y-%m-%dT%H:%M:%S")
+      | eval updated=strftime(updated_epoch, "%Y-%m-%d")
+      | table name page owner sharing scheduled updated *
+      | transpose
+      | rename column as "key", "row 1" as value
+                  ]]></param>
+                  <module name="Pager">
+                    <module name="Table" />
+                  </module>
+                </module>
+
+              </module>
+            </module>
+          -->
+          </module>
+
+
+
+        </module>
+
+
+
+      </module>
+    </module>
+  </module>
+
+  <!--
+  <module name="Link">
+    <param name="label">&#187; start the dashboard tutorial</param>
+
+    <module name="Redirector">
+      <param name="url">tour</param>
+      <param name="arg.selectedTab">static</param>
+      <param name="arg.staticTutorial">creating_dashboards</param>
+      <param name="popup">True</param>
+      <param name="target">tourWindow</param>
+      <param name="windowFeatures">popup=true,left=20,top=20,width=600,height=800</param>
+    </module>
+  </module>
+-->
+
+
+
+  <module name="Link">
+    <param name="label">&#187; view and edit saved reports in Splunk Manager</param>
+
+    <module name="Redirector">
+      <param name="url">../../../../../manager/cisco_cdr/saved/searches</param>
+      <param name="arg.app">cisco_cdr</param>
+      <param name="arg.count">25</param>
+    </module>
+  </module>
+
+
+
+</module>

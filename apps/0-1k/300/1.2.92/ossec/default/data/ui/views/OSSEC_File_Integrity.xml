@@ -1,0 +1,327 @@
+<view template="dashboard.html">
+	<label>OSSEC File Integrity</label>
+
+	<module name="AccountBar" layoutPanel="navigationHeader"/>
+	<module name="AppBar" layoutPanel="navigationHeader"/>
+	<module name="Message" layoutPanel="messaging">
+		<param name="filter">splunk.search.error</param>
+		<param name="clearOnJobDispatch">False</param>
+		<param name="maxSize">1</param>
+	</module>
+
+	<module name="TitleBar" layoutPanel="viewHeader">
+		<param name="actionsMenuFilter">dashboard</param>
+	</module>
+	
+	<module name="SearchSelectLister" layoutPanel="splSearchControls-inline">
+		<param name="label">OSSEC Server</param>
+		<param name="settingToCreate">host_setting</param>
+
+		<param name="search">| inputlookup lookup_ossec_servers | sort description</param>
+		<param name="searchWhenChanged">True</param>
+		<param name="searchFieldsToDisplay">
+			<list>
+				<param name="label">description</param>
+				<param name="value">ossec_server</param>
+			</list>
+		</param>
+		<module name="ConvertToIntention">
+			<param name="settingToConvert">host_setting</param>
+			<param name="intention">
+				<param name="name">stringreplace</param>
+				<param name="arg">
+					<param name="ossec_server">
+						<param name="fillOnEmpty">True</param>
+						<param name="prefix">ossec_server=</param>
+						<param name="value">"$target$"</param>
+					</param>
+				</param>
+			</param>
+				
+								
+			<module name="TimeRangePicker" layoutPanel="splSearchControls-inline">
+				<param name="searchWhenChanged">True</param>
+				<param name="default">Last 5 Minutes</param>
+			
+			
+			
+			
+				<!-- Top Panel for Graph/Table -->
+				<module name="PulldownSwitcher" layoutPanel="panel_row2_col1">
+					<param name="mode">independent</param>
+					<param name="label">View:</param>
+
+					<module name="HiddenSearch" group="Changes Over Time (By Host)">
+						<module name="JobProgressIndicator" />
+						<param name="search">eventtype=ossec $ossec_server$ integrity NOT tag::eventtype=noise | timechart count by reporting_host</param>
+						<module name="HiddenChartFormatter">						
+							<param name="chart">area</param>
+							<param name="chart.stackMode">stacked</param>
+							<module name="JSChart">
+								<param name="height">230px</param>
+								<param name="width">100%</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					<module name="HiddenSearch" group="Changes Over Time (By Type)">
+						<module name="JobProgressIndicator" />
+						<param name="search">eventtype=ossec $ossec_server$ integrity NOT tag::eventtype=noise | eval changetype=if(searchmatch("HKEY"), "Registry Changes", "File Changes") | timechart count by changetype</param>
+						<module name="HiddenChartFormatter">						
+							<param name="chart">area</param>
+							<param name="chart.stackMode">stacked</param>
+							<module name="JSChart">
+								<param name="height">230px</param>
+								<param name="width">100%</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					<module name="HiddenSearch" group="Changes Over Time (By Filename)">
+						<module name="JobProgressIndicator" />
+						<param name="search">eventtype=ossec $ossec_server$ integrity NOT tag::eventtype=noise NOT HKEY | timechart count by file_basename</param>
+						<module name="HiddenChartFormatter">						
+							<param name="chart">area</param>
+							<param name="chart.stackMode">stacked</param>
+							<module name="JSChart">
+								<param name="height">230px</param>
+								<param name="width">100%</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					<module name="HiddenSearch" group="Changes Over Time (By Registry Key Name)">
+						<module name="JobProgressIndicator" />
+						<param name="search">eventtype=ossec $ossec_server$ integrity NOT tag::eventtype=noise HKEY | timechart count by file_basename</param>
+						<module name="HiddenChartFormatter">						
+							<param name="chart">area</param>
+							<param name="chart.stackMode">stacked</param>
+							<module name="JSChart">
+								<param name="height">230px</param>
+								<param name="width">100%</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					
+					<module name="HiddenSearch" group="Summary Table">
+						<param name="search">sourcetype=ossec $ossec_server$ integrity NOT tag::eventtype=noise | eval is_regchange=if(searchmatch("HKEY"), 1, 0) | eval is_filechange=1-is_regchange | stats sum(is_filechange) as "File Changes" sum(is_regchange) as "Registry Changes" count as "Total Changes" by reporting_host | sort - "Total Changes"</param>
+						<module name="JobProgressIndicator" />
+						<module name="Paginator">
+							<param name="count">10</param>
+							<param name="maxPages">100</param>
+							<param name="entityName">results</param>
+							
+							<module name="SimpleResultsTable">
+								<param name="fields">reporting_host,File_Changes,Registry_Changes,Total_Changes</param>
+								<param name="drilldown">row</param>
+								<param name="entityName">results</param>
+								<module name="ConvertToDrilldownSearch">
+									<module name="ViewRedirector">
+										<param name="viewTarget">search</param>
+									</module>
+								</module>
+							</module>
+							<module name="ViewRedirectorLink">
+								<param name="viewTarget">search</param>
+								<param name="label">View full results</param>
+							</module>
+						</module>
+					</module>
+				</module>
+				
+			
+			
+			
+			
+			
+				<module name="SearchSelectLister" layoutPanel="panel_row3_col1">
+					<param name="label">Reporting Host</param>
+					<param name="settingToCreate">reportinghost_setting</param>
+					<param name="searchWhenChanged">True</param>
+					<param name="applyOuterIntentionsToInternalSearch">True</param>
+					
+					<!--
+						SearchSelectLister apparently cannot be made to honor the time
+					    ranges from the TimeRangePicker:
+							http://www.splunk.com/support/forum:SplunkDev/3788
+					-->
+					<param name="earliest">-1d</param>
+					<param name="search">eventtype=ossec $ossec_server$ integrity NOT tag::eventtype=noise | dedup reporting_host | sort reporting_host</param>
+					<param name="sortKey">reporting_host</param>
+					<param name="staticFieldsToDisplay">
+						<list>
+							<param name="label">All Reporting Hosts</param>
+							<param name="value">*</param>
+							<param name="selected">True</param>
+						</list>
+					</param>
+					<param name="searchFieldsToDisplay">
+						<list>
+							<param name="label">reporting_host</param>
+							<param name="value">reporting_host</param>
+						</list>
+					</param>					
+
+					
+					<module name="ConvertToIntention">
+						<param name="settingToConvert">reportinghost_setting</param>
+						<param name="intention">
+              <!-- Without quotes around $target$, Splunk 4.2 may display an error:
+                      Error in 'search' command: Unable to parse the search: Comparison has an invalid term on the left hand side.
+              -->
+							<param name="name">stringreplace</param>
+							<param name="arg">
+								<param name="reporting_host">
+									<param name="fillOnEmpty">False</param>
+									<param name="prefix"> reporting_host=</param>
+									<param name="value">"$target$"</param>
+								</param>
+							</param>
+              
+              <!-- Using stringreplace here causes the following under Splunk 4.2:
+                    Error in 'search' command: Unable to parse the search: Comparison has an invalid term on the left hand side.
+              -->
+              <!--
+              <param name="name">addterm</param>
+              <param name="arg">
+                <param name="reporting_host">$target$</param>
+              </param>
+              -->
+						</param>
+            
+
+						
+						
+						
+						
+						<module name="LinkSwitcher" layoutPanel="panel_row4_col1">
+							<param name="mode">independent</param>
+							<param name="label"> </param>
+						
+							<!-- All Changes (Transaction View) -->
+							<module name="HiddenSearch"  group="All Changes">
+								<param name="search">eventtype="ossec" $ossec_server$ $reporting_host$ integrity NOT tag::eventtype=noise | transaction reporting_host,file_dirname</param>
+								<param name="autoRun">true</param>
+								
+								<module name="JobProgressIndicator" />
+								<module name="Paginator">
+									<param name="count">10</param>
+									<param name="maxPages">100</param>
+									<param name="entityName">results</param>
+
+									<module name="SimpleResultsTable">
+										<param name="fields">_time, reporting_host, file_dirname, file_basename</param>
+										<param name="drilldown">row</param>
+										<param name="entityName">results</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>
+										</module>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						
+							<!-- File Changes (Transaction View) -->
+							<module name="HiddenSearch"  group="Filesystem Changes">
+								<param name="search">eventtype="ossec" $ossec_server$ $reporting_host$ integrity NOT HKEY NOT tag::eventtype=noise | transaction reporting_host,file_dirname</param>
+								<param name="autoRun">true</param>
+								
+								<module name="JobProgressIndicator" />
+								<module name="Paginator">
+									<param name="count">10</param>
+									<param name="maxPages">100</param>
+									<param name="entityName">results</param>
+
+									<module name="SimpleResultsTable">
+										<param name="fields">_time, reporting_host, file_dirname, file_basename</param>
+										<param name="drilldown">row</param>
+										<param name="entityName">results</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>
+										</module>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						
+							<!-- Registry Changes (Transaction View) -->
+							<module name="HiddenSearch"  group="Windows Registry Changes">
+								<param name="search">eventtype="ossec" $ossec_server$ $reporting_host$ integrity HKEY NOT tag::eventtype=noise | transaction reporting_host,file_dirname</param>
+								<param name="autoRun">true</param>
+								
+								<module name="JobProgressIndicator" />
+								<module name="Paginator">
+									<param name="count">10</param>
+									<param name="maxPages">100</param>
+									<param name="entityName">results</param>
+
+									<module name="SimpleResultsTable">
+										<param name="fields">_time, reporting_host, file_dirname, file_basename</param>
+										<param name="drilldown">row</param>
+										<param name="entityName">results</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>
+										</module>
+									</module>
+								</module>
+								<module name="ViewRedirectorLink">
+									<param name="viewTarget">search</param>
+									<param name="label">View full results</param>
+								</module>
+							</module>
+						</module>
+					</module>
+				</module>
+			</module>
+		</module>
+	</module>
+</view>

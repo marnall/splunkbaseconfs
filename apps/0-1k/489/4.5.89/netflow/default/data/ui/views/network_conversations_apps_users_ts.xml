@@ -1,0 +1,365 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Network Conversations Top Applications and Users TS</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device / Virtual Network</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20062` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+      | `tstats_20062_traffic_app("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$" id="timechart">
+    <panel>
+      <chart>
+        <title>Top Applications</title>
+        <search base="baseSearch">
+          <query>
+            | `dedup_timechart_ts`
+            | `per_second_chart(sum(sum_bytes) by app_string,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+            <unset token="Username"></unset>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+          <unset token="Application"></unset>
+          <unset token="Device"></unset>
+          <unset token="Exp_IP"></unset>
+          <unset token="NFO"></unset>
+          <unset token="Protocol"></unset>
+          <unset token="Username"></unset>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <title>Click on a row to drill down</title>
+        <search base="baseSearch">
+          <query>
+            | stats sum(sum_bytes_in) as sndbytes 
+              sum(sum_bytes_out) as rcvbytes 
+              sum(sum_packets_in) as sndpackets 
+              sum(sum_packets_out) as rcvpackets 
+              sum(sum_flow_count) as "Flow Count" 
+              avg(avg_duration) as avgduration
+                    by nfo_hostname exp_ip flow_type transport app_string
+            | eval "Bytes Rcvd/Sent %"=round((rcvbytes/sndbytes)*100,2)
+            | eval "Packets Rcvd/Sent %"=round((rcvpackets/sndpackets)*100,2)
+            | eval sndmegabytes = sndbytes/1024/1024
+            | eval rcvmegabytes =rcvbytes/1024/1024
+            | sort 0 by - sndmegabytes
+            | `commas_formatting(MB Sent, sndmegabytes,2)` 
+            | `commas_formatting(MB Received, rcvmegabytes,2)` 
+            | `commas_formatting(Packets Sent, sndpackets)` 
+            | `commas_formatting(Packets Received, rcvpackets)` 
+            | `commas_formatting(Avg Duration, avgduration,2)` 
+            | `get_exporter_name(exp_ip_name)`
+            | table nfo_hostname exp_ip_name flow_type transport app_string "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" "Flow Count" "Avg Duration"
+            | rename nfo_hostname as "NFO" 
+            | rename exp_ip_name as "Device" 
+            | rename flow_type as "Flow Type"
+            | rename transport as "Protocol"
+            | rename app_string as "Application (App ID/Destination Port)"
+          </query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Application">$row.Application (App ID/Destination Port)$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+          <set token="Protocol">$row.Protocol$</set>
+          <unset token="Username"></unset>
+        </drilldown>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+            | `tstats_20062_traffic_app("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+            | stats sum(sum_bytes_in) as sndbytes 
+              sum(sum_bytes_out) as rcvbytes 
+              sum(sum_packets_in) as sndpackets 
+              sum(sum_packets_out) as rcvpackets 
+              sum(sum_flow_count) as "Flow Count" 
+              avg(avg_duration) as avgduration
+                    by nfo_hostname exp_ip flow_type transport app_string
+            | eval "Bytes Rcvd/Sent %"=round((rcvbytes/sndbytes)*100,2)
+            | eval "Packets Rcvd/Sent %"=round((rcvpackets/sndpackets)*100,2)
+            | eval sndmegabytes = sndbytes/1024/1024
+            | eval rcvmegabytes = rcvbytes/1024/1024
+            | sort 0 by - sndmegabytes
+            | `commas_formatting(MB Sent, sndmegabytes,2)` 
+            | `commas_formatting(MB Received, rcvmegabytes,2)` 
+            | `commas_formatting(Packets Sent, sndpackets)` 
+            | `commas_formatting(Packets Received, rcvpackets)` 
+            | `commas_formatting(Avg Duration, avgduration,2)` 
+            | `get_exporter_name(exp_ip_name)`
+            | table nfo_hostname exp_ip_name flow_type transport app_string "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" "Flow Count" "Avg Duration"
+            | rename nfo_hostname as "NFO" 
+            | rename exp_ip_name as "Device" 
+            | rename flow_type as "Flow Type"
+            | rename transport as "Protocol"
+            | rename app_string as "Application (App ID/Destination Port)"
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+          <done>
+            <condition>
+              <unset token="Application"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Application">$row.Application (App ID/Destination Port)$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+          <set token="Protocol">$row.Protocol$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <chart id="chart_2_1" depends="$Application$">
+        <title>Users for Application $submitted:Application$ Protocol $submitted:Protocol$ reported by NFO:$NFO$ Device:$submitted:Device$</title>
+        <search>
+          <query>
+            | `tstats_20062_traffic_user_app("$Exp_IP$","$NFO$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$Protocol$","$span_token$")`
+            | search  app_string="$Application$"
+            | `per_second_chart(sum(sum_bytes) by user_string,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest2">$start$</set>
+          <set token="selection.latest2">$end$</set>
+          <!--
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+-->
+        </selection>
+      </chart>
+      <table id="table_2_1" depends="$Application$,$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+            | `tstats_20062_traffic_user_app("$Exp_IP$","$NFO$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$Protocol$","$span_token$")`
+            | search  app_string="$Application$"
+            | stats sum(sum_bytes_in) as sndbytes 
+              sum(sum_bytes_out) as rcvbytes 
+              sum(sum_packets_in) as sndpackets 
+              sum(sum_packets_out) as rcvpackets 
+              sum(sum_flow_count) as "Flow Count" 
+              avg(avg_duration) as avgduration
+                    by nfo_hostname exp_ip flow_type transport user_string
+            | eval "Bytes Rcvd/Sent %"=round((rcvbytes/sndbytes)*100,2)
+            | eval "Packets Rcvd/Sent %"=round((rcvpackets/sndpackets)*100,2)
+            | eval sndmegabytes = sndbytes/1024/1024
+            | eval rcvmegabytes = rcvbytes/1024/1024
+            | sort 0 by - sndmegabytes
+            | `commas_formatting(MB Sent, sndmegabytes,2)` 
+            | `commas_formatting(MB Received, rcvmegabytes,2)` 
+            | `commas_formatting(Packets Sent, sndpackets)` 
+            | `commas_formatting(Packets Received, rcvpackets)` 
+            | `commas_formatting(Avg Duration, avgduration,2)` 
+            | `get_exporter_name(exp_ip_name)`
+            | table nfo_hostname exp_ip_name flow_type transport user_string "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" "Flow Count" "Avg Duration"
+            | rename nfo_hostname as "NFO" 
+            | rename exp_ip_name as "Device" 
+            | rename flow_type as "Flow Type"
+            | rename transport as "Protocol"
+            | rename user_string as "Username (idp)"
+          </query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Username">$row.Username (idp)$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+          <set token="Protocol">$row.Protocol$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <table id="table_3_1" depends="$Username$">
+      <title>Traffic for User $submitted:Username$ Application $submitted:Application$ Protocol $submitted:Protocol$ reported by NFO:$NFO$ Device:$submitted:Device$</title>
+      <search>
+        <query>
+          | `tstats_20062_traffic_complete_with_app_user("$Exp_IP$","$NFO$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$Protocol$","$span_token$")`
+          | search app_string="$Application$" user_string="$Username$" 
+          | eval exp_ip_network_conversation=nfo_hostname."#".exp_ip."#".src_ip."#".src_host."#".src_port."#".dest_ip."#".dest_host."#".dest_port."#".flow_type."#".transport
+          | stats sum(sum_bytes_in) as sndbytes 
+            sum(sum_bytes_out) as rcvbytes 
+            sum(sum_packets_in) as sndpackets 
+            sum(sum_packets_out) as rcvpackets 
+            sum(sum_flow_count) as "Flow Count" 
+            avg(avg_duration) as avgduration
+              by nfo_hostname exp_ip_network_conversation
+          | eval temp=split(exp_ip_network_conversation,"#")
+          | eval nfo_hostname=mvindex(temp,0) 
+          | eval exp_ip=mvindex(temp,1) 
+          | eval src_ip=mvindex(temp,2)
+          | eval src_host=mvindex(temp,3)
+          | eval src_port=mvindex(temp,4)
+          | eval dest_ip=mvindex(temp,5)
+          | eval dest_host=mvindex(temp,6)
+          | eval dest_port=mvindex(temp,7)
+          | eval flow_type=mvindex(temp,8)
+          | eval transport=mvindex(temp,9)
+          | eval "Bytes Rcvd/Sent %"=round((rcvbytes/sndbytes)*100,2)
+          | eval "Packets Rcvd/Sent %"=round((rcvpackets/sndpackets)*100,2)
+          | eval sndmegabytes = sndbytes/1024/1024
+          | eval rcvmegabytes = rcvbytes/1024/1024
+          | sort 0 by - sndmegabytes
+          | `commas_formatting(MB Sent, sndmegabytes,2)` 
+          | `commas_formatting(MB Received, rcvmegabytes,2)` 
+          | `commas_formatting(Packets Sent, sndpackets)` 
+          | `commas_formatting(Packets Received, rcvpackets)` 
+          | `commas_formatting(Avg Duration, avgduration,2)` 
+          | table src_ip src_port src_host dest_ip dest_port dest_host "MB Sent" "MB Received" "Bytes Rcvd/Sent %"  "Packets Sent" "Packets Received" "Packets Rcvd/Sent %" "Flow Count" "Avg Duration"
+          | rename src_ip as "Source IP" 
+          | rename src_port as "Source Port"
+          | rename src_host as "Source Host"
+          | rename dest_ip as "Dest IP" 
+          | rename dest_port as "Dest Port"
+          | rename dest_host as "Dest Host"
+        </query>
+      </search>
+      <option name="count">10</option>
+      <option name="showPager">true</option>
+      <option name="drilldown">none</option>
+    </table>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10062: Network Conversations”</b> (syslogs with nfc_id=20062). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

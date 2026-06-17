@@ -1,0 +1,294 @@
+<view autoCancelInterval="90" decomposeIntentions="false" isPersistable="true" isSticky="true" isVisible="true" objectMode="viewconf" onunloadCancelJobs="true" stylesheet="application.css" template="dashboard.html">
+  <label>Search Activity</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="maxSize">1</param>
+    <param name="clearOnJobDispatch">False</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="maxSize">1</param>
+    <param name="clearOnJobDispatch">True</param>
+  </module>
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+        <param name="view">home</param>
+      </list>
+      <list>
+        <param name="label">Search Activity</param>
+      </list>
+    </param>
+  </module>
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="customBehavior">helpButton</param>
+    <param name="label">► Learn more</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">search_activity.html</param>
+    </module>
+  </module>
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache |search server_role!="forwarder"| sort sort_rank</param>
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="staticFieldsToDisplay"/>
+        <module name="Pulldown" layoutPanel="mainSearchControls">
+          <param name="label">Scope : </param>
+          <param name="name">scope</param>
+          <param name="float">left</param>
+          <param name="staticFieldsToDisplay">
+            <list>
+              <param name="value"/>
+              <param name="label">all</param>
+            </list>
+            <list>
+              <param name="value">| search mode = real-time</param>
+              <param name="label">mode = rt</param>
+            </list>
+            <list>
+              <param name="value">| search mode = historical</param>
+              <param name="label">mode = historical</param>
+            </list>
+            <list>
+              <param name="value">| search type = ad-hoc</param>
+              <param name="label">type = ad hoc</param>
+            </list>
+            <list>
+              <param name="value">| search type = scheduled</param>
+              <param name="label">type = scheduled</param>
+            </list>
+            <list>
+              <param name="value">| search role = "search peer"</param>
+              <param name="label">role = search peer</param>
+            </list>
+            <list>
+              <param name="value">| search role = search-head</param>
+              <param name="label">role = search head</param>
+            </list>
+          </param>
+          <module name="Pulldown" layoutPanel="mainSearchControls">
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="value">host</param>
+                <param name="label">no split</param>
+              </list>
+              <list>
+                <param name="value">mode</param>
+                <param name="label">mode</param>
+              </list>
+              <list>
+                <param name="value">type</param>
+                <param name="label">type</param>
+              </list>
+              <list>
+                <param name="value">user</param>
+                <param name="label">user</param>
+              </list>
+              <list>
+                <param name="value">role</param>
+                <param name="label">role</param>
+              </list>
+              <list>
+                <param name="value">dispatcher</param>
+                <param name="label">dispatcher</param>
+              </list>
+            </param>
+            <param name="label">Split by : </param>
+            <param name="name">splitField</param>
+            <param name="template">$value$</param>
+            <param name="float">left</param>
+            <module name="TimeRangePicker">
+              <param name="searchWhenChanged">True</param>
+              <param name="selected">Last 4 hours</param>
+              <module name="Pulldown" layoutPanel="panel_row1_col1">
+                <param name="staticFieldsToDisplay">
+                  <list>
+                    <param name="value">median</param>
+                    <param name="label">median</param>
+                  </list>
+                  <list>
+                    <param name="value">perc95</param>
+                    <param name="label">95th percentile</param>
+                  </list>
+                  <list>
+                    <param name="value">min</param>
+                    <param name="label">minimum</param>
+                  </list>
+                  <list>
+                    <param name="value">max</param>
+                    <param name="label">maximum</param>
+                  </list>
+                </param>
+                <param name="label">Function:</param>
+                <param name="name">con_function</param>
+                <param name="template">$value$</param>
+                <param name="float">left</param>
+                <module name="Search" group="Search concurrency" layoutPanel="panel_row1_col1">
+                  <param name="search"><![CDATA[
+                  `set_sos_index` sourcetype=ps $host$  
+                  | multikv
+                  | `get_splunk_process_type`
+                  | search type="searches"
+                  | `get_search_props`
+                  | bin _time span=`ps_sos_period`s
+                  $scope$
+                  | stats dc(sid) as search_count by  _time $splitField$
+                  | timechart `bucketize_ps_sos` $con_function$(search_count) AS "Concurrent search count" by $splitField$
+                  ]]></param>
+                  <module name="JobProgressIndicator"/>
+                  <module name="HiddenChartFormatter">
+                    <param name="charting.chart">column</param>
+                    <param name="charting.chart.stackMode">stacked</param>
+                    <param name="primaryAxisTitle.text">Time</param>
+                    <param name="secondaryAxisTitle.text">Search count</param>
+                    <module name="JSChart">
+                      <param name="width">100%</param>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="Pulldown" layoutPanel="panel_row2_col1">
+                <param name="staticFieldsToDisplay">
+                  <list>
+                    <param name="value">median</param>
+                    <param name="label">median</param>
+                  </list>
+                  <list>
+                    <param name="value">perc95</param>
+                    <param name="label">95th percentile</param>
+                  </list>
+                  <list>
+                    <param name="value">min</param>
+                    <param name="label">minimum</param>
+                  </list>
+                  <list>
+                    <param name="value">max</param>
+                    <param name="label">maximum</param>
+                  </list>
+                </param>
+                <param name="label">Function:</param>
+                <param name="name">res_function</param>
+                <param name="template">$value$</param>
+                <param name="float">left</param>
+                <module name="LinkSwitcher" group="Resource usage of searches" layoutPanel="panel_row2_col1">
+                  <param name="groupLabel">CPU</param>
+                  <param name="mode">independent</param>
+                  <param name="label">Resource</param>
+                  <module name="Search" layoutPanel="panel_row2_col1" group="CPU">
+                    <param name="search"><![CDATA[
+                    `set_sos_index` sourcetype=ps $host$      
+                    | multikv
+                    | `get_splunk_process_type`
+                    | search type="searches"
+                    | `get_search_props`
+                    $scope$
+                    | eval RSZ_MB=RSZ_KB/1024
+                    | bin _time span=`ps_sos_period`s
+                    | stats first(pctCPU) AS dedup_pctCPU, first(RSZ_MB) AS dedup_RSZ_MB   by PID   $splitField$  _time
+                    | stats sum(dedup_pctCPU) AS total_pctCPU, sum(dedup_RSZ_MB) AS total_RSZ_MB by $splitField$  _time
+                    | timechart `bucketize_ps_sos` $res_function$(total_pctCPU) by $splitField$
+                    ]]></param>
+                    <module name="JobProgressIndicator"/>
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">column</param>
+                      <param name="charting.chart.stackMode">stacked</param>
+                      <param name="primaryAxisTitle.text">Time</param>
+                      <param name="secondaryAxisTitle.text">CPU usage (%)</param>
+                      <module name="JSChart">
+                        <param name="width">100%</param>
+                      </module>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="Search" layoutPanel="panel_row2_col1" group="Memory">
+                    <param name="search"><![CDATA[
+                    `set_sos_index` sourcetype=ps  $host$
+                    | multikv
+                    | `get_splunk_process_type`
+                    | search type="searches"
+                    | `get_search_props`
+                    $scope$
+                    | eval RSZ_MB=RSZ_KB/1024
+                    | bin _time span=`ps_sos_period`s
+                    | stats first(pctCPU) AS dedup_pctCPU, first(RSZ_MB) AS dedup_RSZ_MB   by PID   $splitField$  _time
+                    | stats sum(dedup_pctCPU) AS total_pctCPU, sum(dedup_RSZ_MB) AS total_RSZ_MB by $splitField$  _time
+                    | timechart `bucketize_ps_sos` $res_function$(total_RSZ_MB) by $splitField$]]>
+                    </param>
+                    <module name="JobProgressIndicator"/>
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">column</param>
+                      <param name="charting.chart.stackMode">stacked</param>
+                      <param name="primaryAxisTitle.text">Time</param>
+                      <param name="secondaryAxisTitle.text">Memory usage (MB)</param>
+                      <module name="JSChart">
+                        <param name="width">100%</param>
+                      </module>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="Search" layoutPanel="panel_row3_col1" group="Aggregate search run time">
+                <param name="search"><![CDATA[
+                `set_sos_index` sourcetype=ps  $host$
+                | multikv
+                | search NOT "[process-runner]"
+                | `get_splunk_process_type`
+                | search type="searches"
+                | `get_search_props`
+                $scope$
+                | bin _time span=`ps_sos_period`s
+                | eval ELAPSED=if(len(ELAPSED)<6,"00:"+ELAPSED,ELAPSED)
+                | convert dur2sec(ELAPSED) as ELAPSED
+                | stats max(ELAPSED) as ELAPSED  by sid $splitField$  _time
+                | streamstats current=t global=f window=2 earliest(ELAPSED) as prev_ELAPSED latest(ELAPSED) as curr_ELAPSED by sid $splitField$
+                | eval delta_ELAPSED = curr_ELAPSED - prev_ELAPSED
+                | eval runtime = if(delta_ELAPSED=0,min(curr_ELAPSED,`ps_sos_period`),delta_ELAPSED)
+                | timechart `bucketize_ps_sos` sum(runtime) by $splitField$
+                ]]></param>
+                <module name="JobProgressIndicator"/>
+                <module name="HiddenChartFormatter">
+                  <param name="charting.chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="primaryAxisTitle.text">Time</param>
+                  <param name="secondaryAxisTitle.text">Run time (seconds)</param>
+                  <module name="JSChart">
+                    <param name="width">100%</param>
+                  </module>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">true</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

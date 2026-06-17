@@ -1,0 +1,116 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Security Health Check</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Security Health Check</param>
+      </list>
+    </param>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+            
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">sos_server="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="Search" layoutPanel="panel_row1_col1_grp1">
+          <param name="search">
+          | securityinfo
+          | search $host$
+          | eval running_as_root = case(running_as_root == "True", "severe", running_as_root == "False", "low", running_as_root == "Nil", "severe")
+          | eval using_default_cert = case(using_default_cert == "True", "severe", using_default_cert == "False", "low")
+          | eval ssl_on_web = case(ssl_on_web == "True", "low", ssl_on_web == "False", "severe")
+          | eval using_default_pass = case(using_default_pass == "True", "severe", using_default_pass == "False", "low")
+          | eval ssl_on_splunkd = case(ssl_on_splunkd == "True", "low", ssl_on_splunkd == "False", "severe")
+          | eval ssl3_enabled = case(ssl3_enabled == "True", "low", ssl3_enabled == "False", "severe")
+          </param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+            <h2>Is Splunk Enterprise running as root?</h2>
+
+              <a href="#"><div class="stoplight $results[0].running_as_root$"> </div></a>
+
+              <p class = "inline_text">Run Splunk Enterprise as a non-root user to avoid root level exploits.
+              See the <a target="_blank" class="spl-icon-external-link-xsm" href="http://docs.splunk.com/Documentation/Splunk/latest/Installation/RunSplunkasadifferentornon-rootuser">Splunk Enterprise Installation Manual</a> for instructions on how to configure Splunk Enterprise to run as a non-root user.</p>
+
+            <hr class="inline_hr">
+            <br>
+
+            <h2>Is SSL enabled for Splunk Web?</h2>
+
+              <a href="#"><div class="stoplight $results[0].ssl_on_web$"> </div></a>
+
+              <p class = "inline_text">Secure Sockets Layer (SSL) encrypts communication between Splunk Enterprise and your web browser. Without SSL you are susceptible to session hijacks and Man In the Middle attacks. Learn about configuring SSL: See <a target="_blank" class="spl-icon-external-link-xsm" href = "http://docs.splunk.com/Documentation/Splunk/latest/Security/TurnonbasicencryptionwithSplunkWeb">Turn on encryption with Splunk Web</a> and <a a target="_blank" class="spl-icon-external-link-xsm" href ="http://docs.splunk.com/Documentation/Splunk/latest/Security/Turnonbasicencryptionusingweb.conf">Turn on encryption using web.conf</a> in the Splunk Enterprise documentation.</p>
+
+            <hr class="inline_hr">
+            <br>
+
+            <h2>Are trusted digital certificates installed on Splunk Web?</h2>
+
+              <a href="#"><div class="stoplight $results[0].using_default_cert$"> </div></a>
+
+              <p class = "inline_text">Default Splunk enterprise installations use self-signed certificates. Self-signed certificates make it easy to spoof a Splunk Enterprise server and can lead to Man in the Middle attacks.<br><br>
+              Splunk Enterprise ships with, and is configured to use, a set of default certificates. These certificates discourage casual snoopers but can leave you vulnerable. The root certificate that ships with Splunk Enterprise is the same root certificate in every download. Anyone with the same root certificate can, therefore, authenticate. Learn more at <a a target="_blank" class="spl-icon-external-link-xsm" href = "http://docs.splunk.com/Documentation/Splunk/latest/Security/AboutsecuringyourSplunkconfigurationwithSSL">About securing Splunk Enterprise with SSL</a>.</p>
+
+            <hr class="inline_hr">
+            <br>
+
+            <h2>Are default admin credentials disabled?</h2>
+
+              <a href="#"><div class="stoplight $results[0].using_default_pass$"> </div></a>
+
+              <p class = "inline_text">Make sure you change the default credentials after installation. This can reduce successful attacks from automated scanners that use widely known passwords.<br><br>
+              The default credentials (username: admin and password: changeme) are widely known and easily guessable.</p>
+
+            <hr class="inline_hr">
+            <br>
+
+            <h2>Is SSL enabled for splunkd?</h2>
+
+              <a href="#"><div class="stoplight $results[0].ssl_on_splunkd$"> </div></a>
+                <p class = "inline_text" >SSL provides encryption for intra-server communication in Splunk enterprise. Without SSL you are susceptible to session hijacks and Man in the Middle attacks. Learn more at <a target="_blank" class="spl-icon-external-link-xsm" href = "http://docs.splunk.com/Documentation/Splunk/latest/Security/AboutsecuringSplunktoSplunkcommunication">Securing intra-server communication with Splunk Enterprise</a>.
+
+            <hr class="inline_hr">
+            <br>
+            ]]></param>
+          </module>            
+        </module>            
+
+      </module>            
+    </module>            
+  </module>
+</view>

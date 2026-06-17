@@ -1,0 +1,245 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Traffic by Protocol TS</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20067` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+      | `tstats_20067_traffic_ports("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+      | strcat protocol_ts " (" transport ")" proto_string
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$" id="timechart">
+    <panel>
+      <chart>
+        <title>Traffic by Protocol</title>
+        <search base="baseSearch">
+          <query>
+            | `dedup_timechart_ts`
+            | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by proto_string useother="f"
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+          <unset token="Protocol"></unset>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <title>Click on a row to drill down</title>
+        <search base="baseSearch">
+          <query> 
+            | stats sum(sum_bytes_in) as TrafficAmount 
+                sum(sum_packets_in) as PacketsAmount 
+                sum(sum_flow_count) as Connections 
+                    by nfo_hostname exp_ip proto_string
+            | sort 0 - TrafficAmount
+            | head 100 
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval PacketsSpeed=(PacketsAmount)/$range$
+            | `default_preparation_for_comma_formatted_table`
+            | table nfo_hostname exp_ip_name proto_string  "Average Mbps" "Total Traffic MB" "Average Packets/s" "Total Packets" "Total Connections" 
+            | rename nfo_hostname as "NFO"
+            | rename exp_ip_name as "Device" 
+            | rename proto_string as "Protocol"
+          </query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Protocol">$row.Protocol$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+            | `tstats_20067_traffic_ports("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`        
+            | strcat protocol_ts " (" transport ")" proto_string
+            | stats sum(sum_bytes_in) as TrafficAmount  
+                sum(sum_packets_in) as PacketsAmount
+                sum(sum_flow_count) as Connections
+                    by nfo_hostname exp_ip  proto_string
+            | sort 0 - TrafficAmount
+            | head 100 
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval PacketsSpeed=(PacketsAmount)/$range$
+            | `default_preparation_for_comma_formatted_table`
+            | table nfo_hostname exp_ip_name proto_string  "Average Mbps" "Total Traffic MB" "Average Packets/s" "Total Packets" "Total Connections" 
+            | rename nfo_hostname as "NFO"
+            | rename exp_ip_name as "Device" 
+            | rename proto_string as "Protocol"
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Protocol">$row.Protocol$</set>
+          <set token="Device">$row.Device$</set>
+          <eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <table id="table_2" depends="$Protocol$">
+      <title>Traffic for Protocol $submitted:Protocol$ reported by $submitted:Device$ NFO $NFO$</title>
+      <search>
+        <query>
+          | `tstats_20067_traffic_src_dest("$Exp_IP$","$NFO$","$advanced_filter$","$exp_group$","$src_ip$","$src_port$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+          | strcat protocol_ts " (" transport ")" proto_string
+          | search proto_string="$Protocol$"
+          | stats sum(sum_bytes_in) as TrafficAmount 
+                sum(sum_packets_in) as PacketsAmount 
+                sum(sum_flow_count) as Connections 
+                by src_ip dest_ip src_host dest_host src_port dest_port transport exp_ip
+          | sort 0 - TrafficAmount
+          | head 100
+          | eval AverageSpeed=(TrafficAmount)*8/$range$
+          | eval PacketsSpeed=(PacketsAmount)/$range$
+          | `format_port_column(src_port_string, src_port)`
+          | `format_port_column(dest_port_string, dest_port)`
+          | eval TrafficSpeed=AverageSpeed/1000000
+          | eval TrafficAmount=TrafficAmount/1024/1024
+          | `commas_formatting(Total Connections, Connections, 0)`
+          | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+          | `commas_formatting(Total Traffic MB, TrafficAmount, 2)`
+          | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+          | `commas_formatting(Total Packets, PacketsAmount, 0)`
+          | table  src_ip src_host src_port_string dest_ip dest_host dest_port_string
+                "Average Mbps" "Total Traffic MB" 
+                "Average Packets/s" "Total Packets" "Total Connections"
+          | rename src_ip as "Source IP" src_host as "Source Host" src_port_string as "Source Port"
+          | rename dest_ip as "Destination IP" dest_host as "Destination Host" dest_port_string as "Destination Port"
+        </query>
+        <earliest>$selection.earliest$</earliest>
+        <latest>$selection.latest$</latest>
+      </search>
+      <option name="count">10</option>
+      <option name="showPager">true</option>
+      <option name="drilldown">none</option>
+    </table>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by flow data in Metrics Summary Index created by rollup saved searches of events sent to Splunk by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

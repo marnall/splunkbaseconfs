@@ -1,0 +1,30 @@
+delimitedfields v1.0
+
+We have a couple of log files that look like this:
+  date1 username=username1 foo_abc=25 foo_bcd=23 foo_cde=23 bar_xyz=23 bar_wxy=23
+  date2 username=username1 foo_abc=25 foo_cde=23 foo_def=23 bar_qrs=23 bar_wxy=23
+
+What if you want to see a chart of the sum of each type of foo, by username?
+
+I couldn't figure out a way to make this happen with existing commands, so I wrote a little command to take those log messages with related fields and chop them up based on something common in the field name, and copy along other fields that you need later.  Given our sample log messages, you would do something like this:
+  search... | delimitedfields prefix="foo_" copyfields="username"
+This produces in effect:
+  _time=date1 username=username1 delimitedfield_name=abc delimitedfield_value=25
+  _time=date1 username=username1 delimitedfield_name=bcd delimitedfield_value=23
+  _time=date1 username=username1 delimitedfield_name=cde delimitedfield_value=23
+  _time=date2 username=username1 delimitedfield_name=abc delimitedfield_value=25
+  _time=date2 username=username1 delimitedfield_name=cde delimitedfield_value=23
+  _time=date2 username=username1 delimitedfield_name=def delimitedfield_value=22
+which you can then feed to your favorite reporting command, for instance chart.
+
+The complete search would look like this:
+  search... | delimitedfields prefix="foo_" copyfields="username" | chart sum(delimitedfield_value) by delimitedfield_name,username
+
+Along with prefix, there is support for suffix and pattern.  Pattern simply takes the groups capture in the regex and concatenates them.
+
+
+
+To install, place these files in some application in bin and local.  For instance:
+  delimitedfields.py -> etc/apps/search/bin/
+  commands.conf -> etc/apps/search/local/
+

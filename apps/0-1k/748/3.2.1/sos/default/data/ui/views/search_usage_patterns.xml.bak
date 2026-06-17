@@ -1,0 +1,161 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Search Usage Patterns</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Search Usage Patterns</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">search_usage_patterns.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache |search server_role!="forwarder"| sort sort_rank</param>
+          
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 24 hours</param>
+          <param name="searchWhenChanged">True</param>
+
+          <!-- COMMON CONTROLS END   -->
+
+          <!-- Start Panel: Generic Search -->
+
+          <module name="Search" layoutPanel="panel_row1_col1">
+            <param name="search"><![CDATA[
+            `set_audit_index` ($host$ OR splunk_server=local) action=search (id=* OR search_id=*)
+            | eval search_id=if(isnull(search_id), id, search_id)
+            | replace '*' with * in search_id
+            | search search_id!=rt_* search_id!=searchparsetmp*
+            | rex "search='(?<search>.*?)', autojoin"
+            | rex "savedsearch_name=\"(?<savedsearch_name>.*?)\"\]\["
+            |  eval search=case(isnotnull(search),search,isnull(search) AND savedsearch_name!="","Scheduled search name : ".savedsearch_name,isnull(search) AND savedsearch_name=="","SID : ".search_id)
+            | convert num(total_run_time)
+            |  eval user = if(user="n/a", "nobody", user)
+            | stats min(_time) as _time last(user) as user max(total_run_time) as total_run_time last(search) as search by search_id | search search_id=* search!=typeahead* search!="|history*" search!=*_internal* search!=*_audit*]]></param>
+            <module name="JobProgressIndicator"></module>
+
+
+            <!-- PANEL Common Searches START -->
+            <module name="PostProcess" layoutPanel="panel_row1_col1" group="Common Searches and Median Run Time">
+              <param name="search">search search_id!=subsearch_* |  stats count median(total_run_time) as "Median run time" values(user) as User(s) by search  | sort - count | table count "Median run time" User(s) search</param>
+              <module name="JobProgressIndicator"></module>     
+              <module name="Pager">
+                <param name="count">10</param>
+                <param name="entityName">results</param>
+                <param name="maxPages">5</param>
+                <module name="SimpleResultsTable">
+                  <param name="displayRowNumbers">off</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                </module>
+              </module>
+            </module>
+            <!-- PANEL Common Searches END -->
+
+
+            <!-- PANEL Common Search Commands START -->
+            <module name="PostProcess" layoutPanel="panel_row1_col2" group="Common Search Commands">
+              <param name="search">search search_id!=subsearch_* | eval commands = commands(search)  | stats count dc(search_id) as Searches by commands  | rename commands as Command  | sort - count</param>
+              <module name="JobProgressIndicator"></module>
+              <module name="Pager">
+                <param name="count">10</param>
+                <param name="entityName">results</param>
+                <param name="maxPages">5</param>
+                <module name="SimpleResultsTable">
+                  <param name="displayRowNumbers">off</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                </module>
+              </module>
+            </module>
+            <!-- PANEL Common Search Commands END -->
+
+
+            <!-- PANEL Expensive Searches START -->
+            <module name="PostProcess" layoutPanel="panel_row2_col1" group="Expensive Searches">
+              <param name="search">search search_id!=subsearch_* | sort - total_run_time | rename total_run_time as "Search Run Time" | fields - search_id</param>
+              <module name="JobProgressIndicator"></module>
+              <module name="Pager">
+                <param name="count">10</param>
+                <param name="entityName">results</param>
+                <param name="maxPages">5</param>
+                <module name="SimpleResultsTable">
+                  <param name="displayRowNumbers">off</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                </module>
+              </module>
+            </module>
+            <!-- PANEL Expensive Searches END -->
+
+
+            <!-- PANEL Search Commands Associated with Expensive Searches START -->
+            <module name="PostProcess" layoutPanel="panel_row2_col2" group="Search Commands Associated with Expensive Searches">
+              <param name="search">search search_id!=subsearch_* | eval commands = commands(search)  | streamstats window=1 values(commands) as commands  | stats avg(total_run_time) as "Average Total Run Time" stdev(total_run_time) as "Standard Deviaton of Run Time" count as "Searches" by commands  | rename command as Commands  | sort - "Average Total Run Time"</param>
+              <module name="JobProgressIndicator"></module>
+              <module name="Pager">
+                <param name="count">10</param>
+                <param name="entityName">results</param>
+                <param name="maxPages">5</param>
+                <module name="SimpleResultsTable">
+                  <param name="displayRowNumbers">off</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                </module>
+              </module>
+            </module>
+            <!-- PANEL Search Commands Associated with Expensive Searches END -->
+
+          </module>
+          <!-- End Panel: Generic Search -->
+
+       </module>
+     </module>
+   </module>
+  </module>      
+</view>

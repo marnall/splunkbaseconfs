@@ -1,0 +1,239 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Warnings</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Warnings</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">warnings.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort server_label</param>
+      
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+                
+        <!-- COMMON CONTROLS END   -->
+                  
+        <module name="HTML" layoutPanel="panel_row1_col1">
+          <param name="html"><![CDATA[<h3>Checking Splunk instance <b>$host.rawValue$</b> for known problems. <font color="#9ACD32"><b>Green</b></font> items passed the check, <font color="#EE9A00"><b>yellow</b></font> and <font color="#CD0000"><b>red</b></font> items should be reviewed.</h3>]]>
+          </param>
+          
+          <!-- CRASH LOG CHECK -->      
+          <module name="Search">
+            <param name="search">`set_internal_index` $host$ sourcetype=splunkd_crash_log build=*</param>
+            <module name="HiddenPostProcess">
+              <param name="search">| stats count | rangemap field=count default=low low=0-0 elevated=1-100000</param>
+              <module name="SingleValue">
+                <param name="field">count</param>
+                <param name="afterLabel"> crash log(s) found.</param>
+                <param name="classField">range</param>
+              </module>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">crashes</param>
+                <param name="popup">True</param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">If crash logs are found, click the arrow to review them in the Crash Log Viewer.</param>
+            </module>
+          </module>
+
+          <!-- SPL-38464/39127 CHECK -->
+          <module name="Search">
+            <param name="search">`set_internal_index` $host$ source=*splunkd.log component=Metadata safeService | stats count | rangemap field=count default=low low=0-0 severe=1-1000000</param>
+            <module name="SingleValue">
+              <param name="field">count</param>
+              <param name="afterLabel"> occurrence(s) of metadata corruption recorded in splunkd.log.</param>
+              <param name="classField">range</param>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[search `set_internal_index` $host$ source=*splunkd.log component=Metadata safeService]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">Check for bug SPL-38464/SPL-39127 - Metadata corruption. Click the arrow to drilldown and see the events.</param>
+            </module>
+          </module>
+
+          <!-- SPL-39590 CHECK -->
+          <module name="Search">
+            <param name="search"><![CDATA[`set_internal_index` $host$ source=*splunkd.log component=JournalSlice component!=indexProcessor CRIT "had unexpected size" | rex field=Path "/opt/splunk/var/lib/splunk/(?<bucket>.*)/rawdata/journal.gz" | dedup bucket | stats count | rangemap field=count default=low low=0-0 severe=1-1000000]]></param>
+            <module name="SingleValue">
+              <param name="field">count</param>
+              <param name="afterLabel"> buckets with rawdata (journal.gz) of unexpected length.</param>
+              <param name="classField">range</param>
+            </module>
+            <module name="Search">
+              <param name="search"><![CDATA[`set_internal_index` $host$ source=*splunkd.log component=JournalSlice component!=indexProcessor CRIT "had unexpected size" | rex field=Path "/opt/splunk/var/lib/splunk/(?<bucket>.*)/rawdata/journal.gz" | dedup bucket]]></param>
+              <module name="SubmitButton">
+                <module name="ViewRedirector">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">True</param>
+                </module>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">Check for SPL-39590 - This error can occur when hot buckets are written directly to NFS. There is a silent short-write to the journal.gz rawdata file, which can result in a corrupted bucket. Click the arrow to drilldown and see the events.</param>
+            </module>
+          </module>
+
+          <!-- MAX OPEN_FD CHECK -->
+          <module name="Search">
+            <param name="search">`set_internal_index` $host$ source=*splunkd.log* component=ulimit "Limit: open files:" | head 1 | rex field=message "Limit:\s+open\s+files:\s+(?&lt;fd_ulimit&gt;\w+)(?:\s+files)?" | stats first(fd_ulimit) AS maxOpenFiles | rangemap field=maxOpenFiles default=elevated low=1025-100000</param>
+            <module name="SingleValue">
+              <param name="field">maxOpenFiles</param>
+              <param name="afterLabel"> is the maximum number of open file descriptors allowed per process by the operating system.</param>
+              <param name="classField">range</param>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[search `set_internal_index` $host$ source=*splunkd.log source=*splunkd.log component=ulimit "Limit: open files:" | head 1]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">Splunkd may run out of file descriptors and experience crashes if this parameter is set to 1024 or less. This check is based on "ulimit -n" and &lt;b&gt;only applies to *nix systems&lt;/b&gt;. For more details, please check &lt;a href="http://splunk-base.splunk.com/answers/13313" target="_blank"&gt;this Splunk Answer&lt;/a&gt; and &lt;a href="http://blogs.splunk.com/2011/11/21/whats-your-ulimit" target="_blank"&gt;this splunk.com blog post&lt;/a&gt;.</param>
+            </module>
+          </module>
+
+          <!-- SEARCH ARTIFACT COUNT CHECK -->
+          <module name="Search">
+            <param name="search">| entity search/jobs owner=nobody namespace="-" count=1000000 | search sos_server="$host.rawValue$" | stats count AS searchArtifactCount | rangemap field=searchArtifactCount default=low low=0-99 elevated=100-250 severe=251-1000000</param>
+            <module name="SingleValue">
+              <param name="field">searchArtifactCount</param>
+              <param name="afterLabel">search artifact(s) found in the $SPLUNK_HOME/var/run/splunk/dispatch directory.</param>
+              <param name="classField">range</param>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[| entity search/jobs owner=nobody namespace="-" count=1000000 | search sos_server="$host.rawValue$" | eval search_string=_raw | table sid, ttl, search_string]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">A high number of active search artifacts present in the dispatch directory can affect overall performance. As of Splunk 4.2.3, you can use the &lt;code&gt;splunk cmd splunkd clean-dispatch&lt;/code&gt; command to manually clean up the dispatch directory and get rid of stale search artifacts and empty directories.</param>
+            </module>
+          </module>
+
+          <!-- VIEWSTATE COUNT CHECK -->
+          <module name="Search">
+            <param name="search">| entity data/ui/viewstates owner="nobody" namespace="-" | search sos_server="$host.rawValue$" | stats count AS viewstateCount | rangemap field=viewstateCount default=low low=0-499 elevated=500-999 severe=10000-1000000</param>
+            <module name="SingleValue">
+              <param name="field">viewstateCount</param>
+              <param name="afterLabel">global viewstate(s) defined.</param>
+              <param name="classField">range</param>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[| entity data/ui/viewstates owner="nobody" namespace="-" | search sos_server="$host.rawValue$" | eval viewstate=_raw | table viewstate, eai:appName, eai:userName]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">If too many viewstates are globally available, this may cause the Splunk UI to behave slowly. Trimming viewstates manually can be necessary if more than 1,000 global viewstates are found.</param>
+            </module>
+          </module>
+
+          <!-- CONFIGURATION FILE TYPO CHECK -->
+          <module name="Search">
+            <param name="search">| btoolcheck | search sos_server="$host.rawValue$"</param>
+            <module name="HiddenPostProcess">
+              <param name="search">| stats count AS typoCount | rangemap field=typoCount default=low low=0-0 elevated=1-10000</param>
+              <module name="SingleValue">
+                <param name="field">typoCount</param>
+                <param name="afterLabel">typo(s) found in configuration files.</param>
+                <param name="classField">range</param>
+              </module>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[| btoolcheck | search sos_server="$host.rawValue$" | eval Typo=_raw | table Typo]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">Click the drilldown arrow to see all typos detected in a new window. Typos are not necessarily a big problem, but you might want to check the syntax of the keys reported in error against the corresponding spec file.</param>
+            </module>
+          </module>
+
+          <!-- LEARNED SOURCETYPES CHECK -->
+          <module name="Search">
+            <param name="search">| btool props app=learned | search sos_server="$host.rawValue$"</param>
+            <module name="HiddenPostProcess">
+              <param name="search">| stats count AS learnedCount | rangemap field=learnedCount default=low low=0-0 elevated=1-500 severe=501-1000000</param>
+              <module name="SingleValue">
+                <param name="field">learnedCount</param>
+                <param name="afterLabel">automatic sourcetypes found in the "learned" app.</param>
+                <param name="classField">range</param>
+              </module>
+            </module>
+            <module name="SubmitButton">
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">True</param>
+                <param name="arg.q"><![CDATA[search index=* OR index=_* [btool props app=learned | search sos_server="$host.rawValue$" | eval sourcetype=stanza | fields sourcetype] | stats count, values(source) by sourcetype]]></param>
+              </module>
+            </module>
+            <module name="StaticContentSample">
+              <param name="text">When no explicit sourcetyping is configured in inputs.conf or props.conf for a file monitor input, sourcetypes are automatically created in the "learned" app. If there are too many of these sourcetypes, indexing and search performance could suffer. A large amount of sourcetypes require increased CPU and memory at the input stage. For more information, please read &lt;a href="http://blogs.splunk.com/2010/02/11/sourcetypes-gone-wild" target="_blank"&gt;this splunk.com blog post&lt;/a&gt;. Click the arrow to see which sources are not explicitly sourcetyped.</param>
+            </module>
+          </module>
+
+        </module>
+
+        <!-- CLOSING COMMON CONTROL MODULES   -->
+                                                      
+      </module>
+    </module>
+  </module>
+</view>

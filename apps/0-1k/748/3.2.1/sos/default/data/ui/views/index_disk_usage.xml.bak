@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<view autoCancelInterval="90" isVisible="true" objectMode="SimpleForm" onunloadCancelJobs="true" template="dashboard.html">
+  <label>Indexes Disk Usage and Properties</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="clearOnJobDispatch">False</param>
+    <param name="filter">*</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="clearOnJobDispatch">True</param>
+    <param name="filter">splunk.search.job</param>
+    <param name="maxSize">1</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+        <param name="view">home</param>
+      </list>
+      <list>
+        <param name="label">Indexes Disk Usage and Properties</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">► Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">index_disk_usage.html</param>
+    </module>
+  </module>
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    <module name="Search" autoRun="True">
+      <param name="search">
+      | rest /services/data/indexes/ count=0 
+      | rename title AS index splunk_server AS indexer currentDBSizeMB AS usage maxTotalDataSizeMB AS size
+      </param>
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="postProcess">| dedup indexer | sort indexer</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="label">indexer</param>
+            <param name="value">indexer</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+          <list>
+            <param name="label">All</param>
+            <param name="value">*</param>
+          </list>
+        </param>
+        <param name="name">indexer</param>
+        <param name="label">Instance to query :</param>
+        <param name="float">left</param>
+        <param name="template">| search indexer="$value$"</param>
+
+        <module name="Pulldown" layoutPanel="mainSearchControls">
+          <param name="postProcess">| table index | dedup index</param>
+          <param name="searchFieldsToDisplay">
+            <list>
+              <param name="label">index</param>
+              <param name="value">index</param>
+            </list>
+          </param>
+          <param name="staticFieldsToDisplay">
+            <list>
+              <param name="label">Top Ten (disk usage)</param>
+              <param name="value">
+              * | join index [
+                | rest /services/data/indexes/ count=0 
+                | rename title AS index  currentDBSizeMB AS usage 
+                | fields usage  index
+                | stats sum(usage) AS depl_usage by index
+                | sort 10 -depl_usage
+                | fields index]
+              </param>
+            </list>
+            <list>
+              <param name="label">All</param>
+              <param name="value">*</param>
+            </list>
+          </param>
+          <param name="name">index</param>
+          <param name="label">Index:</param>
+          <param name="float">left</param>
+          <param name="template">| search index=$value$</param>
+          <module name="Pulldown" layoutPanel="mainSearchControls">
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">index</param>
+                <param name="value">index</param>
+              </list>
+              <list>
+                <param name="label">indexer</param>
+                <param name="value">indexer</param>
+              </list>
+              <list>
+                <param name="label">index by indexer</param>
+                <param name="value">index by indexer</param>
+              </list>
+            </param>
+            <param name="name">splitby</param>
+            <param name="label">Split by:</param>
+            <param name="float">left</param>
+            <param name="template">over $value$</param>
+
+            <module name="Checkbox" layoutPanel="mainSearchControls" >
+              <param name="name">sorter</param>
+              <param name="checked">True</param>
+              <param name="clear">right</param>
+              <param name="label">Sort by metric value</param>
+              <param name="labelPosition">left</param>
+              <param name="onValue">| sort - sorter</param>
+              <module name="PostProcess" layoutPanel="panel_row1_col1" group="Disk usage">
+                <param name="search">
+                $indexer$ $index$ 
+                | chart sum(usage) as sorter $splitby$ $sorter$
+                | rename sorter as "Usage(MB)" </param>
+                <module name="JobProgressIndicator"/>
+                <module name="LinkSwitcher">
+                  <param name="mode">independent</param>
+                  <param name="label">Show as:</param>
+
+                  <module name="LinkSwitcher" group="Graph">
+                    <param name="mode">independent</param>
+                    <param name="label">X-axis scale:</param>
+                    <module name="HiddenChartFormatter" group="linear">
+                      <param name="chart">bar</param>
+                      <module name="JSChart"/>
+                    </module>
+                    <module name="HiddenChartFormatter" group="logarithmic">
+                      <param name="chart">bar</param>
+                      <param name="charting.axisY.scale">log</param>
+                      <module name="JSChart"/>
+                    </module>
+                  </module>
+
+                  <module name="Pager" group="Table">
+                    <param name="entityName">results</param>
+                    <module name="SimpleResultsTable"/>
+                    <module name="Pager">
+                      <param name="entityName">results</param>
+                    </module>
+                  </module>
+                </module>
+
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+
+                <module name="PostProcess" layoutPanel="panel_row1_col2" group="Percentage of Maximum Index Size" autoRun="True">
+                  <param name="groupLabel">Relative Usage</param>
+                  <param name="search">
+                  $indexer$ $index$
+                  | eval pct = round(usage / size, 2)*100
+                  | eval pct = if(isnull(pct),0,pct)
+                  | chart max(pct) as sorter $splitby$ $sorter$
+                  | rename sorter as "Relative Usage" 
+                  </param>
+                  <module name="JobProgressIndicator"/>
+                  <module name="LinkSwitcher">
+                    <param name="mode">independent</param>
+                    <param name="label">Show as:</param>
+                  <module name="LinkSwitcher" group="Graph">
+                    <param name="mode">independent</param>
+                    <param name="label">X-axis scale:</param>
+                    <module name="HiddenChartFormatter" group="linear">
+                      <param name="chart">bar</param>
+                      <module name="JSChart"/>
+                    </module>
+                    <module name="HiddenChartFormatter" group="logarithmic">
+                      <param name="chart">bar</param>
+                      <param name="charting.axisY.scale">log</param>
+                      <module name="JSChart"/>
+                    </module>
+                  </module>
+
+                    <module name="Pager" group="Table">
+                      <param name="entityName">results</param>
+                      <module name="SimpleResultsTable"/>
+                      <module name="Pager">
+                        <param name="entityName">results</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">true</param>
+                  </module>
+                  <module name="PostProcess" layoutPanel="panel_row2_col1" group="Event count" autoRun="True">
+                    <param name="groupLabel">Event count</param>
+                    <param name="search">
+                    $indexer$ $index$
+                    | table index  totalEventCount indexer
+                    | chart sum(totalEventCount) as sorter $splitby$ $sorter$ 
+                    | rename sorter as "Event count"
+                    </param>
+                    <module name="JobProgressIndicator"/>
+                    <module name="LinkSwitcher">
+                      <param name="mode">independent</param>
+                      <param name="label">Show as:</param>
+                    <module name="LinkSwitcher" group="Graph">
+                      <param name="mode">independent</param>
+                      <param name="label">X-axis scale:</param>
+                      <module name="HiddenChartFormatter" group="linear">
+                        <param name="chart">bar</param>
+                        <module name="JSChart"/>
+                      </module>
+                      <module name="HiddenChartFormatter" group="logarithmic">
+                        <param name="chart">bar</param>
+                        <param name="charting.axisY.scale">log</param>
+                        <module name="JSChart"/>
+                      </module>
+                    </module>
+
+                      <module name="Pager" group="Table">
+                        <param name="entityName">results</param>
+                        <module name="SimpleResultsTable"/>
+                        <module name="Pager">
+                          <param name="entityName">results</param>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                    <module name="PostProcess" layoutPanel="panel_row3_col1" group="Index details" autoRun="True">
+                      <param name="groupLabel">Index details</param>
+                      <param name="search">
+                      $indexer$ $index$  
+                      | table frozenTimePeriodInSecs index indexer usage size totalEventCount maxTime minTime
+                      | eval pct = round(usage / size, 2)*100
+                      | eval pct = if(isnull(pct),0.00,pct)
+                      | eval fcd = strftime((now() - frozenTimePeriodInSecs),"%Y-%m-%dT%H:%M:%S%Z") 
+                      | eval mT = strptime(minTime,"%Y-%m-%dT%H:%M:%S%Z")
+                      | eval agu= round(((mT)- (now() - frozenTimePeriodInSecs))/60/60/24) 
+                      | eval agu = if(isnull(agu),0,agu)
+                      | rename agu as "Oldest event bucket freeze (days)" fcd as "Freeze cut-off date" pct as "Disk usage (%)" usage as "Disk usage (MB)" size as "Disk quota (MB)" totalEventCount as "Event Count" maxTime as "Newest event" minTime as "Oldest event"
+                      | fields - mT frozenTimePeriodInSecs
+                      </param>
+                      <module name="Pager">
+                        <param name="count">10</param>
+                        <param name="entityName">results</param>
+                        <module name="SimpleResultsTable">
+                          <param name="count">10</param>
+                          <param name="entityName">results</param>
+                          <param name="allowTransformedFieldSelect">True</param>
+                          <param name="displayRowNumbers">false</param>
+                        </module>
+                      </module>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

@@ -1,0 +1,728 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" css="custom.css,calls.css" customJS="lib/custom_behaviors/chart.js">
+  <label>Guid Detail (Prototype)</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Guid Detail (Prototype)</h1>
+      ]]></param>
+    </module>
+
+    <pattern name="call_filter_controls">
+
+      <module name="TextField">
+        <param name="name">call_reference_id</param>
+        <param name="label">call reference id</param>
+        <param name="width">200px</param>
+
+        <module name="ValueSetter">
+          <param name="arg.callReferenceIdSubsearch">[search `custom_index` sourcetype=cucm_cdr $call_reference_id$* call_reference_id="$call_reference_id$" | stats count by `id_fields` | fields - count ]</param>
+
+
+
+          <module name="Search">
+            <param name="search">| `get_clusters`</param>
+
+            <module name="CheckboxPulldown">
+              <param name="name">clusterId</param>
+              <param name="label">cluster</param>
+              <param name="template">globalCallId_ClusterID=$value$</param>
+              <param name="valueField">clusterId</param>
+              <param name="labelField">label</param>
+              <param name="customBehavior">hideIfOnlyOneOption</param>
+              <param name="selectAllOptimization">omit</param>
+
+              <module name="TextField" layoutPanel="mainSearchControls">
+                <param name="name">searchterms</param>
+                <param name="label">search</param>
+                <param name="width">900px</param>
+
+
+
+                <module name="Button">
+                  <param name="allowSoftSubmit">True</param>
+
+                  <module name="CustomBehavior">
+                    <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+                    <module name="Search">
+                      <param name="search">
+    `get_field_list("$data_type.sourcetypes$")`
+                      </param>
+
+                      <module name="Tabs">
+                        <param name="name">mode</param>
+                        <param name="staticTabs">
+                          <list>
+                            <param name="label">Calls</param>
+                            <param name="value">calls</param>
+                          </list>
+                          <list>
+                            <param name="label">Chart</param>
+                            <param name="value">chart</param>
+                          </list>
+                        </param>
+
+                        <module name="Switcher">
+                          <param name="selectedGroup">$mode$</param>
+
+
+                          <module name="Fields" layoutPanel="resultsHeaderPanel" group="calls">
+                            <param name="hiddenFields">_time</param>
+                            <!-- this is not actually used unless someone has deleted the keys in
+                            etc/apps/cisco_cdr/default/ui-prefs.conf, AND the user has no preference set  -->
+                            <param name="fields">duration type callingPartyNumber originalCalledPartyNumber calledPartyNumber cause_description origDeviceName destDeviceName</param>
+                            <param name="float">right</param>
+
+                            <module name="CustomBehavior">
+                              <param name="customBehavior">buildMainReportingTokens</param>
+                              <param name="arg.displayingCalls">True</param>
+
+                              <module name="Search">
+                                <param name="search"><![CDATA[
+  $baseEventsSearch$$callReferenceIdSubsearch$$requiredExtractions$$statsCommand$$postStatsSearch$$postStatsTransform$
+  | sort 0 - _time
+  | fields $fields$ `id_fields` $disableSearchOptimization$
+                                ]]></param>
+                                <param name="preview">True</param>
+
+                                <module name="PostProcess">
+                                  <param name="search">| eval time=_time | fields - _time | convert ctime(time) | fields - detailLatest</param>
+
+                                  <module name="ValueSetter">
+                                    <param name="arg.searchPlusFields">$search$ | fields $results.fields$ globalCallId_ClusterID globalCallID_callId globalCallID_callManagerId</param>
+
+                                    <pattern name="save_create_buttons" />
+                                  </module>
+                                </module>
+
+                                <module name="SearchControls">
+                                  <param name="sections">jobControls info export</param>
+                                  <param name="jobControls">cancel</param>
+                                  <param name="float">right</param>
+                                </module>
+
+                                <module name="HTML">
+                                  <param name="float">left</param>
+                                  <param name="html"><![CDATA[
+                                  <h2 style="margin-bottom:5px;">$qualifier$ $results.count$ matching calls $search.timeRange.label$ $isPaused$</h2>
+
+                                  ]]></param>
+                                  <param name="customBehavior">qualifyNumberOfResults</param>
+                                </module>
+
+                                <module name="Pulldown" layoutPanel="pageControls">
+                                  <param name="name">results.count</param>
+                                  <param name="label">results per page</param>
+                                  <param name="float">right</param>
+                                  <param name="staticOptions">
+                                    <list><param name="value">10</param></list>
+                                    <list><param name="value">20</param><param name="selected">True</param></list>
+                                    <list><param name="value">50</param></list>
+                                    <list><param name="value">100</param></list>
+                                    <list><param name="value">200</param></list>
+                                  </param>
+
+                                  <module name="Pager">
+
+                                    <module name="ProgressIndicator" layoutPanel="resultsAreaLeft"></module>
+
+                                    <module name="PostProcess">
+                                      <param name="search"><![CDATA[
+    | `get_time_window_for_detail_views`
+                                      ]]></param>
+
+                                      <module name="Table" layoutPanel="resultsAreaLeft">
+                                        <param name="hiddenFields">globalCallID_callManagerId, globalCallID_callId, globalCallId_ClusterID call_id durationInSeconds data_type detailEarliest detailLatest</param>
+                                        <param name="drilldown">cell</param>
+                                        <param name="customBehavior">callsTable</param>
+
+                                        <module name="Layer">
+                                          <param name="cssClass">menu</param>
+
+                                          <!-- the new Javascript version that actually creates Link elements out of whole cloth -->
+                                          <module name="CustomBehavior">
+                                            <param name="customBehavior">actionMenusForAlteringFormSelections</param>
+                                          </module>
+
+                                          <module name="CustomBehavior">
+                                            <param name="customBehavior">getActionMenuClasses</param>
+
+                                            <module name="Switcher">
+                                              <param name="selectedGroup">$actionMenuClass$</param>
+
+                                              <module name="NullModule" group="partyNumbers">
+
+                                                <module name="Link">
+                                                  <param name="cssClass">menuItem</param>
+                                                  <param name="label">view DN/extension details</param>
+
+                                                  <module name="Redirector">
+                                                    <param name="url">extension_detail</param>
+                                                    <param name="arg.number">$row.cell.value$</param>
+                                                    <param name="arg.earliest">$cachedEarliest$</param>
+                                                    <param name="arg.latest">$cachedLatest$</param>
+
+                                                    <!--  things for breadcrumb links -->
+                                                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                    <param name="arg.bc_latest">$cachedLatest$</param>
+
+                                                  </module>
+                                                </module>
+                                              </module>
+
+                                              <module name="NullModule" group="deviceNames">
+
+                                                <module name="Link">
+                                                  <param name="cssClass">menuItem</param>
+                                                  <param name="label">view device details</param>
+
+                                                  <module name="Redirector">
+                                                    <param name="url">device_detail</param>
+                                                    <param name="arg.device">$row.cell.value$</param>
+                                                    <param name="arg.earliest">$cachedEarliest$</param>
+                                                    <param name="arg.latest">$cachedLatest$</param>
+
+                                                    <!--  things for breadcrumb links -->
+                                                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                    <param name="arg.bc_latest">$cachedLatest$</param>
+                                                  </module>
+                                                </module>
+                                              </module>
+
+                                              <module name="NullModule" group="sites">
+
+                                                <module name="Link">
+                                                  <param name="cssClass">menuItem</param>
+                                                  <param name="label">view site details</param>
+
+                                                  <module name="Redirector">
+                                                    <param name="url">site_detail</param>
+                                                    <param name="arg.site">$row.cell.value$</param>
+                                                    <param name="arg.earliest">$cachedEarliest$</param>
+                                                    <param name="arg.latest">$cachedLatest$</param>
+
+                                                    <!--  things for breadcrumb links -->
+                                                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                    <param name="arg.bc_latest">$cachedLatest$</param>
+                                                  </module>
+                                                </module>
+                                              </module>
+
+                                              <module name="NullModule" group="gateways">
+
+                                                <module name="Link">
+                                                  <param name="cssClass">menuItem</param>
+                                                  <param name="label">view gateway details</param>
+
+                                                  <module name="Redirector">
+                                                    <param name="url">gateway_detail</param>
+                                                    <param name="arg.gateway">$row.cell.value$</param>
+                                                    <!-- sneaky, but we have this here because it's the core grouping field for Investigate Calls
+                                                    WARNING - if this gets used outside of the calls view this link will do weird things
+                                                    if there's the same gateway name on multiple clusters -->
+                                                    <param name="arg.clusterId">$row.fields.globalCallId_ClusterID$</param>
+
+                                                    <param name="arg.earliest">$cachedEarliest$</param>
+                                                    <param name="arg.latest">$cachedLatest$</param>
+
+                                                    <!--  things for breadcrumb links -->
+                                                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                                    <param name="arg.bc_latest">$cachedLatest$</param>
+
+                                                  </module>
+                                                </module>
+                                              </module>
+                                            </module>
+                                          </module>
+
+                                          <!--  This ValueSetter+Gate thing is a stopgap
+                                          to prevent this feature from showing up outside of CUCM data.
+                                          -->
+                                          <module name="ValueSetter">
+                                            <param name="name">has_field_gallery</param>
+                                            <param name="if.$row.fields.globalCallID_callId$=*">true</param>
+                                            <param name="if.$row.fields.cube_duration$=*">true</param>
+
+                                            <module name="Gate">
+                                              <param name="requiredKeys">has_field_gallery</param>
+
+                                              <module name="Link">
+                                                <param name="cssClass">menuItem</param>
+                                                <param name="label">learn about the $row.cell.field$ field</param>
+
+                                                <module name="Search">
+                                                  <param name="search"><![CDATA[
+                                                    | inputlookup field_gallery
+                                                    | search field="$row.cell.field$"
+                                                    | append [| makeresults count=1 | eval field="$row.cell.field$"]
+                                                    | stats last(*) as * by field
+                                                    | fillnull field value="$row.cell.field$"
+                                                    | fillnull sourcetype value="$row.fields.data_type$"
+                                                    | fillnull description value="Sorry there is no entry for this field"
+                                                    | table field description sourcetype type areas
+                                                    ]]></param>
+                                                  <module name="Layer">
+                                                    <module name="HTML">
+                                                      <param name="html"><![CDATA[
+                                                        <strong>$results[0].field$</strong>
+                                                        <p>
+                                                          found in <strong>$results[0].sourcetype$</strong>
+                                                        </p>
+                                                        <p>
+                                                          $results[0].description$
+                                                        </p>
+                                                      ]]></param>
+                                                    </module>
+                                                  </module>
+                                                </module>
+                                              </module>
+                                            </module>
+                                          </module>
+
+                                          <module name="CustomBehavior">
+                                            <param name="customBehavior">actionMenusForDetailViews</param>
+                                          </module>
+
+                                        </module>
+                                      </module>
+                                      <module name="Pager" layoutPanel="resultsAreaLeft" />
+                                    </module>
+                                  </module>
+
+                                  <pattern name="see_raw_search_syntax" layoutPanel="resultsAreaLeft" />
+
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+
+
+
+                          <module name="CustomBehavior" group="chart" layoutPanel="graphArea">
+                            <param name="customBehavior">buildMainReportingTokens</param>
+
+                            <module name="CustomBehavior">
+                              <param name="requiresDispatch">True</param>
+                              <param name="customBehavior">customLogicWhenZeroResultsAreFound</param>
+
+                              <module name="Pulldown">
+                                <param name="name">stat</param>
+                                <param name="label">chart the</param>
+                                <param name="clear">left</param>
+                                <param name="staticOptions">
+                                  <list>
+                                    <param name="label">distinct count of</param>
+                                    <param name="value">dc</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">average</param>
+                                    <param name="value">avg</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">max</param>
+                                    <param name="value">max</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">min</param>
+                                    <param name="value">min</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">sum</param>
+                                    <param name="value">sum</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">95th percentile</param>
+                                    <param name="value">perc95</param>
+                                  </list>
+                                  <list>
+                                    <param name="label">5th percentile</param>
+                                    <param name="value">perc5</param>
+                                  </list>
+                                </param>
+
+                                <module name="Pulldown">
+                                  <param name="name">yField</param>
+                                  <param name="valueField">field</param>
+                                  <param name="customBehavior">yFieldPulldown</param>
+                                  <param name="postProcess">`y_axis_fields`</param>
+                                  <param name="staticOptions">
+                                    <list>
+                                      <param name="value">call_id</param>
+                                      <param name="label">calls</param>
+                                    </list>
+                                    <list>
+                                      <param name="value">duration</param>
+                                      <param name="label">duration</param>
+                                    </list>
+                                    <list>
+                                      <param name="value"></param>
+                                      <param name="label">--------------</param>
+                                    </list>
+                                  </param>
+
+                                  <module name="Pulldown">
+                                    <param name="name">xField</param>
+                                    <param name="postProcess">search field!="dateTime*"</param>
+                                    <param name="valueField">field</param>
+                                    <param name="label">over</param>
+                                    <param name="customBehavior">xFieldPulldown</param>
+                                    <param name="staticOptions">
+                                      <list>
+                                        <param name="label">(no x-axis)</param>
+                                        <param name="value"></param>
+                                      </list>
+                                      <list>
+                                        <param name="label">time</param>
+                                        <param name="value">_time</param>
+                                        <param name="selected">true</param>
+                                      </list>
+                                    </param>
+
+                                    <module name="Pulldown">
+                                      <param name="name">xFieldBins</param>
+                                      <param name="label"># of bins</param>
+                                      <param name="customBehavior">xFieldBinsPulldown</param>
+                                      <param name="staticOptions">
+                                        <list><param name="value"></param><param name="label">none</param></list>
+                                        <list><param name="value">5</param></list>
+                                        <list><param name="value">10</param></list>
+                                        <list><param name="value">15</param></list>
+                                        <list><param name="value">20</param></list>
+                                        <list><param name="value">30</param></list>
+                                        <list><param name="value">50</param></list>
+                                        <list><param name="value">100</param></list>
+                                        <list><param name="value">250</param></list>
+                                        <list><param name="value">500</param></list>
+                                        <list><param name="value">800</param></list>
+                                      </param>
+
+                                      <module name="Pulldown">
+                                        <param name="name">zField</param>
+                                        <param name="label">split by</param>
+                                        <param name="valueField">field</param>
+                                        <param name="customBehavior">zFieldPulldown</param>
+                                        <param name="staticOptions">
+                                          <list>
+                                            <param name="label">(none)</param>
+                                            <param name="value"></param>
+                                          </list>
+                                        </param>
+
+                                        <module name="Pulldown">
+                                          <param name="name">zFieldBins</param>
+                                          <param name="label"># of bins</param>
+                                          <param name="customBehavior">zFieldBinsPulldown</param>
+                                          <param name="staticOptions">
+                                            <list><param name="value"></param><param name="label">none</param></list>
+                                            <list><param name="value">5</param></list>
+                                            <list><param name="value">10</param></list>
+                                            <list><param name="value">15</param></list>
+                                            <list><param name="value">20</param></list>
+                                            <list><param name="value">30</param></list>
+                                            <list><param name="value">50</param></list>
+                                            <list><param name="value">75</param></list>
+                                            <list><param name="value">100</param></list>
+                                          </param>
+
+                                          <module name="Search">
+                                            <param name="search"><![CDATA[
+    | stats count
+    | fields - count
+    | eval field1="$stat$($yField$) (descending)"
+    | eval field2="$stat$($yField$) (ascending)"
+    | eval field3="$xField$  (ascending)"
+    | eval field4="$xField$  (descending)"
+    | transpose
+    | rename "row 1" as sortByLabel
+    | eval sortByValue=replace(replace(sortByLabel,"\(ascending\)",""),"\(descending\)","desc")
+                                            ]]></param>
+
+                                            <module name="Pulldown">
+                                              <param name="name">sortBy</param>
+                                              <param name="label">sort by</param>
+                                              <param name="template"> | sort 0 $value$</param>
+                                              <param name="valueField">sortByValue</param>
+                                              <param name="labelField">sortByLabel</param>
+                                              <param name="staticOptions"></param>
+                                              <param name="customBehavior">sortByPulldown</param>
+
+                                              <module name="Button">
+                                                <param name="allowSoftSubmit">True</param>
+
+                                                <module name="CustomBehavior">
+                                                  <param name="customBehavior">buildMainReportingTokens</param>
+
+                                                  <module name="Report">
+                                                    <param name="name">report</param>
+                                                    <param name="stat">$stat$</param>
+                                                    <param name="xField">$xField$</param>
+                                                    <param name="yField">$yField$</param>
+                                                    <param name="zField">$zField$</param>
+                                                    <param name="xFieldBins">$xFieldBins$</param>
+                                                    <param name="zFieldBins">$zFieldBins$</param>
+                                                    <param name="customBehavior">concurrencyPatch</param>
+
+                                                    <module name="Search">
+                                                      <param name="search">$baseEventsSearch$$callReferenceIdSubsearch$$requiredExtractions$$advancedSearchLanguage$$statsCommand$$postStatsSearch$$postStatsTransform$| $report$ $sortBy$ $disableSearchOptimization$</param>
+
+                                                      <!-- a simple but odd trick, to make the search dispatch at this level in the page, so that
+                                                      when the user changes charting changes it doesn't trigger another search.  -->
+                                                      <module name="CustomBehavior">
+                                                        <param name="requiresDispatch">True</param>
+                                                      </module>
+
+                                                      <module name="Pulldown" layoutPanel="pageControls">
+                                                        <param name="name">displayChartAs</param>
+                                                        <param name="label">display as</param>
+                                                        <param name="float">left</param>
+                                                        <param name="staticOptions">
+                                                          <list>
+                                                            <param name="value">Chart</param>
+                                                          </list>
+                                                          <list>
+                                                            <param name="value">Table</param>
+                                                          </list>
+                                                        </param>
+
+                                                        <!-- looks a little crazy.  you might think - why have these all up here, under
+                                                        the displayChartAs module but UPSTREAM from the Switcher, and then have them show/hide
+                                                        themselves with customBehaviors.
+                                                        Why not just put them under the Switcher in the "chart" section? Well it's a catch-22.
+                                                        the save_create_buttons have to live above the Switcher, cause they are used on both sides
+                                                        yet the chart settings must be above the save_create_buttons, since their selections
+                                                        must be saved into the dashboard panels and savedsearches etc.
+                                                        -->
+                                                        <module name="Pulldown">
+                                                          <param name="name">charting.chart</param>
+                                                          <param name="label">chart type</param>
+                                                          <param name="float">left</param>
+                                                          <param name="staticOptions">
+                                                            <list>
+                                                              <param name="value">column</param>
+                                                            </list>
+                                                            <list>
+                                                              <param name="value">line</param>
+                                                            </list>
+                                                            <list>
+                                                              <param name="value">area</param>
+                                                            </list>
+                                                            <list>
+                                                              <param name="value">bar</param>
+                                                            </list>
+                                                          </param>
+                                                          <param name="customBehavior">chartTypePulldown</param>
+
+                                                          <module name="Pulldown">
+                                                            <param name="name">charting.chart.stackMode</param>
+                                                            <param name="label">Stack mode</param>
+                                                            <param name="float">left</param>
+                                                            <param name="staticOptions">
+                                                              <list>
+                                                                <param name="value">stacked</param>
+                                                                <param name="label">stacked</param>
+                                                              </list>
+                                                              <list>
+                                                                <param name="value">default</param>
+                                                                <param name="label">not stacked</param>
+                                                              </list>
+                                                            </param>
+                                                            <param name="customBehavior">stackModePulldown</param>
+
+                                                            <module name="Pulldown">
+                                                              <param name="name">charting.chart.nullValueMode</param>
+                                                              <param name="label">Null Values</param>
+                                                              <param name="float">left</param>
+                                                              <param name="staticOptions">
+                                                                <list>
+                                                                  <param name="value">zero</param>
+                                                                  <param name="label">Treat as zero</param>
+                                                                </list>
+                                                                <list>
+                                                                  <param name="value">gaps</param>
+                                                                  <param name="label">Omit</param>
+                                                                </list>
+                                                                <list>
+                                                                  <param name="value">connect</param>
+                                                                  <param name="label">Connect</param>
+                                                                </list>
+                                                              </param>
+                                                              <param name="customBehavior">nullValueModePulldown</param>
+
+                                                              <module name="Pulldown">
+                                                                <param name="name">charting.chart.showMarkers</param>
+                                                                <param name="label">Display markers</param>
+                                                                <param name="float">left</param>
+                                                                <param name="staticOptions">
+                                                                  <list>
+                                                                    <param name="value">true</param>
+                                                                    <param name="label">Yes</param>
+                                                                  </list>
+                                                                  <list>
+                                                                    <param name="value">false</param>
+                                                                    <param name="label">No</param>
+                                                                  </list>
+                                                                </param>
+                                                                <param name="customBehavior">showMarkersPulldown</param>
+
+                                                                <module name="ValueSetter" layoutPanel="resultsHeaderPanel">
+                                                                  <param name="name">zFieldLabel</param>
+                                                                  <param name="value">split by $zField$</param>
+                                                                  <param name="requiredKeys">zField</param>
+
+                                                                  <module name="ValueSetter">
+                                                                    <param name="name">xFieldLabel</param>
+                                                                    <param name="value">over $xField.label$</param>
+                                                                    <param name="requiredKeys">xField</param>
+
+                                                                    <module name="HTML">
+                                                                      <param name="float">left</param>
+                                                                      <param name="html"><![CDATA[
+                                                                        <h2>$stat.label$ $yField.label$ $xFieldLabel$ $zFieldLabel$ $search.timeRange.label$</h2>
+                                                                      ]]></param>
+                                                                    </module>
+                                                                  </module>
+                                                                </module>
+
+
+                                                                <module name="NullModule" layoutPanel="resultsHeaderPanel">
+                                                                  <pattern name="save_create_buttons" />
+                                                                </module>
+
+                                                                <module name="SearchControls" layoutPanel="resultsHeaderPanel">
+                                                                  <param name="sections">jobControls info export</param>
+                                                                  <param name="jobControls">cancel</param>
+                                                                  <param name="float">right</param>
+                                                                </module>
+
+
+                                                                <module name="ValueSetter">
+                                                                  <param name="arg.quality.fieldOrder">poor fair acceptable good</param>
+
+                                                                  <module name="Switcher">
+                                                                    <param name="selectedGroup">$displayChartAs$</param>
+
+                                                                    <module name="Chart" group="Chart" layoutPanel="resultsAreaLeft">
+                                                                      <param name="height">400px</param>
+
+                                                                      <module name="Layer">
+                                                                        <param name="cssClass">menu</param>
+
+                                                                        <!-- the new Javascript version that actually creates Link elements out of whole cloth -->
+                                                                        <module name="CustomBehavior">
+                                                                          <param name="customBehavior">actionMenusForAlteringFormSelectionsFromChart</param>
+                                                                        </module>
+
+                                                                      </module>
+                                                                    </module>
+
+                                                                    <module name="Pulldown" group="Table" layoutPanel="pageControls">
+                                                                      <param name="name">results.count</param>
+                                                                      <param name="label">results per page</param>
+                                                                      <param name="float">right</param>
+                                                                      <param name="clear">right</param>
+                                                                      <param name="staticOptions">
+                                                                        <list><param name="value">10</param></list>
+                                                                        <list><param name="value">20</param></list>
+                                                                        <list><param name="value">50</param></list>
+                                                                        <list><param name="value">100</param></list>
+                                                                      </param>
+
+                                                                      <module name="Pager">
+
+                                                                        <module name="Table" layoutPanel="resultsAreaLeft">
+                                                                          <param name="drilldown">cell</param>
+                                                                          <param name="customBehavior">callsTable</param>
+
+                                                                          <module name="Layer">
+                                                                            <param name="cssClass">menu</param>
+
+                                                                            <module name="Link">
+                                                                              <param name="cssClass">menuItem</param>
+                                                                              <param name="label">chart these calls over time</param>
+
+                                                                              <!-- TODO in theory these two should be an inline drilldown now,  but this is a bit of a rarely used area
+                                                                              so the fact that these reload the page is hopefully ok for a while.  -->
+                                                                              <module name="Redirector">
+                                                                                <param name="url">calls</param>
+                                                                                <param name="generalSearchTermField">searchterms</param>
+
+                                                                                <param name="arg.data_type">$data_type.rawValue$</param>
+                                                                                <param name="arg.mode">chart</param>
+                                                                                <param name="arg.type">$type.rawValue$</param>
+                                                                                <param name="arg.number">$number.rawValue$</param>
+                                                                                <param name="arg.numberType">$numberType.rawValue$</param>
+                                                                                <param name="arg.searchterms">$searchterms.rawValue$</param>
+                                                                                <param name="arg.advancedSearchLanguage">$advancedSearchLanguage.rawValue$</param>
+
+                                                                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                                                <param name="arg.latest">$search.timeRange.latest$</param>
+                                                                              </module>
+                                                                            </module>
+
+                                                                            <module name="Link">
+                                                                              <param name="cssClass">menuItem</param>
+                                                                              <param name="label">investigate these calls</param>
+
+                                                                              <module name="Redirector">
+                                                                                <param name="url">calls</param>
+                                                                                <param name="generalSearchTermField">searchterms</param>
+
+                                                                                <param name="arg.data_type">$data_type.rawValue$</param>
+                                                                                <param name="arg.mode">calls</param>
+                                                                                <param name="arg.type">$type.rawValue$</param>
+                                                                                <param name="arg.number">$number.rawValue$</param>
+                                                                                <param name="arg.numberType">$numberType.rawValue$</param>
+                                                                                <param name="arg.searchterms">$searchterms.rawValue$</param>
+                                                                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                                                                <param name="arg.latest">$search.timeRange.latest$</param>
+
+                                                                              </module>
+                                                                            </module>
+                                                                          </module>
+                                                                        </module>
+                                                                      </module>
+                                                                    </module>
+                                                                  </module>
+                                                                </module>
+                                                              </module>
+                                                            </module>
+                                                          </module>
+                                                        </module>
+                                                      </module>
+
+                                                      <pattern name="see_raw_search_syntax" layoutPanel="resultsAreaLeft" />
+
+                                                    </module>
+                                                  </module>
+                                                </module>
+                                              </module>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </pattern>
+
+  </module>
+</view>

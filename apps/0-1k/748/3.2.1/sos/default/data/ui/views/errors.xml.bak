@@ -1,0 +1,494 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="search.html">
+  <label>Errors</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Errors</param>
+      </list>
+    </param>
+  </module>
+  
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">errors.html</param>
+    </module>
+  </module>
+  
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 24 hours</param>
+          <param name="searchWhenChanged">True</param>
+
+            
+          <!-- COMMON CONTROLS END   -->
+            
+            
+            <!-- A) START UPPER PANEL FOR CHARTS . -->
+
+            <!--  NOTE: if you ever want to allow the user to specify 
+            'bar' vs 'column', you just uncomment this guy and stitch him
+            in upstream from a FlashChart module -->
+            <!-- 
+            <module name="Pulldown">
+              <param name="name">charting.chart</param>
+              <param name="label">Chart type:</param>
+              <param name="float">left</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">Bar</param>
+                  <param name="value">bar</param>
+                </list>
+                <list>
+                  <param name="label">Column</param>
+                  <param name="value">column</param>
+                </list>
+              </param>
+              -->
+
+              
+            <!-- buggy SubmitButton CSS leaves an uncleared
+            float so we have to clear it here with the Pulldown's clear
+            param.  -->
+            <module name="Pulldown" layoutPanel="mainSearchControls">
+              <param name="name">optionalHeadClause</param>
+              <param name="label">Events to Chart:</param>
+              <param name="template"> | head $value$</param>
+              <param name="clear">both</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">10000</param>
+                  <param name="value">10000</param>
+                </list>
+                <list>
+                  <param name="label">100000</param>
+                  <param name="value">100000</param>
+                  <param name="selected">True</param>
+                </list>
+                <list>
+                  <param name="label">all</param>
+                  <param name="value"></param>
+                </list>
+              </param>
+              <!-- NOTE: uses a datacube search so both charts are rendered 
+              from the same search See the "UI Examples for 4.1" app for 
+              more details. Specifically 'using postProcess in dashboards' 
+              -->
+              <module name="Search"> 
+                <param name="search">
+                 `set_internal_index` source=*splunkd.log $host$
+                  (log_level=ERROR OR log_level=WARN* OR log_level=FATAL OR log_level=CRITICAL)
+                 $optionalHeadClause$
+                 | bucket _time bins=1000
+                 | stats count by log_level, component, _time
+                </param>
+                
+                <!-- presence of this JPI here just below the Search 
+                     module will force a single datacube search to dispatch 
+                     for both Charts.
+                     omit this module here, and you'll get two searches. 
+                     Refer to "UI Examples for 4.1" for why this is the case.
+                --> 
+                <module name="JobProgressIndicator" layoutPanel="viewHeader"></module>
+
+                <module name="HiddenPostProcess">
+                  <param name="search">chart sum(count) as count over log_level by component</param>
+                  <module name="HiddenChartFormatter">
+                    <param name="chartTitle"> ERROR and WARN events, by component (from splunkd.log)</param>
+                    <param name="charting.chart">bar</param>
+                    <param name="secondaryAxis.scale">log</param>
+                    <param name="charting.axisTitleX.visibility">collapsed</param>
+                     <param name="charting.legend.placement">bottom</param>
+                    <module name="FlashChart">
+                      <param name="height">350px</param>
+                    </module>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess">
+                  <param name="search">timechart sum(count) as count by component useother=f</param>
+                  <module name="HiddenChartFormatter">
+                    <param name="chartTitle">Total ERROR and WARN events, over time (from splunkd.log)</param>
+                    <param name="charting.chart">line</param>
+                    <param name="secondaryAxis.scale">log</param>
+                    <param name="charting.chart.nullValueMode">zero</param>
+                    <param name="charting.axisTitleX.visibility">collapsed</param>
+                     <param name="charting.legend.placement">bottom</param>
+                    <module name="FlashChart">
+                      <param name="height">350px</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module><!-- Search -->
+
+
+            <!-- in application.css we float the two FlashCharts alongside 
+            eachother.  However this causes problems so we have to intervene
+            and clear it here -->
+            <module name="StaticContentSample" layoutPanel="mainSearchControls">
+              <param name="text">&lt;div style="clear:both"&gt;&lt;/div&gt;</param>
+            </module>
+
+            <!-- B) START LOWER PANEL FOR EVENTSVIEWER AND ITS PULLDOWNS. -->
+            <!-- B1) search for the source and component pulldowns -->
+            
+
+            <module name="Search" layoutPanel="graphArea">
+              <param name="search">
+               `set_internal_index` $host$ (source=*splunkd.log OR source=*web_service.log OR source=*scheduler.log OR source=*python.log)
+               | head 100000
+               | stats count by source, component, log_level 
+              </param>
+
+              <module name="Pulldown">
+                <param name="name">source</param>
+                <param name="template">$name$="$value$"</param>
+                <param name="label">Log files :</param>
+                <param name="float">left</param>
+                
+                <!-- NOTE this is multiselect config      -->
+                <!-- these three params add up to         -->
+                <!-- ( foo=bar1 OR foo=bar2 OR foo=bar3 ) -->
+                <!-- see example page at:                 -->
+                <!-- /en-US/app/sideview_utils/pulldown6_dynamic_multipleselect -->
+                <param name="size">5</param>
+                <param name="separator">+OR+</param>
+                <param name="outerTemplate">( $value$ )</param>
+
+                <param name="staticFieldsToDisplay">
+                  <list>
+                    <param name="label">All</param>
+                    <param name="value">*</param>
+                  </list>
+                  <list>
+                    <param name="label">splunkd.log</param>
+                    <param name="value">*splunkd.log</param>
+                    <param name="selected">True</param>
+                  </list>
+                  <list>
+                    <param name="label">web_service.log</param>
+                    <param name="value">*web_service.log</param>
+                  </list>
+                  <list>
+                    <param name="label">scheduler.log</param>
+                    <param name="value">*scheduler.log</param>
+                  </list>
+                  <list>
+                    <param name="label">python.log</param>
+                    <param name="value">*python.log</param>
+                  </list>
+                </param>
+
+                <!-- note that we render this back into mainSearchControls 
+                     so it appears above all three pulldowns -->
+                <module name="JobProgressIndicator" layoutPanel="mainSearchControls"></module>
+                
+                <module name="Pulldown">
+                  <param name="name">component</param>
+                  <param name="template">$name$="$value$"</param>
+                  <param name="postProcess">search $source$ | dedup $name$ | sort $name$</param>
+                  <param name="label">Component :</param>
+                  <param name="float">left</param>
+
+                  <!-- NOTE this is multiselect config      -->
+                  <!-- these three params add up to         -->
+                  <!-- ( foo=bar1 OR foo=bar2 OR foo=bar3 ) -->
+                  <!-- see example page at:                 -->
+                  <!-- /en-US/app/sideview_utils/pulldown6_dynamic_multipleselect -->
+                  <param name="size">5</param>
+                  <param name="separator">+OR+</param>
+                  <param name="outerTemplate">( $value$ )</param>
+
+                  <param name="searchFieldsToDisplay">
+                    <list>
+                      <param name="label">component</param>
+                      <param name="value">component</param>
+                    </list>
+                  </param>
+                  
+                  <!-- try and preselect to ERROR -->
+                  <!-- try and make eventsViewer not autoRun -->
+                  <!-- pulldown to switch between bar and column -->
+                  <module name="Pulldown">
+                    <param name="name">log_level</param>
+                    <param name="template">$name$="$value$"</param>
+                    <param name="postProcess">search $source$ $component$ | dedup $name$ | eval order = case ($name$="DEBUG", 0, $name$="INFO",1,$name$="WARN",2,$name$="WARNING",3,$name$="ERROR",4,$name$="FATAL",5) | sort order</param>
+                    <param name="label">Log level:</param>
+
+                    <!-- NOTE this is multiselect config      -->
+                    <!-- these three params add up to         -->
+                    <!-- ( foo=bar1 OR foo=bar2 OR foo=bar3 ) -->
+                    <!-- see example page at:                 -->
+                    <!-- /en-US/app/sideview_utils/pulldown6_dynamic_multipleselect -->
+                    <param name="size">5</param>
+                    <param name="separator">+OR+</param>
+                    <param name="outerTemplate">( $value$ )</param>
+
+                    <param name="searchFieldsToDisplay">
+                      <list>
+                        <param name="label">log_level</param>
+                        <param name="value">log_level</param>
+                      </list>
+                    </param>
+
+                    <!-- because we're using the legacy SearchBar we have to
+                    use another Search or it will get populated 
+                    with one of the upstream search strings -->
+                    <module name="Search">
+                      <param name="search">*</param>
+
+                      <module name="Checkbox">
+                        <param name="name">cluster</param>
+                        <param name="checked">True</param>
+                        <param name="clear">both</param>
+                        <param name="label">Group similar events</param>
+                        <param name="labelPosition">right</param>
+                        <param name="onValue">| cluster showcount=t | table cluster_count, _raw | sort - cluster_count</param>
+
+                        <module name="SearchBar">
+                          <param name="default"> </param>
+
+                          <module name="Search">
+                            <param name="search">`set_internal_index` $host$ $source$ $component$ $log_level$ $searchBar$ $cluster$</param>
+
+
+                            <!-- FROM HERE ITS JUST PASTED FROM FLASHTIMELINE, 
+                                 STARTING FROM THE FIELDPICKER -->
+
+                            <module name="FieldPicker" layoutPanel="sidebar">
+                              <param name="fields">host source component log_level</param>
+                              <param name="link">
+                                <param name="view">report_builder_format_report</param>
+                              </param>
+                              <module name="Message" layoutPanel="resultsAreaLeft">
+                                <param name="filter">pageControls</param>
+                                <param name="clearOnJobDispatch">True</param>
+                                <param name="maxSize">1</param>
+                              </module>
+                              <module name="Count" layoutPanel="pageControls">
+                                <param name="options">
+                                  <list>
+                                    <param name="text">10</param>
+                                    <param name="value">10</param>
+                                  </list>
+                                  <list>
+                                    <param name="text">20</param>
+                                    <param name="value">20</param>
+                                  </list>
+                                  <list>
+                                    <param name="text">50</param>
+                                    <param name="selected">True</param>
+                                    <param name="value">50</param>
+                                  </list>
+                                </param>
+                                <module name="ButtonSwitcher" layoutPanel="pageControls">
+                                  <param name="mode">independent</param>
+                                  <param name="hideChildrenOnLoad">True</param>
+                                  <param name="selected">splIcon-events-list</param>
+                                  <param name="disableOnNull">True</param>
+                                  <module name="ResultsHeader" layoutPanel="resultsHeaderPanel" group="splIcon-events-list" altTitle="Events List">
+                                    <param name="entityLabel">event(s)</param>
+                                    <param name="entityName">events</param>
+                                    <module name="Paginator" layoutPanel="pageControls">
+                                      <param name="entityName">events</param>
+                                      <param name="maxPages">10</param>
+                                    
+                                      <module name="SoftWrap" layoutPanel="resultsOptions">
+                                        <param name="enable">True</param>
+                                        <module name="RowNumbers">
+                                          <module name="MaxLines">
+                                            <param name="options">
+                                              <list>
+                                                <param name="text">5</param>
+                                                <param name="selected">True</param>
+                                                <param name="value">5</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">10</param>
+                                                <param name="value">10</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">20</param>
+                                                <param name="value">20</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">50</param>
+                                                <param name="value">50</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">100</param>
+                                                <param name="value">100</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">200</param>
+                                                <param name="value">200</param>
+                                              </list>
+                                              <list>
+                                                <param name="text">All</param>
+                                                <param name="value">0</param>
+                                              </list>
+                                            </param>
+                                            <module name="Segmentation" >
+                                              <param name="options">
+                                                <list>
+                                                  <param name="text">inner</param>
+                                                  <param name="selected">True</param>
+                                                  <param name="value">inner</param>
+                                                </list>
+                                                <list>
+                                                  <param name="text">outer</param>
+                                                  <param name="value">outer</param>
+                                                </list>
+                                                <list>
+                                                  <param name="text">full</param>
+                                                  <param name="value">full</param>
+                                                </list>
+                                                <list>
+                                                  <param name="text">raw</param>
+                                                  <param name="value">raw</param>
+                                                </list>
+                                              </param>
+
+                                              <module name="EventsViewer" layoutPanel="resultsAreaLeft">
+                                                <param name="segmentation">full</param>
+                                                <param name="reportFieldLink">report_builder_format_report</param>
+                                              </module>
+  
+                                              <module name="Paginator" layoutPanel="resultsAreaLeft">
+                                                <param name="entityName">events</param>
+                                                <param name="maxPages">10</param>
+                                              </module>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+  
+                                  <module name="ResultsHeader" layoutPanel="resultsHeaderPanel" group="splIcon-events-table" altTitle="Events Table">
+                                    <param name="entityLabel">event(s)</param>
+                                    <param name="entityName">events</param>
+                                    <module name="Paginator" layoutPanel="pageControls">
+                                      <param name="entityName">events</param> 
+                                      <param name="maxPages">10</param>
+                                      <module name="RowNumbers" layoutPanel="resultsOptions">
+                                        <module name="DataOverlay" layoutPanel="resultsAreaLeft">
+                                          <module name="SimpleResultsTable" layoutPanel="resultsAreaLeft">
+                                            <param name="entityName">events</param>
+                                          </module>
+                                          <module name="Paginator" layoutPanel="resultsAreaLeft">
+                                            <param name="entityName">events</param>
+                                            <param name="maxPages">10</param>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                  <module name="ResultsHeader" layoutPanel="resultsHeaderPanel" group="splIcon-results-table" altTitle="Results Table">
+                                    <param name="entityLabel">result(s)</param>
+                                    <param name="entityName">results</param>
+                                    <module name="EnablePreview" group="show" layoutPanel="resultsOptions">
+                                      <param name="enable">True</param>
+                                      <module name="Paginator" layoutPanel="pageControls">
+                                        <param name="entityName">results</param> 
+                                        <param name="maxPages">10</param>
+                                        <module name="RowNumbers" layoutPanel="resultsOptions">
+                                          <module name="DataOverlay" layoutPanel="resultsAreaLeft">
+                                            <module name="SimpleResultsTable" layoutPanel="resultsAreaLeft">
+                                              <param name="entityName">results</param>
+                                              <param name="drilldown">all</param>
+                                              <module name="ConvertToDrilldownSearch">
+                                                <module name="ViewRedirector">
+                                                  <param name="viewTarget">flashtimeline</param>
+                                                  <param name="popup">True</param>
+                                                </module>
+                                              </module>
+                                            </module>
+                                            <module name="Paginator" layoutPanel="resultsAreaLeft">
+                                              <param name="entityName">results</param>
+                                              <param name="maxPages">10</param>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>                
+                              </module>
+                            
+                              <module name="MultiFieldViewer">
+                                <param name="link">
+                                  <param name="view">report_builder_format_report</param>
+                                </param>
+                              </module>
+  
+                              <module name="SuggestedFieldViewer">
+                                <param name="minDistinctCount">1</param>
+                                <param name="minFrequency">0.5</param>
+                                <param name="maxFields">50</param>
+                                <param name="exclude">
+                                  <list>^date_.*</list>
+                                </param>
+                                <param name="link">
+                                  <param name="view">report_builder_format_report</param>
+                                </param>
+                              </module>
+  
+                            </module><!-- end fieldpicker -->
+                          </module>
+
+
+                        </module>
+                      </module>
+                    </module>
+                      
+                  </module>
+
+                </module>
+              </module>
+            </module>
+
+        </module> <!-- TimeRangePicker --> 
+      </module> <!-- ResultsValueSetter -->
+    </module> <!-- Search -->
+  </module> <!-- URLLoader -->
+</view>

@@ -1,0 +1,337 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+	<label>Traffic by Subnets</label>
+	<fieldset autoRun="True">
+		<input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+			<label>NFO hostnames</label>
+			<default>*</default>
+			<search>
+				<query>| `populate_nfo_hostnames`</query>
+			</search>
+			<fieldForLabel>nfo_hostname</fieldForLabel>
+			<fieldForValue>nfo_hostname</fieldForValue>
+		</input>
+		<input type="dropdown" token="exp_group" searchWhenChanged="false">
+			<label>Device group</label>
+			<default>*</default>
+			<search>
+				<query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+			</search>
+			<fieldForLabel>exp_group</fieldForLabel>
+			<fieldForValue>exp_group</fieldForValue>
+		</input>
+		<input type="dropdown" token="exp_ip" searchWhenChanged="false">
+			<label>Device</label>
+			<default>*</default>
+			<choice value="*">*</choice>
+			<search>
+				<query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+			</search>
+			<fieldForLabel>name</fieldForLabel>
+			<fieldForValue>exp_ip</fieldForValue>
+		</input>
+		<input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+			<label>Source IP/mask</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="subnet" id="dest_input" searchWhenChanged="False">
+			<label>Subnet IP/mask</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+			<label>Protocol</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+			<label>Advanced Filter</label>
+			<default>*</default>
+		</input>
+		<input type="time" searchWhenChanged="False">
+			<label>Time Range</label>
+			<default>Last 60 minutes</default>
+		</input>
+	</fieldset>
+	<search>
+		<query>`netflow_search_rule_20011` | `set_span`</query>
+		<earliest>$earliest$</earliest>
+		<latest>$latest$</latest>
+		<done>
+			<condition match="'job.resultCount' > 0">
+				<set token="show_content">true</set>
+				<set token="span_token">$result.span$</set>
+				<set token="span_int">$result.span_int$</set>
+				<set token="range">$result.range$</set>
+				<set token="earliest_token">$result.all_time_earliest$</set>
+				<set token="latest_token">$result.all_time_latest$</set>
+				<unset token="show_hint"/>
+			</condition>
+			<condition>
+				<unset token="show_content"/>
+				<set token="show_hint">true</set>
+			</condition>
+		</done>
+	</search>
+	<search>
+		<query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+		<earliest>-24h@h</earliest>
+		<latest>now</latest>
+		<done>
+			<condition>
+				<set token="charting.chart_value">$result.charting.chart$</set>
+				<set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+			</condition>
+		</done>
+	</search>
+	<search id="baseSearchChart">
+		<query>`netflow_search_rule_20011` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" src_ip="$src_ip$" $advanced_filter$
+                | dedup subnet mask src_ip protocol _time
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$"
+                | fillnull value="" transport
+                | search transport="$protocol_name$"
+                | strcat subnet "/" mask fullsubnet 
+                | search fullsubnet="$subnet$" 
+		</query>
+		<earliest>$earliest_token$</earliest>
+		<latest>$latest_token$</latest>
+	</search>
+	<row depends="$show_content$">
+		<panel>
+			<chart>
+				<title>Traffic Inbound</title>
+				<search base="baseSearchChart">
+					<query>
+						| `sampling(bytes_in)`
+						| `per_second_chart(sum(bytes_in) by fullsubnet,"$span_token$",$span_int$)`
+					</query>
+				</search>
+				<option name="charting.chart">$charting.chart_value$</option>
+				<option name="charting.chart.nullValueMode">zero</option>
+				<option name="charting.axisTitleX.text">Time</option>
+				<option name="charting.axisTitleY.text">Mbps</option>
+				<option name="charting.legend.placement">right</option>
+				<option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+				<option name="charting.drilldown">none</option>
+				<option name="height">200</option>
+			</chart>
+		</panel>
+		<panel>
+			<chart>
+				<title>Traffic Outbound</title>
+				<search base="baseSearchChart">
+					<query>
+						| `sampling(bytes_out)`
+						| `per_second_chart(sum(bytes_out) by fullsubnet,"$span_token$",$span_int$)`
+					</query>
+				</search>
+				<option name="charting.chart">$charting.chart_value$</option>
+				<option name="charting.chart.nullValueMode">zero</option>
+				<option name="charting.axisTitleX.text">Time</option>
+				<option name="charting.axisTitleY.text">Mbps</option>
+				<option name="charting.legend.placement">right</option>
+				<option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+				<option name="charting.drilldown">none</option>
+				<option name="height">200</option>
+			</chart>
+		</panel>
+	</row>
+	<row depends="$show_content$">
+		<panel>
+			<chart>
+				<title>Inbound and Outbound Traffic (Pan and Zoom to select a specific time interval)</title>
+				<search base="baseSearchChart">
+					<query>
+						| `sampling(bytes_in)`
+						| `sampling(bytes_out)`
+						| eval bytes_both = bytes_in + bytes_out
+						| `per_second_chart(sum(bytes_both) by fullsubnet,"$span_token$",$span_int$)`
+					</query>
+				</search>
+				<option name="charting.chart">$charting.chart_value$</option>
+				<option name="charting.chart.nullValueMode">zero</option>
+				<option name="charting.axisTitleX.text">Time</option>
+				<option name="charting.axisTitleY.text">Mbps</option>
+				<option name="charting.legend.placement">right</option>
+				<option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+				<option name="charting.drilldown">none</option>
+				<option name="height">200</option>
+				<selection>
+					<set token="selection.earliest">$start$</set>
+					<set token="selection.latest">$end$</set>
+					<unset token="Subnet/mask"/>
+				</selection>
+			</chart>
+			<table id="table_1_1">
+				<title>Click on a row to drill down</title>
+				<search>
+					<query>`netflow_search_rule_20011` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" src_ip="$src_ip$" $advanced_filter$
+                            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                            | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" src_ip="$src_ip$" 
+                            | fillnull value="" transport
+                            | search transport="$protocol_name$"
+                            | strcat subnet "/" mask fullsubnet 
+                            | search fullsubnet="$subnet$" 
+                            | `sampling(bytes_in)` 
+                            | `sampling(bytes_out)` 
+                            | `sampling(packets_in)` 
+                            | `sampling(packets_out)`
+                            | eval bytes = bytes_in+bytes_out
+                            | bin _time $span_token$
+                            | stats  sum(bytes_in) as sumbytes_in 
+                                sum(bytes_out) as sumbytes_out
+                                sum(bytes) as sumbytes
+                                sum(packets_in) as sumpackets_in 
+                                sum(packets_out) as sumpackets_out
+                                    by nfo_hostname exp_ip fullsubnet transport _time
+                            | eval avgbits= sumbytes*8/($span_int$)
+                            | eval avgbits_in= sumbytes_in*8/($span_int$)
+                            | eval avgbits_out= sumbytes_out*8/($span_int$)
+                            | stats sum(sumbytes) as TrafficAmount 
+                                sum(sumbytes_in) as TrafficAmountIn
+                                sum(sumbytes_out) as TrafficAmountOut
+                                sum(sumpackets_in) as PacketsAmountIn
+                                sum(sumpackets_out) as PacketsAmountOut
+                                sum(sumflowcount) as Connections 
+                                max(avgbits) as MaxTraffic
+                                max(avgbits_in) as MaxTrafficIn
+                                max(avgbits_out) as MaxTrafficOut
+                                    by nfo_hostname exp_ip fullsubnet transport 
+                            | sort 0 - TrafficAmount
+                            | head 100 
+                            | eval AverageSpeed=(TrafficAmount)*8/$range$
+                            | eval AverageSpeedIn=(TrafficAmountIn)*8/$range$
+                            | eval AverageSpeedOut=(TrafficAmountOut)*8/$range$
+                            | eval PacketsSpeedIn=(PacketsAmountIn)/$range$
+                            | eval PacketsSpeedOut=(PacketsAmountOut)/$range$
+                            | eval TrafficSpeed=AverageSpeed/1000000
+                            | eval TrafficSpeedIn=AverageSpeedIn/1000000
+                            | eval TrafficSpeedOut=AverageSpeedOut/1000000
+                            | eval TrafficAmount=TrafficAmount/1024/1024
+                            | eval TrafficAmountIn=TrafficAmountIn/1024/1024
+                            | eval TrafficAmountOut=TrafficAmountOut/1024/1024
+                            | eval MaxTraffic=MaxTraffic/1000000
+                            | eval MaxTrafficIn=MaxTrafficIn/1000000
+                            | eval MaxTrafficOut=MaxTrafficOut/1000000
+                            | `get_exporter_name(exp_ip_name)`
+                            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+                            | `commas_formatting(Total Traffic MB, TrafficAmount, 2)`
+                            | `commas_formatting(Average Mbps received, TrafficSpeedIn, 2)`
+                            | `commas_formatting(Total Traffic MB received, TrafficAmountIn, 2)`
+                            | `commas_formatting(Average Mbps sent, TrafficSpeedOut, 2)`
+                            | `commas_formatting(Total Traffic MB sent, TrafficAmountOut, 2)`
+                            | `commas_formatting(Average Packets/s received, PacketsSpeedIn, 2)`
+                            | `commas_formatting(Total Packets received, PacketsAmountIn, 0)`
+                            | `commas_formatting(Average Packets/s sent, PacketsSpeedOut, 2)`
+                            | `commas_formatting(Total Packets sent, PacketsAmountOut, 0)`
+                            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+                            | `commas_formatting(Max Mbps received, MaxTrafficIn, 2)`
+                            | `commas_formatting(Max Mbps sent, MaxTrafficOut, 2)`
+                            | table fullsubnet nfo_hostname exp_ip_name transport  "Max Mbps received" "Average Mbps received" "Total Traffic MB received" "Max Mbps sent" "Average Mbps sent" "Total Traffic MB sent" "Max Mbps" "Average Mbps" "Total Traffic MB" "Average Packets/s received" "Total Packets received" "Average Packets/s sent" "Total Packets sent"
+                            | rename exp_ip_name as "Device" 
+                            | rename fullsubnet as "Subnet/mask" 
+                            | rename transport as "Protocol"
+                            | rename nfo_hostname as "NFO"
+					</query>
+					<earliest>$selection.earliest$</earliest>
+					<latest>$selection.latest$</latest>
+				</search>
+				<option name="count">10</option>
+				<option name="drilldown">row</option>
+				<drilldown>
+					<set token="Subnet/mask">$row.Subnet/mask$</set>
+					<set token="Device">$row.Device$</set>
+					<eval token="Exp_IP">mvindex(split($row.Device$, " "),0)</eval>
+					<set token="NFO">$row.NFO$</set>
+				</drilldown>
+			</table>
+		</panel>
+	</row>
+	<row depends="$show_content$">
+		<panel>
+			<table id="table_2_1" depends="$Subnet/mask$">
+				<title>Top Source Hosts for Subnet/mask "$Subnet/mask$" reported by $submitted:Device$ NFO $NFO$</title>
+				<search>
+					<query>`netflow_search_rule_20011` exp_ip="$Exp_IP$" nfo_hostname="$NFO$" $advanced_filter$
+							| fillnull value="" transport
+							| search transport="$protocol_name$"
+							| strcat subnet "/" mask fullsubnet 
+							| search fullsubnet="$Subnet/mask$" 
+							| `sampling(bytes_in)` 
+							| `sampling(bytes_out)` 
+							| `sampling(packets_in)` 
+							| `sampling(packets_out)`
+							| eval bytes = bytes_in+bytes_out
+							| bin _time $span_token$
+							| stats  sum(bytes_in) as sumbytes_in 
+								sum(bytes_out) as sumbytes_out
+								sum(bytes) as sumbytes
+								sum(packets_in) as sumpackets_in 
+								sum(packets_out) as sumpackets_out
+									by  exp_ip src_ip fullsubnet transport _time  nfo_hostname
+							| eval avgbits= sumbytes*8/($span_int$)
+							| eval avgbits_in= sumbytes_in*8/($span_int$)
+							| eval avgbits_out= sumbytes_out*8/($span_int$)
+							| stats sum(sumbytes) as TrafficAmount 
+								sum(sumbytes_in) as TrafficAmountIn
+								sum(sumbytes_out) as TrafficAmountOut
+								sum(sumpackets_in) as PacketsAmountIn
+								sum(sumpackets_out) as PacketsAmountOut
+								sum(sumflowcount) as Connections 
+								max(avgbits) as MaxTraffic
+								max(avgbits_in) as MaxTrafficIn
+								max(avgbits_out) as MaxTrafficOut
+									by exp_ip src_ip fullsubnet transport nfo_hostname
+							| sort 0 - TrafficAmount
+							| head 100 
+							| eval AverageSpeed=(TrafficAmount)*8/$range$
+							| eval AverageSpeedIn=(TrafficAmountIn)*8/$range$
+							| eval AverageSpeedOut=(TrafficAmountOut)*8/$range$
+							| eval PacketsSpeedIn=(PacketsAmountIn)/$range$
+							| eval PacketsSpeedOut=(PacketsAmountOut)/$range$
+							| eval TrafficSpeed=AverageSpeed/1000000
+							| eval TrafficSpeedIn=AverageSpeedIn/1000000
+							| eval TrafficSpeedOut=AverageSpeedOut/1000000
+							| eval TrafficAmount=TrafficAmount/1024/1024
+							| eval TrafficAmountIn=TrafficAmountIn/1024/1024
+							| eval TrafficAmountOut=TrafficAmountOut/1024/1024
+							| eval MaxTraffic=MaxTraffic/1000000
+							| eval MaxTrafficIn=MaxTrafficIn/1000000
+							| eval MaxTrafficOut=MaxTrafficOut/1000000
+							| `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+							| `commas_formatting(Total Traffic MB, TrafficAmount, 0)`
+							| `commas_formatting(Average Mbps received, TrafficSpeedIn, 2)`
+							| `commas_formatting(Total Traffic MB received, TrafficAmountIn, 0)`
+							| `commas_formatting(Average Mbps sent, TrafficSpeedOut, 2)`
+							| `commas_formatting(Total Traffic MB sent, TrafficAmountOut, 0)`
+							| `commas_formatting(Average Packets/s received, PacketsSpeedIn, 2)`
+							| `commas_formatting(Total Packets received, PacketsAmountIn, 0)`
+							| `commas_formatting(Average Packets/s sent, PacketsSpeedOut, 2)`
+							| `commas_formatting(Total Packets sent, PacketsAmountOut, 0)`
+							| `commas_formatting(Max Mbps, MaxTraffic, 2)`
+							| `commas_formatting(Max Mbps received, MaxTrafficIn, 2)`
+							| `commas_formatting(Max Mbps sent, MaxTrafficOut, 2)`
+							| `get_exporter_name(exp_ip_name)`
+							| table fullsubnet exp_ip_name src_ip transport "Max Mbps received" "Average Mbps received" "Total Traffic MB received" "Max Mbps sent" "Average Mbps sent" "Total Traffic MB sent" "Max Mbps" "Average Mbps" "Total Traffic MB" "Average Packets/s received" "Total Packets received" "Average Packets/s sent" "Total Packets sent"
+							| rename exp_ip_name as "Device" 
+							| rename fullsubnet as "Subnet/mask" 
+							| rename src_ip as "Source IP" 
+							| rename transport as "Protocol"
+					</query>
+					<earliest>$selection.earliest$</earliest>
+					<latest>$selection.latest$</latest>
+				</search>
+				<option name="count">10</option>
+				<option name="showPager">true</option>
+				<option name="drilldown">none</option>
+			</table>
+		</panel>
+	</row>
+	<row depends="$show_hint$">
+		<panel>
+			<html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10011: Network Subnets Monitor”</b> (syslogs with nfc_id=20011). This Module reports top bandwidth consumers for each monitored subnet. This information is provided per NetFlow exporter and monitored subnet. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+		</panel>
+	</row>
+</form>

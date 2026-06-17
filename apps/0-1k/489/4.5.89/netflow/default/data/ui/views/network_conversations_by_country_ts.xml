@@ -1,0 +1,211 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Network Conversations by Country TS</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="checkbox" searchWhenChanged="False">
+      <label>GeoIP source</label>
+      <choice value="*">GeoIP from NFO</choice>
+      <change>
+        <condition label="GeoIP from NFO">
+          <set token="geo_ip">| eval Country=location_cc</set>
+        </condition>
+        <condition>
+          <set token="geo_ip"></set>
+        </condition>
+      </change>
+    </input>
+    <input type="checkbox" searchWhenChanged="False">
+      <label>Show Blocked Flows</label>
+      <choice value="*">Show Blocked Flows</choice>
+      <change>
+        <condition label="Show Blocked Flows">
+          <set token="blocked_flows"></set>
+        </condition>
+        <condition>
+          <set token="blocked_flows">| search action!=R</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20062` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <map>
+        <title>Inbound initiated traffic</title>
+        <search>
+          <query>
+            | tstats sum(PREFIX(flow_count=)) as sum_flow_count   
+              where `netflow_search_rule_20062` TERM(exp_ip=$exp_ip$) direction=inbound  nfo_hostname="$nfo_hostname$" $advanced_filter$   
+              by PREFIX(src_ip=) PREFIX(exp_ip=) direction action nfo_hostname 
+            | rename exp_ip= as exp_ip
+            | rename src_ip= as src_ip
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$"  $blocked_flows$         
+            | iplocation src_ip
+            | eval location_cc = if(direction=="inbound",src_cc,"")
+            | iplocation src_ip $geo_ip$
+            | search Country!=""
+            | geostats globallimit=0  sum(sum_flow_count) by src_ip
+          </query>
+          <earliest>$earliest_token$</earliest>
+          <latest>$latest_token$</latest>
+        </search>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(40.45,-2.81)</option>
+        <option name="mapping.map.zoom">1</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="drilldown">all</option>
+      </map>
+    </panel>
+    <panel>
+      <map>
+        <title>Outbound initiated traffic</title>
+        <search>
+          <query>
+            | tstats sum(PREFIX(flow_count=)) as sum_flow_count   
+              where `netflow_search_rule_20062` TERM(exp_ip=$exp_ip$) direction=outbound  nfo_hostname="$nfo_hostname$" $advanced_filter$   
+              by PREFIX(dest_ip=) PREFIX(exp_ip=) direction action nfo_hostname 
+            | rename exp_ip= as exp_ip
+            | rename dest_ip= as dest_ip
+            | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$"  $blocked_flows$         
+            | iplocation dest_ip
+            | eval location_cc = if(direction=="outbound",dest_cc,"")
+            | iplocation dest_ip $geo_ip$
+            | search Country!=""
+            | geostats globallimit=0  sum(sum_flow_count) by dest_ip
+          </query>
+          <earliest>$earliest_token$</earliest>
+          <latest>$latest_token$</latest>
+        </search>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(40.45,-2.81)</option>
+        <option name="mapping.map.zoom">1</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="drilldown">all</option>
+      </map>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_1">
+        <title>Traffic</title>
+        <search>
+          <query>
+              `netflow_search_rule_20062` $blocked_flows$
+              | search $advanced_filter$ 
+              | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+              | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+              | fillnull value=0 bytes_out 
+              | fillnull value="" src_cc dest_cc src_host src_vm_name dest_host dest_vm_name
+              | eval bytes = bytes_in + bytes_out 
+              | stats sum(bytes) as TrafficAmount 
+                  sum(flow_count) as Connections 
+                  sum(bytes_in) as sndbytes 
+                  sum(bytes_out) as rcvbytes 
+                      by nfo_hostname exp_ip src_ip src_host src_vm_name dest_ip dest_host dest_vm_name src_cc dest_cc direction
+              | sort - TrafficAmount
+              | eval TrafficAmount=TrafficAmount/1024/1024
+              | eval sndMB=sndbytes/1024/1024
+              | eval rcvMB=rcvbytes/1024/1024
+              | `commas_formatting(Total Traffic MB, TrafficAmount)`
+              | `commas_formatting(MB Sent, sndMB)`
+              | `commas_formatting(MB Received, rcvMB)`
+              | `commas_formatting(Flow Count, Connections)`
+              | `get_exporter_name(exp_ip_name)`
+              | fillnull value="" src_host src_vm_name dest_host dest_vm_name
+              | eventstats latest(src_host) as l_src_host by exp_ip src_ip 
+              | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip 
+              | eval src_host=if(src_vm_name=="",src_host,src_host." (".src_vm_name.")")
+              | eval dest_host=if(dest_vm_name=="",dest_host,dest_host." (".dest_vm_name.")")
+              | eval location_ip = if(direction=="inbound",src_ip,if(direction=="outbound",dest_ip,""))
+              | eval location_cc = if(direction=="inbound",src_cc,if(direction=="outbound",dest_cc,""))
+              | iplocation location_ip $geo_ip$ 
+              | table nfo_hostname exp_ip_name direction src_ip src_host dest_ip dest_host Country "MB Sent" "MB Received" "Flow Count" "Total Traffic MB"
+              | rename exp_ip_name as Device
+              | rename src_ip as "Source IP"
+              | rename src_host as "Source Host (VM)"
+              | rename dest_ip as "Dest. IP"
+              | rename dest_host as "Dest. Host (VM)"
+              | rename nfo_hostname as "NFO"
+              | rename direction as "Direction"
+          </query>
+          <earliest>$earliest_token$</earliest>
+          <latest>$latest_token$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10062: Network Conversations”</b> (syslogs with nfc_id=20062). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

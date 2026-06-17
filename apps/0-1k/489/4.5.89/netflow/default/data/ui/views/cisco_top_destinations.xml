@@ -1,0 +1,213 @@
+<form version="1.1" onunloadCancelJobs="True" script="check_map.js, search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Cisco ASA Top Destinations (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="false">
+            <label>Dest. IP</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+            <label>Advanced Filter</label>
+            <default>*</default>
+        </input>
+        <input type="time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_rule_20019`  | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <map>
+            <title>Events by Geo</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20019` $advanced_filter$
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" dest_ip="$dest_ip$" 
+                    | stats sum(created_count) as total_num count by dest_ip 
+                    | iplocation dest_ip 
+                    | geostats sum(total_num) 
+                    | rename sum(total_num) as "Total Events"
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="height">500</option>
+            <option name="mapping.seriesColors">[0x5379af,0x9ac23c,0xf7902b,0x956d95,0x6ab7c7,0xd85d3c,0xfac51c,0xdd86af]</option>
+            <option name="mapping.data.maxClusters">400</option>
+            <option name="mapping.markerLayer.markerOpacity">0.8</option>
+            <option name="mapping.markerLayer.markerMinSize">10</option>
+            <option name="mapping.markerLayer.markerMaxSize">60</option>
+            <option name="mapping.map.center">(40.45,-2.81)</option>
+            <option name="mapping.map.zoom">2</option>
+        </map>
+    </row>
+    <row depends="$show_content$">
+      <panel>
+        <chart>
+            <title>Top Destinations Flows Statistic</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20019` $advanced_filter$
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" dest_ip="$dest_ip$"  
+                    | `per_second_chart(sum(bytes) by dest_ip,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">250</option>
+            <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                    <unset token="Destination IP"></unset>
+            </selection>
+        </chart>
+        <table id="table_1_1">
+            <search>
+                <query>
+                    `netflow_search_rule_20019` $advanced_filter$
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" dest_ip="$dest_ip$" 
+                    | stats sum(created_count) as sum_created_count, 
+                            sum(denied_count) as sum_denied_count, 
+                            sum(bytes) as sum_bytes by dest_ip 
+                    | sort - sum_bytes
+                    | head 100
+                    | `complete_flows_table(Destination IP, dest_ip)`
+                </query>
+                <earliest>$selection.earliest$</earliest>
+                <latest>$selection.latest$</latest>
+            </search>
+            <option name="count">10</option>
+            <option name="showPager">true</option>
+            <option name="drilldown">row</option>
+            <drilldown>
+                <set token="Destination IP">$row.Destination IP$</set>
+            </drilldown>
+        </table>
+      </panel>
+    </row>
+    <row depends="$show_content$">
+      <panel>
+        <chart id="chart_2_1" depends="$Destination IP$">
+            <title>Detailed information</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20019` $advanced_filter$
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$"  exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" dest_ip="$Destination IP$" 
+                    | lookup `is_local_lookup` port_lookup port as dest_port OUTPUT service as dest_service 
+                    | `per_second_chart(sum(bytes) by dest_service,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$selection.earliest$</earliest>
+                <latest>$selection.latest$</latest>
+            </search>
+            <option name="charting.chart">$charting.chart_value$</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+                    <set token="selection.earliest2">$start$</set>
+                    <set token="selection.latest2">$end$</set>
+            </selection>
+        </chart>
+        <table id="table_2_1" depends="$Destination IP$">
+            <search>
+                <query>
+                    `netflow_search_rule_20019` $advanced_filter$
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" dest_ip="$Destination IP$"  
+                    | lookup `is_local_lookup` port_lookup port as dest_port OUTPUT service as dest_service 
+                    | stats sum(created_count) as sum_created_count, sum(denied_count) as sum_denied_count, sum(bytes) as sum_bytes by dest_service
+                    | sort - sum_bytes
+                    | head 100
+                    | `complete_flows_table(Dest. Port, dest_service)`
+                </query>
+                <earliest>$selection.earliest2$</earliest>
+                <latest>$selection.latest2$</latest>
+            </search>
+            <option name="count">10</option>
+            <option name="showPager">true</option>
+            <option name="drilldown">none</option>
+        </table>
+      </panel>  
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10019: Top Traffic Destinations for Cisco ASA”</b> (syslogs with nfc_id=20019). This Module utilizes Cisco ASA NSEL data and provides a list of most popular destinations measured by the traffic. Top destinations are reported by Network Device and by Destination Port over a time interval T. Only TCP/IP and UDP traffic is accounted for. The number of reported top destinations (N) and the observation interval (T, sec) are configurable. This Module is packaged in <b>NFO “Cisco ASA” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

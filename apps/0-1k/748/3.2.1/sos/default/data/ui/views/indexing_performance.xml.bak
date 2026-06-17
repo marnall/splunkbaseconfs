@@ -1,0 +1,414 @@
+<view autoCancelInterval="90" isPersistable="true" isSticky="true" isVisible="true" onunloadCancelJobs="true" stylesheet="application.css" template="dashboard.html">
+  <label>Indexing Performance</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">2</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+        <param name="view">home</param>
+      </list>
+      <list>
+        <param name="label">Indexing Performance</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">indexing_performance.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay"></param>
+
+        <module name="TimeRangePicker" layoutPanel="mainSearchControls">
+          <param name="searchWhenChanged">True</param>
+          <param name="selected">Last 4 hours</param>
+
+          <!-- COMMON CONTROLS END   -->
+
+          <module name="Pulldown" layoutPanel="panel_row1_col1" group="Estimated indexing rate">
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="selected">true</param>
+                <param name="value">sourcetype</param>
+                <param name="label">Sourcetype</param>
+              </list>
+              <list>
+                <param name="value">index</param>
+                <param name="label">Index</param>
+              </list>
+              <list>
+                <param name="value">host</param>
+                <param name="label">Host</param>
+              </list>
+              <list>
+                <param name="value">source</param>
+                <param name="label">Source</param>
+              </list>
+            </param>
+            <param name="name">type</param>
+            <param name="float">left</param>
+            <param name="label">Per Type:</param>
+            <param name="template">$value$</param>
+
+            <module name="Pulldown">
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="value"></param>
+                  <param name="label">automatic</param>
+                  <param name="selected">true</param>
+                </list>
+                <list>
+                  <param name="value">15m</param>
+                  <param name="label">15 min</param>
+                </list>
+                <list>
+                  <param name="value">30m</param>
+                  <param name="label">30 min</param>
+                </list>
+                <list>
+                  <param name="value">1h</param>
+                  <param name="label">1 hour</param>
+                </list>
+                <list>
+                  <param name="value">1d</param>
+                  <param name="label">1 day</param>
+                </list>
+              </param>
+              <param name="float">left</param>
+              <param name="name">span</param>
+              <param name="template">span="$value$"</param>
+              <param name="label">Bucket span:</param>
+
+              <module name="Search">
+                <param name="search">`set_internal_index` $host$ source="*metrics.log" group=per_$type$_thruput | timechart minspan=30s $span$ per_second(kb) by series useother=false limit=15</param>
+                <module name="JobProgressIndicator"/>
+                <module name="LinkSwitcher">
+                  <param name="mode">independent</param>
+                  <param name="label">Show as:</param>
+                  <module name="HiddenChartFormatter" group="Graph">
+                    <param name="charting.chart.stackMode">stacked</param>
+                    <param name="charting.chart">column</param>
+                    <param name="charting.legend.placement">right</param>
+                    <param name="primaryAxisTitle.text">Time</param>
+                    <param name="secondaryAxisTitle.text">Indexing rate (KB/s)</param>
+                    <module name="FlashChart"/>
+                  </module>
+                  <module name="Paginator" group="Table">
+                    <param name="entityName">results</param>
+                    <module name="HiddenPostProcess">
+                      <param name="search">addtotals</param>
+                      <module name="SimpleResultsTable"/>
+                    </module>
+                    <module name="Paginator">
+                      <param name="entityName">results</param>
+                    </module>
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>
+          </module>
+
+          <module name="Pulldown" layoutPanel="panel_row2_col1" group="Fill ratio of data processing queues">
+            <param name="float">left</param>
+            <param name="name">queues</param>
+            <param name="template">$value$</param>
+            <param name="label">Queues to measure:</param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="value">(name=parsingqueue OR name=aggqueue OR name=typingqueue OR name=indexqueue) | eval name=case(name=="aggqueue","2 - Aggregation queue",name=="indexqueue","4 - Indexing queue",name=="parsingqueue","1 - Parsing queue",name=="typingqueue","3 - Typing queue")</param>
+                <param name="label">event-processing queues</param>
+                <param name="selected">true</param>
+              </list>
+              <list>
+                <param name="value"></param>
+                <param name="label">all queues</param>
+              </list>
+            </param>
+
+            <module name="Pulldown">
+              <param name="name">function</param>
+              <param name="float">left</param>
+              <param name="label">Function:</param>
+              <param name="template">$value$</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="value">median</param>
+                  <param name="label">median</param>
+                </list>
+                <list>
+                  <param name="value">perc95</param>
+                  <param name="label">95th percentile</param>
+                </list>
+                <list>
+                  <param name="value">avg</param>
+                  <param name="label">average</param>
+                </list>
+                <list>
+                  <param name="value">max</param>
+                  <param name="label">maximum</param>
+                </list>
+              </param>
+
+              <module name="Pulldown">
+                <param name="name">span</param>
+                <param name="float">left</param>
+                <param name="label">Bucket span:</param>
+                <param name="template">span="$value$"</param>
+                <param name="staticFieldsToDisplay">
+                  <list>
+                    <param name="value"></param>
+                    <param name="label">automatic</param>
+                    <param name="selected">true</param>
+                  </list>
+                  <list>
+                    <param name="value">15m</param>
+                    <param name="label">15 min</param>
+                  </list>
+                  <list>
+                    <param name="value">30m</param>
+                    <param name="label">30 min</param>
+                  </list>
+                  <list>
+                    <param name="value">1h</param>
+                    <param name="label">1 hour</param>
+                  </list>
+                  <list>
+                    <param name="value">1d</param>
+                    <param name="label">1 day</param>
+                  </list>
+                </param>
+
+                <module name="Search">
+                  <param name="search">
+                  `set_internal_index` $host$ source=*metrics.log group=queue $queues$
+                  | eval max=if(isnotnull(max_size_kb),max_size_kb,max_size)
+                  | eval curr=if(isnotnull(current_size_kb),current_size_kb,current_size)
+                  | eval fill_perc=round((curr/max)*100,2)
+                  | timechart minspan=30s $span$ $function$(fill_perc) by name useother=false limit=15
+                  </param>
+                  <module name="JobProgressIndicator"/>
+                  <module name="LinkSwitcher">
+                    <param name="mode">independent</param>
+                    <param name="label">Show as:</param>
+                    <module name="HiddenChartFormatter" group="Graph">
+                      <param name="charting.chart.stackMode">default</param>
+                      <param name="charting.layout.splitSeries">True</param>
+                      <param name="charting.chart">area</param>
+                      <param name="primaryAxisTitle.text">Time</param>
+                      <param name="secondaryAxisTitle.text">Fill ratio (%)</param>
+                      <param name="charting.axisY.minimumNumber">0</param>
+                      <param name="charting.axisY.maximumNumber">100</param>
+                      <module name="FlashChart">
+                        <param name="height">500px</param>
+                        <module name="Search">
+                          <param name="search"><![CDATA[
+                          | stats count
+                          | eval series="$click.name2$"
+                          | eval filename=case(
+                              like(series,"%arsing%"),"props",
+                              like(series,"%ggr%"),"props",
+                              like(series,"%yping%"),"transforms",
+                              like(series,"%ndex%"),"indexes")
+                          | eval searchBar=case(
+                              like(series,"%arsing%"),"NOT (`default_props_stanzas` AND app=system) LINE_BREAKER=* OR TRUNCATE!=10000 | stats first(LINE_BREAKER) AS LINE_BREAKER first(TRUNCATE) AS TRUNCATE by stanza,app",
+                              like(series,"%ggr%"),"NOT (`default_props_stanzas` AND app=system) MAX_EVENTS!=256 | stats first(MAX_EVENTS) AS MAX_EVENTS by stanza,app",
+                              like(series,"%yping%"),"NOT (`default_transforms_stanzas` AND app=system) DEST_KEY=MetaData:* OR DEST_KEY=_* OR DEST_KEY=queue OR WRITE_META!=False | stats first(SOURCE_KEY) AS SOURCE_KEY first(REGEX) AS REGEX first(FORMAT) AS FORMAT first(DEST_KEY) AS DEST_KEY by stanza,app",
+                              like(series,"%ndex%"),"maxRunningProcessGroups!=20 OR rotatePeriodInSecs<60 OR maxConcurrentOptimizes<3 | stats first(maxRunningProcessGroup) AS maxRunningProcessGroup first(rotatePeriodInSecs) AS rotatePeriodInSecs first(maxConcurrentOptimizes) AS maxConcurrentOptimizes by stanza,app")
+                          ]]></param>
+                          <module name="ResultsValueSetter">
+                            <param name="fields">filename,searchBar</param>
+                            <module name="Redirector">
+                              <param name="popup">True</param>
+                              <param name="url">overview</param>
+                              <param name="arg.host">$host.rawValue$</param>
+                              <param name="arg.filename">$filename$</param>
+                              <param name="arg.searchBar">$searchBar$</param>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="Paginator" group="Table">
+                      <param name="entityName">results</param>
+                      <module name="SimpleResultsTable"/>
+                      <module name="Paginator">
+                        <param name="entityName">results</param>
+                      </module>
+                    </module>
+                  </module>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">true</param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+
+          <module name="Pulldown" layoutPanel="panel_row3_col1" group="Estimated percentage of total CPU used per Splunk processor">
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="value"></param>
+                <param name="label">automatic</param>
+                <param name="selected">true</param>
+              </list>
+              <list>
+                <param name="value">15m</param>
+                <param name="label">15 min</param>
+              </list>
+              <list>
+                <param name="value">30m</param>
+                <param name="label">30 min</param>
+              </list>
+              <list>
+                <param name="value">1h</param>
+                <param name="label">1 hour</param>
+              </list>
+              <list>
+                <param name="value">1d</param>
+                <param name="label">1 day</param>
+              </list>
+            </param>
+        
+            <param name="name">span</param>
+            <param name="float">left</param>
+            <param name="label">Bucket span:</param>
+            <param name="template">span="$value$"</param>
+            <module name="Search">
+              <param name="search">`set_internal_index` $host$ source=*metrics.log group=pipeline NOT processor=sendout | timechart minspan=30s $span$ per_second(eval(cpu_seconds*100)) AS pctCPU by processor useother=false limit=15</param>
+              <module name="JobProgressIndicator"/>
+              <module name="LinkSwitcher">
+                <param name="mode">independent</param>
+                <param name="label">Show as:</param>
+                <module name="HiddenChartFormatter" group="Graph">
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="charting.chart">column</param>
+                  <param name="charting.legend.placement">right</param>
+                  <param name="primaryAxisTitle.text">Time</param>
+                  <param name="secondaryAxisTitle.text">Total CPU usage (%)</param>
+                  <module name="FlashChart">
+                    <module name="Search">
+                      <param name="search"><![CDATA[
+                      | stats count
+                      | eval series="$click.name2$"
+                      | eval filename=case(
+                          like(series,"%linebreaker%"),"props",
+                          like(series,"%aggregator%"),"props",
+                          like(series,"%regexreplacement%"),"transforms",
+                          like(series,"%indexer%"),"indexes")
+                      | eval searchBar=case(
+                          like(series,"%linebreaker%"),"NOT (`default_props_stanzas` AND app=system) LINE_BREAKER=* OR TRUNCATE!=10000 | stats first(LINE_BREAKER) AS LINE_BREAKER first(TRUNCATE) AS TRUNCATE by stanza,app",
+                          like(series,"%aggregator%"),"NOT (`default_props_stanzas` AND app=system) MAX_EVENTS!=256 | stats first(MAX_EVENTS) AS MAX_EVENTS by stanza,app",
+                          like(series,"%regexreplacement%"),"NOT (`default_transforms_stanzas` AND app=system) DEST_KEY=MetaData:* OR DEST_KEY=_* OR DEST_KEY=queue OR WRITE_META!=False | stats first(SOURCE_KEY) AS SOURCE_KEY first(REGEX) AS REGEX first(FORMAT) AS FORMAT first(DEST_KEY) AS DEST_KEY by stanza,app",
+                          like(series,"%indexer%"),"maxRunningProcessGroups!=20 OR rotatePeriodInSecs<60 OR maxConcurrentOptimizes<3 | stats first(maxRunningProcessGroup) AS maxRunningProcessGroup first(rotatePeriodInSecs) AS rotatePeriodInSecs first(maxConcurrentOptimizes) AS maxConcurrentOptimizes by stanza,app")
+                      ]]></param>
+                      <module name="ResultsValueSetter">
+                        <param name="fields">filename,searchBar</param>
+                        <module name="Redirector">
+                          <param name="popup">True</param>
+                          <param name="url">overview</param>
+                          <param name="arg.host">$host.rawValue$</param>
+                          <param name="arg.filename">$filename$</param>
+                          <param name="arg.searchBar">$searchBar$</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                <module name="Paginator" group="Table">
+                  <param name="entityName">results</param>
+                  <module name="SimpleResultsTable"/>
+                  <module name="Paginator">
+                    <param name="entityName">results</param>
+                  </module>
+                </module>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="popup">true</param>
+              </module>
+            </module>
+
+          </module>
+
+          <module name="Checkbox" layoutPanel="panel_row4_col1" group="Cumulative CPU seconds spent per indexer processor activity">
+            <param name="name">searchString</param>
+            <param name="checked">False</param>
+            <param name="float">left</param>
+            <param name="label">Split index service by subtask</param>
+            <param name="labelPosition">right</param>
+            <param name="offValue">`set_internal_index` $host$ source=*metrics.log group=pipeline name=indexerpipe processor=indexer | timechart minspan=30s sum(write_cpu_seconds) AS "Raw data write" sum(service_cpu_seconds) AS "Index service"</param>
+            <param name="onValue">`set_internal_index` $host$ source=*metrics.log group=subtask_seconds | fields replicate_semislice, sync_hotBkt, throttle_optimize, flushBlockSig, retryMove_1hotBkt, size_hotBkt, roll_hotBkt, chillOrFreeze, update_checksums, fork_recovermetadata, rebuild_metadata, update_bktManifest, service_volumes, service_maxSizes, service_externProc | timechart minspan=30s sum(*) AS *</param>
+
+            <module name="Search">
+              <param name="search">$searchString$</param>
+              <module name="JobProgressIndicator"/>
+              <module name="LinkSwitcher">
+                <param name="mode">independent</param>
+                <param name="label">Show as:</param>
+                <module name="HiddenChartFormatter" group="Graph">
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="charting.chart">column</param>
+                  <param name="charting.legend.placement">right</param>
+                  <param name="primaryAxisTitle.text">Time</param>
+                  <param name="secondaryAxisTitle.text">Cumulative CPU seconds</param>
+                  <module name="FlashChart">
+                  </module>
+                </module>
+                <module name="Paginator" group="Table">
+                  <param name="entityName">results</param>
+                  <module name="SimpleResultsTable"/>
+                  <module name="Paginator">
+                    <param name="entityName">results</param>
+                  </module>
+                </module>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="popup">true</param>
+              </module>
+            </module>
+          </module>
+
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

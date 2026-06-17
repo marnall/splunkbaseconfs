@@ -1,0 +1,291 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Alert Analyzer</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">VDI User Experience Alert Analyzer</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report allows you to compare the user experience alerts and scores for a set of desktops and/or users.  Enter a hoststring and userstring for the groups you would like to compare and press submit. By clicking into the report you will be taken to the Alert details for the selected entity.  You can filter this view by entering values in the fields below and pressing enter. To view the entire result set for this report or manipulate the data further, click on the View Full Report link below.</param>
+  </module>
+  <module name="ServerSideInclude" layoutPanel="panel_row1_col1">
+    <param name="src">usrexp_key.html</param>
+  </module>
+  <module name="StaticSelect" layoutPanel="panel_row2_col1_grp1">
+    <param name="settingToCreate">usrexp</param>
+    <param name="staticFieldsToDisplay">
+      <list>
+        <param name="label">--- ANY ---</param>
+        <param name="value">*</param>
+      </list>
+      <list>
+        <param name="label">CRITICAL</param>
+        <param name="value">1</param>
+      </list>
+      <list>
+        <param name="label">WARNING</param>
+        <param name="value">2</param>
+      </list>
+      <list>
+        <param name="label">Alerted</param>
+        <param name="value">3</param>
+      </list>
+      <list>
+        <param name="label">INFO-2</param>
+        <param name="value">4</param>
+      </list>
+      <list>
+        <param name="label">INFO-1</param>
+        <param name="value">5</param>
+      </list>
+    </param>
+    <param name="selected">INDEX</param>
+    <param name="label">Severity</param>
+    <module name="ConvertToIntention">
+      <param name="intention">
+        <param name="name">addterm</param>
+        <param name="arg">
+          <param name="usrexp">$usrexp$</param>
+        </param>
+      </param>
+      <module name="TimeRangePicker" layoutPanel="panel_row3_col1_grp1">
+        <param name="selected">Last 24 Hours</param>
+        <param name="searchWhenChanged">True</param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+          <param name="label">Userstring: </param>
+          <param name="field">userstring</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="userstring">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="default">user=*</param>
+          <param name="field">userstring</param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="userstring">
+                <param name="default"/>
+                <param name="prefix"> </param>
+                <param name="suffix"> </param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+            <param name="label">Hoststring: </param>
+            <param name="field">hoststring</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="hoststring">
+                  <param name="value"/>
+                </param>
+              </param>
+            </param>
+            <param name="default">vm_name=*</param>
+            <param name="field">hoststring</param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="hoststring">
+                  <param name="default"/>
+                  <param name="prefix"> </param>
+                  <param name="suffix"> </param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="SubmitButton" layoutPanel="panel_row2_col1_grp4">
+              <param name="allowSoftSubmit">False</param>
+              <param name="label">Submit</param>
+              <module name="HiddenSearch" layoutPanel="panel_row3_col1">
+                <param name="search">`xendesktop_alerts` $userstring$ $hoststring$  | stats count by _time usrexp alert_name user Value vm_name | lookup xd5_usrexp usrexp OUTPUT Severity  </param>
+                <module name="ViewRedirectorLink" layoutPanel="panel_row10_col1">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="label">View Full Report</param>
+                </module>
+                <module name="JobProgressIndicator"/>
+                <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp1" group="Alert Stats">
+                  <param name="search">| stats max(usrexp) as usrexp by Severity| sort + usrexp | head 1 | eval usrexp="usrexp"+usrexp </param>
+                  <module name="SingleValue">
+                    <param name="classField">usrexp</param>
+                    <param name="beforeLabel">Max Severity: </param>
+                    <param name="format">count</param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp2" group="Alert Stats">
+                  <param name="search">| stats count </param>
+                  <module name="SingleValue">
+                    <param name="field">count</param>
+                    <param name="beforeLabel">Alerts Fired: </param>
+                    <param name="format">count</param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row5_col1_grp3" group="Alert Stats">
+                  <param name="search">| stats dc(alert_name) as count </param>
+                  <module name="SingleValue">
+                    <param name="field">count</param>
+                    <param name="beforeLabel">Alert Types: </param>
+                    <param name="format">count</param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp1" group="ICA User Experience Score">
+                  <param name="search">search alert_name="Poor VDI Session Load Time" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">Load Time Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp2" group="ICA User Experience Score">
+                  <param name="search">search alert_name="Low ICA Session Bandwidth" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">Session Bandwidth Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row7_col1_grp3" group="ICA User Experience Score">
+                  <param name="search">search alert_name="High ICA Session Latency" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">Session Latency Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row8_col1_grp1" group="PerfMon User Experience Score">
+                  <param name="search">search alert_name="High CPU Consumption" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">CPU % Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row8_col1_grp2" group="PerfMon User Experience Score">
+                  <param name="search">search alert_name="Low Available Memory" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">RAM Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row8_col1_grp3" group="PerfMon User Experience Score">
+                  <param name="search">search alert_name="High Disk I/O" | stats max(usrexp) as usrexp_scr by Severity| sort + usrexp_scr | head 1 | eval usrexp="usrexp"+usrexp_scr</param>
+                  <module name="SingleValue">
+                    <param name="field">usrexp_scr</param>
+                    <param name="classField">usrexp</param>
+                    <param name="format">count</param>
+                    <param name="beforeLabel">DISK I/O Score: </param>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row9_col1" group="Top Severity">
+                  <param name="search">| stats sum(count) as count by Severity | head 15</param>
+                  <module name="HiddenChartFormatter">
+                    <param name="chart">pie</param>
+                    <module name="JSChart">
+                      <param name="height">200px</param>
+                      <module name="HiddenSearch">
+                        <param name="search">`xendesktop_alerts` | eval entity=alert_name | lookup xd5_usrexp usrexp OUTPUT Severity | search $Severity$  |   stats count by user entity vm_name _time alert_name Severity </param>
+                        <module name="ConvertToIntention">
+                          <param name="intention">
+                            <param name="name">stringreplace</param>
+                            <param name="arg">
+                              <param name="Severity">
+                                <param name="prefix">Severity="</param>
+                                <param name="suffix">"</param>
+                                <param name="fillOnEmpty">True</param>
+                                <param name="value">$click.value$</param>
+                              </param>
+                            </param>
+                          </param>
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row9_col2" group="Top Alert Name">
+                  <param name="search">| stats sum(count) as count by alert_name | head 15</param>
+                  <module name="HiddenChartFormatter">
+                    <param name="chart">pie</param>
+                    <module name="JSChart">
+                      <param name="height">200px</param>
+                      <module name="HiddenSearch">
+                        <param name="search">`xendesktop_alerts` $alert_name$ | eval entity=alert_name | lookup xd5_usrexp usrexp OUTPUT Severity  |   stats count by user entity vm_name _time alert_name Severity </param>
+                        <module name="ConvertToIntention">
+                          <param name="intention">
+                            <param name="name">stringreplace</param>
+                            <param name="arg">
+                              <param name="alert_name">
+                                <param name="prefix">alert_name="</param>
+                                <param name="suffix">"</param>
+                                <param name="fillOnEmpty">True</param>
+                                <param name="value">$click.value$</param>
+                              </param>
+                            </param>
+                          </param>
+                          <module name="ViewRedirector">
+                            <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+                <module name="HiddenPostProcess" layoutPanel="panel_row10_col1" group="Last 10 Alert Details">
+                  <param name="search">|eval time=_time | convert ctime(time) | stats values(time) as "Alert Time(s)"  values(Value) as "Value(s)" values(user) as "Affected User(s)" by vm_name Severity alert_name | head 10</param>
+                  <module name="SimpleResultsTable" layoutPanel="panel_row10_col1">
+                    <param name="displayMenu">true</param>
+                    <param name="count">100</param>
+                    <param name="drilldown">all</param>
+                    <param name="entityName">results</param>
+                    <param name="displayRowNumbers">False</param>
+                    <module name="HiddenSearch">
+                      <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $vm_name$ | `session_desktop_lookup` | `client_name` | `get_times` | `xd5_sessions_uniq`</param>
+                      <module name="ConvertToIntention">
+                        <param name="intention">
+                          <param name="name">stringreplace</param>
+                          <param name="arg">
+                            <param name="vm_name">
+                              <param name="prefix">vm_name=</param>
+                              <param name="fillOnEmpty">True</param>
+                              <param name="value">$click.value$</param>
+                            </param>
+                          </param>
+                        </param>
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">xd5_session_info</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

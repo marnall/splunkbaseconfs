@@ -1,0 +1,484 @@
+<?xml version="1.0"?>
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html">
+  <label>Data Inputs Overview</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Data Inputs Overview</param>
+      </list>
+    </param>
+  </module>
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#x25BA; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">inputs.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay"/>
+
+        <!-- COMMON CONTROLS END   -->
+
+        <module name="HTML" layoutPanel="panel_row1_col1" group="Enabled data inputs">
+          <param name="html"><![CDATA[<i>Click a pie slice to view inputs. Then click an input to view details.</i>]]></param>
+        </module>
+        <module name="HTML" layoutPanel="panel_row2_col1" group="Search of enabled data inputs">
+          <param name="html"><![CDATA[<i>Search for a specific enabled data input - use * to see all.<br />Then, click an event to view details.</i>]]></param>
+        </module>
+        
+ 
+        <module name="Search">
+          <param name="search"><![CDATA[
+          | entity namespace=None   server/settings  
+          | fields SPLUNK_HOME host
+          | search host="$host.rawValue$"
+          | eval _raw=SPLUNK_HOME
+          | rex mode=sed "s#(\\\{1})#\1\1#g"
+          | eval SPLUNK_HOME=_raw
+          | table SPLUNK_HOME 
+          ]]></param>
+          <module name="ResultsValueSetter">
+            <param name="fields">*</param>
+            <module name="Search" layoutPanel="panel_row1_col1">
+              
+              <param name="search"><![CDATA[
+              | entity namespace="system" owner="nobody" admin/meta 
+              | search sos_server="$host.rawValue$"
+              | mvexpand items
+              | eval _raw=items
+              | rex "[^:]+:(?P<Raw_Item>.+)"
+              | rex mode=sed "s#\\$$SPLUNK_HOME#$SPLUNK_HOME$#g"
+              | rex "(?<Type>[^:]+):(?<Item>.+)"
+              | rex mode=sed field=Item "s#(\\{1})#\1\1#g"
+              | rex mode=sed field=Raw_Item "s#(\\{1})#\1\1#g"
+              | table Item Type Raw_Item
+              | stats count(Type) as Items by Type
+              ]]></param>
+              <param name="earliest">0</param>
+              <module name="ViewstateAdapter">
+                <param name="suppressionList">
+                  <item>charting.chart</item>
+                </param>
+                <module name="HiddenFieldPicker">
+                  <param name="strictMode">True</param>
+                  <module name="JobProgressIndicator">
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">pie</param>
+                      <module name="FlashChart">
+                        <param name="width">100%</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="JobProgressIndicator"/>
+                          <module name="Count" group="splIcon-events-list" altTitle="Events List">
+                            <param name="options">
+                              <list>
+                                <param name="text">10</param>
+                                <param name="value">10</param>
+                              </list>
+                              <list>
+                                <param name="text">20</param>
+                                <param name="value">20</param>
+                              </list>
+                              <list>
+                                <param name="text">50</param>
+                                <param name="value">50</param>
+                              </list>
+                            </param>
+                            <param name="default">10</param>
+                            <module name="SimpleResultsHeader">
+                              <param name="entityName">results</param>
+                              <param name="headerFormat">$count$ inputs</param>
+                              <module name="Paginator">
+                                <param name="count">10</param>
+                                <param name="entityName">results</param>
+                                <module name="SimpleResultsTable">
+                                  <param name="count">10</param>
+                                  <param name="entityName">results</param>
+                                  <param name="allowTransformedFieldSelect">True</param>
+                                  <param name="drilldown">row</param>
+                                  <param name="displayRowNumbers">false</param>
+                                  <module name="Search" layoutPanel="panel_row1_col2" group="Data input details">
+                                    <param name="search">
+                                    | btool inputs 
+                                    | extract 
+                                    | eval raw=_raw 
+                                    | eval clicked="$click.value$"
+                                    | rex mode=sed field=clicked "s#(\\\{1})#\1\1#g" 
+                                        
+                                    | where match(stanza,clicked) 
+                                    | search sos_server="$host.rawValue$"
+                                    | table *
+                                    </param>
+                                    <module name="CustomBehavior">
+                                      <param name="customBehavior">correlateSelectedFields</param>
+                                      <param name="arg.defaultFieldList">sos_server stanza app</param>
+                                      <module name="JobProgressIndicator"/>
+                                      <module name="Count" group="splIcon-events-list" altTitle="Additional details">
+                                        <param name="options">
+                                          <list>
+                                            <param name="text">10</param>
+                                            <param name="value">10</param>
+                                          </list>
+                                          <list>
+                                            <param name="text">20</param>
+                                            <param name="value">20</param>
+                                          </list>
+                                          <list>
+                                            <param name="text">50</param>
+                                            <param name="value">50</param>
+                                          </list>
+                                        </param>
+                                        <param name="default">10</param>
+                                        <module name="SimpleResultsHeader">
+                                          <param name="entityName">events</param>
+                                          <param name="headerFormat">Found $count$ matching configuration stanza(s)</param>
+                                        </module>
+                                        <module name="Paginator">
+                                          <param name="entityName">events</param>
+                                          <module name="EventsViewer">
+                                            <param name="maxLines">256</param>
+                                            <param name="enableEventActions">False</param>
+                                            <param name="enableFieldActions">False</param>
+                                          </module>
+                                          <module name="Search">
+                                            <param name="search">
+                                            | entity namespace="system" owner="nobody" data/inputs/$click.fields.Type$
+                                            | eval stripped="$click.fields.Raw_Item$"
+                                            | rex mode=sed field=stripped  "s#(\\{1})#\1\1#g"  
+                                         
+                                            | where _raw=stripped 
+                                            | rename _raw AS Item
+                                            | search sos_server="$host.rawValue$"
+                                            | table * 
+                                            | fields - stripped eai:acl entityContent _time disabled sos_server _rcvbuf 
+                                            | transpose
+                                            | rename "row 1" AS Values column AS Key 
+                                            </param>
+                                            <module name="JobProgressIndicator"/>
+                                            <module name="Count" group="splIcon-events-list" >
+                                              <param name="options">
+                                                <list>
+                                                  <param name="text">10</param>
+                                                  <param name="value">10</param>
+                                                </list>
+                                                <list>
+                                                  <param name="text">20</param>
+                                                  <param name="value">20</param>
+                                                </list>
+                                                <list>
+                                                  <param name="text">50</param>
+                                                  <param name="value">50</param>
+                                                </list>
+                                              </param>
+                                              <param name="default">20</param>
+                                              <module name="SimpleResultsHeader">
+                                                <param name="entityName">results</param>
+                                                <param name="headerFormat">Additional details</param>
+                                              </module>
+                                              <module name="Paginator">
+                                                <param name="count">5</param>
+                                                <param name="entityName">results</param>
+                                                <module name="SimpleResultsTable">
+                                                  <param name="drilldown">none</param>
+                                                  <param name="displayRowNumbers">false</param>
+                                                </module>
+                                              </module>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+        <module name="Search">
+          <param name="search"><![CDATA[
+          | entity namespace=None   server/settings  
+          | fields SPLUNK_HOME host
+          | search host="$host.rawValue$"
+          | eval _raw=SPLUNK_HOME
+          | rex mode=sed "s#(\\\{1})#\1\1#g"
+          | eval SPLUNK_HOME=_raw
+          | table SPLUNK_HOME 
+          ]]></param>
+          <module name="ResultsValueSetter">
+            <param name="fields">*</param>
+            <module name="Search">
+              <param name="search">*</param>
+              <module name="SearchBar" layoutPanel="panel_row2_col1">
+                <param name="useOwnSubmitButton">True</param>
+                <module name="Search">
+                  <param name="search"><![CDATA[
+              | entity namespace="system" owner="nobody" admin/meta 
+              | search sos_server="$host.rawValue$"
+              | mvexpand items
+              | eval _raw=items
+              | rex "[^:]+:(?P<Raw_Item>.+)"
+              | rex mode=sed "s#\\$$SPLUNK_HOME#$SPLUNK_HOME$#g"
+              | rex "(?<Type>[^:]+):(?<Item>.+)"
+              | rex mode=sed field=Item "s#(\\{1})#\1\1#g"
+              | rex mode=sed field=Raw_Item "s#(\\{1})#\1\1#g"
+              | table Item Type Raw_Item
+              
+                  | search Item = *$searchBar$*
+                  ]]></param>
+                  <param name="groupLabel">Enabled data inputs</param>
+                  <param name="earliest">0</param>
+                  <module name="ViewstateAdapter">
+                    <param name="suppressionList">
+                      <item>count</item>
+                      <item>displayRowNumbers</item>
+                    </param>
+                    <module name="HiddenFieldPicker">
+                      <param name="strictMode">True</param>
+                      <module name="JobProgressIndicator"/>
+                      <module name="Count" group="splIcon-events-list">
+                        <param name="options">
+                          <list>
+                            <param name="text">10</param>
+                            <param name="value">10</param>
+                          </list>
+                          <list>
+                            <param name="text">20</param>
+                            <param name="value">20</param>
+                          </list>
+                          <list>
+                            <param name="text">50</param>
+                            <param name="value">50</param>
+                          </list>
+                        </param>
+                        <param name="default">10</param>
+                        <module name="SimpleResultsHeader">
+                          <param name="entityName">results</param>
+                          <param name="headerFormat">$count$ inputs</param>
+                        </module>
+                        <module name="Paginator">
+                          <param name="count">10</param>
+                          <param name="entityName">results</param>
+                          <module name="SimpleResultsTable">
+                            <param name="count">10</param>
+                            <param name="entityName">results</param>
+                            <param name="allowTransformedFieldSelect">True</param>
+                            <param name="drilldown">row</param>
+                            <param name="displayRowNumbers">false</param>
+                            <module name="Search" layoutPanel="panel_row2_col2" group="Data input details">
+                              <param name="search">
+                                    | btool inputs 
+                                    | extract 
+                                    | eval raw=_raw 
+                                    | eval clicked="$click.value$"
+                                    | rex mode=sed field=clicked "s#(\\\{1})#\1\1#g" 
+                                        
+                                    | where match(stanza,clicked) 
+                                    | search sos_server="$host.rawValue$"
+                                    | table *
+                              </param>
+                              <module name="CustomBehavior">
+                                <param name="customBehavior">correlateSelectedFields</param>
+                                <param name="arg.defaultFieldList">sos_server stanza app</param>
+                                <module name="JobProgressIndicator"/>
+                                <module name="Count" group="splIcon-events-list" altTitle="Events List">
+                                  <param name="options">
+                                    <list>
+                                      <param name="text">10</param>
+                                      <param name="value">10</param>
+                                    </list>
+                                    <list>
+                                      <param name="text">20</param>
+                                      <param name="value">20</param>
+                                    </list>
+                                    <list>
+                                      <param name="text">50</param>
+                                      <param name="value">50</param>
+                                    </list>
+                                  </param>
+                                  <param name="default">10</param>
+                                  <module name="SimpleResultsHeader">
+                                    <param name="entityName">events</param>
+                                    <param name="headerFormat">Found $count$ matching configuration stanza(s)</param>
+                                  </module>
+                                  <module name="Paginator">
+                                    <param name="entityName">events</param>
+                                    <module name="EventsViewer">
+                                      <param name="maxLines">256</param>
+                                      <param name="enableEventActions">False</param>
+                                      <param name="enableFieldActions">False</param>
+                                      <module name="Search">
+                                        <param name="search">
+                                            | entity namespace="system" owner="nobody" data/inputs/$click.fields.Type$
+                                            | eval stripped="$click.fields.Raw_Item$"
+                                            | rex mode=sed field=stripped  "s#(\\{1})#\1\1#g"  
+                                         
+                                            | where _raw=stripped 
+                                            | rename _raw AS Item
+                                            | search sos_server="$host.rawValue$"
+                                            | table * 
+                                            | fields - stripped eai:acl entityContent _time disabled sos_server _rcvbuf 
+                                            | transpose
+                                            | rename "row 1" AS Values column AS Key 
+                                        </param>
+                                        <module name="JobProgressIndicator"/>
+                                        <module name="Count" group="splIcon-events-list"  >
+                                          <param name="options">
+                                            <list>
+                                              <param name="text">10</param>
+                                              <param name="value">10</param>
+                                            </list>
+                                            <list>
+                                              <param name="text">20</param>
+                                              <param name="value">20</param>
+                                            </list>
+                                            <list>
+                                              <param name="text">50</param>
+                                              <param name="value">50</param>
+                                            </list>
+                                          </param>
+                                          <param name="default">20</param>
+                                          <module name="SimpleResultsHeader">
+                                            <param name="entityName">results</param>
+                                            <param name="headerFormat">Additional details</param>
+                                          </module>
+                                          <module name="Paginator">
+                                            <param name="count">5</param>
+                                            <param name="entityName">results</param>
+                                            <module name="SimpleResultsTable">
+                                              <param name="drilldown">none</param>
+                                              <param name="displayRowNumbers">false</param>
+                                            </module>
+                                          </module>
+                                        </module>
+                                      </module>
+                                    </module>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                          <module name="ViewRedirectorLink">
+                            <param name="viewTarget">flashtimeline</param>
+                            <param name="popup">true</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+            <module name="Checkbox" layoutPanel="panel_row3_col1" group="Input errors - last 24h">
+              <param name="name">cluster</param>
+              <param name="checked">True</param>
+              <param name="clear">both</param>
+              <param name="label">Group similar events</param>
+              <param name="labelPosition">right</param>
+              <param name="offValue">| table _time component log_level message</param>
+              <param name="onValue">| cluster showcount=t | rename cluster_count AS count _raw AS message| table count, message | sort - count</param>
+
+              <module name="Search">
+                <param name="earliest">-24h</param>
+                <param name="search">
+                `set_internal_index` host="$host.rawValue$" source=*splunkd.log `input_components` log_level=ERROR
+                $cluster$
+                </param>
+                <module name="JobProgressIndicator"/>
+                   <module name="Count" group="splIcon-events-list" altTitle="Events List">
+                     <param name="options">
+                       <list>
+                         <param name="text">10</param>
+                         <param name="value">10</param>
+                       </list>
+                       <list>
+                         <param name="text">20</param>
+                         <param name="value">20</param>
+                       </list>
+                       <list>
+                         <param name="text">50</param>
+                         <param name="value">50</param>
+                       </list>
+                     </param>
+                     <param name="default">10</param>
+                     <module name="SimpleResultsHeader">
+                       <param name="entityName">results</param>
+                       <param name="headerFormat">$count$ events</param>
+                     </module>
+                     <module name="Paginator">
+                       <param name="count">5</param>
+                       <param name="entityName">results</param>
+                     <module name="SimpleResultsTable">
+                       <param name="entityName">results</param>
+                       <param name="allowTransformedFieldSelect">True</param>
+                       <param name="drilldown">row</param>
+                       <module name="ConvertToDrilldownSearch">
+                         <module name="Search">
+                           <param name="search">
+                           `set_internal_index` host="$host.rawValue$" source=*splunkd.log `input_components` log_level=ERROR "$click.fields.message$"   
+                           </param>
+                           <module name="ViewRedirector">
+                             <param name="viewTarget">flashtimeline</param>
+                             <param name="popup">true</param>
+                           </module>
+                         </module>
+                       </module>
+                     </module>                       
+                     <module name="ViewRedirectorLink">
+                       <param name="viewTarget">flashtimeline</param>
+                       <param name="popup">true</param>
+                     </module>
+                   </module>
+                 </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

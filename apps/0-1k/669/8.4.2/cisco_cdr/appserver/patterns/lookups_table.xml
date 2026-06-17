@@ -1,0 +1,95 @@
+<module name="Search">
+  <param name="search"><![CDATA[
+| inputlookup groups | search NOT group="PLACEHOLDER*"
+| stats dc(group) as groups dc(number) as extensions
+| eval name="groups", filename="groups.csv"
+| eval contents = extensions + " extensions, " + groups + " groups"
+| eval website_uri="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-groups"
+| append [
+  | inputlookup cidr | search NOT site_name="Example Site" | stats count as subnets dc(site_name) as sites  |  eval contents=subnets + " subnets, " + sites + " sites"
+  | eval name="sites", filename="cidr.csv"
+  | eval website_uri = "https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-sites"
+]
+| append [
+  | inputlookup devices | search NOT name="PLACEHOLDER*" | stats count as devices dc(department) as departments dc(devicePool) as devicePools
+  |  eval contents= devices + " devices, " + departments + " departments, " + devicePools + " devicePools"
+  | eval name="devices"
+  | eval filename="devices.csv"
+  | eval website_uri = "https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-devices"
+]
+| append [
+  | inputlookup clusters | search NOT group="PLACEHOLDER*" | stats count as clusters dc(group) as groups
+  | eval contents= clusters + " clusters, " + groups + " cluster groups"
+  | eval name="clusters"
+  | eval filename="clusters.csv"
+  | eval website_uri="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-clusters"
+]
+| eval settings_uri = "setup_" + name
+|  table name contents filename settings_uri website_uri
+|  join filename [
+  |  rest /servicesNS/-/cisco_cdr/data/lookup-table-files splunk_server=local
+  |  search eai:acl.app="cisco_cdr"
+  |  rename title as filename eai:data as path
+  |  table filename path
+  ]
+|  table name contents filename path settings_uri website_uri
+  ]]></param>
+
+  <module name="HTML">
+    <param name="clear">left</param>
+    <param name="html"><![CDATA[
+
+      <p>This table shows the current state of the app's 4 main editable lookups.</h3>
+
+    ]]></param>
+  </module>
+
+  <module name="ProgressIndicator" />
+
+  <module name="Pager">
+    <module name="Table">
+      <param name="hiddenFields">settings_uri,website_uri</param>
+
+      <module name="Layer">
+        <param name="cssClass">menu</param>
+
+        <module name="Link">
+          <param name="cssClass">menuItem</param>
+          <param name="label">manage the $row.fields.name$ lookup</param>
+
+          <module name="Redirector">
+            <!-- it's ok if we render "search" views here, because canary will catch it for us and redirect. -->
+            <param name="url">$row.fields.settings_uri$</param>
+          </module>
+        </module>
+
+        <module name="Link">
+          <param name="cssClass">menuItem</param>
+          <param name="label">read online documentation</param>
+
+          <module name="Redirector">
+            <!-- it's ok if we render "search" views here, because canary will catch it for us and redirect. -->
+            <param name="url">$row.fields.website_uri$</param>
+            <param name="target">_blank</param>
+          </module>
+        </module>
+      </module>
+
+    </module>
+  </module>
+
+  <!--
+  <module name="Link">
+    <param name="label">&#187; Read online docs about extending the app</param>
+
+    <module name="Redirector">
+      <param name="url">https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-extending-the-app</param>
+    </module>
+  </module>
+-->
+
+
+
+</module>
+
+

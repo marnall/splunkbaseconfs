@@ -1,0 +1,273 @@
+<dashboard version="1.1" onunloadCancelJobs="True">
+    <label>Cisco ASA Overview (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="time" searchWhenChanged="False">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_cisco_rules`  | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+      <panel>
+        <map>
+            <title>Bandwidth Consumers Locations - Source</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20018` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | stats sum(created_count) as total_num by src_ip 
+                    | iplocation src_ip 
+                    | geostats sum(total_num)
+                    | rename sum(total_num) as "Total Events" 
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="height">200</option>
+            <option name="mapping.seriesColors">[0x5379af,0x9ac23c,0xf7902b,0x956d95,0x6ab7c7,0xd85d3c,0xfac51c,0xdd86af]</option>
+            <option name="mapping.data.maxClusters">500</option>
+            <option name="mapping.markerLayer.markerOpacity">0.8</option>
+            <option name="mapping.markerLayer.markerMinSize">10</option>
+            <option name="mapping.markerLayer.markerMaxSize">60</option>
+            <option name="mapping.map.center">(40.45,-2.81)</option>
+            <option name="mapping.map.zoom">2</option>
+        </map>
+      </panel>  
+      <panel>
+        <map>
+            <title>Bandwidth Consumers Locations - Destination</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20019` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | stats sum(created_count) as total_num by dest_ip 
+                    | iplocation dest_ip 
+                    | geostats sum(total_num)
+                    | rename sum(total_num) as "Total Events" 
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="height">200</option>
+            <option name="mapping.seriesColors">[0x5379af,0x9ac23c,0xf7902b,0x956d95,0x6ab7c7,0xd85d3c,0xfac51c,0xdd86af]</option>
+            <option name="mapping.data.maxClusters">500</option>
+            <option name="mapping.markerLayer.markerOpacity">0.8</option>
+            <option name="mapping.markerLayer.markerMinSize">10</option>
+            <option name="mapping.markerLayer.markerMaxSize">60</option>
+            <option name="mapping.map.center">(40.45,-2.81)</option>
+            <option name="mapping.map.zoom">2</option>
+        </map>
+      </panel>  
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <html>
+              <p><b>Top Bandwidth Consumers - Source</b> <a href="$url1$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+            </html>
+            <chart>
+                <search>
+                    <query>
+                        `netflow_search_rule_20018` 
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | strcat src_ip "/" user ip_user
+                        | `per_second_chart(sum(bytes) by ip_user,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection_earliest">$start$</set>
+                    <set token="selection_latest">$end$</set>
+                    <set token="url1">
+                        <![CDATA[
+                            /app/netflow/cisco_top_bandwidth_consumers?earliest=$selection_earliest$&latest=$selection_latest$
+                        ]]>
+                    </set>
+                </selection>
+            </chart>
+        </panel>
+        <panel>
+            <html>
+              <p><b>Top Bandwidth Consumers - Destinations</b> <a href="$url2$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+            </html>
+            <chart>
+                <search>
+                    <query>
+                        `netflow_search_rule_20019` 
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | `per_second_chart(sum(bytes) by dest_ip,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection_earliest">$start$</set>
+                    <set token="selection_latest">$end$</set>
+                    <set token="url2">
+                        <![CDATA[
+                            /app/netflow/cisco_top_destinations?earliest=$selection_earliest$&latest=$selection_latest$
+                        ]]>
+                    </set>
+                </selection>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <html>
+              <p><b>Top Violators</b> <a href="$url3$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+            </html>
+            <chart>
+                <search>
+                    <query>
+                        `netflow_search_rule_20020` 
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | timechart limit=10 sum(denied_count) by src_ip useother="f" 
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Count</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection_earliest">$start$</set>
+                    <set token="selection_latest">$end$</set>
+                    <set token="url3">
+                        <![CDATA[
+                            /app/netflow/cisco_top_violators?earliest=$selection_earliest$&latest=$selection_latest$
+                        ]]>
+                    </set>
+                </selection>
+            </chart>
+        </panel>
+        <panel>
+            <html>
+              <p><b>Top Connections</b> <a href="$url4$" target="_blank">Pan-and-zoom and click here to see details</a> </p>
+            </html>
+            <chart>
+                <search>
+                    <query>
+                        `netflow_search_rule_20021` 
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | strcat src_ip "/" user ip_user 
+                        | timechart limit=10 sum(created_count) by ip_user useother="f" 
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Count</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection_earliest">$start$</set>
+                    <set token="selection_latest">$end$</set>
+                    <set token="url4">
+                        <![CDATA[
+                            /app/netflow/cisco_top_connections?earliest=$selection_earliest$&latest=$selection_latest$
+                        ]]>
+                    </set>
+                </selection>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Modules <b>"10018: Top Bandwidth Consumers for Cisco ASA"</b>, <b>"10019: Top Traffic Destinations for Cisco ASA"</b>, <b>"10020: Top Policy Violators for Cisco ASA"</b> and <b>"10021: Top Hosts with most Connections for Cisco ASA"</b> (syslogs with nfc_id=20018, nfc_id=20019, nfc_id=20020 and nfc_id=20021). These Modules are packaged in <b>NFO “Cisco ASA” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+             </html>
+        </panel>
+    </row>
+</dashboard>

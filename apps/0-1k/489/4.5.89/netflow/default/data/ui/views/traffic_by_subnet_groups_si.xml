@@ -1,0 +1,494 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js" stylesheet="inputs_layout.css">
+  <label>Traffic by Subnet Groups SI</label>
+  <fieldset autoRun="true" submitButton="true">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+      <change>
+        <set token="exp_group">*</set>
+        <set token="exp_ip">*</set>
+        <set token="datacenter">*</set>
+        <set token="zone_1">*</set>
+        <set token="zone_2">*</set>
+        <set token="form.exp_ip">*</set>
+        <set token="form.datacenter">*</set>
+        <set token="form.zone_1">*</set>
+        <set token="form.zone_2">*</set>
+        <unset token="selected_src_group"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+      <change>
+        <set token="exp_ip">*</set>
+        <set token="datacenter">*</set>
+        <set token="zone_1">*</set>
+        <set token="zone_2">*</set>
+        <set token="form.exp_ip">*</set>
+        <set token="form.datacenter">*</set>
+        <set token="form.zone_1">*</set>
+        <set token="form.zone_2">*</set>
+        <unset token="selected_src_group"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+      <change>
+        <set token="datacenter">*</set>
+        <set token="zone_1">*</set>
+        <set token="zone_2">*</set>
+        <set token="form.datacenter">*</set>
+        <set token="form.zone_1">*</set>
+        <set token="form.zone_2">*</set>
+        <unset token="selected_src_group"></unset>
+      </change>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="datacenter" searchWhenChanged="false">
+      <label>Data Center</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <fieldForLabel>level_1</fieldForLabel>
+      <fieldForValue>level_1</fieldForValue>
+      <change>
+        <set token="zone_1">*</set>
+        <set token="zone_2">*</set>
+        <set token="form.zone_1">*</set>
+        <set token="form.zone_2">*</set>
+        <unset token="selected_src_group"></unset>
+      </change>
+      <search base="baseSearch_subnet_lookup">
+        <query>| fields level_1 
+           | dedup level_1 
+           | where level_1!="0" 
+           | sort + level_1
+        </query>
+      </search>
+    </input>
+    <input type="dropdown" token="zone_1" searchWhenChanged="false">
+      <label>Zone 1</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <fieldForLabel>level_2</fieldForLabel>
+      <fieldForValue>level_2</fieldForValue>
+      <change>
+        <set token="zone_2">*</set>
+        <set token="form.zone_2">*</set>
+        <unset token="selected_src_group"></unset>
+      </change>
+      <search base="baseSearch_subnet_lookup">
+        <query>| search level_1=$datacenter|s$ 
+           | fields level_2 
+           | dedup level_2 
+           | where level_2!="0"
+           | sort + level_2
+        </query>
+      </search>
+    </input>
+    <input type="dropdown" token="zone_2" searchWhenChanged="false">
+      <label>Zone 2</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <fieldForLabel>level_2</fieldForLabel>
+      <fieldForValue>level_2</fieldForValue>
+      <search base="baseSearch_subnet_lookup">
+        <query>| search level_1=$datacenter|s$ 
+           | fields level_2 
+           | dedup level_2 
+           | where level_2!="0" AND level_2!=$zone_1|s$
+           | sort + level_2
+        </query>
+      </search>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" token="tok_time" searchWhenChanged="false">
+      <label>Time Range</label>
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+    <search id="baseSearch_subnet_lookup">
+    <query>
+       | inputlookup my_subnets_lookup 
+       | fillnull
+       | where level_1 != "*"
+       | stats count by level_1 level_2
+    </query>
+    <earliest>$tok_time.earliest$</earliest>
+    <latest>$tok_time.latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint_lookup"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint_lookup">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| mstats sum(sum_bytes_in) as sum_bytes_in WHERE `netflow_si_index` `netflow_si_source` | `set_span`</query>
+    <earliest>$tok_time.earliest$</earliest>
+    <latest>$tok_time.latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint_20067"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint_20067">true</set>
+        <unset token="selected_src_group"></unset>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <unset token="selected_src_group"></unset>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$" id="timechart">
+    <panel>
+      <chart>
+        <title>Traffic by Subnet Groups</title>
+        <search>
+          <query>
+              | mstats sum(sum_bytes_in) as sum_bytes_in
+                 WHERE `netflow_si_index` `netflow_subnet_groups_si_source` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" 
+                 BY nfo_hostname exp_ip src_group dest_group  src_datacenter dest_datacenter transport $span_token$ 
+              | search $advanced_filter$    transport="$protocol_name$" 
+              | search (src_group=$zone_1|s$ OR dest_group=$zone_1|s$) AND (src_group=$zone_2|s$ OR dest_group=$zone_2|s$) AND (src_datacenter=$datacenter|s$  OR dest_datacenter=$datacenter|s$) 
+              | where src_group != dest_group  
+              | lookup `is_local_lookup` exporters_devices_lookup exp_ip OUTPUT device_group AS exp_group
+              | search  exp_group="$exp_group$"
+              | eval subnet_group_pair=src_group+" to "+dest_group                     
+              | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by subnet_group_pair useother="f"
+            </query>
+          <earliest>$earliest_token$</earliest>
+          <latest>$latest_token$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+        </selection>
+      </chart>
+      <table id="table_1_1">
+        <search>
+          <query>
+           | mstats sum(sum_bytes_in) as sum_bytes_in sum(sum_packets_in) as sum_packets_in sum(sum_flow_count) as sum_flow_count
+                 WHERE `netflow_si_index` `netflow_subnet_groups_si_source` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" 
+                 BY nfo_hostname exp_ip src_group dest_group  src_datacenter dest_datacenter transport  
+            | search  $advanced_filter$    transport="$protocol_name$" 
+            | search (src_group=$zone_1|s$ OR dest_group=$zone_1|s$) AND (src_group=$zone_2|s$ OR dest_group=$zone_2|s$) AND (src_datacenter=$datacenter|s$  OR dest_datacenter=$datacenter|s$) 
+            | where src_group != dest_group  
+            | lookup `is_local_lookup` exporters_devices_lookup exp_ip OUTPUT device_group AS exp_group
+            | search  exp_group="$exp_group$"        
+            | eval subnet_group_pair=src_group+" to "+dest_group
+            | stats sum(sum_bytes_in) as TrafficAmount 
+                    sum(sum_packets_in) as PacketsAmount 
+                    sum(sum_flow_count) as Connections 
+                        by subnet_group_pair
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eventstats sum(TrafficAmount) as TotalTraffic
+            | sort 0 - TrafficAmount
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval PacketsSpeed=(PacketsAmount)/$range$
+            | eval ConnectionSpeed=(Connections)/$range$
+            | `commas_formatting(Average Connections/s,ConnectionSpeed,2)`
+            | `commas_formatting(Total Traffic MB,TrafficAmount,2)`
+            | `commas_formatting(Total Connections,Connections,0)`
+            | `commas_formatting(Total Packets,PacketsAmount,0)`
+            | `commas_formatting(Average Mbps,AverageSpeed,2)`
+            | `commas_formatting(Average Packets/s,PacketsSpeed,2)`
+            | table subnet_group_pair "Average Mbps" "Total Traffic MB"  "Average Packets/s" "Total Packets"  "Average Connections/s" "Total Connections"
+            | rename subnet_group_pair as "Subnet Group to Subnet Group" 
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+          <done>
+            <condition>
+              <unset token="selected_src_group"></unset>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <eval token="selected_src_group">mvindex(split($row.Subnet Group to Subnet Group$, " to "),0)</eval>
+          <eval token="selected_dest_group">mvindex(split($row.Subnet Group to Subnet Group$, " to "),1)</eval>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_2_1" depends="$selected_src_group$">
+        <title>Traffic for Data Center $datacenter$ between $selected_src_group$ and $selected_dest_group$</title>
+        <search>
+          <query>
+            | mstats sum(sum_bytes_in) as sum_bytes_in sum(sum_packets_in) as sum_packets_in sum(sum_flow_count) as sum_flow_count 
+              WHERE `netflow_si_index` `netflow_si_source` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" 
+                 BY  nfo_hostname exp_ip src_ip src_host src_port dest_ip dest_host dest_port protocol_id transport
+            | search $advanced_filter$   transport="$protocol_name$" 
+            | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT level_2 AS src_group level_1 as src_datacenter
+            | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT level_2 AS dest_group level_1 as dest_datacenter
+            | search src_group=$selected_src_group$ dest_group=$selected_dest_group$  (src_datacenter=$datacenter|s$  OR dest_datacenter=$datacenter|s$)
+            | where src_group != dest_group 
+            | lookup `is_local_lookup` exporters_devices_lookup exp_ip OUTPUT device_group AS exp_group
+            | search exp_group="$exp_group$" (subnet="$src_ip$" OR src_host="$src_ip$") 
+                                           (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                                           src_port="$src_port$" dest_port="$dest_port$" 
+            | stats sum(sum_bytes_in) as TrafficAmount 
+                        sum(sum_packets_in) as PacketsAmount 
+                        sum(sum_flow_count) as Connections 
+                        by src_ip dest_ip src_host dest_host src_port dest_port transport exp_ip
+            | eventstats sum(TrafficAmount) as sum_traffic_exp by exp_ip
+            | sort 0 - TrafficAmount
+            | head 100
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval PacketsSpeed=(PacketsAmount)/$range$
+            | eval pct = TrafficAmount*100/sum_traffic_exp
+            | `format_port_column(src_port_string, src_port)`
+            | `format_port_column(dest_port_string, dest_port)`
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eval MaxTraffic=MaxTraffic/1000000
+            | `commas_formatting(Total Connections, Connections, 0)`
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Total Traffic MB, TrafficAmount, 2)`
+            | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+            | `commas_formatting(Total Packets, PacketsAmount, 0)`
+            | table  src_ip src_host src_port_string dest_ip dest_host dest_port_string
+                "Average Mbps" "Total Traffic MB" 
+                "Average Packets/s" "Total Packets" "Total Connections"
+            | rename src_ip as "Source IP" src_host as "Source Host" src_port_string as "Source Port"
+            | rename dest_ip as "Destination IP" dest_host as "Destination Host" dest_port_string as "Destination Port"
+            </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint_20067$">
+    <panel>
+      <html>
+          <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+          <p>This dashboard is populated by flow data in Metrics Summary Index created by rollup saved searches <a target="_blank" href="https://docs.netflowlogic.com/integrations-and-apps/netflow-analytics-splunk-app/summary-index-for-large-volumes-of-data"
+>(Learn more)</a> of events sent to Splunk by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+          <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+        </html>
+    </panel>
+  </row>
+  <row depends="$show_hint_lookup$">
+    <panel>
+      <html>
+            <p>You see this message because there is <b>no data</b> for the <b>my-subnets.csv</b> lookup file.</p>
+            <p>This dashboard is using this lookup <b>$SPLUNK_HOME/etc/apps/netflow/lookups/my-subnets.csv</b> file to determine traffic in and out of your datacenter as well as other subnet based statistics. It supports up to four-level hierarchy, and should be created in the following format.</p>
+            <p>Example:<br/>
+                <code>
+                    <table cellpadding="5" cellspacing="10">
+                        <thead>
+                            <tr>
+                                <th align="left">subnet</th>
+                                <th align="left">level_1</th>
+                                <th align="left">level_2</th>
+                                <th align="left">level_3</th>
+                                <th align="left">level_4</th>
+                                <th align="left">description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>10.0.5.0/29</td>
+                                <td>ClassA</td>
+                                <td>ClassA1</td>
+                                <td>ClassA11</td>
+                                <td>ClassA111</td>
+                                <td>ClassAsubnet111</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.8/29</td>
+                                <td>ClassA</td>
+                                <td>ClassA1</td>
+                                <td>ClassA11</td>
+                                <td>ClassA112</td>
+                                <td>ClassAsubnet112</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.16/28</td>
+                                <td>ClassA</td>
+                                <td>ClassA1</td>
+                                <td>ClassA12</td>
+                                <td>ClassA121</td>
+                                <td>ClassAsubnet121</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.32/27</td>
+                                <td>ClassA</td>
+                                <td>ClassA1</td>
+                                <td>ClassA12</td>
+                                <td>ClassA122</td>
+                                <td>ClassAsubnet122</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.64/26</td>
+                                <td>ClassA</td>
+                                <td>ClassA2</td>
+                                <td>ClassA21</td>
+                                <td>ClassA211</td>
+                                <td>ClassAsubnet211</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.128/27</td>
+                                <td>ClassA</td>
+                                <td>ClassA2</td>
+                                <td>ClassA21</td>
+                                <td>ClassA212</td>
+                                <td>ClassAsubnet212</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.160/27</td>
+                                <td>ClassA</td>
+                                <td>ClassA2</td>
+                                <td>ClassA22</td>
+                                <td>ClassA221</td>
+                                <td>ClassAsubnet221</td>
+                            </tr>
+                            <tr>
+                                <td>10.0.5.192/26</td>
+                                <td>ClassA</td>
+                                <td>ClassA2</td>
+                                <td>ClassA22</td>
+                                <td>ClassA222</td>
+                                <td>ClassAsubnet222</td>
+                            </tr>
+                            <tr>
+                                <td>172.16.0.0/12</td>
+                                <td>ClassB</td>
+                                <td>ClassB1</td>
+                                <td>ClassB11</td>
+                                <td>ClassB111</td>
+                                <td>ClassBsubnet111</td>
+                            </tr>
+                            <tr>
+                                <td>192.168.0.0/16</td>
+                                <td>ClassC</td>
+                                <td>ClassC1</td>
+                                <td>ClassC11</td>
+                                <td>ClassC111</td>
+                                <td>ClassCsubnet111</td>
+                            </tr>
+                            <tr>
+                                <td>100::/18</td>
+                                <td>IPv6_1</td>
+                                <td>IPv6_11</td>
+                                <td>IPv6_111</td>
+                                <td>IPv6_1111</td>
+                                <td>IPv6_1_subnet</td>
+                            </tr>
+                            <tr>
+                                <td>104::/18</td>
+                                <td>IPv6_2</td>
+                                <td>IPv6_21</td>
+                                <td>IPv6_211</td>
+                                <td>IPv6_2111</td>
+                                <td>IPv6_2_subnet</td>
+                            </tr>
+                            <tr>
+                                <td>108::/18</td>
+                                <td>IPv6_3</td>
+                                <td>IPv6_31</td>
+                                <td>IPv6_311</td>
+                                <td>IPv6_3111</td>
+                                <td>IPv6_3_subnet</td>
+                            </tr>
+                            <tr>
+                                <td>10c::/18</td>
+                                <td>IPv6_4</td>
+                                <td>IPv6_41</td>
+                                <td>IPv6_411</td>
+                                <td>IPv6_4111</td>
+                                <td>IPv6_4_subnet</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </code>
+            </p>
+        </html>
+    </panel>
+  </row>
+</form>

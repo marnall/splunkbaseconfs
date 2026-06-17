@@ -1,0 +1,182 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>VDI Error Console</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">WINEVENT:ERROR &amp; WARNINGS</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">
+      This dashboard displays the Windows Event Log errors and warnings from
+      the Winevent logs on your virtual desktops. Use the timerange picker to
+      adjust the time range for the dashboards. Filter this view by entering
+      values in the fields below and pressing Enter. To view the entire result
+      set for this report or manipulate the data further, click View Full
+      Report.
+    </param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">Last 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server: </param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"/>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Catalog: </param>
+        <param name="field">catalog_name</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="vm_name">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="catalog_name">
+              <param name="default"/>
+              <param name="prefix">catalog_name="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">Desktop Name: </param>
+          <param name="field">vm_name</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="vm_name">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="vm_name">
+                <param name="default"/>
+                <param name="prefix">vm_name="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Event Code: </param>
+            <param name="field">EventCode</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="EventCode">
+                  <param name="value"/>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="EventCode">
+                  <param name="default"/>
+                  <param name="prefix">EventCode="*</param>
+                  <param name="suffix">*"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+              <param name="search">`win_errors` $vm_name$ | `perfmon_desktop_lookup`| search * $catalog_name$ $HostingServerName$ | stats count by vm_name EventCode Message SourceName Type sourcetype </param>
+              <module name="JobProgressIndicator"/>
+              <module name="HiddenPostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+                <param name="search">|stats dc(vm_name) as vm | eval range="vmsreporting"</param>
+                <module name="SingleValue">
+                  <param name="field">vm</param>
+                  <param name="beforeLabel">VMs Reporting: </param>
+                  <param name="classField">range</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Full Report</param>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp1" group="Windows WinEvent Log" autoRun="True">
+                <param name="search">| search Type="Warning" | stats sum(count) as count | eval range="winwarn"</param>
+                <module name="SingleValue">
+                  <param name="field">count</param>
+                  <param name="classField">range</param>
+                  <param name="beforeLabel">Warnings: </param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp2" group="Windows WinEvent Log" autoRun="True">
+                <param name="search">| stats sum(count) as count values(SourceName) as "Source(s)" by Type vm_name | head 10 | sort -count</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="label">View Report Details</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp3" group="Windows WinEvent Log" autoRun="True">
+                <param name="search">| search Type="Error" | stats sum(count) as count | eval range="winerr"</param>
+                <module name="SingleValue">
+                  <param name="field">count</param>
+                  <param name="classField">range</param>
+                  <param name="beforeLabel">Errors: </param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row5_col1" group="Windows WinEvent Log" autoRun="True">
+                <param name="search">| stats values(SourceName) as "Source(s)" values(Message) as "Message(s)" by Type vm_name | sort -count</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="count">500</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="label">View Report Details</param>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

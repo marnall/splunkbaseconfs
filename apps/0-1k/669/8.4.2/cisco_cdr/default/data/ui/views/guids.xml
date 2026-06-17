@@ -1,0 +1,185 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Guids (prototype)</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Guids (prototype)</h1>
+      ]]></param>
+    </module>
+
+    <module name="TimePicker">
+      <param name="default">Last 60 minutes</param>
+
+      <module name="TextField">
+        <param name="name">number</param>
+        <param name="label">number</param>
+        <param name="width">150px</param>
+
+        <module name="CustomBehavior">
+          <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+          <module name="ValueSetter">
+            <param name="name">numberSubsearch</param>
+            <param name="if.$number$=*">[ search `custom_index` (sourcetype=cucm_cdr OR sourcetype=cube_cdr) $numberTerms$ | table call_reference_id]</param>
+
+
+            <module name="TextField">
+              <param name="name">searchterms</param>
+              <param name="label">search filters</param>
+              <param name="width">334px</param>
+              <param name="template">| search $value$</param>
+
+              <module name="Search">
+                <param name="search">| `get_clusters`</param>
+
+                <module name="CheckboxPulldown">
+                  <param name="name">clusterId</param>
+                  <param name="label">cluster</param>
+                  <param name="template">globalCallId_ClusterID=$value$</param>
+                  <param name="valueField">clusterId</param>
+                  <param name="labelField">label</param>
+                  <param name="selectAllOptimization">omit</param>
+
+                  <module name="TextField">
+                    <param name="name">streamingSearch</param>
+                    <param name="width">1200px</param>
+                    <param name="template">| $value$</param>
+                    <param name="default"><![CDATA[
+eval exclude_entire_call=if(outgoing_call_reference_id==call_reference_id AND match(destDeviceName, "(.+(F|f)orcedMTP.+)|(.+_Verint_?DMS)"), 1, 0)
+]]></param>
+<!--
+NOTES:
+   there are many things going on here.
+   1) any call that has ANY leg with a destDeviceName to verint or forcedMTP, all of those call legs are kicked out of the analysis - such calls are banished from "joining" and will only ever be grouped by their UCM callid.
+   This is exposed as an arcane piece of regex + SPL in the searchterms field.
+
+   2) many of these calls go into some kind of retry loopp,  with "destination failed" or "unallocated (unassigned) number", or "temporary failure".  The "approx_real_id" field is filtering those out
+
+   3) The guid_detail page is being perhaps overly careful.   it is doing a subsearch JUST IN CASE,  for a given call_id X,  some of the legs have call_reference_id Y and some do not.   However it seems that never happens - that call_id X will have call_reference_id Y for all legs.
+
+-->
+<!--   the following is an alternate drilldown search -->
+<!--
+`cdr_events` call_reference_id=B43E7400
+| eval exclude_entire_call=if(outgoing_call_reference_id==call_reference_id AND match(destDeviceName, "(.+(F|f)orcedMTP.+)|(.+_Verint_?DMS)"), 1, 0)
+| eventstats max(exclude_entire_call) as exclude_entire_call by call_id
+| eval call_reference_id=if(exclude_entire_call==1,call_id,call_reference_id)
+| table _time call_id exclude_entire_call callingPartyNumber finalCalledPartyNumber origDeviceName destDeviceName cause_description call_reference_id *_call_reference_id
+| eval call_reference_id=case( outgoing_call_reference_id==call_reference_id AND match(destDeviceName, "(.+ForcedMTP.+)|(.+_Verint_?DMS)"), null(),
+  true(), call_reference_id)
+  | search exclude_entire_call=0 | sort 0 - call_id
+-->
+
+
+
+
+                    <module name="Button">
+                      <param name="allowSoftSubmit">True</param>
+
+
+                      <module name="Search">
+                        <param name="search"><![CDATA[
+`custom_index` (sourcetype=cucm_cdr OR sourcetype=cube_cdr) $numberSubsearch$
+| `get_call_id`
+$streamingSearch$
+| eventstats max(exclude_entire_call) as exclude_entire_call by call_id
+| eval call_reference_id=if(exclude_entire_call==1,call_id,call_reference_id)
+
+| eval ooo_id = if(match(cause_description, "Destination out of order"),call_id,null())
+| eval uun_id = if(match(cause_description, "Unallocated \\(unassigned\\) number"),call_id,null())
+| eval tf_id = if(match(cause_description, "Temporary failure"),call_id,null())
+
+
+| eval internal_party_number=mvdedup(case(type=="internal", mvappend(callingPartyNumber,originalCalledPartyNumber,finalCalledPartyNumber), type=="incoming", mvappend(originalCalledPartyNumber,finalCalledPartyNumber), type=="outgoing", callingPartyNumber))
+| stats min(_time) as _time max(_time) as _end_time dc(call_id) as call_ids values(globalCallId_ClusterID) as clusters dc(internal_party_number) as extensions dc(ooo_id) as out_of_order_legs dc(uun_id) as wrong_number_legs dc(tf_id) as temp_failure_legs by call_reference_id
+| eval approx_real_legs = call_ids - out_of_order_legs - wrong_number_legs - temp_failure_legs
+| eval duration = _end_time - _time
+  $searchterms$
+| fieldformat duration=tostring(duration,"duration")
+| sort 0 - approx_real_legs
+| streamstats count as row
+| table _time row _end_time time duration call_reference_id extensions call_ids out_of_order_legs wrong_number_legs approx_real_legs clusters *
+
+
+
+                        ]]></param>
+
+
+
+                        <module name="HTML" layoutPanel="resultsHeaderPanel">
+                          <param name="html"><![CDATA[
+
+                          <h2>$qualifier$ $results.count$ guids found $search.timeRange.label$ </h2>
+
+                          ]]></param>
+                          <param name="customBehavior">qualifyNumberOfResults</param>
+                        </module>
+
+                        <module name="Pulldown" layoutPanel="resultsAreaLeft">
+                          <param name="name">results.count</param>
+                          <param name="label">results per page</param>
+                          <param name="float">right</param>
+                          <param name="staticOptions">
+                            <list><param name="value">10</param></list>
+                            <list><param name="value">20</param><param name="selected">True</param></list>
+                            <list><param name="value">50</param></list>
+                            <list><param name="value">100</param></list>
+                            <list><param name="value">200</param></list>
+                          </param>
+
+
+                          <module name="Pager">
+
+                            <module name="ProgressIndicator"></module>
+
+                            <module name="PostProcess">
+                              <param name="search"><![CDATA[
+eval detailLatest=if(isnull(detailLatest),_time+duration,detailLatest)
+| eval detailLatest=round(relative_time(detailLatest,"+1s"))
+                              ]]></param>
+
+                              <module name="Table">
+                                <param name="latestTimeField">_end_time</param>
+                                <param name="hiddenFields">detailEarliest,detailLatest</param>
+
+                                <module name="Redirector">
+                                  <param name="url">guid_detail</param>
+                                  <param name="mergeDrilldownKeys">False</param>
+
+                                  <param name="arg.number">$row.fields.number$</param>
+                                  <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                  <param name="arg.call_reference_id">$row.fields.call_reference_id$</param>
+
+                                  <param name="arg.searchterms">destDeviceName!="*forcedMTP*" destDeviceName!="*verint*"</param>
+
+                                  <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                  <param name="arg.latest">$row.fields.detailLatest$</param>
+                                </module>
+
+                              </module>
+                            </module>
+                            <module name="Pager" />
+
+                            <pattern name="see_raw_search_syntax" />
+
+                          </module>
+
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

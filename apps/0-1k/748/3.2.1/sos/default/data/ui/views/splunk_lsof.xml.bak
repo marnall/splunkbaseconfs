@@ -1,0 +1,233 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>File Descriptor Usage</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">File Descriptor Usage</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">splunk_lsof.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+            
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+
+        <!-- COMMON CONTROLS END   -->
+
+        <module name="Search" layoutPanel="panel_row1_col1" group="Latest file descriptor usage">
+          <param name="search">
+          `set_sos_index` $host$ sourcetype="lsof"
+          | head 1
+          | multikv 
+          | `get_splunk_process_type_lsof`
+          </param>
+
+          <module name="HiddenPostProcess">
+            <param name="search">
+            | stats count(eval(process=="splunkd")) AS splunkd_FD_count count(eval(process=="Splunk Web")) AS splunkweb_FD_count max(_time) AS sample_time | eval sample_time=strftime(sample_time,"%m-%d-%Y %T %Z")
+            </param>
+  
+            <module name="ResultsValueSetter">
+              <param name="fields">sample_time,splunkd_FD_count,splunkweb_FD_count</param>
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                <div class="single_values_list">
+                <br>
+                <ul>
+                  <li>Sample time: <b>$sample_time$</b></li><br>
+                  <li>splunkd file descriptor usage: <b>$splunkd_FD_count$</b></li><br>
+                  <li>Splunk Web file descriptor usage: <b>$splunkweb_FD_count$</b></li>
+                </ul>
+                </div>
+                ]]></param>
+              </module>
+            </module>
+          </module>
+        </module>
+              
+        <module name="Search" layoutPanel="panel_row2_col1" group="Latest splunkd file descriptor usage by type">
+          <param name="search">
+          `set_sos_index` $host$ sourcetype="lsof"
+          | head 1
+          | multikv 
+          | `get_splunk_process_type_lsof`
+          | search process="splunkd"
+          | chart count by TYPE
+          </param>    
+          <module name="JobProgressIndicator"></module>    
+          <module name="HiddenChartFormatter">
+            <param name="charting.chart">pie</param>
+            <param name="charting.nullValueMode">zero</param>
+            <param name="charting.secondaryAxisTitle.text">file descriptor type</param>
+            <module name="FlashChart">
+              <param name="height">230px</param>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+          </module>
+        </module>  
+        
+        <module name="Search" layoutPanel="panel_row2_col2" group="Latest Splunk Web file descriptor usage by type">
+          <param name="search">
+          `set_sos_index` $host$ sourcetype="lsof"
+          | head 1
+          | multikv 
+          | `get_splunk_process_type_lsof`
+          | search process="Splunk Web"
+          | chart count by TYPE
+          </param>    
+          <module name="JobProgressIndicator"></module>    
+          <module name="HiddenChartFormatter">
+            <param name="charting.chart">pie</param>
+            <param name="charting.nullValueMode">zero</param>
+            <param name="charting.secondaryAxisTitle.text">file descriptor type</param>
+            <module name="FlashChart">
+              <param name="height">230px</param>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+          </module>
+          
+          <module name="Search" layoutPanel="panel_row3_col1" group="splunkd file descriptor usage today vs yesterday">
+            <param name="search">
+            `set_sos_index` $host$ sourcetype="lsof" earliest=-1d latest=now
+            | head 1
+            | multikv
+            | `get_splunk_process_type_lsof`
+            | search process="splunkd"
+            | stats count by TYPE |rename count as count_d2
+            | append [search `set_sos_index` $host$ sourcetype="lsof" earliest=-2d latest=-1d
+                     | head 1
+                     | multikv
+                     | eval process=case(COMMAND=="python","Splunk Web",COMMAND="splunkd","splunkd")
+                     | search process="splunkd"
+                     | stats count by TYPE | rename count as count_d1]
+            | stats first(count*) as count* by TYPE
+            | eval perc_increase= round((count_d2-count_d1)/count_d1*100,2)
+            | rename count_d1 as "One day ago", count_d2 as "Now", perc_increase as "Percentage increased"
+            | fields TYPE, "One day ago", "Now", "Percentage increased"
+            </param>
+            <module name="JobProgressIndicator"></module>
+            <module name="Pager">
+              <param name="count">10</param>
+              <param name="maxPages">5</param>
+              <param name="entityName">results</param>
+              <module name="SimpleResultsTable">
+                <param name="displayRowNumbers">off</param>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+              </module>
+            </module>
+          </module>
+
+          <module name="Search" layoutPanel="panel_row3_col2" group="Splunk Web file descriptor usage today vs yesterday">
+            <param name="search">
+            `set_sos_index` $host$ sourcetype="lsof" earliest=-1d latest=now
+            | head 1
+            | multikv
+            | `get_splunk_process_type_lsof`
+            | search process="Splunk Web"
+            | stats count by TYPE |rename count as count_d2
+            | append [search `set_sos_index` $host$ sourcetype="lsof" earliest=-2d latest=-1d
+                     | head 1
+                     | multikv
+                     | eval process=case(COMMAND=="python","Splunk Web",COMMAND="splunkd","splunkd")
+                     | search process="Splunk Web"
+                     | stats count by TYPE | rename count as count_d1]
+            | stats first(count*) as count* by TYPE
+            | eval perc_increase= round((count_d2-count_d1)/count_d1*100,2)
+            | rename count_d1 as "One day ago", count_d2 as "Now", perc_increase as "Percentage increased"
+            | fields TYPE, "One day ago", "Now", "Percentage increased"
+            </param>
+            <module name="JobProgressIndicator"></module>
+            <module name="Pager">
+              <param name="count">10</param>
+              <param name="maxPages">5</param>
+              <param name="entityName">results</param>
+              <module name="SimpleResultsTable">
+                <param name="displayRowNumbers">off</param>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+              </module>
+            </module>
+          </module>
+
+          <module name="TimeRangePicker" layoutPanel="panel_row4_col1" group="File descriptor usage over time by process">
+            <param name="selected">Last 4 hours</param>
+            <param name="searchWhenChanged">True</param>
+            <module name="Search">
+              <param name="search">
+              `set_sos_index` $host$ sourcetype="lsof"
+              | multikv 
+              | `get_splunk_process_type_lsof`
+              | timechart partial=f span=10m count by process
+              </param>    
+              <module name="JobProgressIndicator"></module>    
+              <module name="HiddenChartFormatter">
+                <param name="chart">line</param>
+                <param name="chart.nullValueMode">zero</param>
+                <param name="secondaryAxisTitle.text">File descriptor count</param>
+                <module name="FlashChart">
+                  <param name="height">230px</param>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>  
+              
+          </module>  
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

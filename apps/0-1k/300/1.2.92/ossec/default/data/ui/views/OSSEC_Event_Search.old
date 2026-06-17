@@ -1,0 +1,204 @@
+	<view template="dashboard.html" objectMode="SimpleForm" onunloadCancelJobs="true" stylesheet="eventsearch.css">
+	<label>OSSEC Event Search</label>
+	<module name="AccountBar" layoutPanel="appHeader"/>
+	<module name="AppBar" layoutPanel="navigationHeader"/>
+	<module name="Message" layoutPanel="messaging">
+		<param name="filter">splunk.search.error</param>
+		<param name="clearOnJobDispatch">False</param>
+		<param name="maxSize">1</param>
+	</module>
+	<module name="TitleBar" layoutPanel="viewHeader">
+		<param name="actionsMenuFilter">dashboard</param>
+	</module>
+	<module name="HiddenSearch" layoutPanel="viewHeader">
+		<param name="search"><![CDATA[ eventtype=ossec $ossec_server$ reporting_host="$reporting_host$" severity>=$severity$ | fillnull value="(none)" ossec_group | search ossec_group="$ossec_group$" | fields $field_list$ ]]></param>
+
+		<module name="SearchSelectLister">
+			<param name="staticFieldsToDisplay"/>
+			<param name="search"> | inputlookup lookup_ossec_servers </param>
+			<param name="label">OSSEC Server</param>
+			<param name="settingToCreate">ossec_server_setting</param>
+			<param name="searchFieldsToDisplay">
+				<list>
+					<param name="value">ossec_server</param>
+					<param name="label">description</param>
+				</list>
+			</param>
+			<param name="searchWhenChanged">False</param>
+			<module name="ConvertToIntention">
+				<param name="settingToConvert">ossec_server_setting</param>
+				<param name="intention">
+					<param name="name">stringreplace</param>
+					<param name="arg">
+						<param name="ossec_server">
+							<param name="fillOnEmpty">False</param>
+							<param name="value">ossec_server="$target$"</param>
+						</param>
+					</param>
+				</param>
+				
+
+				<module name="SearchSelectLister">
+					<param name="staticFieldsToDisplay">
+						<list>
+							<param name="label">All Rule Groups</param>
+							<param name="value">*</param>
+						</list>
+						<list>
+							<param name="label">No Rule Groups</param>
+							<param name="value">(none)</param>
+						</list>
+					</param>
+					<param name="search"> | inputlookup lookup_ossec_group | dedup ossec_group | sort ossec_group </param>
+					<param name="label">OSSEC Rule Group</param>
+					<param name="settingToCreate">ossec_group_setting</param>
+					<param name="searchFieldsToDisplay">
+						<list>
+							<param name="value">ossec_group</param>
+							<param name="label">ossec_group</param>
+						</list>
+					</param>
+					<param name="searchWhenChanged">False</param>
+					<module name="ConvertToIntention">
+						<param name="settingToConvert">ossec_group_setting</param>
+						<param name="intention">
+							<param name="name">stringreplace</param>
+							<param name="arg">
+								<param name="ossec_group">
+									<param name="fillOnEmpty">False</param>
+									<param name="value">$target$</param>
+								</param>
+							</param>
+						</param>
+						
+						<module name="ExtendedFieldSearch">
+							<!-- This module is troublesome... -->
+							<param name="field">Reporting Host</param>
+							<param name="intention">
+								<param name="name">stringreplace</param>
+								<param name="arg">
+									<param name="reporting_host">
+										<param name="default">*</param>
+									</param>
+								</param>
+							</param>
+							<param name="replacementMap">
+								<param name="arg">
+									<param name="reporting_host">
+										<param name="value"></param>
+									</param>
+								</param>
+							</param>
+							
+							<module name="StaticSelect">
+								<param name="settingToCreate">severity_setting</param>
+								<param name="staticFieldsToDisplay">
+									<list><param name="label">0</param></list>
+									<list><param name="label">1</param></list>
+									<list><param name="label">2</param></list>
+									<list><param name="label">3</param></list>
+									<list><param name="label">4</param></list>
+									<list><param name="label">5</param></list>
+									<list><param name="label">6</param></list>
+									<list><param name="label">7</param></list>
+									<list><param name="label">8</param></list>
+									<list><param name="label">9</param></list>
+									<list><param name="label">10</param></list>
+									<list><param name="label">11</param></list>
+									<list><param name="label">12</param></list>
+									<list><param name="label">13</param></list>
+									<list><param name="label">14</param></list>
+									<list><param name="label">15</param></list>
+								</param>
+								<param name="searchWhenChanged">False</param>
+								<param name="selected">4</param>
+								<param name="label">Min. Severity</param>
+								<module name="ConvertToIntention">
+									<param name="settingToConvert">severity_setting</param>
+									<param name="intention">
+										<param name="name">stringreplace</param>
+										<param name="arg">
+											<param name="severity">
+												<param name="default">4</param>
+												<param name="fillOnEmpty">True</param>
+												<param name="value">$target$</param>
+											</param>
+										</param>
+									</param>
+									<module name="StaticSelect">
+										<param name="settingToCreate">field_list_setting</param>
+										<param name="staticFieldsToDisplay">
+											<list>
+												<param name="value">ossec_server, reporting_host, severity, ossec_group, action</param>
+												<param name="label">No</param>
+											</list>
+											<list>
+												<param name="value">ossec_server, reporting_host, severity, ossec_group, rule_number, action, message</param>
+												<param name="label">Yes</param>
+											</list>
+										</param>
+										<param name="searchWhenChanged">False</param>
+										<param name="selected">No</param>
+										<param name="label">Show Raw Message</param>
+										<module name="ConvertToIntention">
+											<param name="settingToConvert">field_list_setting</param>
+											<param name="intention">
+												<param name="name">stringreplace</param>
+												<param name="arg">
+													<param name="field_list">
+														<param name="default">No</param>
+														<param name="fillOnEmpty">True</param>
+														<param name="value">$target$</param>
+													</param>
+												</param>
+											</param>
+<!--
+											<module name="ServerSideInclude">
+												<param name="src">br.html</param>
+											</module>
+-->										
+
+											<module name="TimeRangePicker">
+												<param name="searchWhenChanged">False</param>
+												<param name="selected">Last 60 minutes</param>
+												<module name="SubmitButton">
+													<param name="allowSoftSubmit">True</param>
+													<param name="label">Search</param>
+													<module name="JobStatus">
+														<module name="Paginator" layoutPanel="panel_row3_col1" group="OSSEC Events">
+															<param name="count">10</param>
+															<param name="entityName">results</param>
+															<param name="groupLabel">OSSEC Events</param>
+															<module name="EnablePreview">
+																<param name="enable">True</param>
+																<param name="display">false</param>
+																<module name="SimpleResultsTable">
+																	<param name="count">10</param>
+																	<param name="drilldown">row</param>
+																	<param name="allowTransformedFieldSelect">True</param>
+																	<module name="ConvertToDrilldownSearch">
+																		<module name="ViewRedirector">
+																			<param name="viewTarget">flashtimeline</param>
+																		</module>
+																	</module>
+																</module>
+																<module name="ViewRedirectorLink">
+																	<param name="viewTarget">flashtimeline</param>
+																</module>
+															</module>
+														</module>
+													</module>
+												</module>
+											</module>
+										</module>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+				</module>
+			</module>
+		</module>
+	</module>
+</view>
+

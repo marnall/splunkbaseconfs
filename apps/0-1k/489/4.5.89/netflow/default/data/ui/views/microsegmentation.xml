@@ -1,0 +1,365 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js" stylesheet="inputs_layout.css">
+  <label>Microsegmentation Analyzer and Planning (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20264` | head 1</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' > 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <chart>
+        <title>East-West (Internal) / North-South (External)</title>
+        <search>
+          <query>`netflow_search_rule_20264` 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet  
+                | eval srcdesttype = if((src_subnet!="external" AND dest_subnet!="external"),"East-West","North-South")
+                | `sampling(bytes)`
+                | eval MB = bytes / 1024 / 1024 
+                | stats sum(MB) as TrafficMB by srcdesttype 
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>External: Ingress / Egress</title>
+        <search>
+          <query>`netflow_search_rule_20264` 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet
+                | where src_subnet = "external" OR dest_subnet = "external"
+                | `sampling(bytes)`
+                | eval MB = bytes / 1024 / 1024 
+                | eval in_out = if(src_subnet="external","Ingress","Egress") 
+                | stats sum(MB) as TrafficMB by in_out
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Internal: Switched / Routed</title>
+        <search>
+          <query>`netflow_search_rule_20264` 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet
+                | where src_subnet != "external" AND dest_subnet !="external"
+                | eval switchedrouted = if((src_subnet = dest_subnet),"Switched","Routed")
+                | `sampling(bytes)`
+                | eval MB = bytes / 1024 / 1024 
+                | stats sum(MB) as TrafficMB by switchedrouted 
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <chart>
+        <title>Internal: Top Traffic by Dest Port</title>
+        <search>
+          <query>`netflow_search_rule_20264` 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet
+                | where src_subnet != "external" AND dest_subnet !="external"
+                | `sampling(bytes)`
+                | eval MB = bytes / 1024 / 1024 
+                | `format_port_column(dest_port_string, dest_port)` 
+                | stats sum(MB) as TrafficMB by dest_port_string 
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Internal: Top Traffic VM-to-VM</title>
+        <search>
+          <query>`netflow_search_rule_20264` src_vm_name dest_vm_name 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet
+                | where src_subnet != "external" AND dest_subnet !="external"
+                | `sampling(bytes)`
+                | eval MB = bytes / 1024 / 1024 
+                | fillnull value="" transport
+                | `format_ip_column(src_ip,src_ip,src_vm_name)`
+                | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+                | strcat src_ip " - " dest_ip host_pair 
+                | stats sum(MB) as TrafficMB by host_pair 
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Internal: VM-to-VM / VM-to-Host / Host-to-Host</title>
+        <search>
+          <query>`netflow_search_rule_20264` 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | dedup src_ip dest_ip dest_port transport _time 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet 
+                | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet 
+                | where src_subnet != "external" AND dest_subnet !="external"
+                | eval vmhost = if(isnotnull(srv_vm_name) AND isnotnull(dest_vm_name),"VM-to-VM",if(isnotnull(srv_vm_name) OR isnotnull(dest_vm_name),"VM-to-Host","Host-to-Host"))
+                | `sampling(bytes)`
+                |  eval MB = bytes / 1024 / 1024 
+                |  fillnull value="" transport
+                | `format_ip_column(src_ip,src_ip,src_vm_name)`
+                | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+                | strcat src_ip " - " dest_ip host_pair 
+                | stats sum(MB) as TrafficMB by vmhost 
+                | sort - TrafficMB 
+                | head 10 
+                | `commas_formatting(TrafficMB,TrafficMB,2)`
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="height">200</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10264: Microsegmentation Top Pairs Monitor”</b> (syslogs with nfc_id=20264). This Module reports network traffic for Communicating Peers: VM-to-VM, VM-to-Host, and Host-to-Host. This Module stitches client-server request-response flows, reporting bytes and packets for each communicating pair in separate fields (bytes_in, bytes_out, packets_in, packets_out). This Module is packaged in <b>NFO “Microsegmentation Analytics” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

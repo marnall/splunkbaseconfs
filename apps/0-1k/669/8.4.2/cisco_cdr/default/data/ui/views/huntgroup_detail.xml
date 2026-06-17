@@ -1,0 +1,411 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css" isSticky="False">
+  <label>Huntgroup detail</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="mainSearchControls">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Link" layoutPanel="viewHeader">
+      <param name="label">Huntgroups</param>
+
+      <module name="Redirector">
+        <param name="url">huntgroups</param>
+        <param name="arg.earliest">$bc_earliest$</param>
+        <param name="arg.latest">$bc_latest$</param>
+        <param name="arg.name">$bc_name$</param>
+        <param name="arg.huntPilotDN">$bc_huntPilotDN$</param>
+        <param name="arg.searchterms">$bc_searchterms$</param>
+        <param name="arg.clusterId">$bc_clusterId$</param>
+        <param name="arg.clusterGroup">$bc_clusterGroup$</param>
+      </module>
+    </module>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1>&gt; Huntgroup Detail</h1>
+        ]]>
+      </param>
+    </module>
+
+    <module name="TextField">
+      <param name="name">huntPilotDN</param>
+      <param name="label">hunt pilot</param>
+      <param name="float">left</param>
+
+      <module name="CustomBehavior">
+        <param name="customBehavior">createPhoneNumberSearchTerms</param>
+
+        <module name="TimePicker">
+          <param name="label">time range</param>
+          <param name="default">last 24 hours</param>
+
+          <pattern name="cluster_controls">
+
+            <module name="CustomBehavior">
+              <param name="customBehavior">onlySubmitIfFieldsAreSet</param>
+              <param name="arg.requiredKey">huntPilotDN.rawValue</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <div id="viewerPageInstructions" style="display:none;clear:both;">
+                  <br>
+                  <br>
+                  <b>This view is normally reached by clicking a huntPilot number in the <a href="huntgroups">Huntgroups</a> page  <br>
+                  <br>
+                  However you can also use this view manually by simply entering a fully qualified huntPilotDN in the "hunt pilot" field above and hitting Enter.
+                  <br>
+                  <br>
+                  Be sure to enter the number exactly how it appears in the CDR, including any dialing prefixes that appear there. </b>
+                  <br>
+                  <br>
+                  <br>
+                  <br>
+                  </div>
+                ]]></param>
+              </module>
+
+
+
+
+
+              <module name="Search" layoutPanel="panel_row1_col1">
+                <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+| search title="leg_type_*" disabled=0
+| eval leg_type=replace(title,"leg_type_", "")
+| stats values(leg_type) as leg_types
+                ]]></param>
+                <!--
+                  We get this via RVS instead of with a subsearch.
+                  The reason is so that we can have the $leg_types$
+                  token to later ALSO do a fillnull.
+                  If we don't do that fillnull,  then if no matching
+                  huntPilots have ANY calls that match that particular
+                  leg type, then there is never a <leg_type>_call_id
+                  for it, and then the field doesn't exist at all in the
+                  output and the column becomes undisplayable.
+                  Conversely with the fillnull there's a 0
+                -->
+                <module name="ResultsValueSetter">
+                  <param name="fields">leg_types</param>
+
+                  <module name="Search">
+                    <param name="search"><![CDATA[
+| makeresults count=1
+| eval field=split("calls,failed,incoming,outgoing,internal,total_duration,incoming_duration,outgoing_duration,internal_duration,average_duration,total_duration_min,incoming_duration_min,outgoing_duration_min,internal_duration_min,$leg_types$",",")
+| mvexpand field
+                    ]]></param>
+
+                    <module name="Fields">
+                      <param name="fields">calls,failed,incoming,outgoing,internal,total_duration,incoming_duration,outgoing_duration,internal_duration</param>
+                      <param name="float">right</param>
+
+
+
+
+                      <module name="Search" layoutPanel="panel_row1_col1">
+                        <param name="search"><![CDATA[
+`custom_index` `cucm_sourcetypes` $huntPilotNumberTerms$ $clusterGroup$ $clusterId$
+| `get_custom_type_fields`
+| eval {type}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+| eval {type}_duration=duration
+| eval {type}_call_id=call_id
+| eval failed_call_id=if(call_failed=1,call_id,null())
+
+| stats dc(call_id) as calls dc(*_call_id) as * sum(incoming_duration) as incoming_duration sum(outgoing_duration) as outgoing_duration sum(internal_duration) as internal_duration sum(duration) as total_duration
+
+| eval average_duration=total_duration/calls
+| eval average_duration=tostring(round(average_duration),"duration")
+| `get_durations_for_internal_parties`
+| fillnull calls
+| fields $results.fields$
+                        ]]></param>
+
+
+                        <pattern name="create_dashboard_panel">
+                          <param name="visualization">table</param>
+                        </pattern>
+
+                        <module name="ProgressIndicator" />
+
+                        <module name="Table"/>
+                      </module>
+
+
+
+
+
+
+
+
+
+                      <module name="HTML" layoutPanel="panel_row3_col1">
+                        <param name="float">left</param>
+                        <param name="html"><![CDATA[
+                          <h2>Calls over time, $search.timeRange.label$</h2>
+                          (Click a column to load those calls in the panels beneath)
+                        ]]></param>
+                      </module>
+
+                      <module name="Pulldown" layoutPanel="panel_row3_col1">
+                        <param name="name">chartSplitByField</param>
+                        <param name="label">split by</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">by type</param>
+                            <param name="value">type</param>
+                          </list>
+                          <list>
+                            <param name="label">by cause description</param>
+                            <param name="value">cause_description</param>
+                          </list>
+                          <list>
+                            <param name="label">by leg type</param>
+                            <param name="value">leg_type</param>
+                          </list>
+                        </param>
+
+                        <module name="Search">
+                          <param name="search"><![CDATA[
+`custom_index` (`cucm_sourcetypes` OR `cube_sourcetypes`) NOT sourcetype=cucm_cmr $huntPilotNumberTerms$ $clusterGroup$ $clusterId$
+| `get_custom_type_fields`
+| fields _time call_id type cause_description leg_type
+| stats min(_time) as _time list(*) as * by call_id
+| timechart bins=100 dc(call_id) by $chartSplitByField$
+                          ]]></param>
+
+                          <module name="ValueSetter">
+                            <param name="arg.number">$huntPilotDN$</param>
+                            <param name="arg.xField">_time</param>
+                            <param name="arg.zField">$chartSplitByField$</param>
+                            <param name="arg.sideview.splitByField">$chartSplitByField$</param>
+                            <param name="arg.charting.chart">column</param>
+                            <param name="arg.charting.chart.stackMode">stacked</param>
+                            <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+                            <param name="arg.drilldownTarget">calls</param>
+                            <param name="arg.panelTitle">Calls to/from $huntPilotDN$ over time $chartSplitByField.label$, $search.timeRange.label$</param>
+
+                            <pattern name="create_dashboard_panel" />
+
+                            <module name="Link">
+                              <param name="label">&#187; view in Chart</param>
+                              <param name="float">right</param>
+                              <param name="clear">right</param>
+
+                              <module name="Redirector">
+                                <param name="url">calls</param>
+                                <param name="arg.mode">chart</param>
+                                <param name="arg.zField">$zField$</param>
+                                <param name="arg.number">$number$</param>
+                                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                <param name="arg.latest">$search.timeRange.latest$</param>
+                                <param name="arg.searchterms">$huntPilotNumberTerms$</param>
+                              </module>
+                            </module>
+
+                            <module name="Chart">
+                              <param name="enableResize">False</param>
+
+                              <module name="Gate">
+                                <param name="to">mainDisplay</param>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+
+
+                      <module name="HTML" layoutPanel="panel_row3_col2">
+                        <param name="float">left</param>
+                        <param name="html"><![CDATA[
+                          <h2>intraday pattern, $search.timeRange.label$</h2>
+                          (Click a point to load those calls in the panels beneath)
+                        ]]></param>
+                      </module>
+
+                      <module name="Pulldown" layoutPanel="panel_row3_col2">
+                        <param name="name">sideview.splitByField</param>
+                        <param name="label">split by</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">by day of week</param>
+                            <param name="value">day_of_week</param>
+                          </list>
+
+                          <list>
+                            <param name="label">by leg type</param>
+                            <param name="value">leg_type</param>
+                          </list>
+                        </param>
+
+                        <module name="ValueSetter">
+                          <param name="name">intradayReport</param>
+                          <param name="if.$sideview.splitByField$==day_of_week">
+                            | chart dc(call_id) over hour_of_day by day_of_week
+                            | fields hour_of_day Sun Mon Tue Wed Thu Fri Sat
+                          </param>
+                          <param name="default">
+                            | chart dc(call_id) over hour_of_day by leg_type
+                          </param>
+
+                          <module name="Search">
+                            <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes` $huntPilotNumberTerms$ $clusterGroup$ $clusterId$
+        | `get_custom_type_fields`
+        | append [| makeresults | eval hour_of_day=mvrange(0,24) | fields - _time | mvexpand hour_of_day | eval hour_of_day=printf("%02d",hour_of_day)]
+        $intradayReport$
+                            ]]></param>
+
+                            <module name="ValueSetter">
+                              <param name="arg.number">$huntPilotDN$</param>
+                              <param name="arg.xField">hour_of_day</param>
+                              <param name="arg.zField">$sideview.splitByField$</param>
+                              <param name="arg.charting.chart">line</param>
+                              <param name="arg.charting.chart.nullValueMode">zero</param>
+                              <param name="arg.drilldownTarget">calls</param>
+                              <param name="arg.panelTitle">Intraday pattern to/from $huntPilotDN$ split by $sideview.splitByField$, $search.timeRange.label$</param>
+
+                              <pattern name="create_dashboard_panel">
+                                <param name="visualization">line</param>
+                              </pattern>
+
+                              <module name="Link">
+                                <param name="label">&#187; view in Chart</param>
+                                <param name="float">right</param>
+                                <param name="clear">right</param>
+
+                                <module name="Redirector">
+                                  <param name="url">calls</param>
+                                  <param name="arg.mode">chart</param>
+                                  <param name="arg.charting.chart">line</param>
+                                  <param name="arg.charting.chart.nullValueMode">zero</param>
+                                  <param name="arg.xField">$xField$</param>
+                                  <param name="arg.zField">$zField$</param>
+                                  <param name="arg.number">$number$</param>
+                                  <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                  <param name="arg.latest">$search.timeRange.latest$</param>
+                                  <param name="arg.searchterms">$huntPilotNumberTerms$</param>
+                                </module>
+                              </module>
+
+
+                              <module name="Chart">
+                                <param name="enableResize">False</param>
+                                <module name="Gate">
+                                  <param name="to">mainDisplay</param>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+
+
+                        <module name="Gate" layoutPanel="panel_row4_col1">
+                          <param name="id">mainDisplay</param>
+
+                          <module name="ValueSetter">
+                            <param name="name">drilldownSearchHeader</param>
+                            <param name="if.$chart.searchTerms$=*">( for searchterms $chart.searchTerms$)</param>
+
+                            <module name="Search">
+                              <param name="search"><![CDATA[
+        `get_field_list("sourcetype=cucm_cdr OR sourcetype=cucm_cmr")`
+                              ]]></param>
+                              <module name="Fields">
+                                <param name="hiddenFields">_time</param>
+                                <!-- this is not actually used unless someone has deleted the keys in
+                                etc/apps/cisco_cdr/default/ui-prefs.conf, AND the user has no preference set  -->
+                                <param name="fields">duration type callingPartyNumber originalCalledPartyNumber finalCalledPartyNumber on_hook_party huntPilotDN huntPilotName destDeviceName leg_type cause_description</param>
+                                <param name="float">right</param>
+
+
+
+                                <module name="Search">
+                                  <param name="search"><![CDATA[
+        `custom_index` `cucm_sourcetypes` [ search `custom_index` `cucm_sourcetypes` $huntPilotNumberTerms$  $clusterGroup$ $clusterId$ | table `id_fields` ] $clusterGroup$ $clusterId$
+        | `get_custom_type_fields`
+        | `get_quality`
+        | `get_locations`
+        | `get_to_and_from`
+        | fields time $results.fields$ day_of_week hour_of_day leg_type huntPilotDN `id_fields`
+        | `sort_call_legs` | eval durationStr=tostring(duration,"duration")
+        | stats min(_time) as _time list(*) as * by `id_fields`
+        | search $chart.searchTerms$ $huntPilotNumberTerms$
+        | rename durationStr as duration
+        | eval detailLatest=_time + duration
+        | `get_time_window_for_detail_views`
+        | fields time $results.fields$ `id_fields`]]></param>
+
+                                  <module name="Link">
+                                    <param name="label">&#187; investigate these calls</param>
+                                    <param name="float">right</param>
+
+                                    <module name="Redirector">
+                                      <param name="url">calls</param>
+
+                                      <param name="arg.type">$type.rawValue$</param>
+                                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                      <param name="arg.latest">$search.timeRange.latest$</param>
+                                      <param name="arg.number">$huntPilotDN.rawValue$</param>
+                                      <param name="arg.searchterms">$huntPilotNumberTerms$ $chart.searchTerms$</param>
+                                    </module>
+                                  </module>
+
+                                  <module name="HTML">
+                                    <param name="html"><![CDATA[
+                                      <h2>$results.count$ calls to $huntPilotDN$ $search.timeRange.label$ $drilldownSearchHeader$</h2>
+                                    ]]></param>
+                                  </module>
+
+                                  <module name="ProgressIndicator" />
+
+                                  <module name="Pager">
+
+                                    <module name="Table">
+                                      <param name="hiddenFields">globalCallID_callManagerId,globalCallID_callId,globalCallId_ClusterID,detailEarliest, detailLatest</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">call_detail</param>
+                                        <param name="arg.globalCallID_callId">$row.fields.globalCallID_callId$</param>
+                                        <param name="arg.globalCallID_callManagerId">$row.fields.globalCallID_callManagerId$</param>
+                                        <param name="arg.globalCallId_ClusterID">$row.fields.globalCallId_ClusterID$</param>
+
+                                        <param name="arg.selectedFields">$selectedFields$</param>
+                                        <param name="arg.earliest">$row.fields.detailEarliest$</param>
+                                        <param name="arg.latest">$row.fields.detailLatest$</param>
+                                        <param name="arg.autoRun">True</param>
+                                      </module>
+
+                                    </module>
+                                    <module name="Pager" />
+                                  </module>
+
+                                  <!--
+                                  <pattern name="see_raw_search_syntax" />
+                                  -->
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+
+          </pattern>
+
+
+
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

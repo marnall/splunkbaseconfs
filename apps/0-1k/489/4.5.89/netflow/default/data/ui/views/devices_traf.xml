@@ -1,0 +1,417 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Top Devices by Traffic</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+            <change>
+                <unset token="Device/Interface"></unset>
+            </change>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+            <change>
+                <unset token="Device/Interface"></unset>
+            </change>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+            <change>
+                <unset token="Device/Interface"></unset>
+            </change>
+        </input>
+        <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+            <label>Source IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+            <label>Src. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+            <label>Dest. IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+            <label>Dest. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+            <label>Protocol</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+            <label>Advanced Filter</label>
+            <default>*</default>
+            <change>
+                <unset token="Device/Interface"></unset>
+            </change>
+        </input>
+        <input type="time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_rule_20067`  | `set_span` </query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"></unset>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <panel>
+            <chart>
+                <title>Top 10 Devices</title>
+                <search>
+                    <query>
+                        `netflow_search_rule_20067` $advanced_filter$
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                                        (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                                                   src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$"
+                        | `sampling(bytes_in)`
+                        | `get_exporter_name(exp_ip_name)`
+                        | eval bytes = bytes_in*2
+                        | `per_second_chart(sum(bytes) by exp_ip_name,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                    <unset token="NFO"></unset>
+                    <unset token="Device"></unset>
+                    <unset token="Device/Interface"></unset>
+                    <unset token="Direction"></unset>
+                </selection>
+            </chart>
+            <table id="table_1_1">
+                <search>
+                    <query>
+                        `netflow_search_rule_20067`  exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | `sampling(bytes_in)`
+                        | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$"  (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                                                        (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                                                   src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$"
+                        | `sampling(packets_in)` 
+                        | `devices_table(TrafficAmount,"$span_token$",$span_int$,$range$)` 
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="NFO">$row.NFO$</set>
+                    <set token="Device">$row.Device$</set>
+                    <unset token="Device/Interface"></unset>
+                    <unset token="Direction"></unset>
+                </drilldown>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <chart id="chart_2_1" depends="$Device$">
+                <title>Trafiic for Device $Device$ reported by NFO $NFO$</title>
+                <search>
+                    <query>
+                        `netflow_search_rule_20067` $advanced_filter$ nfo_hostname="$nfo_hostname$"
+                        | `get_exporter_name(exp_ip_name)`
+                        | search nfo_hostname="$NFO$" exp_ip_name="$Device$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                 (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                                 src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$"
+                        | `get_iface_name(input_snmp_name, input_snmp)` 
+                        | `get_iface_name(output_snmp_name, output_snmp)` 
+                        | strcat exp_ip_name "/" input_snmp_name exp_isnmp 
+                        | strcat exp_ip_name "/" output_snmp_name exp_osnmp 
+                        | eval snmps=exp_isnmp+","+exp_osnmp 
+                        | eval snmps=split(snmps,",")
+                        | `sampling(bytes_in)`
+                        | `per_second_chart(sum(bytes_in) by snmps,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest2">$start$</set>
+                    <set token="selection.latest2">$end$</set>
+                    <unset token="Device/Interface"></unset>
+                    <unset token="Direction"></unset>
+                </selection>
+            </chart>
+            <table id="table_2_1" depends="$Device$">
+                <search>
+                    <query>
+                        `netflow_search_rule_20067` nfo_hostname="$NFO$"
+                        | `sampling(bytes_in)`
+                        | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                        | fillnull value=0 input_snmp output_snmp
+                        | `get_exporter_name(exp_ip_name)`
+                        | search exp_ip_name="$Device$" (src_ip="$src_ip$" OR src_host="$src_ip$")  $advanced_filter$
+                                 (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                                 src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$"
+                        | eval snmps=input_snmp+","+output_snmp 
+                        | eval snmps=split(snmps,",")
+                        | `sampling(packets_in)` 
+                        | bin _time $span_token$
+                        | stats  sum(bytes_in) as sumbytes 
+                            sum(packets_in) as sumpacketsin 
+                                by  exp_ip snmps _time nfo_hostname sum_by_exp
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sparkline(sum(sumbytes)) as TrafficLine
+                            sparkline(sum(sumpacketsin)) as PacketsLine
+                            sum(sumpacketsin) as PacketsAmount 
+                            max(avgbits) as MaxTraffic
+                                by exp_ip snmps nfo_hostname sum_by_exp
+                        | `get_iface_speed(snmp_speed, snmps)`  
+                        | `get_iface_name(snmp_name, snmps)`
+                        | eval pct = TrafficAmount*100/sum_by_exp   
+                        | eval pct = pct/2
+                        | `commas_formatting(pct, pct, 2)`
+                        | eval MaxTraffic=MaxTraffic/1000000
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval TrafficSpeed=AverageSpeed/1000000
+                        | eval percOfUsage = round(TrafficSpeed/(snmp_speed*1000000)*100, 2) 
+                        | sort - percOfUsage TrafficSpeed
+                        | head 100
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | eval percOfUsage = if(isnull(percOfUsage), "", tostring(percOfUsage)+"%")
+                        | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+                        | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+                        | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+                        | `commas_formatting(Total Traffic MB, TrafficAmount)`
+                        | `get_exporter_name(exp_ip_name)`
+                        | eval snmps = exp_ip_name."/".snmp_name
+                        | table snmps "Max Mbps" "Average Mbps" percOfUsage TrafficLine pct "Average Packets/s" PacketsLine
+                        | rename snmps as "Device/Interface" 
+                        | rename percOfUsage as "% of Usage"
+                        | rename TrafficLine as "Traffic Line" 
+                        | rename PacketsLine as "Packets Line"
+                        | rename pct as "% of Total"
+                    </query>
+                    <earliest>$selection.earliest2$</earliest>
+                    <latest>$selection.latest2$</latest>
+                </search>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="Device/Interface">$row.Device/Interface$</set>
+                    <unset token="Direction"></unset>
+                </drilldown>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_content$">
+        <table id="table_3_1" depends="$Device/Interface$">
+            <title>Interface Traffic Details: "$Device/Interface$"</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20067` nfo_hostname="$NFO$"
+                    | `sampling(bytes_in)`
+                    | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                    | fillnull value=0 input_snmp output_snmp
+                    | search (src_ip="$src_ip$" OR src_host="$src_ip$")  $advanced_filter$
+                             (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                             src_port="$src_port$" dest_port="$dest_port$" 
+                    | fillnull value="" transport
+                    | search transport="$protocol_name$"
+                    | `get_exporter_name(exp_ip_name)`
+                    | `get_iface_name(input_snmp_name, input_snmp)` 
+                    | `get_iface_name(output_snmp_name, output_snmp)` 
+                    | strcat exp_ip_name "/" input_snmp_name exp_isnmp 
+                    | strcat exp_ip_name "/" output_snmp_name exp_osnmp 
+                    | search ( exp_isnmp="$Device/Interface$" OR exp_osnmp="$Device/Interface$" )
+                    | `sampling(packets_in)`
+                    | eval DirectionIN=if(exp_isnmp="$Device/Interface$","In","")
+                    | eval DirectionOUT=if(exp_osnmp="$Device/Interface$","Out","")
+                    | eval Direction=DirectionIN+","+DirectionOUT
+                    | makemv Direction delim=","
+                    | bin _time $span_token$
+                    | stats  sum(bytes_in) as sumbytes 
+                        sum(packets_in) as sumpacketsin 
+                            by  exp_ip Direction _time sum_by_exp
+                    | eval avgbits= sumbytes*8/($span_int$)
+                    | stats sum(sumbytes) as TrafficAmount 
+                        sparkline(sum(sumbytes)) as TrafficLine
+                        sparkline(sum(sumpacketsin)) as PacketsLine
+                        sum(sumpacketsin) as PacketsAmount 
+                        max(avgbits) as Max
+                        min(avgbits) as Min
+                        stdev(avgbits) as StDev
+                            by exp_ip Direction sum_by_exp
+                    | eval TrafficSpeed=(TrafficAmount)*8/$range$
+                    | eval PacketsSpeed=(PacketsAmount)/$range$
+                    | eval TrafficSpeed = TrafficSpeed/1000000
+                    | eval Max = Max/1000000
+                    | eval Min = Min/1000000
+                    | eval StDev = StDev/1000000
+                    | eval pct = TrafficAmount*100/sum_by_exp 
+                    | eval pct = pct/2
+                    | `commas_formatting(pct, pct, 2)`
+                    | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+                    | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+                    | `commas_formatting(Max Mbps, Max, 2)`
+                    | `commas_formatting(Min Mbps, Min, 2)`
+                    | `commas_formatting(Standard Deviation Mbps, StDev, 2)`
+                    | table Direction "Max Mbps" "Min Mbps" "Standard Deviation Mbps" "Average Mbps" TrafficLine pct "Average Packets/s" PacketsLine
+                    | rename TrafficLine as "Traffic Line"
+                    | rename PacketsLine as "Packets Line"
+                    | rename pct as "% of Total"
+                </query>
+                <earliest>$selection.earliest2$</earliest>
+                <latest>$selection.latest2$</latest>
+            </search>
+            <option name="drilldown">row</option>
+            <drilldown>
+                <set token="Direction">$row.Direction$</set>
+            </drilldown>
+        </table>
+    </row>
+    <row depends="$show_content$">
+        <chart id="chart_3_1" depends="$Device/Interface$">
+            <title>Traffic by Direction</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20067` $advanced_filter$ exp_ip="$exp_ip$" nfo_hostname="$NFO$"
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$"
+                    | `get_exporter_name(exp_ip_name)`
+                    | `get_iface_name(input_snmp_name, input_snmp)` 
+                    | `get_iface_name(output_snmp_name, output_snmp)` 
+                    | strcat exp_ip_name "/" input_snmp_name exp_isnmp 
+                    | strcat exp_ip_name "/" output_snmp_name exp_osnmp 
+                    | search ( exp_isnmp="$Device/Interface$" OR exp_osnmp="$Device/Interface$" )
+                    | `sampling(bytes_in)`
+                    | `sampling(packets_in)`
+                    | eval DirectionIN=if(exp_isnmp="$Device/Interface$","In","")
+                    | eval DirectionOUT=if(exp_osnmp="$Device/Interface$","Out","")
+                    | eval Direction=DirectionIN+","+DirectionOUT
+                    | makemv Direction delim=","
+                    | `per_second_chart(sum(bytes_in) by Direction,"$span_token$",$span_int$)`
+                </query>
+                <earliest>$earliest_token$</earliest>
+                <latest>$latest_token$</latest>
+            </search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.chart.showDataLabels">none</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.drilldown">all</option>
+            <option name="charting.layout.splitSeries">0</option>
+            <drilldown>
+                <eval token="Direction">$click.name2$</eval>
+            </drilldown>
+        </chart>
+    </row>
+    <row depends="$show_content$">
+        <table id="table_4_1" depends="$Device/Interface$,$Direction$">
+            <title>Conversations Traffic Details: "$Device/Interface$/$Direction$"</title>
+            <search>
+                <query>
+                    `netflow_search_rule_20067` nfo_hostname="$NFO$"
+                    | `sampling(bytes_in)`
+                    | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                    | fillnull value=0 input_snmp output_snmp
+                    | `get_exporter_name(exp_ip_name)`
+                    | search exp_ip_name="$Device$" (src_ip="$src_ip$" OR src_host="$src_ip$")  $advanced_filter$
+                             (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                             src_port="$src_port$" dest_port="$dest_port$"
+                    | fillnull value="" transport
+                    | search transport="$protocol_name$"
+                    | eval exp_snmp_dir = "$Device/Interface$/$Direction$" 
+                    | `get_iface_name(output_snmp_name, output_snmp )` 
+                    | strcat  exp_ip_name "/" output_snmp_name "/Out" exp_osnmp 
+                    | `get_iface_name(input_snmp_name, input_snmp )` 
+                    | strcat  exp_ip_name "/" input_snmp_name "/In" exp_isnmp 
+                    | where (exp_snmp_dir == exp_isnmp) OR (exp_snmp_dir == exp_osnmp) 
+                    | `sampling(packets_in)` 
+                    | `sampling(flow_count)`
+                    | `conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+                </query>
+                <earliest>$selection.earliest2$</earliest>
+                <latest>$selection.latest2$</latest>
+            </search>
+            <option name="drilldown">none</option>
+        </table>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

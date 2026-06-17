@@ -1,0 +1,278 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+	<label>AWS Traffic by Protocol and Port (DEPRECATED)</label>
+	<fieldset autoRun="True">
+		<input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+			<label>NFO hostnames</label>
+			<default>*</default>
+			<search>
+				<query>| `populate_nfo_hostnames`</query>
+			</search>
+			<fieldForLabel>nfo_hostname</fieldForLabel>
+			<fieldForValue>nfo_hostname</fieldForValue>
+		</input>
+		<input type="dropdown" token="vpc_id" searchWhenChanged="false">
+			<label>Exporter (VPC)</label>
+			<default>*</default>
+			<choice value="*">*</choice>
+			<search>
+				<query>| `populate_vpc_list_by_nfo_hostname($nfo_hostname$)`</query>
+			</search>
+			<fieldForLabel>exp_vpc_name</fieldForLabel>
+			<fieldForValue>vpc_id</fieldForValue>
+		</input>
+		<input type="text" token="src_inst_name" id="src_input" searchWhenChanged="False">
+			<label>Source EC2 Inst.</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+			<label>Src. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_inst_name" id="dest_input" searchWhenChanged="False">
+			<label>Dest. EC2 Inst.</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+			<label>Dest. Port</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+			<label>Protocol</label>
+			<default>*</default>
+		</input>
+		<input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+			<label>Advanced Filter</label>
+			<default>*</default>
+		</input>
+		<input type="time" searchWhenChanged="False">
+			<label>Time Range</label>
+			<default>Last 60 minutes</default>
+		</input>
+	</fieldset>
+	<search>
+		<query>`netflow_search_rule_20267` | `set_span`</query>
+		<earliest>$earliest$</earliest>
+		<latest>$latest$</latest>
+		<done>
+			<condition match="'job.resultCount' &gt; 0">
+				<set token="show_content">true</set>
+				<set token="span_token">$result.span$</set>
+				<set token="span_int">$result.span_int$</set>
+				<set token="range">$result.range$</set>
+				<set token="earliest_token">$result.all_time_earliest$</set>
+				<set token="latest_token">$result.all_time_latest$</set>
+				<unset token="show_hint"/>
+				<unset token="search_done"/>
+			</condition>
+			<condition>
+				<unset token="show_content"/>
+				<set token="show_hint">true</set>
+			</condition>
+		</done>
+	</search>
+	<search>
+		<query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+		<earliest>-24h@h</earliest>
+		<latest>now</latest>
+		<done>
+			<condition>
+				<set token="charting.chart_value">$result.charting.chart$</set>
+				<set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+			</condition>
+		</done>
+	</search>
+	<search id="baseSearch">
+		<query>
+			`basesearch_20267("$nfo_hostname$","$vpc_id$","$advanced_filter$","$src_inst_name$","$src_port$","$dest_inst_name$","$dest_port$","$protocol_name$","$span_token$")`
+			| eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+			| `format_port_column(app_port_string, app_port)`
+		</query>
+		<earliest>$earliest$</earliest>
+		<latest>$latest$</latest>
+	</search>
+	<row depends="$show_content$">
+		<panel>
+			<chart>
+				<title>AWS Traffic by Protocol and Port</title>
+				<search base="baseSearch">
+					<query>
+						| `per_second_chart(sum(sum_bytes_in) by app_port_string,"$span_token$",$span_int$)`
+					</query>
+					<done>
+						<set token="search_done">"done"</set>
+					</done>
+				</search>
+				<option name="charting.chart">$charting.chart_value$</option>
+				<option name="charting.chart.nullValueMode">zero</option>
+				<option name="charting.axisTitleX.text">Time</option>
+				<option name="charting.axisTitleY.text">Mbps</option>
+				<option name="charting.legend.placement">right</option>
+				<option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+				<option name="charting.drilldown">none</option>
+				<option name="height">216</option>
+				<selection>
+					<set token="selection.earliest">$start$</set>
+					<set token="selection.latest">$end$</set>
+					<eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+					<unset token="Application Port"/>
+					<unset token="VPC_ID"/>
+				</selection>
+			</chart>
+		</panel>
+	</row>
+	<row depends="$show_content$,$search_done$">
+		<panel>
+			<table depends="$showbase$" id="table_1_1">
+				<title>Click on a row to drill down</title>
+				<search base="baseSearch">
+					<query>
+						| bin _time $span_token$
+						| stats sum(sum_bytes_in) as sumbytes 
+							sum(sum_packets_in) as sumpacketsin 
+							sum(sum_flow_count) as sumflowcount 
+								by nfo_hostname vpc_id vpc_name sum_by_vpc app_port_string _time
+						| eval avgbits= sumbytes*8/($span_int$)
+						| stats sum(sumbytes) as TrafficAmount 
+							sum(sumpacketsin) as PacketsAmount 
+							sum(sumflowcount) as Connections 
+							perc95(avgbits) as p95
+							max(avgbits) as MaxTraffic
+								by nfo_hostname vpc_id vpc_name sum_by_vpc app_port_string 
+						| sort 0 - TrafficAmount
+						| eval pct = TrafficAmount*100/sum_by_vpc
+						| `commas_formatting(pct, pct, 2)`
+						| head 100 
+						| eval AverageSpeed=(TrafficAmount)*8/$range$
+						| eval PacketsSpeed=(PacketsAmount)/$range$
+						| eval p95=p95/1000000
+						| eval vpc_name_id = vpc_name ."/". vpc_id
+						| `commas_formatting(95pct Mbps, p95, 2)`
+						| `default_preparation_for_comma_formatted_table`
+						| table nfo_hostname vpc_name_id app_port_string "Max Mbps" "95pct Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+						| rename nfo_hostname as "NFO"
+						| rename vpc_name_id as "VPC name/id" 
+						| rename app_port_string as "Application Port"
+						| rename pct as "% of Total"
+					</query>
+				</search>
+				<option name="count">10</option>
+				<option name="showPager">true</option>
+				<option name="drilldown">row</option>
+				<drilldown>
+					<set token="Application Port">$row.Application Port$</set>
+					<eval token="VPC_ID">mvindex(split($row.VPC name/id$, "/"),1)</eval>
+					<set token="NFO">$row.NFO$</set>
+				</drilldown>
+			</table>
+			<table id="table_1_2" rejects="$showbase$">
+				<title>Click on a row to drill down</title>
+				<search>
+					<query>
+						`netflow_search_rule_20267` nfo_hostname="$nfo_hostname$" vpc_id="$vpc_id$" 
+						| eventstats sum(bytes_in) as sum_by_vpc by vpc_id nfo_hostname
+						| search $advanced_filter$
+						| fillnull value="" transport src_host src_inst_id src_inst_name dest_host dest_inst_id dest_inst_name
+						| search (src_inst_name="$src_inst_name$" OR src_ip="$src_inst_name$")
+							(dest_inst_name="$dest_inst_name$" OR dest_ip="$dest_inst_name$")
+							src_port="$src_port$" dest_port="$dest_port$"
+						| search transport="$protocol_name$"
+            | bin _time $span_token$ 
+            | stats sum(bytes_in) as sum_bytes_in sum(packets_in) as sum_packets_in sum(flow_count) as sum_flow_count 
+                by nfo_hostname vpc_id 
+  							src_ip src_inst_id src_inst_name src_port src_host 
+  							dest_ip dest_inst_id dest_inst_name dest_port dest_host 
+  							transport vpc_name sum_by_vpc _time
+						| eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+						| `format_port_column(app_port_string, app_port)`
+						| stats sum(sum_bytes_in) as sumbytes 
+							sum(sum_packets_in) as sumpacketsin 
+							sum(sum_flow_count) as sumflowcount 
+								by nfo_hostname vpc_id vpc_name sum_by_vpc app_port_string _time
+						| eval avgbits= sumbytes*8/($span_int$)
+						| stats sum(sumbytes) as TrafficAmount 
+							sum(sumpacketsin) as PacketsAmount 
+							sum(sumflowcount) as Connections 
+							perc95(avgbits) as p95
+							max(avgbits) as MaxTraffic
+								by nfo_hostname vpc_id vpc_name sum_by_vpc app_port_string 
+						| sort 0 - TrafficAmount
+						| eval pct = TrafficAmount*100/sum_by_vpc
+						| `commas_formatting(pct, pct, 2)`
+						| head 100 
+						| eval AverageSpeed=(TrafficAmount)*8/$range$
+						| eval PacketsSpeed=(PacketsAmount)/$range$
+						| eval p95=p95/1000000
+						| eval vpc_name_id = vpc_name ."/". vpc_id
+						| `commas_formatting(95pct Mbps, p95, 2)`
+						| `default_preparation_for_comma_formatted_table`
+						| table nfo_hostname vpc_name_id app_port_string "Max Mbps" "95pct Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+						| rename nfo_hostname as "NFO"
+						| rename vpc_name_id as "VPC name/id" 
+						| rename app_port_string as "Application Port"
+						| rename pct as "% of Total"
+					</query>
+					<earliest>$selection.earliest$</earliest>
+					<latest>$selection.latest$</latest>
+					<done>
+						<condition>
+							<unset token="Application Port"/>
+						</condition>
+					</done>
+				</search>
+				<option name="count">10</option>
+				<option name="showPager">true</option>
+				<option name="drilldown">row</option>
+				<drilldown>
+					<set token="Application Port">$row.Application Port$</set>
+					<eval token="VPC_ID">mvindex(split($row.VPC name/id$, "/"),1)</eval>
+					<set token="NFO">$row.NFO$</set>
+				</drilldown>
+			</table>
+		</panel>
+	</row>
+	<row depends="$show_content$">
+		<table id="table_2_1" depends="$Application Port$,$showbase$">
+			<title>AWS Traffic for Application Port and Protocol for $submitted:Application Port$ reported by NFO:$NFO$ VPC:$submitted:VPC_ID$</title>
+			<search base="baseSearch">
+				<query>
+					| search vpc_id="$VPC_ID$" nfo_hostname="$NFO$" app_port_string="$Application Port$" 
+					| `aws_conversation_basesearch(TrafficAmount,"$span_token$",$span_int$,$range$)`
+				</query>
+			</search>
+			<option name="count">10</option>
+			<option name="showPager">true</option>
+			<option name="drilldown">none</option>
+		</table>
+		<table id="table_2_1_2" depends="$Application Port$$" rejects="$showbase$">
+			<title>AWS Traffic for Application Port and Protocol for $submitted:Application Port$ reported by NFO:$NFO$ VPC:$submitted:VPC_ID$</title>
+			<search>
+				<query>
+					`netflow_search_rule_20267` vpc_id="$VPC_ID$" nfo_hostname="$NFO$"
+					| eventstats sum(bytes_in) as sum_by_vpc by vpc_id nfo_hostname
+					| search $advanced_filter$
+					| search (src_inst_name="$src_inst_name$" OR src_ip="$src_inst_name$")
+							(dest_inst_name="$dest_inst_name$" OR dest_ip="$dest_inst_name$")
+							src_port="$src_port$" dest_port="$dest_port$"
+					| eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+					| `format_port_column(app_port_string, app_port)`
+					| search app_port_string="$Application Port$"
+					| `aws_conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+				</query>
+				<earliest>$selection.earliest$</earliest>
+				<latest>$selection.latest$</latest>
+			</search>
+			<option name="count">10</option>
+			<option name="showPager">true</option>
+			<option name="drilldown">none</option>
+		</table>
+	</row>
+	<row depends="$show_hint$">
+		<panel>
+			<html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10267: AWS Top Traffic Monitor”</b> (syslogs with nfc_id=20267). This Module identifies AWS EC2 instances with the most traffic. It consolidates VPC Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “AWS VPC Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+		</panel>
+	</row>
+</form>

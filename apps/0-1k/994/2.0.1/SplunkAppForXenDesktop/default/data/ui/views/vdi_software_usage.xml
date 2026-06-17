@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Software Usage</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Compare Elapsed Time</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report compares software utilization across a set of desktops.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row2_col1_grp1">
+    <param name="selected">Last 60 minutes</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+      <param name="label">Hoststring: </param>
+      <param name="field">hoststring</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="hoststring">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="default">host=*</param>
+      <param name="field">hoststring</param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="hoststring">
+            <param name="default"/>
+            <param name="prefix"> </param>
+            <param name="suffix"> </param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+        <param name="label">Application: </param>
+        <param name="field">process_name</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="process_name">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="default">Application=Microsoft*</param>
+        <param name="field">process_name</param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="process_name">
+              <param name="default"/>
+              <param name="prefix"> </param>
+              <param name="suffix"> </param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="SubmitButton" layoutPanel="panel_row2_col1_grp4">
+          <param name="allowSoftSubmit">False</param>
+          <param name="label">Submit</param>
+          <module name="HiddenSearch" layoutPanel="panel_row3_col1">
+            <param name="search">`perfmon_index` sourcetype="perfmon:runningprocesses" counter="Elapsed Time" instance!="_total" OR instance!="idle" $hoststring$  | lookup process_table process_name | search $process_name$ | stats max(Value) as ElapsedTime values(process_name) as "Process(es)" by Application vm_name| eval ElapsedTime=round(ElapsedTime,2) </param>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="label">View Full Report</param>
+            </module>
+            <module name="JobProgressIndicator"/>
+            <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" autoRun="True">
+              <param name="search">| stats values(Application) as proc dc(vm_name) as vms | eval proc=tostring(proc)  | eval vm = proc +" Running on: "+vms |    eval range="vmsreporting"</param>
+              <module name="SingleValue">
+                <param name="field">vm</param>
+                <param name="beforeLabel">Utilization Details For: </param>
+                <param name="afterLabel">Desktops(s)</param>
+                <param name="classField">range</param>
+                <param name="format">count</param>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp1" group="Elapsed Time" autoRun="True">
+              <param name="search">stats max(ElapsedTime) as Value | eval range="time"</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">range</param>
+                <param name="beforeLabel">Max. Time:</param>
+                <param name="afterLabel">secs</param>
+                <param name="format">count</param>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp2" group="Elapsed Time" autoRun="True">
+              <param name="search">stats avg(ElapsedTime) as Value | eval range="time"</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">range</param>
+                <param name="beforeLabel">Avg. Time:</param>
+                <param name="afterLabel">secs</param>
+                <param name="format">count</param>
+              </module>
+            </module>
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col1_grp3" group="Elapsed Time" autoRun="True">
+              <param name="search">stats min(ElapsedTime) as Value | eval range="time"</param>
+              <module name="SingleValue">
+                <param name="field">Value</param>
+                <param name="classField">range</param>
+                <param name="beforeLabel">Min. Time:</param>
+                <param name="afterLabel">secs</param>
+                <param name="format">count</param>
+              </module>
+            </module>
+            <module name="LinkSwitcher" layoutPanel="panel_row5_col1" group="Application Utilization by Elapsed Time">
+              <param name="mode">independent</param>
+              <param name="label"> </param>
+              <module name="NullModule" group="Table" layoutPanel="panel_row5_col1">
+                <module name="HiddenPostProcess" layoutPanel="panel_row5_col1" autoRun="True">
+                  <param name="search">| table Application "Process(es)" vm_name "ElapsedTime" </param>
+                  <module name="SimpleResultsTable" group="Table" layoutPanel="panel_row5_col1">
+                    <param name="displayMenu">true</param>
+                    <param name="count">500</param>
+                    <param name="drilldown">row</param>
+                    <param name="entityName">results</param>
+                    <param name="displayRowNumbers">False</param>
+                    <module name="ConvertToDrilldownSearch">
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">flashtimeline</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="NullModule" group="Chart" layoutPanel="panel_row5_col1">
+                <module name="HiddenPostProcess" layoutPanel="panel_row5_col1" autoRun="True">
+                  <param name="search">| stats max(ElapsedTime) as ElapsedTime by vm_name </param>
+                  <module name="HiddenChartFormatter">
+                    <param name="chart">bar</param>
+                    <param name="chart.stackMode">none</param>
+                    <param name="legend.placement">bottom</param>
+                    <module name="FlashChart">
+                      <param name="width">100%</param>
+                      <module name="ConvertToDrilldownSearch">
+                        <module name="ViewRedirector">
+                          <param name="viewTarget">flashtimeline</param>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

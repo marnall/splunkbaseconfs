@@ -1,0 +1,288 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Traffic by Autonomous Systems (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="dropdown" token="direction" searchWhenChanged="false">
+            <label>Direction</label>
+            <default>In</default>
+            <choice value="src_as_full">In</choice>
+            <choice value="dest_as_full">Out</choice>
+        </input>
+        <input type="dropdown" token="ipv4_and_or_v6" searchWhenChanged="false">
+            <label>IPv4/IPv6</label>
+            <default>IPv4</default>
+            <choice value="ipv4">IPv4</choice>
+            <choice value="ipv6">IPv6</choice>
+            <choice value="both">Both</choice>
+        </input>
+        <input type="time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+		<query>`netflow_search_rule_20066` | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+				<unset token="search_done"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <panel>
+            <chart id="chart_1_1">
+                <title>Autonomous System Statistics</title>
+                <search>
+                    <query>
+                        `netflow_search_rule_20066` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" 
+                        | fillnull value=0 bytes bytes6
+                        | `sampling(bytes)`
+                        | `sampling(bytes6)`
+                        | eval bytes_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , bytes,
+                            "$ipv4_and_or_v6$" == "ipv6" , bytes6,
+                            "$ipv4_and_or_v6$" == "both" , (bytes+bytes6) )
+                        | eval gb=bytes_calculated/1024/1024/1024
+                        | lookup `is_local_lookup` asn_lookup asn AS src_asn OUTPUT asname as src_asn_name
+                        | lookup `is_local_lookup` asn_lookup asn AS dest_asn OUTPUT asname as dest_asn_name
+                        | strcat src_asn ": " src_asn_name src_as_full
+                        | strcat dest_asn ": " dest_asn_name dest_as_full
+                        | `get_exporter_name(exp_ip_name)`
+                        | chart sum(gb) over $direction$ by exp_ip_name
+                        | addtotals fieldname=Total *.*.*.*
+                        | sort by -Total
+                        | fields - Total
+                        | rename $direction$ as "Autonomous System"
+                        | head 20
+                    </query>
+          					<done>
+          						<set token="search_done">"done"</set>
+          						<unset token="Autonomous System"></unset>
+          					</done>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">bar</option>
+                <option name="charting.axisTitleX.text">Autonomous System</option>
+                <option name="charting.axisTitleY.text">GB</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+            </chart>
+            <table depends="$search_done$" id="table_1_1">
+                <search>
+                    <query>
+                         `netflow_search_rule_20066` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" 
+                        | fillnull value=0 bytes bytes6 packets packets6
+                        | lookup `is_local_lookup` asn_lookup asn AS src_asn OUTPUT asname as src_asn_name
+                        | lookup `is_local_lookup` asn_lookup asn AS dest_asn OUTPUT asname as dest_asn_name
+                        | strcat src_asn ": " src_asn_name src_as_full
+                        | strcat dest_asn ": " dest_asn_name dest_as_full
+                        | `sampling(bytes)` 
+                        | `sampling(bytes6)` 
+                        | `sampling(packets)` 
+                        | `sampling(packets6)` 
+                        | `sampling(flow_count)`
+                        | eval bytes_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , bytes,
+                            "$ipv4_and_or_v6$" == "ipv6" , bytes6,
+                            "$ipv4_and_or_v6$" == "both" , (bytes+bytes6) )
+                        | eval packets_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , packets,
+                            "$ipv4_and_or_v6$" == "ipv6" , packets6,
+                            "$ipv4_and_or_v6$" == "both" , (packets+packets6) )
+                        | bin _time $span_token$
+                        | stats  sum(bytes_calculated) as sumbytes 
+                            sum(packets_calculated) as sumpacketsin 
+                            sum(flow_count) as sumflowcount 
+                                by nfo_hostname exp_ip $direction$ _time
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sum(sumpacketsin) as PacketsAmount 
+                            sum(sumflowcount) as Connections 
+                            max(avgbits) as MaxTraffic
+                                by nfo_hostname exp_ip $direction$        
+                        | sort 0 - TrafficAmount 
+                        | head 100 
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | `default_preparation_for_comma_formatted_table`
+                        | table $direction$ nfo_hostname exp_ip_name "Max Mbps" "Average Mbps" "Total Traffic MB" "Average Packets/s" "Total Packets" "Total Connections"
+                        | rename nfo_hostname as "NFO" 
+                        | rename exp_ip_name as "Device" 
+                        | rename $direction$ as "Autonomous System" 
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="Autonomous System">$row.Autonomous System$</set>
+          					<set token="NFO">$row.NFO$</set>
+                </drilldown>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <chart id="chart_2_1" depends="$Autonomous System$">
+                <title>Autonomous System: $submitted:Autonomous System$ reported by NFO $NFO$</title>
+                <search>
+                    <query>
+                         `netflow_search_rule_20066` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" 
+                        | fillnull value=0 bytes bytes6
+                        | lookup `is_local_lookup` asn_lookup asn AS src_asn OUTPUT asname as src_asn_name
+                        | lookup `is_local_lookup` asn_lookup asn AS dest_asn OUTPUT asname as dest_asn_name
+                        | strcat src_asn ": " src_asn_name src_as_full
+                        | strcat dest_asn ": " dest_asn_name dest_as_full
+                        | search  $direction$="$Autonomous System$"
+                        | `sampling(bytes)` 
+                        | `sampling(bytes6)` 
+                        | eval bytes_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , bytes,
+                            "$ipv4_and_or_v6$" == "ipv6" , bytes6,
+                            "$ipv4_and_or_v6$" == "both" , (bytes+bytes6) )
+                        | eval gb=bytes_calculated/1024/1024/1024
+                        | `get_exporter_name(exp_ip_name)`
+                        | timechart sum(gb) by exp_ip_name
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">GB</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                </selection>
+            </chart>
+            <table id="table_2_1" depends="$Autonomous System$">
+                <search>
+                    <query>
+                        `netflow_search_rule_20066` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" 
+                        | fillnull value=0 bytes bytes6 packets packets6
+                        | lookup `is_local_lookup` asn_lookup asn AS src_asn OUTPUT asname as src_asn_name
+                        | lookup `is_local_lookup` asn_lookup asn AS dest_asn OUTPUT asname as dest_asn_name
+                        | strcat src_asn ": " src_asn_name src_as_full
+                        | strcat dest_asn ": " dest_asn_name dest_as_full
+                        | search $direction$="$Autonomous System$"
+                        | `sampling(bytes)` 
+                        | `sampling(bytes6)` 
+                        | `sampling(packets)` 
+                        | `sampling(packets6)` 
+                        | `sampling(flow_count)`
+                        | eval bytes_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , bytes,
+                            "$ipv4_and_or_v6$" == "ipv6" , bytes6,
+                            "$ipv4_and_or_v6$" == "both" , (bytes+bytes6) )
+                        | eval packets_calculated=case(
+                            "$ipv4_and_or_v6$" == "ipv4" , packets,
+                            "$ipv4_and_or_v6$" == "ipv6" , packets6,
+                            "$ipv4_and_or_v6$" == "both" , (packets+packets6) )
+                        | bin _time $span_token$
+                        | stats  sum(bytes_calculated) as sumbytes 
+                            sum(packets_calculated) as sumpacketsin 
+                            sum(flow_count) as sumflowcount 
+                                by  exp_ip $direction$ _time
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sum(sumpacketsin) as PacketsAmount 
+                            sum(sumflowcount) as Connections 
+                            max(avgbits) as MaxTraffic
+                                by exp_ip $direction$        
+                        | sort 0 - TrafficAmount 
+                        | head 100 
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | `default_preparation_for_comma_formatted_table`
+                        | table $direction$ exp_ip_name "Max Mbps" "Average Mbps" "Total Traffic MB" "Average Packets/s" "Total Packets" "Total Connections"
+                        | rename exp_ip_name as "Device" 
+                        | rename $direction$ as "Autonomous System"
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10066: Autonomous Systems Monitor”</b> (syslogs with nfc_id=20066). This Module reports traffic by all Autonomous Systems (AS). This information is provided per NetFlow exporter. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

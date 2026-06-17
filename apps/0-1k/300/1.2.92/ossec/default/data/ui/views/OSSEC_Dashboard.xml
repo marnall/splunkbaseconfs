@@ -1,0 +1,350 @@
+<view template="dashboard.html">
+	<label>OSSEC Dashboard</label>
+
+	<module name="AccountBar" layoutPanel="navigationHeader"/>
+	<module name="AppBar" layoutPanel="navigationHeader"/>
+	<module name="Message" layoutPanel="messaging">
+		<param name="filter">splunk.search.error</param>
+		<param name="clearOnJobDispatch">False</param>
+		<param name="maxSize">1</param>
+	</module>
+
+	<module name="TitleBar" layoutPanel="viewHeader">
+		<param name="actionsMenuFilter">dashboard</param>
+	</module>
+	
+		
+	<!-- Search Controls -->
+	<module name="SearchSelectLister" layoutPanel="splSearchControls-inline">
+		<param name="settingToCreate">host_setting</param>
+    <!-- Moving away from wildcards in the lookup table... -->
+		<param name="search">|inputlookup lookup_ossec_servers | search description!="All OSSEC Servers"</param>
+		<param name="label">OSSEC Server</param>
+    <param name="staticFieldsToDisplay">
+      <list>
+        <param name="label">All OSSEC Servers</param>
+        <param name="value">*</param>
+        <param name="selected">True</param>
+      </list>
+    </param>
+		<param name="searchFieldsToDisplay">
+			<list>
+				<param name="label">description</param>
+				<param name="value">ossec_server</param>
+			</list>
+		</param>
+		
+		
+			
+		<module name="TimeRangePicker" layoutPanel="splSearchControls-inline">
+			<param name="selected">Last 60 Minutes</param>
+			<param name="searchWhenChanged">True</param>
+
+			<module name="ConvertToIntention">
+				<param name="preserveParentIntentions">True</param>
+				<param name="settingToConvert">host_setting</param>
+				<param name="intention">
+					<param name="name">stringreplace</param>
+					<param name="arg">
+						<param name="serverName">
+              <param name="fillOnEmpty">False</param>
+              <param name="prefix">ossec_server="</param>
+							<param name="value">$target$</param>
+              <param name="suffix">"</param>
+              <param name="default">*</param>
+						</param>
+					</param>
+				</param>
+				
+				
+				<!-- Event Timeline -->
+				<module name="HiddenSearch" layoutPanel="panel_row1_col1">
+				<!-- This one needs to be kept separate - pipe from stats into timechart doesn't work. -->
+					<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | fillnull value="-" signature, severity, reporting_host, user | timechart count by signature</param>
+					<module name="GenericHeader"><param name="label">OSSEC - Top Signatures Over Time</param></module>
+					<module name="JobProgressIndicator" />
+					<module name="HiddenChartFormatter">						
+						<param name="chart">area</param>
+						<param name="chart.stackMode">stacked</param>
+						<module name="JSChart">
+							<param name="height">230px</param>
+							<param name="width">100%</param>
+							<module name="ConvertToDrilldownSearch">
+								<module name="ViewRedirector">
+									<param name="viewTarget">search</param>
+								</module>							
+							</module>
+						</module>
+					</module>
+				</module>
+
+
+				
+				<!-- The new pattern for Top 10 rows is more complicated, but should be faster. Now        -->
+				<!-- we only run a single search once for all rows. The side effect is that the drilldowns -->
+				<!-- get messy unless we also explicitly define drilldown search strings                   -->
+				<module name="HiddenSearch">
+					<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | fillnull value="-" signature, severity, reporting_host, user | stats count by signature, severity, reporting_host, user</param>
+					<param name="autoRun">true</param>
+
+					
+					
+					
+					<!-- Top Signatures -->
+					<module name="HiddenPostProcess" layoutPanel="panel_row2_col1">
+            <param name="search">stats sum(count) as count by signature | sort - count</param>
+						<module name="ConvertToIntention">
+							<!-- The original intention was consumed by the HiddenSearch above, so we need to re-apply it -->
+							<param name="settingToConvert">host_setting</param>
+							<param name="intention">
+								<param name="name">stringreplace</param>
+								<param name="arg">
+									<param name="serverName">
+                    <param name="fillOnEmpty">False</param>
+                    <param name="prefix">ossec_server="</param>
+										<param name="value">$target$</param>
+                    <param name="suffix">"</param>
+                    <param name="default">*</param>
+									</param>
+								</param>
+							</param>
+						
+							<!-- Top Signatures Chart -->
+							<module name="GenericHeader"><param name="label">OSSEC - Top Signatures</param></module>
+							<module name="JobProgressIndicator" />
+							<module name="HiddenChartFormatter">						
+								<param name="chart">pie</param>
+								<module name="JSChart">
+									<param name="width">100%</param>
+									<param name="height">230px</param>
+									<module name="HiddenSearch" autoRun="True">
+										<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>							
+										</module>
+									</module>
+								</module>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | top limit=1000 signature</param>
+									<module name="ViewRedirectorLink">
+										<param name="viewTarget">search</param>
+										<param name="label">View more results</param>
+									</module>
+								</module>
+							</module>
+
+							<!-- Top Signatures Table -->
+							<module name="SimpleResultsTable"  layoutPanel="panel_row2_col2">
+								<param name="drilldown">row</param>
+								<param name="entityName">results</param>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+									<module name="ConvertToDrilldownSearch">
+										<module name="ViewRedirector">
+											<param name="viewTarget">search</param>
+										</module>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					
+					
+					<!-- Top Severities -->
+					<module name="HiddenPostProcess" layoutPanel="panel_row3_col1">
+            <param name="search">stats sum(count) as count by severity | sort - count</param>
+						<module name="ConvertToIntention">
+							<!-- The original intention was consumed by the HiddenSearch above, so we need to re-apply it -->
+							<param name="settingToConvert">host_setting</param>
+							<param name="intention">
+								<param name="name">stringreplace</param>
+								<param name="arg">
+									<param name="serverName">
+                    <param name="fillOnEmpty">False</param>
+                    <param name="prefix">ossec_server="</param>
+										<param name="value">$target$</param>
+                    <param name="suffix">"</param>
+                    <param name="default">*</param>
+									</param>
+								</param>
+							</param>
+						
+							<!-- Top Severities Chart -->
+							<module name="GenericHeader"><param name="label">OSSEC - Top Severities</param></module>
+							<module name="JobProgressIndicator" />
+							<module name="HiddenChartFormatter">						
+								<param name="chart">pie</param>
+								<module name="JSChart">
+									<param name="width">100%</param>
+									<param name="height">230px</param>
+									<module name="HiddenSearch" autoRun="True">
+										<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>							
+										</module>
+									</module>
+								</module>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | top limit=1000 severity</param>
+									<module name="ViewRedirectorLink">
+										<param name="viewTarget">search</param>
+										<param name="label">View more results</param>
+									</module>
+								</module>
+							</module>
+
+							<!-- Top Severities Table -->
+							<module name="SimpleResultsTable"  layoutPanel="panel_row3_col2">
+								<param name="drilldown">row</param>
+								<param name="entityName">results</param>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+									<module name="ConvertToDrilldownSearch">
+										<module name="ViewRedirector">
+											<param name="viewTarget">search</param>
+										</module>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					
+					
+					<!-- Top Reporting Hosts -->
+					<module name="HiddenPostProcess" layoutPanel="panel_row4_col1">
+						<param name="search">stats sum(count) as count by reporting_host | sort - count</param>
+            
+						<module name="ConvertToIntention">
+							<!-- The original intention was consumed by the HiddenSearch above, so we need to re-apply it -->
+							<param name="settingToConvert">host_setting</param>
+							<param name="intention">
+								<param name="name">stringreplace</param>
+								<param name="arg">
+									<param name="serverName">
+                    <param name="fillOnEmpty">False</param>
+                    <param name="prefix">ossec_server="</param>
+										<param name="value">$target$</param>
+                    <param name="suffix">"</param>
+                    <param name="default">*</param>
+									</param>
+								</param>
+							</param>
+						
+							<!-- Top Reporting Hosts Chart -->
+							<module name="GenericHeader"><param name="label">OSSEC - Top Reporting Hosts</param></module>
+							<module name="JobProgressIndicator" />
+							<module name="HiddenChartFormatter">						
+								<param name="chart">pie</param>
+								<module name="JSChart">
+									<param name="width">100%</param>
+									<param name="height">230px</param>
+									<module name="HiddenSearch" autoRun="True">
+										<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>							
+										</module>
+									</module>
+								</module>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | top limit=1000 reporting_host</param>
+									<module name="ViewRedirectorLink">
+										<param name="viewTarget">search</param>
+										<param name="label">View more results</param>
+									</module>
+								</module>
+							</module>
+
+							<!-- Top Reporting Hosts Table -->
+							<module name="SimpleResultsTable"  layoutPanel="panel_row4_col2">
+								<param name="drilldown">row</param>
+								<param name="entityName">results</param>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+									<module name="ConvertToDrilldownSearch">
+										<module name="ViewRedirector">
+											<param name="viewTarget">search</param>
+										</module>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+					
+					
+					
+					
+					
+					<!-- Top Users -->
+					<module name="HiddenPostProcess" layoutPanel="panel_row5_col1">
+						<param name="search">stats sum(count) as count by user | sort - count</param>
+						<module name="ConvertToIntention">
+							<!-- The original intention was consumed by the HiddenSearch above, so we need to re-apply it -->
+							<param name="settingToConvert">host_setting</param>
+							<param name="intention">
+								<param name="name">stringreplace</param>
+								<param name="arg">
+									<param name="serverName">
+                    <param name="fillOnEmpty">False</param>
+                    <param name="prefix">ossec_server="</param>
+										<param name="value">$target$</param>
+                    <param name="suffix">"</param>
+                    <param name="default">*</param>
+									</param>
+								</param>
+							</param>
+						
+							<!-- Top Users Chart -->
+							<module name="GenericHeader"><param name="label">OSSEC - Top Users</param></module>
+							<module name="JobProgressIndicator" />
+							<module name="HiddenChartFormatter">						
+								<param name="chart">pie</param>
+								<module name="JSChart">
+									<param name="width">100%</param>
+									<param name="height">230px</param>
+									<module name="HiddenSearch" autoRun="True">
+										<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+										<module name="ConvertToDrilldownSearch">
+											<module name="ViewRedirector">
+												<param name="viewTarget">search</param>
+											</module>							
+										</module>
+									</module>
+								</module>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise | top limit=1000 user</param>
+									<module name="ViewRedirectorLink">
+										<param name="viewTarget">search</param>
+										<param name="label">View more results</param>
+									</module>
+								</module>
+							</module>
+
+							<!-- Top Users Table -->
+							<module name="SimpleResultsTable"  layoutPanel="panel_row5_col2">
+								<param name="drilldown">row</param>
+								<param name="entityName">results</param>
+								<module name="HiddenSearch" autoRun="True">
+									<param name="search">$serverName$ eventtype="ossec" NOT tag::eventtype=noise</param>
+									<module name="ConvertToDrilldownSearch">
+										<module name="ViewRedirector">
+											<param name="viewTarget">search</param>
+										</module>
+									</module>
+								</module>
+							</module>
+						</module>
+					</module>
+
+				</module>	
+			</module>
+		</module>		
+	</module>
+</view>

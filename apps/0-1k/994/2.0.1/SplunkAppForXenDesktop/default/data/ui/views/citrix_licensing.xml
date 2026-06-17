@@ -1,0 +1,94 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Citrix Licensing</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Citrix License Detail</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report provides details about the Citrix Licenses in your environment. Adjust the time range for this report by changing the timerange picker.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">first 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+      <param name="search">`citrix_licensing` | `citrix_license_type` | `citrix_license_product` | rename Product as Prod | stats first(ProductName) as Product first(Installed) as Installed first(Available) as Available first(InUse_pct) as InUse_pct first(TypeName) as Type by InUse Prod _time</param>
+      <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="label">View Full Report</param>
+      </module>
+      <module name="JobProgressIndicator"/>
+      <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp1" group="License Stats" autoRun="True">
+        <param name="search">| stats dc(Product) as count | eval classvalue="session"</param>
+        <module name="SingleValue">
+          <param name="field">count</param>
+          <param name="classField">classvalue</param>
+          <param name="afterLabel">Products</param>
+          <param name="format">count</param>
+        </module>
+      </module>
+      <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp2" group="License Stats" autoRun="True">
+        <param name="search">| stats first(InUse) as InUse by Product | stats sum(InUse) as count | eval classvalue="user"</param>
+        <module name="SingleValue">
+          <param name="field">count</param>
+          <param name="classField">classvalue</param>
+          <param name="afterLabel">Users</param>
+          <param name="format">count</param>
+        </module>
+      </module>
+      <module name="HiddenPostProcess" layoutPanel="panel_row2_col1_grp3" group="License Stats" autoRun="True">
+        <param name="search">| stats first(Available) as Available first(InUse) as InUse by Product | stats sum(InUse) as TotalInUse sum(Available) as TotalAvailable | eval pctUsed=( TotalInUse/TotalAvailable ) * 100 | eval count=round(pctUsed,2) | eval classvalue="session"</param>
+        <module name="SingleValue">
+          <param name="field">count</param>
+          <param name="classField">classvalue</param>
+          <param name="afterLabel">Percentage Used</param>
+          <param name="format">count</param>
+        </module>
+      </module>
+      <module name="HiddenPostProcess" layoutPanel="panel_row3_col1"      group="License Usage over Time by Product" autoRun="True">
+        <param name="groupLabel">License Usage over Time</param>
+        <param name="search">| search InUse&gt;0 | timechart first(InUse) by Product</param>
+        <module name="HiddenChartFormatter">
+          <param name="chart">line</param>
+          <param name="chart.nullValueMode">connect</param>
+          <param name="legend.placement">bottom</param>
+          <param name="primaryAxisTitle.text">License Use Over Time</param>
+          <module name="JSChart"/>
+        </module>
+      </module>
+      <module name="HiddenPostProcess" layoutPanel="panel_row3_col2"      group="License Usage Percentage over Time by Product" autoRun="True">
+        <param name="groupLabel">License Usage over Time</param>
+        <param name="search">| search InUse_pct&gt;0 | timechart first(InUse_pct) by Product</param>
+        <module name="HiddenChartFormatter">
+          <param name="chart">line</param>
+          <param name="chart.nullValueMode">connect</param>
+          <param name="legend.placement">bottom</param>
+          <param name="primaryAxisTitle.text">License Use (percentage) Over Time</param>
+          <module name="JSChart"/>
+        </module>
+      </module>
+      <module name="HiddenPostProcess" layoutPanel="panel_row6_col1"      group="License Detail" autoRun="True">
+        <param name="search">| stats first(Installed) as Installed first(Available) as Available first(InUse) as InUse first(InUse_pct) as InUse_pct first(Type) as Type by Product</param>
+        <module name="SimpleResultsTable" layoutPanel="panel_row6_col1">
+          <param name="displayMenu">true</param>
+          <param name="count">100</param>
+          <param name="drilldown">row</param>
+          <param name="entityName">results</param>
+          <param name="displayRowNumbers">False</param>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

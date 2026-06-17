@@ -1,0 +1,157 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Cluster Master View (Splunk 5)</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+ 
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Cluster Master View (Splunk 5)</param>
+      </list>
+    </param>
+  </module>
+ 
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">cluster_master_info_splunk5.html</param>
+    </module>
+  </module>
+ 
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+ 
+  <!-- COMMON CONTROLS END   -->
+        
+    <module name="Search" layoutPanel="panel_row1_col1" group="Cluster replication info">
+      <param name="search"><![CDATA[
+      | rest splunk_server=local /services/cluster/config
+      ]]></param>
+      <module name="ResultsValueSetter">
+        <param name="fields">replication_factor, search_factor</param>
+        <module name="Search">
+          <param name="search"><![CDATA[
+          | rest /services/cluster/master/info 
+          | append [stats count]
+          | eval cluster_initialization=case(initialized_flag==1,"Initialized",initialized_flag==0,"Not Initialized",isnull(initialized_flag),"Index replication not enabled")
+          | eval cluster_indexing=case(indexing_ready_flag==1,"Ready",indexing_ready_flag==0,"Not Ready",isnull(indexing_ready_flag),"Index replication not enabled")
+          | stats first(cluster_initialization) AS cluster_initialization first(cluster_indexing) AS cluster_indexing
+          ]]></param>
+          <module name="ResultsValueSetter">
+            <param name="fields">cluster_initialization, cluster_indexing</param>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+              <div class="single_values_list">
+              <br>
+              <ul>
+                <li>Replication factor: <b>$replication_factor$</b></li><br>
+                <li>Search factor: <b>$search_factor$</b></li><br>
+                <li>Cluster initialization state: <b>$cluster_initialization$</b></li><br>
+                <li>Cluster indexing state: <b>$cluster_indexing$</b></li>
+              </ul>
+              </div>
+              ]]></param>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="Pulldown" layoutPanel="panel_row2_col1" group="Bucket count">
+      <param name="name">splitBy</param>
+      <param name="label">Split by</param>
+      <param name="staticFieldsToDisplay">  
+        <list>
+          <param name="value">count(buckets) AS "Bucket count" by Peer</param>
+          <param name="label">peer</param>
+        </list>
+        <list>
+          <param name="value">max(primary_count) AS "Primary bucket count" by Peer</param>
+          <param name="label">peer (primary buckets only)</param>
+        </list>
+        <list>
+          <param name="value">count(buckets) AS "Bucket count" by index_name</param>
+          <param name="label">index</param>
+        </list>
+      </param>
+      <module name="Search">
+        <param name="search"><![CDATA[
+        | rest /services/cluster/master/peers
+        | mvexpand buckets
+        | rex field=buckets "^(?<index_name>[^\~]+)" 
+        | rename label AS Peer
+        | stats $splitBy$
+        ]]></param>
+        <module name="HiddenChartFormatter">
+          <param name="chart">pie</param>
+          <module name="JSChart"/>
+        </module>
+        <module name="ViewRedirectorLink">
+          <param name="viewTarget">flashtimeline</param>
+          <param name="popup">true</param>
+        </module>
+      </module>
+    </module>
+
+
+    <module name="Pulldown" layoutPanel="panel_row2_col2" group="Peer bucket count by status">
+      <param name="name">splitBy</param>
+      <param name="label">Split by</param>
+      <param name="float">left</param>
+      <param name="staticFieldsToDisplay">  
+        <list>
+          <param name="value">search_state_counter.*</param>
+          <param name="label">searchable status</param>
+        </list>
+        <list>
+          <param name="value">status_counter.*</param>
+          <param name="label">replication status</param>
+        </list>
+      </param>
+      <module name="Search">
+        <param name="search"><![CDATA[
+        | rest /services/cluster/master/peers
+        | rename label AS Peer
+        | stats max($splitBy$) AS * by Peer
+        ]]></param>
+        <module name="LinkSwitcher">
+          <param name="mode">independent</param>
+          <param name="label">X-axis scale:</param>
+          <module name="HiddenChartFormatter" group="linear">
+            <param name="chart">bar</param>
+            <param name="chart.stackMode">stacked</param>
+            <module name="JSChart"/>
+          </module>
+          <module name="HiddenChartFormatter" group="logarithmic">
+            <param name="chart">bar</param>
+            <param name="chart.stackMode">stacked</param>
+            <param name="charting.axisY.scale">log</param>
+            <module name="JSChart"/>
+          </module>
+        </module>
+        <module name="ViewRedirectorLink">
+          <param name="viewTarget">flashtimeline</param>
+          <param name="popup">true</param>
+        </module>
+      </module>
+    </module>
+
+ 
+  </module>
+</view> 

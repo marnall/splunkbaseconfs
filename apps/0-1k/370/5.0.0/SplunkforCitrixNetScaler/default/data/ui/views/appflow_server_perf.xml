@@ -1,0 +1,67 @@
+<form>
+    <label>Server Performance</label>
+  
+    <fieldset autoRun="true">
+    
+	<input type="time">
+            <label>Time Range:</label>
+	    <default>Last 24 hours</default>
+	</input>
+    
+    </fieldset>
+    
+    <row>
+        <table>
+            <title>URL by Latency</title>
+            <searchString>
+                eventtype=netscaler_appflow httpRequestUrl!="" | eval clientside=(flowEndMicroSeconds - flowStartMicroSeconds)/1000000
+                | stats avg(clientside) AS "Client Side Round-trip Time" by appID, httpRequestUrl
+                | lookup appid_lookup appID OUTPUT appName
+                | eval appName = if(isnull(appName), appID, appName)
+                | rename appName AS "Server", httpRequestUrl AS "URL"
+                | fields "Server", "URL", "Client Side Round-trip Time"
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <table>
+            <title>HTTP Methods</title>
+            <searchString>
+                eventtype=netscaler_appflow
+                | top httpRequestMethod by appID
+                | lookup appid_lookup appID OUTPUT appName
+                | eval appName = if(isnull(appName), appID, appName)
+                | rename appName AS "Server", httpRequestMethod AS "Method", count AS "Count", percent AS "Percentage"
+                | fields "Server", "Method", "Count", "Percentage"
+            </searchString>
+        </table>
+    </row>
+
+    <row>
+        <table>
+            <title>HTTP Status Codes</title>
+            <searchString>
+                eventtype=netscaler_appflow
+                | top httpResponseStatus by appID
+                | lookup appid_lookup appID OUTPUT appName
+                | eval appName = if(isnull(appName), appID, appName)
+                | rename appName AS "Server", httpResponseStatus AS "Status", count AS "Count", percent AS "Percentage"
+                | fields "Server", "Status", "Count", "Percentage"
+            </searchString>
+        </table>
+    </row>
+    
+    <row>
+        <chart>
+            <title>HTTP UserAgents</title>
+            <searchString>
+                eventtype=netscaler_appflow httpUserAgent!="" httpUserAgent!="0" | top limit=10 httpUserAgent
+            </searchString>
+            <option name="charting.chart">pie</option>
+            <option name="charting.legend.placement">bottom</option>
+        </chart>
+    </row>
+    
+    
+</form>

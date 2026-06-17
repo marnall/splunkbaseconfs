@@ -1,0 +1,432 @@
+// SplunkIt 3.2 (build 207544)
+//
+// Copyright(c) 2014 Splunk Inc
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+SplunkIt Performance Test Kit - Install Guide
+
+NOTE: Please refer to the QUICKSTART file for summarized steps if you are
+      already familiar with SplunkIt
+
+
+NOTE: This is not a Splunk app (and does not follow typical app installations)
+
+
+I. INTRO
+
+  SplunkIt is a performance test kit to benchmark a single-indexer Splunk
+  configuration in two different tests:
+
+    a.  Index Test: adds a large static file to Splunk and measures indexing
+        throughput.
+
+    b.  Search Test: runs searches sequentially from SplunkWeb while
+        streaming data into Splunk.
+
+  The kit utilizes two separate test participants:
+
+    a.  splunkit-server
+        * Resides on the same machine as the Splunk instance under test
+        * Generates all datasets
+        * Makes changes to the Splunk instance
+        * Controls splunkit-user
+
+    b.  splunkit-user
+        * Resides on a separate machine from the Splunk instance under test
+        * Loads a browser and performs ad-hoc searches using SplunkWeb
+
+
+
+II. SETUP
+
+  (1) splunkit-server
+
+    a.  How to Install:
+
+        * Unzip splunkit-server.zip on the same machine as your Splunk
+          instance, outside of the Splunk installation directory
+        * Set SPLUNK_HOME and server_host in pyro.properties, as well as any
+          other custom properties
+        * See pyro.properties.default for all supported properties and their
+          default values.
+
+    b.  System Requirements:
+
+        * Linux, MacOS, or Windows
+        * Python 2.6+
+        * TCP port 8000 opened for Splunk (default settings)
+        * TCP ports 8080 and 8081 opened for splunkit-server (default)
+        * Minimum 75GB free disk space on splunkit-server volume (default)
+        * Minumum 75GB free disk space on Splunk installation volume (default)
+        * Running Splunk 4.1 - 6.x.  May either be a fresh install or
+          preexisting install.
+
+  (2) splunkit-user
+
+    a.  How to Install:
+
+        * Unzip splunkit-user.zip on a remote machine
+        * Set server_host in pyro.properties; this value must match
+          the server_host value set in splunkit-server/pyro.properties
+
+    b.  System Requirements:
+
+        * Linux, MacOS, or Windows
+        * Python 2.6+
+        * Firefox 4 - Firefox 21 (must added to system path)
+        * Some X server if using a headless machine, e.g. Xvfb
+          (must be running)
+        * Network connectivity to splunkit-server / Splunk machine
+
+
+
+III. INDEX TEST
+
+  (1) Install splunkit-server on the same machine as the Splunk instance
+      (see SETUP above)
+
+  (2) Generate the static 50GB data file
+
+    a.  Navigate to the splunkit-server directory on the server machine
+
+    b.  Run in terminal: "python bin/gendata.py"
+
+        * this should take approximately 1 hour
+        * If running the script over remote SSH, try nohup and & to keep the
+          script alive; i.e. "nohup python bin/gendata.py &"
+
+  (3) Index the generated data into index=splunkit_idxtest
+
+    a.  Navigate to the splunkit-server directory on the server machine
+
+    b.  Run in terminal: "python bin/indextest.py"
+
+        * If running the script over remote SSH, try nohup and & to keep the
+          script alive; i.e. "nohup python bin/indextest.py &"
+
+    c.  Script should report indexing completion when finished
+
+  (4) check kbps / EPS metrics in SplunkWeb:
+
+    a.  Run search using SplunkWeb, if Index Test hasn't been run previously:
+
+    index=_internal per_index_thruput series="splunkit_idxtest"
+    | stats avg(kbps), avg(eps)
+
+    -or-
+
+    b.  Wait until step IV.(5) below for a more detailed view into indexing
+    performance
+
+
+
+IV. SEARCH TEST
+
+  (1) Install splunkit-server and splunkit-user, if not done already
+      (see SETUP above)
+
+  (2) Start splunkit-user
+
+    a.  Navigate to the splunkit-user directory on the user machine
+
+    b.  Start Xvfb if needed; e.g. "nohup Xvfb :1 &" will run using display :1
+
+    c.  Run in terminal (NOTE: set DISPLAY if/as needed):
+
+        "python bin/searchtest.py"
+
+        * If headless, precede script invocation with display variable;
+          i.e. "export DISPLAY=:1; python bin/searchtest.py"
+
+        * If running the script over remote SSH, try nohup and & to keep the
+          script alive; i.e. "nohup python bin/searchtest.py &"
+
+  (3) Start splunkit-server
+
+    a.  Navigate to the splunkit-server directory on the server machine
+
+    b.  Run in terminal: "python bin/searchtest.py"
+
+        * If running the script over remote SSH, try nohup and & to keep the
+          script alive; i.e. "nohup python bin/searchtest.py &"
+
+  (4) Run Search Test
+
+    a.  Search test will automatically begin when both the server and user
+        have started
+
+    b.  Test will run for 80 minutes (4800s) by default.
+
+        * The first 4 minutes of the test are dedicated to preparing the test;
+          searches will not be run during these 4 minutes.
+
+  (5) Verify Results
+
+    a.  From SplunkWeb, open dashboard 'SplunkIt Results - Summary' from the
+        "Views" tab in the Search app to see a summary of results
+
+    b.  From SplunkWeb, open dashboard 'SplunkIt Results - Indexing Details'
+        from the "Views" tab in the Search app to see detailed indexing
+        statistics
+
+        * Shows stats for both the Index Test and Search Test
+
+    c.  NOTE: Index Test statistics may be inaccurate or may include data from
+        other test runs if both the following conditions are met:
+
+        * the Search Test was run from a different splunkit-server directory
+          than the one used to run the Index Test
+
+        * the Index Test was run multiple times, or was run only partially, on
+          the same running Splunk instance
+
+  (6) Optional: Post your SplunkIt Results
+
+    a.  Take a screenshot of your "SplunkIt Results - Summary" dashboard
+
+    b.  Send the screenshot to splunkit@splunk.com, along with a description
+        of your hardware configuration.
+
+    c.  We'll post results at blogs.splunk.com/tag/performance to help other
+        Splunk users with their deployments.
+
+    d.  You can send feedback and questions to splunkit@splunk.com.
+
+
+
+V. FAQ
+
+  (1) How do I clean up the test environment if my test is interrupted?
+
+    a. Interrupted while generating the 50GB static file:
+
+        * Kill the server's gendata.py python script if it is still running
+        * Re-run the server's gendata.py script
+
+    b. Interrupted while indexing the 50GB file (Index Test):
+
+        * Re-run the server's indextest.py script to restart indexing
+          (see: III.(3))
+
+    c. Interrupted while running the Search Test:
+
+        * Kill the server's searchtest.py python script, if still running
+        * Kill the user's searchtest.py python script, if still running
+        * Kill the user's firefox process, if still running
+        * Re-run the server's searchtest.py script normally (see: IV.(3))
+        * Re-run the user's searchtest.py script normally (see: IV.(2))
+
+
+  (2) What did SplunkIt do to my Splunk server?
+
+    SplunkIt should be run on a clean Splunk instance, and after the test,
+    this Splunk instance can be deleted.
+
+    In other words, do not use a Splunk instance in-use to run SplunkIt if you
+    expect it restored to its previous state.
+
+    For reference however, here is the list of artifacts left by running
+    SplunkIt by default:
+
+    a.  Results Dashboards
+
+        * $SPLUNK_HOME/etc/apps/search/local/data/ui/views/
+          splunkit_results.xml
+
+        * $SPLUNK_HOME/etc/apps/search/local/data/ui/views/
+          splunkit_indexing_details.xml
+
+        * Both of the dashboards remain enabled on the Splunk server
+
+    b. Conf file changes
+
+        * $SPLUNK_HOME/etc/apps/search/local/indexes.conf
+          ** [splunkit_idxtest]
+          ** [splunkit_searchtest]
+
+        * $SPLUNK_HOME/etc/apps/search/local/viewstates.conf
+          ** [*:gqwzm80t]
+          ** [splunkit_results:_current]
+
+        * $SPLUNK_HOME/etc/apps/search/local/inputs.conf
+          ** monitor dir: splunkit-server/data/static
+          ** monitor dir: splunkit-server/data/streaming
+          ** monitor dir: splunkit-server/results
+
+        * $SPLUNK_HOME/etc/apps/search/local/limits.conf
+          ** [search] base_max_searches = 500
+
+        * $SPLUNK_HOME/etc/users/admin/search/local/savedsearches.conf
+          ** 84 scheduled saved searches, by default
+          ** 18 saved searches for displaying results (results dashboards)
+
+        * All of the above remain enabled on Splunk server, except for the
+          scheduled searches, which are removed at the end of the Search Test
+
+
+
+  (3) How do I extend SplunkIt to use custom searches?
+
+    a.  Specify a custom 'usersearch' in pyro.properties in splunkit-server
+
+    b.  Specify customs scheduled searches in scheduled_searches.txt
+
+        * Format:
+          <frequency in minutes>; <earliest time>; <latest time>; <search>
+
+        * Alternative search entry format:
+          <frequency in minutes>; <search>
+
+        * Frequency must be in minutes and must be a factor of 60
+
+        * Earliest and latest times can be any accepted Splunk time format,
+          relative or absolute
+
+        * Search string should appear exactly as it would in a Splunk search
+          bar, with no preceding 'search' command
+
+
+  (4) How do I extend SplunkIt to use a custom dataset?
+
+    a.  Prepare a sample data file in the desired format with the following
+        tokens in each event:
+
+        * @TIME@: will be replaced by a timestamp
+
+        * @FIELD@: will be replaced by custom fields
+
+    b.  Set the 'datatype' field in pyro.properties to 'custom'
+
+    c.  Specify custom dataset parameters in pyro.properties:
+
+        * custom_sourcetype: custom sourcetype to apply to dataset, to allow
+          custom timestamp/field extraction and line breaking with props.conf
+
+        * custom_source_path: Path to your sample data file
+
+        * custom_timestamp_format: format of timestamps to add to data,
+          e.g. "%b %d %Y %H:%M:%S %Z"
+
+        * custom_timestamp_token: token string to replace with timestamps
+
+        * custom_field_token: token string to replace with custom fields
+
+    d.  If necessary for timestamp/field extractiona and/or linebreaking, add
+        a custom props.conf file to the Splunk instance
+
+    e.  Finally, run the Index Test and Search Test normally
+
+
+  (5) How do I change how much data to use in the index & search tests?
+
+    a. Change the size of the static file to generate for the index test
+
+        * Set static_filesize_gb to an integer of your choice;
+          default is 50 (GB)
+
+    b. Change the streaming data rate for the search test
+
+        * Set streaming_datarate_gbph to an integer of your choice;
+          default is 3 (GB per hour)
+
+
+  (6) How do I set custom homepaths and coldpaths for the test data?
+
+    a. Change where the static data is stored for the index test
+
+        * Set custom_static_home_path in the server's pyro.properties file
+
+        * Set custom_static_cold_path in the server's pyro.properties file
+
+    b. Change where the streaming data is stored for the search test
+
+        * Set custom_streaming_home_path in the server's pyro.properties file
+
+        * Set custom_streaming_cold_path in the server's pyro.properties file
+
+
+  (7) How do I disable/simplify parts of the test?
+
+    a.  Disable scheduled searches in the search test
+
+        * Set enable_scheduled_searches in the server's pyro.properties to
+          False
+
+    b.  Disable streaming data generation in the search test
+
+        * Set enable_streaming_data in the server's pyro.properties to False
+
+
+  (8) How do I extend SplunkIt to use more than one search user at once?
+
+    a.  You can increase the number of search users in different ways:
+
+        * Unzip splunkit-user.zip onto multiple systems or into different
+          directories on the same system
+
+        * Set agents_per_client parameter in the server's pyro.properties
+          to greater than 1
+
+        * Any combination of the above two options
+
+    b. Set a new autostart condition:
+
+        * In the server's pyro.properties, set client_count to the number of
+          splunkit-user clients you want to use.
+
+        * Search test will wait until (client_count * agents_per_client)
+          threads have started
+
+    c.  Run the Search Test normally.
+
+        * All reported search times will be averages of all search user
+          threads.
+
+
+  (9) How do I make the search user run CLI tests only?
+
+    a. Example properties files in both splunkit-server and splunkit-user
+       are provided, as pyro.properties.cli, which you can use to
+       overwrite pyro.properties.
+
+
+  (10) Where do I look if I want to modify the test code?
+
+    a.  All relevant code appears in the lib directory in both splunkit-server
+        and splunkit-user:
+
+        * kirsch.py - selenium code that interacts with SplunkWeb
+
+        * pyro_test_classes.py - where the SplunkWeb and SplunkCLI Ad-Hoc search
+          test cases are defined, using code from kirsch.py
+
+        * pyro_server.py - code to help the server communicate with one or
+          more clients and handle test results
+
+        * pyro_client.py - code to help a client communicate with a server and
+          initialize a particular test class
+
+        * common.py - simple utility functions
+
+    b.  Changes to the test code are unsupported
+
+
+  (11) How do I extend SplunkIt to benchmark a distributed Splunk deployment?
+
+    a.  SplunkIt currently only supports a single Splunk instance.  However,
+        we hope to support distributed Splunk deployments in a future release
+        using Universal Forwarders.
+
+
+

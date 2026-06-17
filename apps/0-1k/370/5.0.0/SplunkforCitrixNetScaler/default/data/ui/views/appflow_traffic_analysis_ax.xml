@@ -1,0 +1,117 @@
+<view template="dashboard.html">
+    <label>Traffic Analysis</label>
+    <module name="AccountBar" layoutPanel="appHeader"/>
+    <module name="AppBar" layoutPanel="navigationHeader"/>
+    <module name="Message" layoutPanel="messaging">
+        <param name="filter">*</param>
+        <param name="clearOnJobDispatch">False</param>
+        <param name="maxSize">1</param>
+    </module>
+    
+    <module name="TitleBar" layoutPanel="navigationHeader">
+        <param name="actionsMenuFilter">dashboard</param>
+    </module>
+    
+    <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+        <param name="text">You can adjust the time range of the reports
+        by selecting your desired time using the picker below.</param>
+    </module>
+
+    <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="true">
+        <param name="selected">All time</param>
+        <param name="searchWhenChanged">true</param>
+        
+        <module name="HiddenSavedSearch" autoRun="true">
+            <param name="savedSearch">AppFlow Traffic Analysis DataCube</param>
+            
+            <!-- Traffic Analysis by Applications -->
+            <module name="HiddenPostProcess" layoutPanel="panel_row2_col1" autoRun="true" group="Traffic Analysis by Applications">
+                <param name="search">search netscalerHttpReqHost!="" | eval netscalerHttpReqHost = lower(netscalerHttpReqHost)
+                    | eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                    | stats distinct_count(netscalerConnectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                    sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by netscalerHttpReqHost
+                    | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                    | rename netscalerHttpReqHost AS "Application", perc_req AS "Percent of Requests"
+                    | fields "Application", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"</param>
+                <module name="JobProgressIndicator" />
+                <module name="Paginator">
+                    <param name="entityName">results</param>
+                    <module name="SimpleResultsTable">
+                        <param name="entityName">results</param>
+                        <param name="drilldown">row</param>
+                        <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                            <param name="popup">true</param>
+                        </module>
+                    </module>
+                </module>
+            </module>
+             
+            <!-- Traffic Analysis by Servers -->
+            <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" autoRun="true" group="Traffic Analysis by Servers">
+                <param name="search">eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                    | stats distinct_count(netscalerConnectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                    sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by appID
+                    | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                    | lookup appid_lookup appID OUTPUT netscalerAppName
+                    | eval netscalerAppName = if(isnull(netscalerAppName), appID, netscalerAppName)
+                    | rename netscalerAppName AS "Server", perc_req AS "Percent of Requests"
+                    | fields "Server", "appID", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"</param>
+                <module name="JobProgressIndicator" />
+                <module name="Paginator">
+                    <param name="entityName">results</param>
+                    <module name="SimpleResultsTable">
+                        <param name="entityName">results</param>
+                        <param name="drilldown">row</param>
+                        <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                            <param name="popup">true</param>
+                        </module>
+                    </module>
+                </module>
+            </module>
+            
+            <!-- Traffic Analysis by Applications & Servers -->
+            <module name="HiddenPostProcess" layoutPanel="panel_row4_col1" autoRun="true" group="Traffic Analysis by Applications and Servers">
+                <param name="search">eval netscalerHttpReqHost = lower(netscalerHttpReqHost)
+                    | eval latency = (flowEndMicroSeconds - flowStartMicroSeconds) / 1000000
+                    | stats distinct_count(netscalerConnectionId) AS "Requests" sum(octetDeltaCount) AS "Total Traffic"
+                    sum(packetDeltaCount) AS "Total Packets" avg(latency) AS "Avg. Latency (sec)" by netscalerHttpReqHost, appID
+                    | eventstats sum(Requests) AS total_req | eval perc_req = round(Requests * 100 / total_req, 2)
+                    | lookup appid_lookup appID OUTPUT netscalerAppName
+                    | eval netscalerAppName = if(isnull(netscalerAppName), appID, netscalerAppName)
+                    | rename netscalerHttpReqHost AS "Application", netscalerAppName AS "Server", perc_req AS "Percent of Requests"
+                    | fields "Server", "appID", "Application", "Requests", "Percent of Requests", "Total Traffic", "Total Packets", "Avg. Latency (sec)"</param>
+                <module name="JobProgressIndicator" />
+                <module name="Paginator">
+                    <param name="entityName">results</param>
+                    <module name="SimpleResultsTable">
+                        <param name="entityName">results</param>
+                        <param name="drilldown">row</param>
+                        <module name="ViewRedirector">
+                            <param name="viewTarget">flashtimeline</param>
+                            <param name="popup">true</param>
+                        </module>
+                    </module>
+                </module>
+            </module>
+        </module> <!-- end HiddenSavedSearch -->
+        
+        <!-- Utilization per Server -->
+        <module name="HiddenSavedSearch" layoutPanel="panel_row5_col1" autoRun="true" group="Utilization per Server">
+            <param name="savedSearch">AppFlow Utilization per Server</param>
+            <module name="JobProgressIndicator" />
+            <module name="Paginator">
+                <param name="entityName">results</param>
+                <module name="SimpleResultsTable">
+                    <param name="entityName">results</param>
+                    <param name="drilldown">row</param>
+                    <module name="ViewRedirector">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                    </module>
+                </module>
+            </module>
+        </module>
+    </module> <!-- end TimeRangePicker -->
+</view>

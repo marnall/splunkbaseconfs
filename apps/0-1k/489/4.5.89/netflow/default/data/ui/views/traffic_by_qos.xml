@@ -1,0 +1,441 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Network Traffic by CBQoS</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="False">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+            <label>Source IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+            <label>Dest. IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+            <label>Protocol</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+            <label>Src. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+            <label>Dest. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="src_dscp" searchWhenChanged="False">
+            <label>Src. DSCP</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_dscp" searchWhenChanged="False">
+            <label>Dest. DSCP</label>
+            <default>*</default>
+        </input>
+        <input type="time" searchWhenChanged="False">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+   <search>
+        <query>`netflow_search_rule_20065` | head 1
+        </query> 
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>`netflow_search_rule_20065` | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <search id="baseSearchSrc">
+      <query>`netflow_search_rule_20065` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | `sampling(bytes_in)` 
+                | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                | fillnull value=0 src_tos
+                | eval src_decimal=floor((src_tos)/4)
+                | lookup `is_local_lookup` diffserv_lookup decimal AS src_decimal OUTPUT bitmap AS src_bitmap DSCP AS src_dscp 
+                | eval src_bitmap = if(src_bitmap = "000000", 0, ltrim(src_bitmap, "0")) 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                | search exp_group="$exp_group$" (src_bitmap="$src_dscp$" OR src_dscp="$src_dscp$")
+                | fillnull value="" transport
+                | search transport="$protocol_name$"
+                | strcat src_bitmap " (" src_dscp ")" qos_string 
+        </query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+    </search>
+    <search id="baseSearchDest">
+      <query>`netflow_search_rule_20065` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                | `sampling(bytes_in)` 
+                | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                | fillnull value=0 dest_tos
+                | eval dest_decimal=floor((dest_tos)/4)
+                | lookup `is_local_lookup` diffserv_lookup decimal AS dest_decimal OUTPUT bitmap AS dest_bitmap DSCP AS dest_dscp 
+                | eval dest_bitmap = if(dest_bitmap = "000000", 0, ltrim(dest_bitmap, "0")) 
+                | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                | search exp_group="$exp_group$" (dest_bitmap="$dest_dscp$" OR dest_dscp="$dest_dscp$")
+                | fillnull value="" transport
+                | search transport="$protocol_name$"
+                | strcat dest_bitmap " (" dest_dscp ")" qos_string 
+        </query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+    </search>
+    <row depends="$show_content$">
+        <panel>
+            <chart>
+                <title>Inbound Traffic</title>
+                <search base="baseSearchSrc">
+                    <query>
+                          | dedup src_tos dest_tos protocol _time
+                          | `per_second_chart(sum(bytes_in) by qos_string,"$span_token$",$span_int$)`
+                    </query>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                    <unset token="NFO"></unset>
+                    <unset token="DeviceIn"></unset>
+                    <unset token="QOSIn"></unset>
+                </selection>
+            </chart>
+        </panel>
+        <panel>
+            <chart>
+                <title>Outbound Traffic</title>
+                <search base="baseSearchDest">
+                    <query>
+                            | dedup src_tos dest_tos protocol _time
+                            | `per_second_chart(sum(bytes_in) by qos_string,"$span_token$",$span_int$)`
+                    </query>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest2">$start$</set>
+                    <set token="selection.latest2">$end$</set>
+                    <unset token="NFO"></unset>
+                    <unset token="DeviceOut"></unset>
+                    <unset token="QOSOut"></unset>
+                </selection>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <table id="table_1_1">
+                <search base="baseSearchSrc">
+                    <query>
+                        | `sampling(packets_in)` 
+                        | `sampling(flow_count)` 
+                        | bin _time $span_token$
+                        | stats  sum(bytes_in) as sumbytes 
+                            sum(packets_in) as sumpacketsin 
+                            sum(flow_count) as sumflowcount 
+                                by nfo_hostname exp_ip qos_string _time sum_by_exp
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sum(sumpacketsin) as PacketsAmount 
+                            sum(sumflowcount) as Connections 
+                            max(avgbits) as MaxTraffic
+                                by nfo_hostname exp_ip qos_string sum_by_exp
+                        | sort 0 - TrafficAmount 
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | eval pct = TrafficAmount*100/sum_by_exp                                             
+                        | `commas_formatting(pct, pct, 2)`
+                        | `default_preparation_for_comma_formatted_table`
+                        | table nfo_hostname exp_ip_name qos_string "Max Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+                        | rename nfo_hostname as "NFO"
+                        | rename exp_ip_name as "Device" 
+                        | rename qos_string as "Source Diff. Services" 
+                        | rename pct as "% of Total"
+                    </query>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="NFO">$row.NFO$</set>
+                    <set token="DeviceIn">$row.Device$</set>
+                    <set token="QOSIn">$row.Source Diff. Services$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel>
+            <table id="table_1_2">
+                <search base="baseSearchDest">
+                    <query>
+                        | `sampling(packets_in)` 
+                        | `sampling(flow_count)`
+                        | bin _time $span_token$
+                        | stats  sum(bytes_in) as sumbytes 
+                            sum(packets_in) as sumpacketsin 
+                            sum(flow_count) as sumflowcount 
+                                by nfo_hostname exp_ip qos_string _time sum_by_exp
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sum(sumpacketsin) as PacketsAmount 
+                            sum(sumflowcount) as Connections 
+                            max(avgbits) as MaxTraffic
+                                by nfo_hostname exp_ip qos_string sum_by_exp
+                        | sort 0 - TrafficAmount 
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | eval pct = TrafficAmount*100/sum_by_exp                                             
+                        | `commas_formatting(pct, pct, 2)`
+                        | `default_preparation_for_comma_formatted_table`
+                        | table nfo_hostname exp_ip_name qos_string "Max Mbps" "Average Mbps" "Total Traffic MB" pct "Average Packets/s" "Total Packets" "Total Connections" 
+                        | rename nfo_hostname as "NFO"
+                        | rename exp_ip_name as "Device" 
+                        | rename qos_string as "Dest. Diff. Services"
+                        | rename pct as "% of Total"
+                    </query>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="NFO">$row.NFO$</set>
+                    <set token="DeviceOut">$row.Device$</set>
+                    <set token="QOSOut">$row.Dest. Diff. Services$</set>
+                </drilldown>
+            </table>
+        </panel>
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <chart id="chart_2_1" depends="$DeviceIn$">
+                <title>CBQoS for Device: $DeviceIn$ Source DSCP: $QOSIn$ reported by NFO $NFO$</title>
+                <search>
+                    <query>`netflow_search_rule_20067`  nfo_hostname="$NFO$"
+                            | fillnull value=0 src_tos dest_tos
+                            | eval src_decimal=floor((src_tos)/4)
+                            | eval dest_decimal=floor((dest_tos)/4)
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS src_decimal output bitmap AS src_bitmap DSCP AS src_dscp 
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS dest_decimal output bitmap AS dest_bitmap DSCP AS dest_dscp 
+                            | eval src_bitmap = if(src_bitmap = "000000", 0, ltrim(src_bitmap, "0")) 
+                            | eval dest_bitmap = if(dest_bitmap = "000000", 0, ltrim(dest_bitmap, "0")) 
+                            | strcat src_bitmap " (" src_dscp ")" qos_string
+                            | `get_exporter_name(exp_ip_name)`
+                            | search exp_ip_name="$DeviceIn$" qos_string="$QOSIn$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                                           (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") 
+                                                           (src_port="$src_port$" AND dest_port="$dest_port$") 
+                                                           (src_bitmap="$src_dscp$" OR src_dscp="$src_dscp$") 
+                                                           (dest_bitmap="$dest_dscp$" OR dest_dscp="$dest_dscp$") 
+                            | fillnull value="" transport
+                            | search transport="$protocol_name$"
+                            | `sampling(bytes_in)`
+                            | `format_ip_column(dest_ip,dest_ip,dest_host)`
+                            | `per_second_chart(sum(bytes_in) by dest_ip,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest12">$start$</set>
+                    <set token="selection.latest12">$end$</set>
+                </selection>
+            </chart>
+        </panel>
+        <panel>
+            <chart id="chart_2_2" depends="$DeviceOut$">
+                <title>CBQoS for Device: $DeviceOut$ Destination DSCP: $QOSOut$ reported by NFO $NFO$</title>
+                <search>
+                    <query>`netflow_search_rule_20067`  nfo_hostname="$NFO$"
+                            | fillnull value=0 src_tos dest_tos
+                            | eval src_decimal=floor((src_tos)/4)
+                            | eval dest_decimal=floor((dest_tos)/4)
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS src_decimal output bitmap AS src_bitmap DSCP AS src_dscp 
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS dest_decimal output bitmap AS dest_bitmap DSCP AS dest_dscp 
+                            | eval src_bitmap = if(src_bitmap = "000000", 0, ltrim(src_bitmap, "0")) 
+                            | eval dest_bitmap = if(dest_bitmap = "000000", 0, ltrim(dest_bitmap, "0")) 
+                            | strcat dest_bitmap " (" dest_dscp ")" qos_string
+                            | `get_exporter_name(exp_ip_name)`
+                            | search exp_ip_name="$DeviceOut$" qos_string="$QOSOut$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") 
+                                                            (src_port="$src_port$" dest_port="$dest_port$") 
+                                                            (src_bitmap="$src_dscp$" OR src_dscp="$src_dscp$") 
+                                                            (dest_bitmap="$dest_dscp$" OR dest_dscp="$dest_dscp$") 
+                            | fillnull value="" transport
+                            | search transport="$protocol_name$"
+                            | `sampling(bytes_in)`
+                            | `format_ip_column(src_ip,src_ip,src_host)`
+                            | `per_second_chart(sum(bytes_in) by src_ip,"$span_token$",$span_int$)`
+                    </query>
+                    <earliest>$selection.earliest2$</earliest>
+                    <latest>$selection.latest2$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest22">$start$</set>
+                    <set token="selection.latest22">$end$</set>
+                </selection>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <table id="table_2_1" depends="$DeviceIn$">
+                <search>
+                    <query>`netflow_search_rule_20067` nfo_hostname="$NFO$"
+                            | `sampling(bytes_in)`
+                            | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                            | fillnull value=0 src_tos dest_tos input_snmp output_snmp
+                            | eval src_decimal=floor((src_tos)/4)
+                            | eval dest_decimal=floor((dest_tos)/4)
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS src_decimal output bitmap AS src_bitmap DSCP AS src_dscp 
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS dest_decimal output bitmap AS dest_bitmap DSCP AS dest_dscp 
+                            | eval src_bitmap = if(src_bitmap = "000000", 0, ltrim(src_bitmap, "0")) 
+                            | eval dest_bitmap = if(dest_bitmap = "000000", 0, ltrim(dest_bitmap, "0")) 
+                            | strcat src_bitmap " (" src_dscp ")" qos_string
+                            | `get_exporter_name(exp_ip_name)`
+                            | search exp_ip_name="$DeviceIn$" qos_string="$QOSIn$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                                           (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") 
+                                                           (src_port="$src_port$" AND dest_port="$dest_port$") 
+                                                           (src_bitmap="$src_dscp$" OR src_dscp="$src_dscp$") 
+                                                           (dest_bitmap="$dest_dscp$" OR dest_dscp="$dest_dscp$") 
+                            | fillnull value="" transport
+                            | search transport="$protocol_name$"
+                            | `sampling(packets_in)` 
+                            | `sampling(flow_count)`
+                            | `conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+                    </query>
+                    <earliest>$selection.earliest12$</earliest>
+                    <latest>$selection.latest12$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+        </panel>
+        <panel>
+            <table id="table_2_2" depends="$DeviceOut$">
+                <search>
+                    <query>`netflow_search_rule_20067` nfo_hostname="$NFO$"
+                            | `sampling(bytes_in)`
+                            | eventstats sum(bytes_in) as sum_by_exp by exp_ip nfo_hostname
+                            | fillnull value=0 src_tos dest_tos input_snmp output_snmp
+                            | eval src_decimal=floor((src_tos)/4)
+                            | eval dest_decimal=floor((dest_tos)/4)
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS src_decimal output bitmap AS src_bitmap DSCP AS src_dscp 
+                            | lookup `is_local_lookup` diffserv_lookup decimal AS dest_decimal output bitmap AS dest_bitmap DSCP AS dest_dscp 
+                            | eval src_bitmap = if(src_bitmap = "000000", 0, ltrim(src_bitmap, "0")) 
+                            | eval dest_bitmap = if(dest_bitmap = "000000", 0, ltrim(dest_bitmap, "0")) 
+                            | strcat dest_bitmap " (" dest_dscp ")" qos_string
+                            | `get_exporter_name(exp_ip_name)`
+                            | search exp_ip_name="$DeviceOut$" qos_string="$QOSOut$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                                                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") 
+                                                            (src_port="$src_port$" AND dest_port="$dest_port$") 
+                                                            (src_bitmap="$src_dscp$" OR src_dscp="$src_dscp$") 
+                                                            (dest_bitmap="$dest_dscp$" OR dest_dscp="$dest_dscp$")
+                            | fillnull value="" transport
+                            | search transport="$protocol_name$"
+                            | `sampling(packets_in)` 
+                            | `sampling(flow_count)`
+                            | `conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+                    </query>
+                    <earliest>$selection.earliest22$</earliest>
+                    <latest>$selection.latest22$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+        </panel>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10065: CBQoS Monitor”</b> (syslogs with nfc_id=20065). This Module reports traffic for all DSCP bits combinations (QoS). This Module is packaged in NFO “Network Traffic and Devices Monitor” Module Set.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

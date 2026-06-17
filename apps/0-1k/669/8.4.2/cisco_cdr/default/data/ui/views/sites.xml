@@ -1,0 +1,242 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Sites</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <pattern name="display_saved_report_name" />
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h1 class="doNotPrint">Sites</h1>
+      ]]></param>
+    </module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">tour_sitesPage</param>
+    </module>
+
+    <module name="TimePicker" layoutPanel="mainSearchControls">
+      <param name="default">Last 24 hours</param>
+
+      <module name="TextField">
+        <param name="name">site</param>
+        <param name="label">$name$</param>
+        <param name="template">site="$value$"</param>
+        <param name="width">150px</param>
+
+        <pattern name="cluster_controls">
+
+          <module name="ValueSetter">
+            <param name="arg.cachedEarliest">$search.timeRange.earliest$</param>
+            <param name="arg.cachedLatest">$search.timeRange.latest$</param>
+
+            <module name="CheckboxPulldown">
+              <param name="name">modifiers</param>
+              <param name="label">options</param>
+              <param name="selectedByDefault">False</param>
+              <param name="sticky">True</param>
+              <param name="staticOptions">
+                <list>
+                  <param name="value">sitesWithZeroCalls</param>
+                  <param name="label">include sites with zero calls</param>
+                </list>
+                <list>
+                  <param name="value">callsWithZeroDuration</param>
+                  <param name="label">count calls with zero duration</param>
+                </list>
+              </param>
+
+              <module name="Button">
+                <param name="allowSoftSubmit">True</param>
+
+                <module name="CustomBehavior">
+                  <param name="customBehavior">getKeysForModifiers</param>
+
+                  <module name="Search">
+                    <param name="search"><![CDATA[
+| rest /servicesNS/-/cisco_cdr/admin/eventtypes splunk_server=local
+| search title="leg_type_*" disabled=0
+| eval leg_type=replace(title,"leg_type_", "")
+| stats values(leg_type) as leg_types
+                    ]]></param>
+
+                    <module name="ResultsValueSetter">
+                      <param name="fields">leg_types</param>
+
+                      <module name="ValueSetter">
+                        <param name="arg.availableFieldList">site,country,calls,incoming,outgoing,internal,total_duration,incoming_duration,outgoing_duration,internal_duration,incoming_duration_min,internal_duration_min,outgoing_duration_min,audio,audio_duration,video,video_duration,$leg_types$</param>
+<!--
+it's problematic to put failed calls in this table, because
+a) if 'count calls with zero duration' is not checked, it will always be zero which is confusing
+b) the incoming/outgoing/internal counts naively INCLUDE failed calls which... seems odd if failed is IN the field list. and odd if it's NOT.
+-->
+                        <module name="Search" layoutPanel="resultsHeaderPanel">
+                          <param name="search"><![CDATA[
+
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ $excludeCallsWithZeroDuration$
+| fillnull duration value="0"
+| `customizable_sites_extractions` | `get_sites`
+| `get_custom_type_fields`
+| eval {type}_duration=duration
+| eval {type}_call_id=call_id
+| eval {callMediaType}_duration=duration
+| eval {callMediaType}_call_id=call_id
+| eval {leg_type}_call_id=call_id
+
+| stats dc(call_id) as calls dc(*_call_id) as * sum(internal_duration) as internal_duration sum(outgoing_duration) as outgoing_duration sum(incoming_duration) as incoming_duration sum(duration) as total_duration sum(internal_duration_min) as internal_duration_min sum(outgoing_duration_min) as outgoing_duration_min sum(incoming_duration_min) as incoming_duration_min sum(audio_duration) as audio_duration sum(video_duration) as video_duration by site
+
+$includeSitesWithZeroCalls$
+| fields - call_id subnet subnet_description lat long
+| stats last(*) as * by site
+| lookup cidr site_name as site OUTPUT country
+| fields $availableFieldList$
+| search site=* $site$
+| sort 0 site
+| `get_durations_for_internal_parties`
+| `replace_zeros_with_nulls`
+| fillnull calls $leg_types$
+                          ]]></param>
+
+                          <module name="Fields">
+                            <param name="availableFields">$availableFieldList$</param>
+                            <param name="fields">site calls incoming outgoing internal total_duration incoming_duration outgoing_duration internal_duration</param>
+                            <param name="float">right</param>
+
+                            <pattern name="save_create_buttons" />
+                            <module name="SearchControls">
+                              <param name="sections">jobControls info export print saveMenu</param>
+                              <param name="saveMenu">saveSearch</param>
+                              <param name="float">right</param>
+                            </module>
+
+                            <module name="HTML">
+                              <param name="html"><![CDATA[
+                              <h2>$results.count$ Sites found $timeRange.label$</h2>
+                              ]]></param>
+                            </module>
+
+                            <module name="Pulldown" layoutPanel="resultsAreaLeft">
+                              <param name="name">results.count</param>
+                              <param name="label">results per page</param>
+                              <param name="float">right</param>
+                              <param name="staticOptions">
+                                <list><param name="value">10</param></list>
+                                <list><param name="value">20</param><param name="selected">True</param></list>
+                                <list><param name="value">50</param></list>
+                                <list><param name="value">100</param></list>
+                                <list><param name="value">200</param></list>
+                              </param>
+
+                              <module name="Pager">
+
+                                <module name="HTML">
+                                  <param name="html"><![CDATA[
+                                  Click a row to see more details and metrics about the given site.
+                                  ]]></param>
+                                </module>
+
+                                <module name="ProgressIndicator"></module>
+
+                                <module name="Table">
+                                  <param name="hiddenFields">time</param>
+
+                                  <module name="Layer">
+                                    <param name="cssClass">menu</param>
+
+                                    <module name="Link">
+                                      <param name="cssClass">menuItem</param>
+                                      <param name="label">investigate calls to/from this site</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">calls</param>
+                                        <param name="arg.searchterms">(origSite="$row.fields.site.rawValue$" OR destSite="$row.fields.site.rawValue$")</param>
+                                        <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                        <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                        <param name="arg.latest">$search.timeRange.latest$</param>
+                                      </module>
+                                    </module>
+
+                                    <module name="Link">
+                                      <param name="cssClass">menuItem</param>
+                                      <param name="label">investigate devices making/receiving calls in this site</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">devices</param>
+                                        <param name="arg.sites">$row.fields.site.rawValue$</param>
+                                        <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                        <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                        <param name="arg.latest">$search.timeRange.latest$</param>
+                                      </module>
+                                    </module>
+
+                                    <module name="Link">
+                                      <param name="cssClass">menuItem</param>
+                                      <param name="label">investigate extensions making/receiving calls in this site</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">extensions</param>
+                                        <param name="arg.sites">$row.fields.site.rawValue$</param>
+                                        <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                        <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                        <param name="arg.latest">$search.timeRange.latest$</param>
+                                      </module>
+                                    </module>
+
+                                    <module name="Link">
+                                      <param name="cssClass">menuItem</param>
+                                      <param name="label">view site details</param>
+
+                                      <module name="Redirector">
+                                        <param name="url">site_detail</param>
+                                        <param name="arg.site">$row.fields.site.rawValue$</param>
+                                        <param name="arg.clusterGroup">$clusterGroup.rawValue$</param>
+                                        <param name="arg.clusterId">$clusterId.rawValue$</param>
+                                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                                        <param name="arg.latest">$search.timeRange.latest$</param>
+
+                                        <!--  filing away things for if the user later clicks the breadcrumb link -->
+                                        <param name="arg.bc_earliest">$cachedEarliest$</param>
+                                        <param name="arg.bc_latest">$cachedLatest$</param>
+                                        <param name="arg.bc_site">$site.rawValue$</param>
+                                        <param name="arg.bc_clusterId">$clusterId.rawValue$</param>
+                                        <param name="arg.bc_clusterGroup">$clusterGroup.rawValue$</param>
+                                      </module>
+                                    </module>
+
+                                  </module>
+
+                                </module>
+
+                                <module name="Pager" />
+
+                                <pattern name="see_raw_search_syntax" />
+
+                                <module name="Link">
+                                  <param name="label">&#187; setup sites</param>
+                                  <module name="Redirector">
+                                    <param name="url">setup_sites</param>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </pattern>
+      </module>
+    </module>
+  </module>
+</view>

@@ -1,0 +1,233 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Network Conversations with NetScaler RTT and Retransmissions</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20062` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <chart>
+        <title>Round-Trip Time (ms)</title>
+        <search>
+          <query>
+           `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (netscaler_client_rtt=* OR	netscaler_server_rtt=*)
+             | fillnull value=0 netscaler_client_rtt 	netscaler_server_rtt
+             | eval rtt=netscaler_client_rtt+netscaler_server_rtt
+             | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+             | search exp_group="$exp_group$" (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") src_port="$src_port$" dest_port="$dest_port$"
+             | fillnull value="" transport
+             | search transport="$protocol_name$"
+             | bin _time $span_token$
+             | stats avg(rtt) as avg_rtt  by nfo_hostname exp_ip src_ip src_port src_host  dest_ip dest_port dest_host transport  _time 
+             | `dedup_timechart_events`
+             | eventstats latest(src_host) as l_src_host by nfo_hostname exp_ip src_ip 
+             | eventstats latest(dest_host) as l_dest_host by nfo_hostname exp_ip dest_ip 
+             | eval src_ip_string=if(isnull(l_src_host),src_ip,src_ip." (".l_src_host.")") 
+             | eval dest_ip_string=if(isnull(l_dest_host),dest_ip,dest_ip." (".l_dest_host.")") 
+             | strcat src_ip_string " - " dest_ip_string host_pair 
+             | timechart $span_token$ limit=10 useother="f" avg(avg_rtt) by host_pair
+          </query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">ms</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Retransmission Counts</title>
+        <search>
+          <query>
+           `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (netscaler_client_retrans_count=* OR netscaler_server_retrans_count=*) 
+             | fillnull value=0  netscaler_client_retrans_count netscaler_server_retrans_count
+             | eval retrans=netscaler_client_retrans_count+netscaler_server_retrans_count
+             | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+             | search exp_group="$exp_group$" (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+              (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") src_port="$src_port$" dest_port="$dest_port$"
+             | fillnull value="" transport
+             | search transport="$protocol_name$"
+             | bin _time $span_token$
+             | stats avg(retrans) as avg_retrans  by nfo_hostname exp_ip src_ip src_port src_host dest_ip dest_port dest_host transport _time 
+             | `dedup_timechart_events`
+             | eventstats latest(src_host) as l_src_host by nfo_hostname exp_ip src_ip 
+             | eventstats latest(dest_host) as l_dest_host by nfo_hostname exp_ip dest_ip 
+             | eval src_ip_string=if(isnull(l_src_host),src_ip,src_ip." (".l_src_host.")") 
+             | eval dest_ip_string=if(isnull(l_dest_host),dest_ip,dest_ip." (".l_dest_host.")") 
+             | strcat src_ip_string " - " dest_ip_string host_pair 
+             | timechart $span_token$ limit=10 useother="f" avg(avg_retrans) by host_pair
+          </query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">ms</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table">
+        <search>
+          <query>
+            `netflow_search_rule_20062` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (netscaler_client_retrans_count=* OR netscaler_server_retrans_count=* OR netscaler_client_rtt=* OR	netscaler_server_rtt=*)
+              | fillnull value=0  netscaler_client_retrans_count netscaler_server_retrans_count netscaler_client_rtt 	netscaler_server_rtt
+              | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+              | search exp_group="$exp_group$" (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                (dest_ip="$dest_ip$" OR dest_host="$dest_ip$") src_port="$src_port$" dest_port="$dest_port$"
+              | fillnull value="" transport src_vm_name dest_vm_name src_host dest_host
+              | search transport="$protocol_name$"
+              | eventstats latest(src_host) as l_src_host by exp_ip src_ip 
+              | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip 
+              | eval exp_ip_network_conversation=nfo_hostname."#".exp_ip."#".src_ip."#".l_src_host."#".src_vm_name."#".src_port."#".dest_ip."#".l_dest_host."#".dest_vm_name."#".dest_port."#".flow_type."#".transport 
+              | stats avg(netscaler_client_rtt) as avg_netscaler_client_rtt max(netscaler_client_rtt) as max_netscaler_client_rtt avg(netscaler_server_rtt) as avg_netscaler_server_rtt max(netscaler_server_rtt) as max_netscaler_server_rtt max(netscaler_client_retrans_count) as max_netscaler_client_retrans_count max(netscaler_server_retrans_count) as max_netscaler_server_retrans_count sum(sum_flow_count) as FlowCount avg(avg_duration) as avgduration by nfo_hostname exp_ip_network_conversation 
+              | eval temp=split(exp_ip_network_conversation,"#") 
+              | eval nfo_hostname=mvindex(temp,0) 
+              | eval exp_ip=mvindex(temp,1) 
+              | eval src_ip=mvindex(temp,2) 
+              | eval src_host=mvindex(temp,3) 
+              | eval src_vm_name=mvindex(temp,4) 
+              | eval src_port=mvindex(temp,5) 
+              | eval dest_ip=mvindex(temp,6) 
+              | eval dest_host=mvindex(temp,7) 
+              | eval dest_vm_name=mvindex(temp,8) 
+              | eval dest_port=mvindex(temp,9) 
+              | eval flow_type=mvindex(temp,10) 
+              | eval transport=mvindex(temp,11) 
+              | `get_exporter_name(exp_ip_name)`
+              | eval src_host=if(src_vm_name=="",src_host,src_host." (".src_vm_name.")") 
+              | eval dest_host=if(dest_vm_name=="",dest_host,dest_host." (".dest_vm_name.")") 
+              | lookup `is_local_lookup` port_lookup port AS src_port OUTPUT service AS service 
+              | strcat src_port "/" transport " (" service ")" src_port 
+              | lookup `is_local_lookup` port_lookup port AS dest_port OUTPUT service AS service 
+              | strcat dest_port "/" transport " (" service ")" dest_port 
+              | table nfo_hostname exp_ip_name flow_type transport src_ip src_port src_host dest_ip dest_port dest_host avg_netscaler_client_rtt max_netscaler_client_rtt avg_netscaler_server_rtt max_netscaler_server_rtt max_netscaler_client_retrans_count max_netscaler_server_retrans_count 
+              | rename nfo_hostname as "NFO" 
+              | rename exp_ip_name as "Device" 
+              | rename src_ip as "Source IP" 
+              | rename src_port as "Source Port" 
+              | rename src_host as "Source Host (VM)" 
+              | rename dest_ip as "Dest IP" 
+              | rename dest_port as "Dest Port" 
+              | rename dest_host as "Dest Host (VM)" 
+              | rename flow_type as "Flow Type" 
+              | rename transport as "Protocol" 
+              | rename avg_netscaler_client_rtt as "Avg Client RTT"
+              | rename avg_netscaler_server_rtt as "Avg Server RTT"
+              | rename max_netscaler_client_rtt as "Max Client RTT"
+              | rename max_netscaler_server_rtt as "Max Server RTT"
+              | rename max_netscaler_client_retrans_count as "Client Retrans"
+              | rename max_netscaler_server_retrans_count as "Server Retrans"
+          </query>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10062: Network Conversations”</b> (syslogs with nfc_id=20062). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

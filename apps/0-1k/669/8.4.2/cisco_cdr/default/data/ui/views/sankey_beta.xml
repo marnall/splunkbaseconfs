@@ -1,0 +1,84 @@
+<view template="canary" type="canary" isVisible="False">
+  <label>Sankey dev — complex (real CDR data)</label>
+  <module name="URLLoader" layoutPanel="appHeader">
+    <param name="keepURLUpdated">True</param>
+    <pattern name="nav"/>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h2>Sankey prototype</h2>
+      ]]></param>
+    </module>
+
+    <module name="TimePicker" layoutPanel="panel_row1_col1">
+      <param name="label">time range</param>
+      <param name="default">Last 7 days</param>
+
+      <module name="TextField">
+        <param name="name">base_search</param>
+        <param name="label">search</param>
+        <param name="default"></param>
+
+        <module name="Search">
+          <param name="search">
+index=cisco_cdr sourcetype="cucm_cdr" $base_search$
+| head 10000
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(origIpAddr)`
+| `get_sites`
+| fieldsummary
+| fields field count
+| eval label= field + " (" + count + ")"
+          </param>
+
+
+
+          <module name="Pulldown">
+            <param name="name">fromField</param>
+            <param name="label">from</param>
+            <param name="valueField">field</param>
+            <param name="labelField">label</param>
+            <param name="staticOptions"></param>
+
+            <module name="Pulldown">
+              <param name="name">toField</param>
+              <param name="label">to</param>
+              <param name="valueField">field</param>
+              <param name="labelField">label</param>
+              <param name="staticOptions"></param>
+
+              <module name="Search" layoutPanel="panel_row2_col1">
+                <param name="search">
+index=cisco_cdr sourcetype="cucm_cdr" $base_search$
+| `convert_ip_address(destIpAddr)`
+| `convert_ip_address(origIpAddr)`
+| `get_sites`
+|  where lastRedirectDn!=calledPartyNumber
+```| eval target=if(type="tandem",dest_gateway,dest_device_type)```
+|  stats dc(call_id) as calls by $fromField$ $toField$
+| sort - calls
+                </param>
+
+                <module name="Sankey" layoutPanel="panel_row2_col1">
+                  <param name="height">500px</param>
+                  <param name="charting.fromField">$fromField$</param>
+                  <param name="charting.toField">$toField$</param>
+                  <param name="charting.flowField">calls</param>
+                  <param name="hideChildrenOnload">True</param>
+
+                  <module name="HTML" layoutPanel="panel_row3_col1">
+                    <param name="html"><![CDATA[
+                      <p>Redirected from: <b>$sankey.fromField$</b> &rarr; <b>$sankey.toField$</b>
+                         &nbsp;|&nbsp; calls=<b>$sankey.flowField$</b><br>
+                         searchTerms: <code>$sankey.searchTerms$</code></p>
+                    ]]></param>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

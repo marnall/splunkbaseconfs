@@ -1,0 +1,620 @@
+<form version="1.1" refresh="0" stylesheet="inputs_layout.css">
+    <label>Traffic Analyzer and Planning (based on my-subnets.csv lookup)</label>
+    <search id="baseSearch_20067">
+        <query>`netflow_search_rule_20067` 
+            |  stats count values(protocol) AS protocol sum(bytes) AS bytes by _time exp_ip nfo_hostname src_ip dest_ip dest_port src_port input_snmp
+        </query>
+        <earliest>$tok_time.earliest$</earliest>
+        <latest>$tok_time.latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <unset token="show_hint_20067"></unset>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint_20067">true</set>
+            </condition>
+        </done>
+    </search>
+    <search id="baseSearch_subnet_lookup">
+        <query>| inputlookup my_subnets_lookup 
+           | fillnull
+           | where level_1 != "*"
+           | stats count by level_1 level_2 level_3 level_4
+        </query>
+        <earliest>$tok_time.earliest$</earliest>
+        <latest>$tok_time.latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <unset token="show_hint_lookup"></unset>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint_lookup">true</set>
+            </condition>
+        </done>
+    </search>
+    <fieldset autoRun="true" submitButton="true">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+            <change>
+                <set token="exp_group">*</set>
+                <set token="exp_ip">*</set>
+                <set token="level_1">*</set>
+                <set token="level_2">*</set>
+                <set token="level_3">*</set>
+                <set token="level_4">*</set>
+                <set token="form.exp_ip">*</set>
+                <set token="form.level_1">*</set>
+                <set token="form.level_2">*</set>
+                <set token="form.level_3">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+            <change>
+                <set token="exp_ip">*</set>
+                <set token="level_1">*</set>
+                <set token="level_2">*</set>
+                <set token="level_3">*</set>
+                <set token="level_4">*</set>
+                <set token="form.exp_ip">*</set>
+                <set token="form.level_1">*</set>
+                <set token="form.level_2">*</set>
+                <set token="form.level_3">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+            <change>
+                <set token="level_1">*</set>
+                <set token="level_2">*</set>
+                <set token="level_3">*</set>
+                <set token="level_4">*</set>
+                <set token="form.level_1">*</set>
+                <set token="form.level_2">*</set>
+                <set token="form.level_3">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+        </input>
+        <input type="dropdown" token="level_1" searchWhenChanged="false">
+            <label>Level 1</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <fieldForLabel>level_1</fieldForLabel>
+            <fieldForValue>level_1</fieldForValue>
+            <change>
+                <set token="level_2">*</set>
+                <set token="level_3">*</set>
+                <set token="level_4">*</set>
+                <set token="form.level_2">*</set>
+                <set token="form.level_3">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+            <search base="baseSearch_subnet_lookup">
+                <query>| fields level_1 
+                       | dedup level_1 
+                       | where level_1!="0" 
+                       | sort + level_1
+                </query>
+            </search>
+        </input>
+        <input type="dropdown" token="level_2" searchWhenChanged="false">
+            <label>Level 2</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <fieldForLabel>level_2</fieldForLabel>
+            <fieldForValue>level_2</fieldForValue>
+            <change>
+                <set token="level_3">*</set>
+                <set token="level_4">*</set>
+                <set token="form.level_3">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+            <search base="baseSearch_subnet_lookup">
+                <query>| search level_1=$level_1|s$ 
+                       | fields level_2 
+                       | dedup level_2 
+                       | where level_2!="0" 
+                       | sort + level_2
+                </query>
+            </search>
+        </input>
+        <input type="dropdown" token="level_3" searchWhenChanged="false">
+            <label>Level 3</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <fieldForLabel>level_3</fieldForLabel>
+            <fieldForValue>level_3</fieldForValue>
+            <change>
+                <set token="level_4">*</set>
+                <set token="form.level_4">*</set>
+            </change>
+            <search base="baseSearch_subnet_lookup">
+                <query>| search level_1=$level_1|s$  level_2=$level_2|s$ 
+                       | fields level_3 
+                       | dedup level_3 
+                       | where level_3!="0" 
+                       | sort + level_3
+                </query>
+            </search>
+        </input>
+        <input type="dropdown" token="level_4" searchWhenChanged="false">
+            <label>Level 4</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <fieldForLabel>level_4</fieldForLabel>
+            <fieldForValue>level_4</fieldForValue>
+            <search base="baseSearch_subnet_lookup">
+                <query>| search level_1=$level_1|s$  level_2=$level_2|s$ level_3=$level_3|s$ 
+                       | fields level_4 
+                       | dedup level_4 
+                       | where level_4!="0" 
+                       | sort + level_4
+                </query>
+            </search>
+        </input>
+        <input type="time" token="tok_time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>
+                <earliest>-60m@m</earliest>
+                <latest>now</latest>
+            </default>
+        </input>
+    </fieldset>
+    <row depends="$show_content$">
+        <panel>
+            <chart>
+                <title>East-West (Internal) / North-South (External)</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | search (src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$)
+                        | eval srcdesttype = if((src_subnet!="external" AND dest_subnet!="external"),"East-West","North-South")
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024
+                        | stats sum(MB) as TrafficMB by srcdesttype
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.showPercent">1</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.1</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+        <panel>
+            <chart>
+                <title>External: Ingress / Egress</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"    
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | search ((src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$)) AND (src_subnet = "external" OR dest_subnet = "external")
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024 
+                        | eval in_out = if(src_subnet="external","Ingress","Egress")
+                        | stats sum(MB) as TrafficMB by in_out
+                        | sort - TrafficMB 
+                        | head 10 
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.showPercent">true</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+        <panel>
+            <chart>
+                <title>Internal: Switched / Routed</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | search ((src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$)) AND (src_subnet != "external" AND dest_subnet != "external")
+                        | eval switchedrouted = if((src_subnet = dest_subnet),"Switched","Routed")
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024 
+                        | stats sum(MB) as TrafficMB by switchedrouted
+                        | sort - TrafficMB 
+                        | head 10 
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.showPercent">true</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <chart>
+                <title>External: Top Traffic by Dest Port</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | where src_subnet = "external" OR dest_subnet = "external"
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024 
+                        | `format_port_column(dest_port_string, dest_port)`
+                        | search (src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$)
+                        | stats sum(MB) as TrafficMB by dest_port_string
+                        | sort - TrafficMB 
+                        | head 10 
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.showPercent">true</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+        <panel>
+            <chart>
+                <title>Internal: Top Traffic by Dest Port</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | search (src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$) AND (src_subnet != "external" AND dest_subnet !="external")
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024 
+                        | `format_port_column(dest_port_string, dest_port)`
+                        | stats sum(MB) as TrafficMB by dest_port_string
+                        | sort - TrafficMB 
+                        | head 10 
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.showPercent">true</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+        <panel>
+            <chart>
+                <title>Internal: Top Subnets</title>
+                <search base="baseSearch_20067">
+                    <query>
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | dedup src_ip dest_ip src_port dest_port protocol input_snmp  _time
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS src_ip OUTPUT description AS src_subnet, level_1 AS src_level_1, level_2 AS src_level_2, level_3 AS src_level_3, level_4 AS src_level_4
+                        | lookup `is_local_lookup` my_subnets_lookup subnet AS dest_ip OUTPUT description AS dest_subnet, level_1 AS dest_level_1, level_2 AS dest_level_2, level_3 AS dest_level_3, level_4 AS dest_level_4 
+                        | search (src_level_1=$level_1|s$ src_level_2=$level_2|s$ src_level_3=$level_3|s$ src_level_4=$level_4|s$) OR (dest_level_1=$level_1|s$ dest_level_2=$level_2|s$ dest_level_3=$level_3|s$ dest_level_4=$level_4|s$) AND (src_subnet != "external" AND dest_subnet !="external")
+                        | `sampling(bytes)`
+                        | eval MB = bytes / 1024 / 1024 
+                        | eval src_dest_subnet = src_subnet." -&gt; ".dest_subnet
+                        | stats sum(MB) as TrafficMB by src_dest_subnet
+                        | sort - TrafficMB 
+                        | head 10 
+                        | eval TrafficMB=round(TrafficMB ,2)
+                    </query>
+                </search>
+                <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+                <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+                <option name="charting.axisTitleX.visibility">visible</option>
+                <option name="charting.axisTitleY.visibility">visible</option>
+                <option name="charting.axisTitleY2.visibility">visible</option>
+                <option name="charting.axisX.scale">linear</option>
+                <option name="charting.axisY.scale">linear</option>
+                <option name="charting.axisY2.enabled">0</option>
+                <option name="charting.axisY2.scale">inherit</option>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.bubbleMaximumSize">50</option>
+                <option name="charting.chart.bubbleMinimumSize">10</option>
+                <option name="charting.chart.bubbleSizeBy">area</option>
+                <option name="charting.chart.nullValueMode">gaps</option>
+                <option name="charting.chart.showDataLabels">none</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+                <option name="charting.chart.stackMode">default</option>
+                <option name="charting.chart.style">shiny</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.layout.splitSeries">0</option>
+                <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+                <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.showPercent">true</option>
+                <option name="height">200</option>
+            </chart>
+        </panel>
+    </row>
+    <row depends="$show_hint_20067$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>10067: Top Traffic Monitor</b> (syslogs with nfc_id=20067). This Module is packaged in NFO Network Traffic and Devices Monitor Module Set.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+    <row depends="$show_hint_lookup$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the <b>my-subnets.csv</b> lookup file.</p>
+                <p>This dashboard is using this lookup <b>$SPLUNK_HOME/etc/apps/netflow/lookups/my-subnets.csv</b> file to determine traffic in and out of your datacenter as well as other subnet based statistics. It supports up to four-level hierarchy, and should be created in the following format.</p>
+                <p>Example:<br></br>
+                    <code>
+                        <table cellpadding="5" cellspacing="10">
+                            <thead>
+                                <tr>
+                                    <th align="left">subnet</th>
+                                    <th align="left">level_1</th>
+                                    <th align="left">level_2</th>
+                                    <th align="left">level_3</th>
+                                    <th align="left">level_4</th>
+                                    <th align="left">description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>10.0.5.0/29</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA1</td>
+                                    <td>ClassA11</td>
+                                    <td>ClassA111</td>
+                                    <td>ClassAsubnet111</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.8/29</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA1</td>
+                                    <td>ClassA11</td>
+                                    <td>ClassA112</td>
+                                    <td>ClassAsubnet112</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.16/28</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA1</td>
+                                    <td>ClassA12</td>
+                                    <td>ClassA121</td>
+                                    <td>ClassAsubnet121</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.32/27</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA1</td>
+                                    <td>ClassA12</td>
+                                    <td>ClassA122</td>
+                                    <td>ClassAsubnet122</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.64/26</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA2</td>
+                                    <td>ClassA21</td>
+                                    <td>ClassA211</td>
+                                    <td>ClassAsubnet211</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.128/27</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA2</td>
+                                    <td>ClassA21</td>
+                                    <td>ClassA212</td>
+                                    <td>ClassAsubnet212</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.160/27</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA2</td>
+                                    <td>ClassA22</td>
+                                    <td>ClassA221</td>
+                                    <td>ClassAsubnet221</td>
+                                </tr>
+                                <tr>
+                                    <td>10.0.5.192/26</td>
+                                    <td>ClassA</td>
+                                    <td>ClassA2</td>
+                                    <td>ClassA22</td>
+                                    <td>ClassA222</td>
+                                    <td>ClassAsubnet222</td>
+                                </tr>
+                                <tr>
+                                    <td>172.16.0.0/12</td>
+                                    <td>ClassB</td>
+                                    <td>ClassB1</td>
+                                    <td>ClassB11</td>
+                                    <td>ClassB111</td>
+                                    <td>ClassBsubnet111</td>
+                                </tr>
+                                <tr>
+                                    <td>192.168.0.0/16</td>
+                                    <td>ClassC</td>
+                                    <td>ClassC1</td>
+                                    <td>ClassC11</td>
+                                    <td>ClassC111</td>
+                                    <td>ClassCsubnet111</td>
+                                </tr>
+                                <tr>
+                                    <td>100::/18</td>
+                                    <td>IPv6_1</td>
+                                    <td>IPv6_11</td>
+                                    <td>IPv6_111</td>
+                                    <td>IPv6_1111</td>
+                                    <td>IPv6_1_subnet</td>
+                                </tr>
+                                <tr>
+                                    <td>104::/18</td>
+                                    <td>IPv6_2</td>
+                                    <td>IPv6_21</td>
+                                    <td>IPv6_211</td>
+                                    <td>IPv6_2111</td>
+                                    <td>IPv6_2_subnet</td>
+                                </tr>
+                                <tr>
+                                    <td>108::/18</td>
+                                    <td>IPv6_3</td>
+                                    <td>IPv6_31</td>
+                                    <td>IPv6_311</td>
+                                    <td>IPv6_3111</td>
+                                    <td>IPv6_3_subnet</td>
+                                </tr>
+                                <tr>
+                                    <td>10c::/18</td>
+                                    <td>IPv6_4</td>
+                                    <td>IPv6_41</td>
+                                    <td>IPv6_411</td>
+                                    <td>IPv6_4111</td>
+                                    <td>IPv6_4_subnet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </code>
+                </p>
+            </html>
+        </panel>
+    </row>
+</form>

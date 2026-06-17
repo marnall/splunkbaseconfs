@@ -1,0 +1,386 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css,health_checks.css">
+  <label>Home</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search"><![CDATA[
+| rest /services/apps/local splunk_server=local
+| search title="cisco_cdr"
+| fields title label author version description
+| stats last(*) as *
+| rex field="version" mode="sed" "s/(\d+\.\d+)\.0/\1/"
+    ]]></param>
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1>Welcome to Cisco CDR Reporting and Analytics $results[0].version$</h1>
+      ]]></param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+    <!--
+      Overall flow chart for "customer did it wrong."
+
+      1) SPLUNK TOO OLD.
+        Customer installs Cisco CDR on Splunk 7.3,  or upgrades old Cisco CDR to latest on 7.3
+        a)  home_redirect.xml is a simplexml page. It runs some JS in dashboard.js, displays a
+            message that they need at least Splunk 8.X now.
+
+        b)  If they go to a bookmark right to a canary URL... cisco_cdr_shunt has been modified
+            in Cisco CDR 6.5 to redirect to home_redirect (thus GOTO 1a above)
+
+        c)  If they go to a bookmark right to an advanced XML URL...
+            application.js has a tiny thing that redirects to /app/cisco_cdr (thus GOTO 1a)
+
+      2) CANARY MISSING ENTIRELY
+         Customer didn't notice the thing about Canary. Canary is not installed at all.
+         a) home_redirect is a simplexml page for this reason. It runs some JS in dashboard.js,
+            makes a rest call to see if Canary is there.
+            If it's not, displays a message that Canary is needed.
+
+      For the next three see /appserver/static/lib/check_status.js  but here's the short version.
+      3) JS on all pages checks the license status.
+         if no license is found, on the homepage messaging takes over the page and no further checks happen.
+         other pages (with some exceptions eg the update_license page) redirect to the homepage.
+
+      4) IF a license is found, then JS on the homepage in particular runs a tstats summariesonly
+         search, to see if any cucm_cdr data is indexed, in any index.  It displays a big message if not.
+
+      5) if neither of those do anything (courtesy of some css logic in custom.css),
+         then we proceed to this next important business,
+
+      6) is there any data indexed in the `custom_index`
+         technically this and #7 (the health checks) run in parallel, but if this one fails it supercedes
+         and hides all other content on the page.
+         see appserver/static/lib/check_status.js - it runs a search and if 0 results come back it puts
+         the whole page into a css state called "noDataIndexed"
+
+      7) "Do any critical health checks fail?"
+
+
+      KNOWN FLAWS:
+      - if Canary is there but very old, cisco cdr python may fail unpredictably.
+        currently cisco_cdr_shunt does not check whether canary version is >= what app.conf specifies
+        as minimum version.   It effectively hopes that canary can run *enough* to get to the
+        health check...
+      - 1c not covered by any testing.
+      - 1b *can* be manually verified. See comment on TestShuntEndpoint
+
+    -->
+    <module name="Search" layoutPanel="panel_row2_col1">
+      <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-checklist splunk_server=local
+| rename eai:appName as app search as searchToRun
+| fields app title searchToRun drilldown
+| search app="cisco_cdr" title="critical_*"
+| eval drilldownLabel=if(isnull(drilldown),"see health check results","run troubleshooting search")
+| eval drilldown=if(isnull(drilldown),searchToRun,drilldown)
+      ]]></param>
+
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <strong>You appear to have some CDR data indexed. However one or more critical health checks have failed and should be addressed as soon as possible:</strong>
+        ]]></param>
+      </module>
+
+      <module name="Pager">
+
+        <module name="Multiplexer">
+          <param name="fields">app,searchToRun,drilldown,drilldownLabel</param>
+
+          <module name="Search">
+            <param name="search">$searchToRun.rawValue$ | sort - severity_level |  table severity_level metric</param>
+
+            <module name="ProgressIndicator"/>
+
+            <module name="HTML">
+              <param name="html"><![CDATA[
+               <p class="checklistConfSeverity$results[0].severity_level$" style="margin-bottom:0px;">
+                  $results[0].metric$<br>
+                  Please go to "Admin > Run health checks" to get more detailed information.
+                </p>
+              ]]></param>
+              <param name="customBehavior">setPageStateIfCriticalHealthCheckFailed</param>
+            </module>
+
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+
+    <module name="NullModule" layoutPanel="mainSearchControls">
+
+      <pattern name="call_filter_controls">
+
+        <module name="Button">
+          <param name="label">go</param>
+
+          <module name="Redirector">
+            <param name="url">calls</param>
+            <param name="arg.numberType">$numberType.rawValue$</param>
+            <param name="arg.number">$number.rawValue$</param>
+            <param name="arg.data_type">$data_type.rawValue$</param>
+            <param name="arg.earliest">$search.timeRange.earliest$</param>
+            <param name="arg.latest">$search.timeRange.latest$</param>
+            <param name="arg.type">$type.rawValue$</param>
+          </module>
+        </module>
+      </pattern>
+
+
+
+    </module>
+
+
+
+
+
+
+
+
+
+
+    <module name="Tabs" layoutPanel="panel_row4_col1">
+      <param name="name">selected_ko</param>
+      <param name="staticTabs">
+        <list>
+          <param name="label">Dashboards</param>
+          <param name="value">dashboards</param>
+        </list>
+        <list>
+          <param name="label">Reports</param>
+          <param name="value">reports</param>
+        </list>
+        <list>
+          <param name="label">Lookups</param>
+          <param name="value">lookups</param>
+        </list>
+      </param>
+      <module name="Switcher">
+        <param name="selectedGroup">$selected_ko$</param>
+
+        <pattern name="saved_dashboards"  layoutPanel="panel_row4_col1" group="dashboards"/>
+
+        <pattern name="saved_reports"  layoutPanel="panel_row4_col1" group="reports"/>
+
+        <pattern name="lookups_table"  layoutPanel="panel_row4_col1" group="lookups"/>
+
+
+
+      </module>
+    </module>
+
+
+
+    <module name="NullModule" layoutPanel="panel_row5_col1">
+      <module name="HTML">
+        <param name="html"><![CDATA[
+            <h3>About this app</h3>
+        ]]></param>
+      </module>
+
+      <pattern name="tutorial_topics">
+        <param name="label">Start a tutorial</param>
+        <param name="float">left</param>
+        <param name="clear">left</param>
+
+        <module name="Button">
+          <param name="label">go</param>
+          <module name="Redirector">
+            <param name="url">tour</param>
+            <param name="arg.selectedTab">static</param>
+            <param name="arg.staticTutorial">$staticTutorial$</param>
+            <param name="popup">True</param>
+            <param name="target">tourWindow</param>
+            <param name="windowFeatures">popup=true,left=20,top=20,width=600,height=800</param>
+          </module>
+        </module>
+      </pattern>
+
+
+
+      <module name="HTML">
+        <param name="clear">left</param>
+        <param name="html"><![CDATA[
+
+
+
+          <p>
+            Looking for docs?  Read our <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-user-documentation" target="_blank">user documentation</a> or <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-extending-the-app" target="_blank">learn about the app's optional lookups</a>.
+          </p>
+
+          <p>
+            More questions?  Go ahead and email our <a href="mailto:support@sideviewapps.com">support alias</a> or <a href="mailto:info@sideviewapps.com">info alias</a><span class="TrialVersionOnly">, or for any sales questions, <a href="mailto:sales@sideviewapps.com" target="_blank">contact sales</a>.</span>.  Or try the app's <a href="infodump">system and usage information</a> page.
+          </p>
+
+
+          <p>Sideview license:
+
+            <span class="TrialVersionOnly">
+              You are using a <a href="https://sideviewapps.com/documentation/sideview-trial-internal-use-license-agreement" target="_blank">trial license</a> which will expire <span class="licenseExpirationDate"></span>.
+            </span>
+
+            <span class="FullVersionPerpetualOnly">
+              Your support and maintenance expires on <span class="supportExpirationDate"></span>.
+            </span>
+
+            <span class="FullVersionTermOnly">
+              Your license and support expires on <span class="licenseExpirationDate"></span>.
+            </span>
+          </p>
+
+
+
+        ]]></param>
+      </module>
+    </module>
+
+
+    <module name="NullModule" layoutPanel="panel_row5_col2">
+      <module name="HTML">
+        <param name="html"><![CDATA[
+            <h3>About your data</h3>
+
+        ]]></param>
+      </module>
+
+      <module name="TimePicker">
+        <param name="default">Last 60 minutes</param>
+        <param name="label">Call volume over</param>
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+|  tstats count as records WHERE `custom_index` GROUPBY sourcetype _time
+|  append [
+  |  tstats dc(globalCallId_ClusterID) as clusters WHERE `custom_index` GROUPBY sourcetype
+]
+| stats sparkline(sum(records)) as sparkline sum(records) as records last(clusters) as clusters by sourcetype
+| eval pluralize=if(clusters==1,"cluster","clusters")
+| eval details=if(clusters>0,clusters . " " . pluralize,null())
+| fields - pluralize
+| eval records=tostring(records,"commas")
+| table sourcetype records details sparkline
+| rename sparkline as "records over time"
+          ]]></param>
+
+          <module name="Pager">
+
+            <module name="Table"/>
+
+            <module name="Pager" />
+          </module>
+
+        </module>
+      </module>
+    </module>
+
+
+
+
+
+
+
+    <pattern name="explore_new_reports" layoutPanel="panel_row6_col1" />
+
+    <pattern name="explore_fields"  layoutPanel="panel_row6_col2"/>
+
+  </module>
+
+  <!-- <module name="TimePicker" layoutPanel="panel_row4_col1">
+    <param name="default">Last 60 minutes</param>
+    <param name="label">Call volume over</param>
+
+    <module name="Search">
+      <param name="search">
+| tstats prestats=t count where `custom_index` sourcetype=cucm_cdr by `id_fields` _time
+| stats count by `id_fields` _time
+| `get_call_id`
+| timechart dc(call_id) as calls
+      </param>
+
+      <module name="ValueSetter">
+        <param name="arg.stackMode">stacked</param>
+        <param name="arg.charting.axisTitleX.visibility">collapsed</param>
+        <param name="arg.charting.legend.placement">none</param>
+
+        <module name="Chart">
+          <param name="height">120px</param>
+          <param name="enableResize">False</param>
+
+          <module name="Layer">
+            <param name="cssClass">menu</param>
+
+
+            <module name="HTML">
+              <param name="cssClass">menuHeader</param>
+              <param name="html">
+                Selected range: $search.timeRange.label$
+              </param>
+            </module>
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">see calls</param>
+              <module name="Redirector">
+                <param name="url">calls</param>
+                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                <param name="arg.latest">$search.timeRange.latest$</param>
+              </module>
+            </module>
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">see devices</param>
+              <module name="Redirector">
+                <param name="url">devices</param>
+                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                <param name="arg.latest">$search.timeRange.latest$</param>
+              </module>
+            </module>
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">see extensions</param>
+              <module name="Redirector">
+                <param name="url">extensions</param>
+                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                <param name="arg.latest">$search.timeRange.latest$</param>
+              </module>
+            </module>
+
+            <module name="Link">
+              <param name="cssClass">menuItem</param>
+              <param name="label">see gateways and trunks</param>
+              <module name="Redirector">
+                <param name="url">gateways</param>
+                <param name="arg.earliest">$search.timeRange.earliest$</param>
+                <param name="arg.latest">$search.timeRange.latest$</param>
+              </module>
+            </module>
+
+          </module>
+
+        </module>
+      </module>
+
+    </module>
+  </module>
+
+-->
+
+
+
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="src">error_messages.html</param>
+  </module>
+
+
+
+
+</view>

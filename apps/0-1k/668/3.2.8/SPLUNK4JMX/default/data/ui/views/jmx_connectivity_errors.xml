@@ -1,0 +1,95 @@
+<form version="1.1">
+    <label>JMX Connectivity Errors</label>
+    <fieldset autoRun="true">
+        <input type="dropdown" token="host">
+            <label>Choose host</label>
+            <prefix>host="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>host</fieldForValue>
+            <fieldForLabel>host</fieldForLabel>
+            <search>
+                <query>
+                | metadata type=hosts index=main | dedup host | table host
+                </query> 
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="dropdown" token="jvmDescription">
+            <label>Choose JVM Description</label>
+            <prefix>jvmDescription="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>jvmDescription</fieldForValue>
+            <fieldForLabel>jvmDescription</fieldForLabel>
+            <search>
+                <query>
+                index=_internal source=*jmxmodinput_app_modularinput.log* error $host$ | dedup jvmDescription | table jvmDescription
+                </query>
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="time">
+            <default>Last 4 hours</default>
+        </input>
+    </fieldset>
+    <search id="base_search">
+        <query>
+           index=_internal source=*jmxmodinput_app_modularinput.log* error $host$ $jvmDescription$
+            | stats count by systemErrorMessage host jmxport jvmDescription 
+        </query>
+    </search>
+    <row>
+        <table>
+            <title>Errors</title>
+            <search base="base_search">
+                <query>
+                    stats sum(count) as "JMX Connection Error Count" by host jmxport jvmDescription
+                </query>
+            </search>
+        </table>
+    </row>
+    <row>
+        <table>
+            <title>Error Messages</title>
+            <search base="base_search">
+                <query>
+                    stats sum(count) as "Count" by systemErrorMessage host jvmDescription
+                </query>
+            </search>
+        </table>
+    </row>
+    <row>
+        <chart>
+            <title>Errors by Host</title>
+            <search base="base_search">
+                <query>
+                    stats sum(count) as "Count" by host
+                </query>
+            </search>
+            <option name="charting.chart">pie</option>
+        </chart>
+        <chart>
+            <title>Errors by JVM</title>
+            <search base="base_search">
+               <query>
+                    stats sum(count) as "Count" by jvmDescription
+                </query>>
+            </search>
+            <option name="charting.chart">pie</option>
+        </chart>
+        <chart>
+            <title>Errors by Message</title>
+            <search base="base_search">
+                <query>
+                    stats sum(count) as "Count" by systemErrorMessage
+                </query>
+            </search>
+            <option name="charting.chart">pie</option>
+        </chart>
+    </row>
+</form>

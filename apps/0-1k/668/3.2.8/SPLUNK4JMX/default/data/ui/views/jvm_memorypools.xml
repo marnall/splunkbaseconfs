@@ -1,0 +1,65 @@
+<form version="1.1">
+    <label>Memory Pools</label>
+    <fieldset autoRun="true">
+        <input type="dropdown" token="host">
+            <label>Choose host</label>
+            <prefix>host="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>host</fieldForValue>
+            <fieldForLabel>host</fieldForLabel>
+            <search>
+                <query>
+                | metadata type=hosts index=main | dedup host | table host
+                </query> 
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="dropdown" token="jvmDescription">
+            <label>Choose JVM Description</label>
+            <prefix>jvmDescription="</prefix>
+            <suffix>"</suffix>
+            <choice value="*">All</choice>
+            <default>*</default>
+            <fieldForValue>jvmDescription</fieldForValue>
+            <fieldForLabel>jvmDescription</fieldForLabel>
+            <search>
+                <query>
+                index=main sourcetype=jmx $host$ | dedup jvmDescription | table jvmDescription
+                </query>
+                <earliest>-1d@d</earliest>
+                <latest>now</latest>
+            </search>
+        </input>
+        <input type="time">
+            <default>Last 4 hours</default>
+        </input>
+    </fieldset>
+    <search id="base_search">
+        <query>
+        index=main sourcetype=jmx $host$ $jvmDescription$ mbean_domain="java.lang" mbean_property_type="MemoryPool"
+        | bucket _time span=1m
+        | stats first(memoryType) as memoryType first(memManagerNames) as memManagerNames first(usageMax) as usageMax first(usageInit) as usageInit first(usageUsed) as usageUsed first(usageCommitted) as usageCommitted by _time host jvmDescription name
+    </query></search>
+    <row>
+        <table>
+            <title>Memory Pool Overview</title>
+            <search base="base_search"><query>
+                |stats first(memoryType) as "Type" first(memManagerNames) as "Memory Managers" first(usageMax) as "Max (Bytes)" first(usageInit) as "Init (Bytes)" first(usageCommitted) as "Committed (Bytes)" by host jvmDescription name | sort jvmDescription
+            </query></search>
+        </table>
+    </row>
+    <row>
+        <chart>
+            <title>Memory Pool Usage</title>
+            <search base="base_search"><query>eval jvmpool=jvmDescription+"_"+name | timechart span=1m max(usageUsed) as "Memory Used" by jvmpool
+            </query></search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">connect</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Pool Memory(Bytes)</option>
+        </chart>
+    </row>
+</form>

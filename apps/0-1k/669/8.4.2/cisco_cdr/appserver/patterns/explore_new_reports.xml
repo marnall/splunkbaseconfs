@@ -1,0 +1,67 @@
+<module name="NullModule" >
+  <module name="HTML">
+    <param name="html"><![CDATA[
+      <h3>Explore new reports</h3>
+
+      <p>Click an area of interest below to see some examples of what you can do.</p>
+    ]]></param>
+  </module>
+
+  <module name="Search">
+    <param name="search"><![CDATA[
+| inputlookup examples
+| appendcols [| inputlookup cidr | search NOT site_name="Example Site" | stats count as sites_lookup_count]
+| appendcols [| inputlookup devices | search NOT name="PLACEHOLDER*" | stats count as devices_lookup_count]
+| appendcols [| inputlookup groups | search NOT group="PLACEHOLDER*" | stats count as groups_lookup_count]
+| filldown groups_lookup_count sites_lookup_count devices_lookup_count
+    ]]></param>
+    <module name="PostProcess">
+      <param name="search">| eval category=split(category,",") | stats count by category</param>
+
+      <module name="Multiplexer">
+        <param name="fields">category</param>
+
+        <module name="Link">
+          <param name="label">$category$</param>
+          <param name="toggleMode">True</param>
+          <param name="cssClass">analyzeCategory</param>
+
+          <module name="PostProcess">
+            <param name="search"><![CDATA[
+search category= "$category$"
+| eval type=case(match(uri,"mode=chart"),"chart",match(uri,"/calls"),"table of calls",match(uri,"/app/cisco_cdr/search"),"raw splunk search",match(uri,"/gateway_utilization($$|\?)"),"concurrency report",match(uri,"/groups$$($$|\?)"),"investigate groups",match(uri,"/extensions($$|\?)"),"investigate extensions",match(uri,"/sites$$"),"investigate sites",match(uri,"/devices$$($$|\?)"),"investigate devices",match(uri,"/gateways$$($$|\?)"),"investigate gateways",true(),"unknown")
+| eval sites_ok = if(requires=="sites" AND sites_lookup_count==0,0,1)
+| eval groups_ok = if(requires=="groups" AND groups_lookup_count==0,0,1)
+| eval devices_ok = if(requires=="devices" AND devices_lookup_count==0,0,1)
+| eval disabledClassName = if(sites_ok==0 OR groups_ok==0 OR devices_ok==0,"disabled","")
+| eval requires_str = if(sites_ok==0 OR groups_ok==0 OR devices_ok==0,"(" + requires + " lookup is not configured. See <a href=setup_" + requires + ">Setup > Define " + requires + "</a>)","")
+            ]]></param>
+
+            <module name="Multiplexer">
+              <param name="fields">category,fields,requires,label,uri,type,requires_str,disabledClassName</param>
+
+              <module name="CustomBehavior">
+
+                <module name="Link">
+                  <param name="label">$label$</param>
+                  <param name="cssClass">analyzeExample $disabledClassName$</param>
+
+                  <module name="Redirector">
+                    <param name="url">$uri$</param>
+                  </module>
+                </module>
+                <module name="HTML">
+                  <param name="cssClass">analyzeExample</param>
+
+                  <param name="html">
+                    ($type$) $requires_str$
+                  </param>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</module>

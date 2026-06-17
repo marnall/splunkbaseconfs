@@ -1,0 +1,150 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Session Details</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">XD5 Session Details</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report provides details about the virtual desktop sessions in your environment. Adjust the time range for this report by changing the timerange picker. Filter this view by entering values in the fields below and pressing Enter. Click on a session in the results table to see a resource report for the virtual desktop in use during the selected time range.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">first 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server:</param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"></param>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"></param>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Catalog:</param>
+        <param name="field">CatalogName</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="value"></param>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="CatalogName">
+              <param name="default"></param>
+              <param name="prefix">CatalogName="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">User:</param>
+          <param name="field">user</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="user">
+                <param name="value"></param>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="user">
+                <param name="default"></param>
+                <param name="prefix">user="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Desktop Name:</param>
+            <param name="field">vm_name</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="value"></param>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="default"></param>
+                  <param name="prefix">vm_name="</param>
+                  <param name="suffix">"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+              <param name="search">`xendesktop_index` `xd_sessions_sourcetype` $user$ $vm_name$ | `session_desktop_lookup` | search $CatalogName$ $HostingServerName$ | `client_name` | `get_times` | `xd5_sessions_uniq`</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Full Report</param>
+              </module>
+              <module name="JobProgressIndicator"></module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Virtual Desktop Sessions" autoRun="True">
+                <param name="search">| dedup StartTime SessionStateChangeTime vm_name | table vm_name user SessionState BrokeringTime StartTime SessionStateChangeTime duration load_time CatalogName ClientAddress ClientName ClientVersion ControllerDNSName HostingServerName Protocol client_dvc_type</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row3_col1">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">all</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`perfmon_brief` $vm_name$ | eval biosinfo = "View BIOS Info" | eval osinfo = "View OS Info" | eval sysinfo = "View System Info" | eval inv = "View Inventory" | eval broker = "View Broker Info" | eval ica = "View ICA Info" | eval proc = "View Running Processes" | stats count by osinfo sysinfo biosinfo ica proc inv broker counter Value object vm_name</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">vm_name=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">perf_overview_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

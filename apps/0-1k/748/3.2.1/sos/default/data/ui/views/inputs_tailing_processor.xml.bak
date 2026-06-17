@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<view autoCancelInterval="180" isVisible="true" onunloadCancelJobs="true" template="dashboard.html">
+  <label>File Monitor Inputs</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">File Monitor Inputs</param>
+      </list>
+    </param>
+  </module>
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">► Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">inputs_tailing_processor.html</param>
+    </module>
+  </module>
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+    <module name="HiddenSearch">
+      <param name="search">
+      | inputlookup splunk_servers_cache
+      | sort sort_rank
+      </param>
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <module name="HTML" layoutPanel="mainSearchControls">
+          <param name="html"><![CDATA[On systems where Splunk monitors hundreds of thousands of files
+       it can take up to a minute<br />for results to begin appearing in this view.
+       Additional time may be needed to show the complete results.]]></param>
+        </module>
+        <param name="staticFieldsToDisplay"/>
+        <!-- COMMON CONTROLS END   -->
+        <module name="HTML" layoutPanel="panel_row1_col1" group="Files monitored">
+          <param name="html"><![CDATA[Includes both files and directories monitored.]]></param>
+        </module>
+        <module name="HTML" layoutPanel="panel_row1_col2" group="Monitoring status">
+          <param name="html"><![CDATA[<i>Click on pie slice for details.</i>]]></param>
+        </module>
+        <module name="HTML" layoutPanel="panel_row2_col1" group="Status by file input stanza">
+          <param name="html"><![CDATA[<i>Click on bar for details.</i>]]></param>
+        </module>
+        <module name="HTML" layoutPanel="panel_row3_col1" group="All monitored files">
+          <param name="html"><![CDATA[<i>Search for a specific item - use * to see all objects. Click the search button to run the search.</i>]]></param>
+        </module>
+        <module name="Search">
+          <param name="search"><![CDATA[
+          | tpstatusquery targetserver="$host.rawValue$" namespace="system" owner="nobody" admin/inputstatus/TailingProcessor:FileStatus
+          | eval Parent=if(Parent="None",Item,Parent)
+          | eval Read_status=if(Status="finished reading" OR Status="open file","Read","Ignored") 
+          | eval Action_status=case(Status like "%match whitelist%", "did not match whitelist",Status like "%partial whitelist%", "did not match whitelist",Status like "%Matched blacklist%","matched blacklist",1=1,Status)
+          | stats count by Action_status, Read_status, Parent
+          | sort +Parent
+          ]]></param>
+          <module name="PostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+            <param name="search"><![CDATA[
+            | stats sum(eval(if(Read_status=="Read",count,0))) AS totaltailed dc(Parent) AS TotalInputStanzas sum(count) AS Total
+            ]]></param>
+            <module name="JobProgressIndicator">
+              <module name="ResultsValueSetter">
+                <param name="fields">totaltailed, TotalInputStanzas,Total</param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                  <div class="single_values_list">
+                  <br>
+                  <ul>
+                    <li>Input stanzas found: <b>$TotalInputStanzas$</b></li><br>
+                    <li>Files monitored: <b>$Total$</b></li><br>
+                    <li>Files read: <b>$totaltailed$</b></li><br>
+                  </ul>
+                  </div>
+                  ]]></param>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="Pulldown" layoutPanel="panel_row1_col2">
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="value">Action_status</param>
+                <param name="label">Action Status</param>
+              </list>
+              <list>
+                <param name="value">"Parent"</param>
+                <param name="label">Input Stanza</param>
+              </list>
+              <list>
+                <param name="value">Read_status</param>
+                <param name="label">Read Status</param>
+              </list>
+            </param>
+            <param name="float">left</param>
+            <param name="name">splitby</param>
+            <param name="template">$value$</param>
+            <param name="label">Split By:</param>
+            <module name="PostProcess" layoutPanel="panel_row1_col2" autoRun="True">
+              <param name="search"><![CDATA[
+              | stats sum(count) by $splitby$
+              ]]></param>
+              <module name="ViewstateAdapter">
+                <module name="HiddenFieldPicker">
+                  <param name="strictMode">True</param>
+                  <module name="JobProgressIndicator">
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">pie</param>
+                      <param name="charting.chart.sliceCollapsingThreshold">0</param>
+                      <module name="FlashChart">
+                        <param name="width">100%</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="Redirector">
+                            <param name="popup">True</param>
+                            <param name="url">flashtimeline</param>
+                            <param name="arg.q"><![CDATA[         | tpstatusquery targetserver="$host.rawValue$" namespace="system" owner="nobody" admin/inputstatus/TailingProcessor:FileStatus
+                           | eval Parent=if(Parent="None",Item,Parent)
+                           | eval Read_status=if(Status="finished reading" OR Status="open file","Read","Ignored") 
+                           | table Item Status Filter Percent Parent File_Position File_Size Read_status
+                           | eval Action_status=case(Status like "%match whitelist%", "did not match whitelist",Status like "%partial whitelist%", "did not match whitelist",Status like "%Matched blacklist%","matched blacklist",1=1,Status)
+                           | search $splitby$ = "$click.value$"|table *]]></param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+          <module name="Pulldown" layoutPanel="panel_row2_col1">
+            <param name="name">Parent</param>
+            <param name="template">Parent="$value$"</param>
+            <param name="float">left</param>
+            <param name="label">Input Stanza :</param>
+            <param name="postProcess">dedup Parent</param>
+            <param name="searchFieldsToDisplay">
+              <list>
+                <param name="value">Parent</param>
+                <param name="label">Input Stanza</param>
+              </list>
+            </param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">Top ten by total file count</param>
+                <param name="value">*</param>
+              </list>
+            </param>
+            <module name="PostProcess" layoutPanel="panel_row2_col1" autoRun="True">
+              <param name="search"><![CDATA[
+                | chart sum(count) by Parent, Action_status
+                | search $Parent$
+                | addtotals
+                | sort 10 - Total   
+                | fields - Total]]></param>
+              <module name="ViewstateAdapter">
+                <param name="suppressionList">
+                  <item>count</item>
+                  <item>charting.axisTitleY.text</item>
+                  <item>charting.chart</item>
+                  <item>charting.secondaryAxisTitle.text</item>
+                  <item>charting.legend.placement</item>
+                  <item>charting.primaryAxisTitle.text</item>
+                  <item>displayRowNumbers</item>
+                  <item>charting.axisTitleX.text</item>
+                </param>
+                <module name="HiddenFieldPicker">
+                  <param name="strictMode">True</param>
+                  <module name="JobProgressIndicator">
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.axisTitleY.text">Input stanzas</param>
+                      <param name="charting.chart">bar</param>
+                      <param name="charting.legend.placement">right</param>
+                      <param name="charting.axisTitleX.text">Status</param>
+                      <param name="charting.chart">bar</param>
+                      <param name="charting.chart.stackMode">stacked</param>
+                      <module name="FlashChart">
+                        <param name="width">100%</param>
+                        <module name="ConvertToDrilldownSearch">
+                          <module name="Redirector">
+                            <param name="popup">True</param>
+                            <param name="url">flashtimeline</param>
+                            <param name="arg.q"><![CDATA[         | tpstatusquery targetserver="$host.rawValue$" namespace="system" owner="nobody" admin/inputstatus/TailingProcessor:FileStatus
+                           | eval Parent=if(Parent="None",Item,Parent)
+                           | eval Read_status=if(Status="finished reading" OR Status="open file","Read","Ignored") 
+                           | table Item Status Filter Percent Parent File_Position File_Size Read_status
+                           | eval Action_status=case(Status like "%match whitelist%", "did not match whitelist",Status like "%partial whitelist%", "did not match whitelist",Status like "%Matched blacklist%","matched blacklist",1=1,Status)
+                           | search Parent = "$click.value$"|table *]]></param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+        <module name="Search" autoRun="False">
+          <param name="search">*</param>
+          <module name="SearchBar" layoutPanel="panel_row3_col1" autoRun="False">
+            <param name="useOwnSubmitButton">true</param>
+            <module name="Button">
+              <param name="allowAutoSubmit">false</param>
+              <module name="Search" autoRun="False">
+                <param name="search"><![CDATA[
+              | tpstatusquery targetserver="$host.rawValue$" namespace="system" owner="nobody"  admin/inputstatus/TailingProcessor:FileStatus 
+              | eval Read_status=if(Status="finished reading" OR Status="directory" OR Status="open file","Monitored-Read","Monitored-Not Read") 
+              | eval Status=case(Status like "%match whitelist%", "did not match whitelist",Status like "%partial whitelist%", "did not match whitelist",Status like "%Matched blacklist%","matched blacklist",1=1,Status)
+              | eval Parent=if(Parent="None",Item,Parent)  
+              | table Item Status Filter Percent Parent File_Position File_Size Read_status
+              | rename File_Position AS "Seek pointer position (bytes)"  Percent as "Percent Read"   Parent as "Input Stanza" File_Size as "File Size"
+              | search Item = *$searchBar$*]]></param>
+                <param name="earliest">0</param>
+                <module name="ViewstateAdapter">
+                  <param name="suppressionList">
+                    <item>count</item>
+                    <item>displayRowNumbers</item>
+                  </param>
+                  <module name="HiddenFieldPicker">
+                    <param name="strictMode">True</param>
+                    <module name="Paginator">
+                      <param name="count">10</param>
+                      <param name="entityName">results</param>
+                      <module name="SimpleResultsHeader">
+                        <param name="entityName">results</param>
+                        <param name="headerFormat">$count$ objects</param>
+                      </module>
+                      <module name="SimpleResultsTable">
+                        <param name="count">10</param>
+                        <param name="entityName">results</param>
+                        <param name="allowTransformedFieldSelect">True</param>
+                        <param name="displayRowNumbers">false</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

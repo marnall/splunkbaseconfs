@@ -1,0 +1,80 @@
+<h1>Legacy information</h1>
+
+<p>The earlier versions of this application utilised Ruby scripted inputs and the Python MySQL drivers (python-mysqldb), this method is no longer supported, however these scripts have been left for convenience.</p>
+
+<p>The legacy files are available in <b>$SPLUNK_HOME/etc/apps/mysqlmonitor/legacy</b></p>
+
+<h1>Introduction</h1>
+
+<p>This is the application for MySQL developed by Remora Technologies. The app is for viewing and investigating data produced primarily from MySQL's global status variables, which are collected on a schedule. Saved searches and dashboards exist for the most common points of interest in a proudction MySQL instance.</p>
+
+<p>The application consits of:
+	<ul>
+		<li>A set of Ruby scripts that can gather data from MySQL as scripted inputs</li>
+		<li>A alternative Python daemon that acts as an agent and pushes MySQL instance data to Splunk</li>
+		<li>Sourcetypes to extract useful values from the incoming data</li>
+		<li>Dashboards and macros making investigation of this data easy</li>
+	</ul>
+One or the other data collection methods can be used, and should be easily reproducible in other languages if required. The data collectors retrieve more data than is currently used in any of the dashboards, so ad-hoc searches can be used to investigate less common metrics.</p>
+
+<p>This application has been tested on:
+	<ul>
+		<li>MySQL 5.1</li>
+		<li>Percona Server 5.1</li>
+		<li>Percona Server 5.5</li>
+	</ul>
+There is no reason the application should not work with many other recent versions of MySQL.</p>
+
+<p>This welcome screen can be removed by editing the file <pre>$SPLUNK_HOME/etc/apps/mysqlmonitor/default/data/ui/nav/default.xml</pre></p>
+
+<h1>Data collection daemon</h1>
+
+<p>A daemon exists in <pre>$SPLUNK_HOME/etc/apps/mysqlmonitor/bin/daemon</pre></p>
+
+<p>This program is designed to run as an agent on, or near to, the MySQL server being monitored and as such should be copied to and run on any MySQL server being monitored. It  requires:
+	<ul>
+		<li>Python 2.6 or 2.7</li>
+		<li>Python MySQL drivers (e.g. python-mysqldb)</li>
+	</ul>
+Due to the requirement for the MySQL drivers, this daemon will not run on the Splunk integrated python environment.</p>
+
+<p>The daemon can be configured within the file <pre>config.ini</pre> Most configuration options are self explanitory, or contain sensible default values. As well as connection details to a MySQL server you are required to provide connection details to the Splunk server and intervals at which to run each data collection query.</p>
+
+<p>The daemon can be started and stopped with <pre>./splunkmysqlmonitor start</pre> and <pre>./splunkmysqlmonitor stop</pre>
+It is recommended to integrate this daemon with the init process of whatever operating system you are on (e.g. initrd, upstart, Solaris SMF) to ensure reliability.</p>
+
+<h1>Data collection scripts</h1>
+
+<p>A set of scripts exist in <pre>$SPLUNK_HOME/etc/apps/mysqlmonitor/bin/*.rb</pre>. These scripts may be used both instead of or in addition to the data collection daemon.</p>
+
+<p>These scripts are to be configured as standard scripted inputs on a Splunk indexer or forwarder. Each script is resposible for a different type of metric gathering, which may or may not be required for a given host:
+	<ul>
+		<li><pre>mysql-statusvars.rb</pre>: Most metrics are delivered by this script, from the mysql global variables and status</li>
+		<li><pre>mysql-tablestats.rb</pre>: Metrics on the tables in your schema</li>
+		<li><pre>mysql-slavestatus.rb</pre>: Include this if the monitored server is a replication slave</li>
+		<li><pre>mysql-processlist.rb</pre>: Reads currently running processes</li>
+		<li><pre>database.rb</pre>: Common database functions included by all other scripts, should not be used directly</li>
+	</ul>
+</p>
+
+<p>Of these, only <pre>mysql-statusvars.rb</pre> and <pre>mysql-slavestatus.rb</pre> are used when generating the included dashboards, but the others provide useful metrics for ad-hoc queries or your own dashboards.</p>
+
+<p>Each script takes a single command line argument, being an identifier of the host that it is to connect to. The host itself will be defined in <pre>$SPLUNK_HOME/etc/apps/mysqlmonitor/hosts.yaml</pre>. Sample definitions are in that file.</p>
+
+<h1>Splunk configuration</h1>
+
+<p>To configure your Splunk server you should:
+	<ul>
+		<li>Set up the "mysql" index</li>
+		<li>Configure inputs</li>
+		<li>Configure server groups for comparison graphs</li>
+	</ul>
+</p>
+
+<p>All data within this application is expected to be found within an index called "mysql". Follow the Splunk documentation to ensure this index exists and it's data retention policies are set up as per your requirements.</p>
+
+<p>The TCP port is required to listen to MySQL data being pushed to it by running data collection daemons. It should be accessible to all data collection daemons, which should be configured to push data to the same port. Only one port is necessary to be open for all host instances, however splitting the monitored hosts between multiple hosts will not change the operation of the application. Any port receiving data from a daemon requires to be writing to the "mysql" index.</p>
+
+<p>Data collection scripts are configured as per any other scripted input. The sourcetype for each of the scripts should be as shown in the sample <pre>inputs.conf</pre> that is provided.</p>
+
+<p>The application allows you to configure server groups, which allows the overlaying of multiple servers on a single graph for comparison. To do this, each group must be discernable via a glob expression on the hostname that matches all servers in that group and no others -- for example "myappdb*" would match "myappdb1" and "myappdb2" allowing comparison of these two hosts in the dashboards. The groups can be set up in <pre>$SPLUNK_HOME/etc/apps/mysqlmonitor/lookups/dbgroups.csv</pre> A sample file is provided showing how to define a group.</p>

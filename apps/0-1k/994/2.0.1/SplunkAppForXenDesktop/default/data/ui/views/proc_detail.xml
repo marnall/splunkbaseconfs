@@ -1,0 +1,211 @@
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Process Details</label>
+  <module name="AccountBar" layoutPanel="appHeader" />
+  <module name="AppBar" layoutPanel="navigationHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Application and System Process Information</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This dashboard provides a view into the processes running on your virtual desktops. %CPU and memory consumption data is captured for each process. Rare processes are those that occur on fewer than a defined number of virtual machines, and typically represent applications installed by end users. Use the time picker to adjust the time range for the dashboards. Filter this view by Farm, Desktop Catalog, VM name, and Process Name. Clicking on a Proccess name from the table below will bring to the Virtual Desktop sessions running the selected process. Look at the Resource Reports in the Resource Profiler menu for detailed resource usage reports.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1" autoRun="True">
+    <param name="selected">Last 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server:</param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"></param>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"></param>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Catalog:</param>
+        <param name="field">catalog_name</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="vm_name">
+              <param name="value"></param>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="catalog_name">
+              <param name="default"></param>
+              <param name="prefix">catalog_name="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">Desktop Name:</param>
+          <param name="field">vm_name</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="vm_name">
+                <param name="value"></param>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="vm_name">
+                <param name="default"></param>
+                <param name="prefix">vm_name="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Process:</param>
+            <param name="field">instance</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="instance">
+                  <param name="value"></param>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="instance">
+                  <param name="default"></param>
+                  <param name="prefix">instance="*</param>
+                  <param name="suffix">*"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row1_col1" autoRun="True">
+              <param name="search">`perfmon_process` $instance$ $vm_name$ | `perfmon_desktop_lookup` | search * $catalog_name$ $HostingServerName$ | table vm_name Value counter instance | eval mem = if(counter=="Virtual Bytes",Value,"") | eval cpu = if(counter=="% Processor Time",Value,"") | eval ioread = if(counter="IO Read Operations/sec",Value,"") | eval iowrite = if(counter="IO Write Operations/sec",Value,"")</param>
+              <module name="HiddenPostProcess" layoutPanel="panel_row1_col1" autoRun="True">
+                <param name="search">stats dc(vm_name) as vm | eval range="vmsreporting"</param>
+                <module name="SingleValue">
+                  <param name="field">vm</param>
+                  <param name="beforeLabel">VMs Reporting:</param>
+                  <param name="classField">range</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row1_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Full Report</param>
+              </module>
+              <module name="JobProgressIndicator"></module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1" group="Infrequent Processes by VM" autoRun="True">
+                <param name="search">| stats dc(vm_name) as hosts values(vm_name) by instance | `RAREPROC` | rename hosts as "Virtual Machines" | rename instance as Process | sort + "Virtual Machines" | head 10</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col2" group="Processes Using Most Memory" autoRun="True">
+                <param name="search">| stats max(mem) as bits by instance vm_name |`bits2mb`| rename bits as "Memory in MB" | rename instance as Process | sort - "Memory in MB" | head 10</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col3" group="Processes With High CPU Usage" autoRun="True">
+                <param name="search">| stats max(cpu) as CPU by instance vm_name | sort - CPU | head 10</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col1" group="Max Memory Consumption by Process" autoRun="True">
+                <param name="search">| stats max(mem) as bits by instance| `bits2mb` | rename bits to "Memory in MB"| rename instance as Process | sort - "Memory in MB" | head 10</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="FlashChart">
+                    <param name="width">100%</param>
+                  </module>
+                </module>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col2" group="Max CPU Consumption by Process" autoRun="True">
+                <param name="search">search instance!=idle cpu!="" | stats max(cpu) as "%CPU" by instance | rename instance as Process | sort - "%CPU" | head 10</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">pie</param>
+                  <module name="FlashChart">
+                    <param name="width">100%</param>
+                  </module>
+                </module>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row5_col1" group="Process List" autoRun="True">
+                <param name="search">rename mem to bits | `bits2mb` | rename bits to mem | stats max(cpu) as "Max %CPU" avg(cpu) as "Avg %CPU" min(cpu) as "Min %CPU" max(cpu) as "Max CPU" max(mem) as "Max Mem in MB" avg(mem) as "Avg Mem in MB" min(mem) as "Min Mem in MB" avg(iowrite) as "Avg I/O Write Operations" max(iowrite) as "Max I/O Write Operations" avg(ioread) as "Avg I/O Read Operations" max(ioread) as "Max I/O Read Operations" by vm_name instance | rename instance as Process | rename vm_name as "Virtual Machine"</param>
+                <module name="SimpleResultsTable">
+                  <param name="displayMenu">true</param>
+                  <param name="count">500</param>
+                  <param name="drilldown">row</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd5_sessions_sourcetype` | `session_desktop_lookup` | `client_name` | search $vm_name$ | fillnull vm_name catalog_name HostingServerName | convert timeformat="%m/%d/%Y %I:%M:%S %p" mktime(start_time) as st | eval dur = _time - st | stats last(state) as state last(dur) as duration last(desktop_group) as desktop_group last(HostingServerName) as HostingServerName last(client_deviceid) as client_deviceid last(client_dvc_type) as client_dvc_type last(HardwareId) as HardwareId last(client_name) as client_name last(UserSID) as UserSID last(ClientVersion) as ClientVersion last(protcol) as protcol last(secure_ica) as secure_ica last(vm_ip) as vm_ip last(vm_sid) as vm_sid last(vm_uid) as vm_uid by user vm_name _time</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="vm_name">
+                            <param name="prefix">vm_name=</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">xd5_session_info</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

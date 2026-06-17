@@ -1,0 +1,631 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="update_lookup.css,custom.css" customJS="lib/custom_behaviors/setup_pages.js">
+  <label>Settings > Groups and Extensions</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+    <h1><a href="home">Home</a> &gt; App Settings &gt; Groups and Extensions</h1>
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="panel_row1_col1">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <div class="error">$error$</div>
+
+        <div class="info">$message$</div>
+      ]]></param>
+    </module>
+
+
+
+    <module name="ValueSetter" layoutPanel="mainSearchControls">
+      <param name="arg.lookupName">groups</param>
+      <param name="arg.lookupName.rawValue">groups</param>
+      <param name="arg.exportFileName">groups.csv</param>
+      <param name="arg.inputField">number</param>
+      <param name="arg.outputFieldPrefixes">callingParty|originalCalledParty|finalCalledParty</param>
+      <!--
+      here's how we get the field names for the lookup, given only the information above.
+
+      and we get out of it, via ResultsValueSetter,   two strings.   "number name group subgroup subgroup2"  and "number name group subgroup customzone"
+
+| rest /servicesNS/-/cisco_cdr/data/props/lookups splunk_server=local | search attribute="LOOKUP-groups-*" | fields "lookup.field.output.*" | transpose | rename "row 1" as field1 "row 2" as field2 "row 3" as field3 "row 4" as field4 | where isnotnull(field1) or isnotnull(field2) or isnotnull(field3) or isnotnull(field4) | eval lookup_field=replace(column,"lookup.field.output.","")
+| untable lookup_field field output_field
+| where field!="column"
+| eval output_field=replace(output_field,"callingParty|originalCalledParty|finalCalledParty","") |
+
+| [| makeresults | eval prefix=split("callingParty,originalCalledParty,finalCalledParty",",") | mvexpand | eval query="eval ]
+
+    -->
+
+
+      <!--
+      The following search gives back one row with two fields.
+      lookup_fields is the space-separated list of output fields, named by the  names they have in the actual csv.
+      output_fields is the space-separated list of the same fields, but named by the names they have in the
+      OUTPUT sections of LOOKUP-* keys in props.conf.
+      you know,  for kids!
+       -->
+      <module name="Search">
+        <param name="search">
+| `get_groups_lookup_fields_with_output_field_names("$outputFieldPrefixes$")`
+        </param>
+
+        <module name="ResultsValueSetter">
+          <param name="fields">lookup_fields,output_fields</param>
+
+          <module name="ValueSetter">
+            <param name="arg.fieldOrder">$inputField$ $lookup_fields$</param>
+
+            <module name="CustomBehavior">
+              <param name="customBehavior">reloader</param>
+
+              <module name="Tabs">
+                <param name="name">selectedTab</param>
+                <param name="staticTabs">
+                  <list>
+                    <param name="value">about</param>
+                    <param name="label">About</param>
+                  </list>
+                  <list>
+                    <param name="value">edit</param>
+                    <param name="label">Edit/Delete Extensions/Groups</param>
+                  </list>
+                  <list>
+                    <param name="value">add</param>
+                    <param name="label">Add New Extension/Group</param>
+                  </list>
+                  <list>
+                    <param name="value">download</param>
+                    <param name="label">Download CSV</param>
+                  </list>
+                  <list>
+                    <param name="value">reupload</param>
+                    <param name="label">Upload CSV</param>
+                  </list>
+                  <list>
+                    <param name="value">find</param>
+                    <param name="label">Find Extensions to add</param>
+                  </list>
+                </param>
+
+                <module name="Switcher" layoutPanel="panel_row1_col1">
+                  <param name="selectedGroup">$selectedTab$</param>
+
+                  <module name="NullModule" group="about">
+                    <module name="HTML">
+
+                      <param name="html"><![CDATA[
+                        <p>
+                          Using the tabs on this page you can manually set names and groups/departments for any and all of your extensions and DNs.
+                        </p>
+
+                        <p>
+                          In practice however, the better path is to <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-administration-set-up-groups" target="_blank">follow our documentation to have this information pulled from AD nightly</a>.
+                        </p>
+                        <p>
+                          Whichever way you choose, at the end there will be four key fields in each row:
+                        </p>
+                        <ol>
+                          <li>number -- The extension or full DN</li>
+                          <li>name -- the name of the person</li>
+                          <li>group -- Generally the group or department that they are in, eg "sales"  "it/ops",  or "support"</li>
+                          <li>subgroup (optional) -- this can be useful on larger deployments, for
+                            instance someone might be in group="sales", but subgroup="Inside Sales West".</li>
+                        </ol>
+
+                        <h3>What's the end result?</h3>
+                        <ol>
+                          <li>In <a href="calls">Investigate &gt; Calls</a> new fields will be avaiable:  name, group, subgroup as well as
+                          the more granular fields callingPartyName, originalCalledPartyName, finalCalledPartyName, and so on.</li>
+
+                          <li>In <a href="extensions">Investigate &gt; Extensions</a> you'll be able to filter by name, group and subgroup,
+                          as well as see that same information in the results table.</li>
+
+                          <li>In the Chart tab of <a href="calls">Investigate &gt; Calls</a> you'll be able to select these fields as options
+                          to build charts and reports.</li>
+
+                          <li>If you have other features you'd like such a tool to have, please email us at
+                            <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>.</li>
+                        </ol>
+
+                        <h2>What if I have more layers than just "group" and "subgroup"</h2>
+                        <p>
+                          We actually have 3 extra layers hidden in reserve just for the few massive customers out there who need them.
+                          Email us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a> to find out how to enable this.
+                        </p>
+
+                        <h2>Remember to take backups</h2>
+                        <p>
+                          By default nothing in the app and nothing in Splunk will be preserving backups of this information, so make sure to take appropriate backup copies yourself.
+                        </p>
+
+                      ]]></param>
+                    </module>
+
+                    <module name="Button">
+                      <param name="label">Next</param>
+                      <module name="Redirector">
+                        <param name="url">?</param>
+                        <param name="arg.selectedTab">edit</param>
+                      </module>
+                    </module>
+                  </module>
+
+
+                  <!-- One Big Happy Flow Chart START -->
+                  <module name="Search" group="about">
+                    <param name="search"><![CDATA[
+| inputlookup groups
+| streamstats count as order
+| eval has_wildcard = if(match(number, "\*"), 1, 0)
+| eval number_len = len(number)
+| eval order = if(has_wildcard=1, (order) + tonumber((99 - 'number_len') . "000000"), order)
+| delta order AS orderdiff
+| search orderdiff < 0
+| stats count
+| eval group=if(count>0,"wrong sort order","right sort order")
+                    ]]></param>
+
+                    <module name="ResultsValueSetter">
+                      <param name="fields">group</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$group$</param>
+
+                        <module name="NullModule" group="wrong sort order">
+
+                          <module name="Search">
+                            <param name="search">
+| rest /services/authentication/current-context splunk_server=local
+| search capabilities=output_file
+| stats count
+| eval group=if(count>0,"can run outputlookup","cannot run outputlookup")
+                            </param>
+
+                            <module name="ResultsValueSetter">
+                              <param name="fields">group</param>
+
+                              <module name="Switcher">
+                                <param name="selectedGroup">$group$</param>
+
+                                <module name="Search" group="can run outputlookup">
+                                  <param name="search">
+| inputlookup groups
+| streamstats count as order
+| eval has_wildcard = if(match(number, "\*"), 1, 0)
+| eval number_len = len(number)
+| eval order = if(has_wildcard=1, (order) + tonumber((99 - 'number_len') . "000000"), order)
+| sort 0 order
+| fields number name group subgroup subgroup2 subgroup3 subgroup4
+| outputlookup groups create_empty=false override_if_empty=false
+                                    </param>
+                                  <module name="ProgressIndicator"></module>
+
+                                  <module name="HTML">
+                                    <param name="html"><![CDATA[
+                                    <div style="border:1px solid #ccc; padding:5px 10px;"><strong style="color:#c00">THE GROUPS LOOKUP WAS FOUND TO BE IN THE WRONG SORT ORDER.</strong>  <br>
+                                    However the good news is that we were just able to repair the problem. This error message should go away if you refresh the page and the corresponding health check (see Setup > Run Health Checks) should no longer fail.
+                                    </div>
+                                    ]]></param>
+                                  </module>
+                                </module>
+
+                                <module name="HTML" group="cannot run outputlookup">
+                                  <param name="html"><![CDATA[
+                                  <div style="border:1px solid #ccc; padding:5px 10px;"><strong style="color:#c00">THE SORT ORDER INSIDE THE GROUPS LOOKUP IS WRONG.</strong><br>
+                                  Unfortunately your Splunk user account is not able to run the outputlookup command (technically you do not have the "output_file" capability), so to make a long story short this page was unable to fix the problem for you.  Please tell a Splunk Administrator to navigate to this page, and for good measure to also then run the "Setup > Run Health Checks" page for you.
+                                  </div>
+                                  ]]></param>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+
+
+                      </module>
+                    </module>
+
+                    <!-- One Big Happy Flow Chart END-->
+
+                  </module>
+
+
+
+                  <module name="Filters" group="edit">
+                    <param name="name">filters</param>
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <p>
+                          Note: subgroup is optional and can be left blank.
+                        </p>
+                      ]]></param>
+                    </module>
+
+
+                    <module name="Search">
+                      <param name="search">| inputlookup $lookupName$ | head 100 | stats dc(*) as * dc(_*) as _* | reverse |  transpose | rename column as field | table field</param>
+
+
+                      <module name="Pulldown">
+                        <param name="name">field</param>
+                        <param name="valueField">field</param>
+                        <param name="float">left</param>
+                        <param name="staticOptions">
+                          <list><param name="label">Add new filter ...</param><param name="value"></param></list>
+                        </param>
+                        <param name="customBehavior">hideDownstreamModulesUntilFieldSelected</param>
+
+                        <module name="Pulldown">
+                          <param name="name">operator</param>
+                          <param name="float">left</param>
+                          <param name="staticOptions">
+                            <list><param name="value">=</param></list>
+                            <list><param name="value">&gt;</param></list>
+                            <list><param name="value">&lt;</param></list>
+                            <list><param name="value">!=</param></list>
+                          </param>
+
+                          <module name="Search">
+                            <param name="search">| inputlookup $lookupName$ | head 500 | stats count by $field$ | fields - count | sort $field$ | rename $field$ as value</param>
+
+                            <module name="Pulldown">
+                              <param name="name">value</param>
+                              <param name="valueField">value</param>
+                              <param name="float">left</param>
+                              <param name="staticOptions">
+                                <list><param name="value"></param><param name="label">enter value manually...</param></list>
+                              </param>
+
+                              <module name="TextField">
+                                <param name="name">value</param>
+                                <param name="float">left</param>
+                                <param name="customBehavior">activeOnlyIfManualEntrySelected</param>
+
+                                <module name="Button">
+                                  <param name="label">+</param>
+                                  <param name="allowSoftSubmit">False</param>
+                                  <param name="allowAutoSubmit">False</param>
+                                  <module name="CustomBehavior">
+                                    <param name="customBehavior">addNewFilterToFilterBar</param>
+                                  </module>
+                                </module>
+                              </module>
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+
+                    <module name="ValueSetter">
+                      <param name="name">templatedFilters</param>
+                      <param name="value">| search $filters$</param>
+                      <param name="requiredKeys">filters</param>
+
+                      <module name="Search">
+                        <param name="search">| inputlookup $lookupName$ $templatedFilters$ | table $fieldOrder$</param>
+
+                        <module name="CustomBehavior">
+                          <param name="customBehavior">changeResultsOffset</param>
+
+                          <module name="Pulldown">
+                            <param name="name">results.count</param>
+                            <param name="label">Results per page:</param>
+                            <param name="float">right</param>
+                            <param name="staticOptions">
+                              <list><param name="value">10</param></list>
+                              <list><param name="value">20</param></list>
+                              <list><param name="value">50</param></list>
+                              <list><param name="value">100</param></list>
+                            </param>
+
+                            <module name="HTML">
+                              <param name="html"><![CDATA[
+                                <br clear="all" /><h2 style="margin:0px;padding:0px;">$results.count$ rows found.</h2>
+                              ]]></param>
+                            </module>
+
+                            <module name="Pager">
+                              <module name="Table">
+                                <param name="customBehavior">editableTable</param>
+                              </module>
+                              <module name="Pager" />
+                            </module>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+
+                  <module name="NullModule" group="add">
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <p>
+                          Enter new extensions one at a time.  Be careful to only click the "Add" button once for each.
+                        </p>
+                      ]]></param>
+                    </module>
+
+                    <module name="Search">
+                      <param name="search">
+| makeresults
+| fields - _time
+| eval lookup_fields=split("$inputField$ $lookup_fields$"," ")
+| eval output_fields=split("$inputField$ $output_fields$"," ")
+| eval keys_and_labels=mvzip(lookup_fields,output_fields)
+| fields keys_and_labels
+| mvexpand keys_and_labels
+| eval pair=split(keys_and_labels, ",")
+| eval key=mvindex(pair,0)
+| eval label=mvindex(pair,1)
+| fields key label
+                      </param>
+
+
+                      <module name="Multiplexer">
+                        <param name="fields">key,label</param>
+
+                        <module name="HTML">
+                          <param name="html"><![CDATA[
+                            <div class="addNewRow">
+                              <label>$label$</label>
+                              <input type="text" name="$key$" onblur="Sideview.clearMessages()">
+                            </div>
+                          ]]></param>
+                        </module>
+                      </module>
+
+                      <module name="HTML">
+                        <param name="html"><![CDATA[
+                        <br>
+                        ]]></param>
+                      </module>
+
+                      <module name="Button">
+                        <param name="allowSoftSubmit">False</param>
+                        <param name="allowAutoSubmit">False</param>
+                        <param name="label">Add</param>
+
+                        <module name="Search">
+                          <param name="search">replaced at runtime by customBehavior</param>
+                          <param name="customBehavior">addNewRow</param>
+
+                          <module name="CustomBehavior">
+                            <param name="customBehavior">confirmNewRowAdded</param>
+                            <param name="requiresDispatch">True</param>
+                          </module>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+
+
+                  <module name="Search" group="download">
+                    <param name="search">| inputlookup $lookupName$ | table $fieldOrder$ *</param>
+
+                    <module name="SearchControls">
+                      <param name="sections">export</param>
+                    </module>
+                  </module>
+
+                  <module name="HTML" group="reupload">
+                    <param name="html"><![CDATA[
+
+          <form id="lookupUpdater" method="POST" action="REPLACED_AT_RUNTIME" enctype="multipart/form-data" >
+            <p>
+              If you wish you can upload a fresh csv to replace the one loaded.
+            </p>
+            <p>
+              Note that the easiest way to do this is to first use the "Download CSV" tab first to
+              get the existing csv file, as that file will already have the right columns.
+            </p>
+
+            <label class="inputFileLabel">Local csv file:</label>
+
+            <input type="file"   name="lookupFile" />
+            <input type="hidden" name="lookupName" />
+            <input type="hidden" name="currentView" />
+            <!--
+            Sideview OEM customers building custom views based on the
+            Lookup Updater, or otherwise using the lookup controller,
+            can pass the following variable to control the redirect
+            after POST'ing to the controller.
+            <input type="hidden" name="redirectOverride" value="/app/sideview_utils/framework_intro"/>
+            -->
+
+
+            <input type="hidden" name="splunk_form_key" value="FILLED BY JAVASCRIPT ONSUBMIT" />
+            <br>
+            <br>
+
+
+            <fieldset>
+              <input type="submit" class="splButton-primary" value="Update" />
+            </fieldset>
+
+          </form>
+                    ]]></param>
+                    <param name="customBehavior">neverReload</param>
+                  </module>
+
+
+
+                  <module name="HTML" group="download">
+                    <param name="html"><![CDATA[
+                      <p>
+                        To download a copy of the groups lookup as a csv file or to open it in Excel just click the icon below:
+                      </p>
+                    ]]></param>
+                  </module>
+
+
+                  <module name="NullModule" group="find">
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                        <p>
+                        This tab helps you find any Extensions/DN's that are not matching any of the numbers you have defined in the groups lookup.  Of course, if you have not yet put anything into the Groups lookup then below you'll just see all of your internal extensions and DN's.
+                        </p>
+                      ]]></param>
+                    </module>
+
+                    <module name="TimePicker">
+                      <param name="default">Last 60 minutes</param>
+
+                      <module name="Pulldown">
+                        <param name="name">optionalHeadCommand</param>
+                        <param name="label">get</param>
+                        <param name="template">| head $value$</param>
+                        <param name="staticOptions">
+                          <list>
+                            <param name="label">only the 100 most recent matching call legs</param>
+                            <param name="value">100</param>
+                          </list>
+                          <list>
+                            <param name="label">only the 1000 most recent matching call legs</param>
+                            <param name="value">1000</param>
+                            <param name="selected">True</param>
+                          </list>
+                          <list>
+                            <param name="label">only the 10000 most recent matching call legs</param>
+                            <param name="value">10000</param>
+                          </list>
+                          <list>
+                            <param name="label">only the 100000 most recent matching call legs</param>
+                            <param name="value">100000</param>
+                          </list>
+                          <list>
+                            <param name="label">all records</param>
+                            <param name="value"></param>
+                          </list>
+                        </param>
+
+
+                        <module name="Search">
+                          <param name="search">
+`custom_index` sourcetype=cucm_cdr NOT callingPartyGroup=* NOT originalCalledPartyGroup=* NOT finalCalledPartyGroup=*
+$optionalHeadCommand$
+| fillnull callingPartyUnicodeLoginUserID originalCalledPartyLoginUserID finalCalledPartyLoginUserID callingPartyName callingPartyGroup callingPartySubgroup originalCalledPartyName originalCalledPartyGroup originalCalledPartySubgroup finalCalledPartyName finalCalledPartyGroup finalCalledPartySubgroup value="(none)"
+| fillnull duration value="0"
+| eval callingParty=callingPartyNumber + "::" + callingPartyUnicodeLoginUserID + "::" + callingPartyName + "::" + callingPartyGroup + "::" + callingPartySubgroup
+| eval originalCalledParty=originalCalledPartyNumber + "::" + originalCalledPartyLoginUserID + "::" + originalCalledPartyName + "::" + originalCalledPartyGroup + "::" + originalCalledPartySubgroup
+| eval finalCalledParty=finalCalledPartyNumber + "::" + finalCalledPartyLoginUserID + "::" + finalCalledPartyName + "::" + finalCalledPartyGroup + "::" + finalCalledPartySubgroup
+| eval party=case(
+  type=="internal",mvappend(callingParty,originalCalledParty,finalCalledParty),
+  type=="incoming",mvappend(originalCalledParty,finalCalledParty),
+  type="outgoing",callingParty)
+| mvexpand party
+| eval party=split(party,"::")
+| eval number=mvindex(party,0)
+| eval loginUserID=mvindex(party,1)
+| eval nameGroupSubgroup=mvjoin(mvindex(party,2,4),";;;;")
+| stats sum(duration) as duration dc(call_id) as calls values(loginUserID) as loginUserID values(nameGroupSubgroup) as nameGroupSubgroup by number type
+| eval party=number + "----" + mvjoin(loginUserID,"::") + "----" + mvjoin(nameGroupSubgroup,"::")
+| chart sum(duration) as duration sum(calls) as calls over party by type
+| eval party=split(party,"----")
+| eval number=mvindex(party,0)
+| eval loginUserID=split(mvindex(party,1),"::")
+| eval nameGroupSubgroup=split(mvindex(party,2),"::")
+| eval nameGroupSubgroup=split(nameGroupSubgroup,";;;;")
+| eval name=mvindex(nameGroupSubgroup,0)
+| eval group=mvindex(nameGroupSubgroup,1)
+| eval subgroup=mvindex(nameGroupSubgroup,2)
+| eval nameGroupSubgroup=mvjoin(nameGroupSubgroup,", ")
+| search group="(none)" name="(none)"
+| stats sum(calls:*) as calls:* sum(duration:*) as duration:* values(loginUserID) as loginUserID values(name) as name values(group) as group values(subgroup) as subgroup values(nameGroupSubgroup) as nameGroupSubgroup by number
+| rename "calls: *" as "*" "duration: *" as "*_duration"
+| fillnull incoming outgoing internal incoming_duration outgoing_duration internal_duration value="0"
+| eval total=incoming+internal+outgoing
+| eval total_duration=incoming_duration + outgoing_duration + internal_duration
+| eval incoming_duration=if(incoming>0,tostring(incoming_duration,"duration"),null())
+| eval outgoing_duration=if(outgoing>0,tostring(outgoing_duration,"duration"),null())
+| eval internal_duration=if(internal>0,tostring(internal_duration,"duration"),null())
+| eval total_duration=if(total>0,tostring(total_duration,"duration"),null())
+| eval incoming=if(incoming==0,null(),incoming)
+| eval outgoing=if(outgoing==0,null(),outgoing)
+| eval internal=if(internal==0,null(),internal)
+| fields number loginUserID incoming outgoing internal total  incoming_duration outgoing_duration internal_duration total_duration
+| sort 0 - total
+                          </param>
+
+
+
+                          <module name="HTML">
+                            <param name="html"><![CDATA[
+                              <br clear="all" /><h2 style="margin:0px;padding:0px;">$results.count$ internal numbers found that don't match any numbers in the groups lookup.</h2>
+                            ]]></param>
+                          </module>
+
+
+
+                          <module name="ProgressIndicator" />
+
+                          <module name="Pager">
+                            <module name="Table" />
+                          </module>
+
+                          <pattern name="see_raw_search_syntax"/>
+                        </module>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+
+
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search">replaced at runtime by customBehavior</param>
+    <param name="customBehavior">receivePushesForRowUpdates</param>
+
+
+    <module name="ProgressIndicator"></module>
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">reloadEditedLookup</param>
+    </module>
+    <!--
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        $search$
+      ]]></param>
+    </module>
+    -->
+  </module>
+
+
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search">replaced at runtime by customBehavior</param>
+    <param name="customBehavior">receivePushesForRowDeletes</param>
+
+
+    <module name="ProgressIndicator"></module>
+
+
+    <module name="CustomBehavior">
+      <param name="customBehavior">reloadEditedLookup</param>
+    </module>
+    <!--
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        $search$
+      ]]></param>
+    </module>
+    -->
+  </module>
+
+
+</view>

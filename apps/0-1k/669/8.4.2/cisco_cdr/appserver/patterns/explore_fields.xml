@@ -1,0 +1,183 @@
+<module name="NullModule" layoutPanel="panel_row3_col1">
+  <module name="HTML">
+    <param name="html"><![CDATA[
+      <h3>Explore fields</h3>
+
+      <p>Cisco provides over 100 fields in the CDR and CMR, but then this app adds many more.  Use the form below to learn more about them.</p>
+
+    ]]></param>
+  </module>
+
+  <module name="Search">
+    <param name="search"><![CDATA[
+`custom_index` (`cucm_sourcetypes` OR `cube_sourcetypes`) | head 3000
+| eval CS_total=if(isnotnull(CS),1,null())
+| eval SCS_total=if(isnotnull(SCS),1,null())
+| eval CSR_overall=if(isnotnull(CS),1,null())
+| eval SCSR_overall=if(isnotnull(SCS),1,null())
+|  fields - date_* host index sourcetype splunk_server eventtype linecount splunk_server_group tag timeendpos timestartpos cdrRecordType
+| fieldsummary
+| append [
+  | stats count | fields - count | eval field=split("quality CSR_overall CS_total SCSR_overall SCS_total callingPartyAreaCode callingPartyCLLI callingPartyCity callingPartyCompanyName callingPartyCompanyType callingPartyCountry callingPartyCountryCode callingPartyExchange callingPartyLATA callingPartyLat callingPartyLong callingPartyNumberType callingPartyOCN callingPartyState callingPartyStateAbbr callingPartyZip callingSearchSpace concurrency destCidr destIpAddr destSite deviceClassName deviceDescription deviceDirectoryNumber devicePool deviceProtocol deviceSubclassName device_type duration_elapsed duration_total finalCalledPartyAreaCode finalCalledPartyCLLI finalCalledPartyCity finalCalledPartyCompanyName finalCalledPartyCompanyType finalCalledPartyCountry finalCalledPartyCountryCode finalCalledPartyExchange finalCalledPartyLATA finalCalledPartyLat finalCalledPartyLong finalCalledPartyNumberType finalCalledPartyOCN finalCalledPartyState finalCalledPartyStateAbbr finalCalledPartyZip from group initialCalledPartyGroup initialCalledPartyName initialCalledPartyNumber initialCalledPartySubgroup initialCallingPartyGroup initialCallingPartyName initialCallingPartyNumber initialCallingPartySubgroup initial_type internal_party_number ip_addr leg_type legs name origIpAddr origSite productName securityProfile site subgroup terminatingCalledPartyGroup terminatingCalledPartyName terminatingCalledPartyNumber terminatingCalledPartySubgroup terminatingCallingPartyGroup terminatingCallingPartyName terminatingCallingPartyNumber terminatingCallingPartySubgroup to transfers userDepartment userEmail userId userName"," ") | mvexpand field ]
+| fields field | eval in_data="1"
+| append [
+| inputlookup field_gallery
+| eval description = replace(description,"\\\"","&quot;")
+| eval descSentences=split(description,". ")
+| eval shortDesc=if(mvcount(descSentences)>2,mvjoin(mvindex(descSentences,0,0),". ")+"....",description)
+| eval expandLinkText=if(mvcount(descSentences)>2,"(expand)","")
+| fields - descSentences
+| eval added_by_app=if(match(description,"(added by the app)"),1,0)
+]
+| eval in_data=if(len(replace(field,"_overall",""))<len(field),1,in_data)
+| stats values(*) as * by field
+| fillnull in_data value="0"
+| append [
+  | inputlookup examples
+  | eval field=split(fields,",")
+  | mvexpand field
+  | rename label as reportDescription
+  | eval uri = replace(replace(uri,">","&gt;"),"<", "&lt;")
+  | eval uri = replace(uri,"\"","&quot;")
+  | eval reportPlusDescription = uri + "::::" + reportDescription
+
+]
+| stats last(description) as description last(shortDesc) as shortDesc last(expandLinkText) as expandLinkText dc(reportPlusDescription) as exampleCount last(areas) as areas values(reportPlusDescription) as reportPlusDescription values(in_data) as in_data values(added_by_app) as added_by_app by field
+| eval expandExamples = if(exampleCount>0," -- show links to examples (" + exampleCount + ")","")
+| eval areas=split(areas," ")
+| eval areas=mvappend(areas,"all")
+| fillnull reportPlusDescription value=""
+| mvexpand reportPlusDescription
+| eval report=mvindex(split(reportPlusDescription,"::::"),0)
+| eval reportDescription=mvindex(split(reportPlusDescription,"::::"),1)
+| eval report="<li> <a href=" + report + ">" + reportDescription + "</a></li>"
+| stats last(description) as description last(shortDesc) as shortDesc last(expandLinkText) as expandLinkText last(expandExamples) as expandExamples values(areas) as areas  values(in_data) as in_data values(added_by_app) as added_by_app values(report) as reports values(reportDescription) as reportDescriptions by field
+| eval reports = "<ul>" + mvjoin(reports,"") + "</ul>"
+| eval reportDescriptions = mvjoin(reportDescriptions, "::::")
+| eval fieldLower=lower(field)
+| sort fieldLower
+| fields - fieldLower
+    ]]></param>
+    <!-- mostly something so the default all time doesn't match eventgen events in the future.
+         But far enough back so it matches our current cube test data -->
+    <param name="earliest">-4y</param>
+    <param name="latest">now</param>
+
+    <module name="ProgressIndicator" />
+
+    <module name="Pulldown">
+      <param name="name">added_by_app</param>
+      <param name="label">show fields</param>
+      <param name="template">$name$="$value$"</param>
+      <param name="float">left</param>
+      <param name="staticOptions">
+        <list>
+          <param name="label">from all sources</param>
+          <param name="value"></param>
+        </list>
+        <list>
+          <param name="label">from the raw CDR and CMR</param>
+          <param name="value">0</param>
+        </list>
+        <list>
+          <param name="label">created by the app</param>
+          <param name="value">1</param>
+        </list>
+      </param>
+
+      <module name="Pulldown">
+        <param name="name">in_data</param>
+        <param name="label"></param>
+        <param name="template">$name$="$value$"</param>
+        <param name="float">left</param>
+        <param name="staticOptions">
+          <list>
+            <param name="label">whether or not they're in my data</param>
+            <param name="value"></param>
+          </list>
+          <list>
+            <param name="label">that are in my data</param>
+            <param name="value">1</param>
+            <param name="selected">True</param>
+          </list>
+          <list>
+            <param name="label">that are NOT in my data</param>
+            <param name="value">0</param>
+          </list>
+        </param>
+
+        <module name="TextField">
+          <param name="name">searchFilter</param>
+          <param name="label">search:</param>
+          <param name="width">250px</param>
+          <param name="template">( description="*$value$*" OR field="*$value$*" OR areas="*$value$*" OR reportDescriptions="*$value$*")</param>
+          <param name="float">left</param>
+
+          <module name="PostProcess">
+            <param name="search">search $in_data$ $added_by_app$ description!="*(DEPRECATED)*" $searchFilter$</param>
+
+            <module name="Pulldown">
+              <param name="name">area</param>
+              <param name="template">| search areas="$value$"</param>
+              <param name="label">filter by area:</param>
+              <param name="valueField">$name$</param>
+              <param name="labelField">areaLabel</param>
+              <param name="staticOptions"></param>
+              <param name="postProcess">
+$postProcess$
+| eval areas=mvappend(areas,"all")
+| mvexpand areas
+| rename areas as area
+| stats dc(field) as fields by area
+| lookup local=true field_areas name AS area OUTPUT label as areaLabel
+| eval areaLabel=areaLabel + " (" + fields + ")"
+| sort areaLabel
+              </param>
+
+              <module name="PostProcess">
+                <param name="search"><![CDATA[
+                  $postProcess$ $area$
+
+                ]]></param>
+
+
+                <module name="PostProcess">
+                  <param name="search"><![CDATA[
+                    $postProcess$ | stats count
+
+                  ]]></param>
+                  <module name="HTML">
+                    <param name="html"><![CDATA[
+                      <div style="clear:both;margin-bottom:10px;">$results[0].count$ matching fields</div>
+                    ]]></param>
+                  </module>
+                </module>
+                <module name="Pager">
+
+                  <module name="Table">
+                    <param name="hiddenFields">areas description shortDesc expandLinkText expandExamples reports reportDescriptions in_data added_by_app</param>
+
+                    <module name="HTML" group="row.fields.field">
+                      <param name="html"><![CDATA[
+                        <div class="fieldDocumentation">
+                          <b>$row.fields.field$</b>  <a class="showExamples">$row.fields.expandExamples$</a><br>
+                          <span class="shortDesc">$row.fields.shortDesc$ <a class="expand">$row.fields.expandLinkText$</a></span>
+                          <span class="longDesc" style="display:none;">$row.fields.description$</span>
+                          <span class="exampleReports" style="display:none;">$row.fields.reports$</span>
+                        </div>
+                      ]]></param>
+                      <param name="customBehavior">enableShowLinks</param>
+                    </module>
+
+                  </module>
+                  <module name="Pager" />
+
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</module>

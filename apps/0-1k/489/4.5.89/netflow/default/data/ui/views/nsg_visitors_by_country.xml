@@ -1,0 +1,221 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Azure Visitors by Country (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Exporter (Virtual Network)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_nsg_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_nsg_name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_vm" id="src_input" searchWhenChanged="False">
+      <label>Source VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_vm" id="dest_input" searchWhenChanged="False">
+      <label>Dest. VM</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20467` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <set token="showbase">1</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <set token="show">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearchInbound">
+    <query>
+			`basesearch_20467("$nfo_hostname$","$exp_ip$","$advanced_filter$","$src_vm$","$src_port$","$dest_vm$","$dest_port$","$protocol_name$","$span_token$")`
+      | search direction=inbound
+			| iplocation src_ip
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <search id="baseSearchOutbound">
+    <query>
+			`basesearch_20467("$nfo_hostname$","$exp_ip$","$advanced_filter$","$src_vm$","$src_port$","$dest_vm$","$dest_port$","$protocol_name$","$span_token$")`
+      | search direction=outbound
+			| iplocation dest_ip
+		</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <map>
+        <title>Inbound Traffic</title>
+        <search base="baseSearchInbound">
+          <query>
+            | geostats globallimit=0 sum(sum_flow_count) by Country
+					</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(30.15,1.41)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+      </map>
+    </panel>
+    <panel>
+      <map>
+        <title>Outbound Traffic</title>
+        <search base="baseSearchOutbound">
+          <query>
+            | geostats globallimit=0 sum(sum_flow_count) by Country
+					</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="mapping.data.maxClusters">1000</option>
+        <option name="mapping.map.center">(30.15,1.41)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.tileLayer.maxZoom">10</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+      </map>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_1_1">
+        <search base="baseSearchInbound">
+          <query>
+						| `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+            | eval avgbits= sumbytes*8/($span_int$)
+            | stats sum(sum_bytes) as TrafficAmount 
+                sum(sum_flow_count) as Connections 
+                max(avgbits) as MaxTraffic
+                    by nfo_hostname exp_ip vnet_name src_ip dest_ip Country
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | sort - TrafficAmount
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eval MaxTraffic=MaxTraffic/1000000
+            | eval vpc_name_id = vpc_name ."/". vpc_id
+            | eval src_host=src_ip ."/". src_host
+            | eval dest_host=dest_ip ."/". dest_host 
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Total Traffic MB, TrafficAmount)`
+            | `commas_formatting(Flow Count, Connections)`
+            | table vnet_name src_ip dest_ip "Flow Count" "Total Traffic MB" Country
+            | rename vnet_name as "Virtual Network"
+            | rename src_ip as "Source"
+            | rename dest_ip as "Destination"
+            | rename nfo_hostname as "NFO"
+					</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <table id="table_1_2">
+        <search base="baseSearchOutbound">
+          <query>
+						| `format_ip_column(src_ip,src_ip,src_vm_name)`
+            | `format_ip_column(dest_ip,dest_ip,dest_vm_name)`
+            | eval avgbits= sumbytes*8/($span_int$)
+            | stats sum(sum_bytes) as TrafficAmount 
+                sum(sum_flow_count) as Connections 
+                max(avgbits) as MaxTraffic
+                    by nfo_hostname exp_ip vnet_name src_ip dest_ip Country
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | sort - TrafficAmount
+            | eval TrafficAmount=TrafficAmount/1024/1024
+            | eval MaxTraffic=MaxTraffic/1000000
+            | eval vpc_name_id = vpc_name ."/". vpc_id
+            | eval src_host=src_ip ."/". src_host
+            | eval dest_host=dest_ip ."/". dest_host 
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Total Traffic MB, TrafficAmount)`
+            | `commas_formatting(Flow Count, Connections)`
+            | table vnet_name src_ip dest_ip "Flow Count" "Total Traffic MB" Country
+            | rename vnet_name as "Virtual Network"
+            | rename src_ip as "Source"
+            | rename dest_ip as "Destination"
+            | rename nfo_hostname as "NFO"
+					</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+				<p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+				<p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10467: Azure NSG Top Traffic Monitor”</b> (syslogs with nfc_id=20467). This Module identifies Azure VMs with the most traffic. It consolidates NSG Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “Azure NSG Flow Logs” Module Set</b>.</p>
+				<p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+			</html>
+    </panel>
+  </row>
+</form>

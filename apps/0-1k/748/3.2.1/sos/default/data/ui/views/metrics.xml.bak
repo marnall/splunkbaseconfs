@@ -1,0 +1,318 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Indexing and Forwarding</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader" />
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Indexing and Forwarding</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">metrics.html</param>
+    </module>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | sort sort_rank</param>
+      
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 7 days</param>
+          <param name="searchWhenChanged">True</param>
+              
+          <!-- COMMON CONTROLS END   -->
+            
+          <module name="Pulldown" layoutPanel="panel_row1_col1" group="Estimated indexing volume">
+            <param name="name">group</param>
+            <param name="float">left</param>
+            <param name="label">Show gigabytes indexed over time across the top 10 </param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">indexes</param>
+                <param name="value">group="per_index_thruput"</param>
+              </list>
+              <list>
+                <param name="label">sourcetypes</param>
+                <param name="value">group="per_sourcetype_thruput"</param>
+              </list>
+              <list>
+                <param name="label">hosts</param>
+                <param name="value">group="per_host_thruput"</param>
+              </list>
+              <list>
+                <param name="label">sources</param>
+                <param name="value">group="per_source_thruput"</param>
+              </list>
+            </param>
+
+            <module name="Pulldown">
+              <param name="name">spanArg</param>
+              <param name="label">Bucket span:</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">automatic</param>
+                  <param name="value"></param>
+                </list>
+                <list>
+                  <param name="label">1 day buckets</param>
+                  <param name="value">span=1d</param>
+                </list>
+                <list>
+                  <param name="label">1 hour buckets</param>
+                  <param name="value">span=1h</param>
+                </list>
+                <list>
+                  <param name="label">15 minute buckets</param>
+                  <param name="value">span=15m</param>
+                </list>
+              </param>
+
+              <module name="Search">
+                <param name="search">
+                `set_internal_index` $host$ source=*metrics.log $group$
+                | bin _time $spanArg$
+                | stats sum(kb) AS KB by series,_time
+                | timechart minspan=30s $spanArg$ sum(eval(round(KB/1024/1024,2))) by series
+                </param>
+                <module name="JobProgressIndicator"></module>
+                <module name="Paginator" layoutPanel="panel_row1_col1_grp1">
+                  <param name="count">10</param>
+                  <param name="entityName">results</param>
+                  <module name="SimpleResultsTable">
+                    <param name="displayRowNumbers">off</param>
+                  </module>
+                  <module name="ViewRedirectorLink">
+                    <param name="viewTarget">flashtimeline</param>
+                    <param name="popup">true</param>
+                  </module>
+                </module>
+
+                <module name="HiddenChartFormatter" layoutPanel="panel_row1_col1_grp2">
+                  <param name="charting.chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="charting.legend.placement">right</param>
+                  <param name="charting.axisTitleX.visibility">collapsed</param>
+                  <param name="secondaryAxisTitle.text">GB</param>
+                  <module name="FlashChart">
+                  </module>
+                </module>
+
+              </module>
+            </module>
+          </module>
+
+
+          <module name="Search" layoutPanel="panel_row2_col1" group="Estimated incoming network volume">
+            <param name="search">
+            `set_internal_index` $host$ source=*metrics.log group=tcpin_connections | stats count by destPort</param>
+            <module name="Pulldown">
+              <param name="name">destPort</param>
+              <param name="template">destPort="$value$"</param>
+              <param name="label">Megabytes received from </param>
+              <param name="float">left</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">All receiving ports</param>
+                  <param name="value"></param>
+                </list>
+              </param>
+              <param name="searchFieldsToDisplay">
+                <list>
+                  <param name="label">destPort</param>
+                  <param name="value">destPort</param>
+                </list>
+              </param>
+
+              <module name="Pulldown">
+                <param name="name">splitBy</param>
+                <param name="template">by $value$</param>
+                <param name="label">split by </param>
+                <param name="float">left</param>
+                <param name="customBehavior">setToSourceHostIfOnePortSelected</param>
+                <param name="staticFieldsToDisplay">
+                  <list>
+                    <param name="label">( no split )</param>
+                    <param name="value"></param>
+                  </list>
+                  <list>
+                    <param name="label">forwarder</param>
+                    <param name="value">sourceHost</param>
+                  </list>
+                  <list>
+                    <param name="label">receiving port</param>
+                    <param name="value">destPort</param>
+                    <!-- Note customBehavior that can change the selection when appropriate -->
+                    <param name="selected">True</param>
+                  </list>
+                </param>
+
+                <module name="Pulldown">
+                  <param name="name">spanArg</param>
+                  <param name="label">Bucket span:</param>
+                  <param name="staticFieldsToDisplay">
+                    <list>
+                      <param name="value"></param>
+                      <param name="label">automatic</param>
+                    </list>
+                    <list>
+                      <param name="label">1 day buckets</param>
+                      <param name="value">span=1d</param>
+                    </list>
+                    <list>
+                      <param name="label">1 hour buckets</param>
+                      <param name="value">span=1h</param>
+                    </list>
+                    <list>
+                      <param name="label">15 minute buckets</param>
+                      <param name="value">span=15m</param>
+                    </list>
+                  </param>
+
+                        
+                  <module name="Search" >
+                    <param name="search">
+                    `set_internal_index` $host$ source=*metrics.log group=tcpin_connections $destPort$
+                    | eval sourceHost=if(isnull(hostname),sourceHost,hostname)
+                    | timechart minspan=30s $spanArg$ sum(eval(kb/1024)) AS MB $splitBy$
+                    </param>
+                    <module name="HiddenChartFormatter">
+                      <param name="charting.chart">column</param>
+                      <param name="charting.chart.stackMode">stacked</param>
+                      <param name="charting.legend.placement">right</param>
+                      <param name="charting.axisTitleX.visibility">collapsed</param>
+                      <param name="secondaryAxisTitle.text">MB</param>
+                      <module name="FlashChart">
+
+                        <!--  begin drilldown to 'advanced charting view' -->
+                        <module name="ValueSetter">
+                          <param name="name">optionalSplitByTerm</param>
+                          <param name="requiredKeys">splitBy</param>
+                          <param name="value">$splitBy.rawValue$="$click.name2$"</param>
+
+                          <module name="Redirector" >
+                            <param name="url">charting</param>
+                            <param name="arg.q">`set_internal_index`$ $host$ source=*metrics.log* group=tcpin_connections $destPort$ $optionalSplitByTerm$ | timechart minspan=30s sum(eval(kb/1024)) AS MB</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                          </module>
+                        </module>
+
+                      </module>
+                    </module>
+                    <module name="ViewRedirectorLink">
+                      <param name="viewTarget">flashtimeline</param>
+                      <param name="popup">true</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+
+
+          <module name="Pulldown" layoutPanel="panel_row3_col1" group="Estimated outgoing network volume">
+            <param name="name">splitBy</param>
+            <param name="template">by $value$</param>
+            <param name="label">Megabytes forwarded to other instances, split by </param>
+            <param name="float">left</param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">( no split )</param>
+                <param name="value"></param>
+                <param name="selected">True</param>
+              </list>
+              <list>
+                <param name="label">destination port</param>
+                <param name="value">destPort</param>
+              </list>
+              <list>
+                <param name="label">destination host IP</param>
+                <param name="value">destIp</param>
+              </list>
+            </param>
+            <module name="Pulldown">
+              <param name="name">spanArg</param>
+              <param name="label">Bucket span:</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="value"></param>
+                  <param name="label">automatic</param>
+                </list>
+                <list>
+                  <param name="label">1 day buckets</param>
+                  <param name="value">span=1d</param>
+                </list>
+                <list>
+                  <param name="label">1 hour buckets</param>
+                  <param name="value">span=1h</param>
+                </list>
+                <list>
+                  <param name="label">15 minute buckets</param>
+                  <param name="value">span=15m</param>
+                </list>
+              </param>
+              <module name="Search">
+                <param name="search">
+                `set_internal_index` $host$ source=*metrics.log group=tcpout_connections
+                | eval kb=(tcp_Bps*30)/1024
+                | timechart minspan=30s $spanArg$ sum(eval(kb/1024)) as MB $splitBy$
+                </param>
+                <module name="HiddenChartFormatter">
+                  <param name="charting.chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="charting.legend.placement">right</param>
+                  <param name="secondaryAxisTitle.text">MB</param>
+                  <module name="FlashChart">
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

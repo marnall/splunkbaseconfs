@@ -1,0 +1,204 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Traffic by Host Pairs (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+            <label>Server IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+            <label>Dest. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+            <label>Client IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+            <label>Protocol</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+            <label>Advanced Filter</label>
+            <default>*</default>
+        </input>
+        <input type="time" searchWhenChanged="False">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_rule_20064` | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' &gt; 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+                <unset token="search_done"/>
+            </condition>
+            <condition>
+                <unset token="show_content"/>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+                <set token="show">true</set>
+            </condition>
+        </done>
+    </search>
+    <search id="baseSearch">
+        <query>
+            `basesearch_20064("$exp_ip$","$nfo_hostname$","$advanced_filter$","$exp_group$","$src_ip$","$dest_ip$","$dest_port$","$protocol_name$","$span_token$")`
+        </query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+    </search>
+    <row depends="$show_content$" id="timechart">
+        <panel>
+            <chart>
+                <title>Top 10 Host Pairs</title>
+                <search base="baseSearch">
+                    <query>
+                        | dedup src_ip dest_ip dest_port transport _time
+                        | eventstats latest(dest_host) as dest_host latest(src_host) as src_host by exp_ip dest_ip
+                        | `format_ip_column(src_ip,src_ip,src_host)`
+                        | `format_ip_column(dest_ip,dest_ip,dest_host)`
+                        | strcat src_ip " - " dest_ip host_pair 
+                        | `per_second_chart(sum(sum_bytes) by host_pair,"$span_token$",$span_int$)`
+                    </query>
+                    <done>
+                        <set token="search_done">"done"</set>
+                    </done>
+                </search>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Mbps</option>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="height">216</option>
+                <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                    <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+                </selection>
+            </chart>
+        </panel>
+    </row>  
+    <row>
+        <panel>
+            <table depends="$showbase$,$search_done$" id="table_1_1">
+                <search base="baseSearch">
+                    <query>
+                        | eventstats latest(dest_host) as dest_host latest(src_host) as src_host by exp_ip src_ip dest_ip
+                        | eval srv_port = if(isnull(dest_port), "undefined", dest_port) 
+                        | `format_port_column(server_port, srv_port)` 
+                        | bin _time $span_token$
+                        | stats sum(sum_bytes) as sumbytes
+                                sum(sum_bytes_in) as sumbytesin 
+                                sum(sum_bytes_out) as sumbytesout 
+                                sum(sum_packets_in) as sumpacketsin 
+                                sum(sum_packets_out) as sumpacketsout 
+                                sum(sum_flow_count) as sumflowcount 
+                                    by  exp_ip nfo_hostname sum_by_exp  src_ip server_port dest_ip _time
+                        `traffic_by_host_pairs_table($span_int$,$range$)`
+                    </query>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+            <table depends="$search_done$" rejects="$showbase$" id="table_1_2">
+                <search>
+                    <query>
+                        `netflow_search_rule_20064` nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$"
+                        | `sampling(bytes)`
+                        | eventstats sum(bytes) as sum_by_exp by exp_ip nfo_hostname
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" $advanced_filter$
+                            (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                            dest_port="$dest_port$" 
+                        | fillnull value="" transport src_host
+                        | search transport="$protocol_name$" 
+                        | eventstats latest(dest_host) as dest_host latest(src_host) as src_host by exp_ip dest_ip
+                        | `format_ip_column(src_ip,src_ip,src_host)` 
+                        | `format_ip_column(dest_ip,dest_ip,dest_host)` 
+                        | `sampling(bytes_out)` 
+                        | `sampling(bytes_in)` 
+                        | `sampling(packets_in)` 
+                        | `sampling(packets_out)` 
+                        | `sampling(flow_count)` 
+                        | eval srv_port = if(isnull(dest_port), "undefined", dest_port) 
+                        | `format_port_column(server_port, srv_port)` 
+                        | bin _time $span_token$
+                        | stats sum(bytes) as sumbytes
+                                sum(bytes_in) as sumbytesin 
+                                sum(bytes_out) as sumbytesout 
+                                sum(packets_in) as sumpacketsin 
+                                sum(packets_out) as sumpacketsout 
+                                sum(flow_count) as sumflowcount 
+                                    by  exp_ip nfo_hostname sum_by_exp src_ip server_port dest_ip _time
+                        `traffic_by_host_pairs_table($span_int$,$range$)`
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+        </panel>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10064: Top Pairs Monitor”</b> (syslogs with nfc_id=20064). This Module reports top Host Pairs network conversations. In contrast to Module 10067 which reports consolidated unidirectional flows, this Module stitches client-server request-response flows, reporting bytes and packets server-to-client and client-to-server in separate fields. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

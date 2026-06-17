@@ -1,0 +1,294 @@
+<form version="1.1" onunloadCancelJobs="True" script="table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Network Conversations Cyber Threats</label>
+    <fieldset  autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+        <label>NFO hostnames</label>
+        <default>*</default>
+        <search>
+            <query>| `populate_nfo_hostnames`</query>
+        </search>
+        <fieldForLabel>nfo_hostname</fieldForLabel>
+        <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+        <label>Device group</label>
+        <default>*</default>
+        <search>
+            <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>exp_group</fieldForLabel>
+        <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+        <label>Device / Virtual Network</label>
+        <default>*</default>
+        <choice value="*">*</choice>
+        <search>
+            <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>name</fieldForLabel>
+        <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+      <label>Source IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+      <label>Src. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+      <label>Dest. IP/mask</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+      <label>Dest. Port</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+      <label>Protocol</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+    </fieldset>
+    <search> 
+        <query>`netflow_search_rule_20062`  | `set_span`
+        </query> 
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <set token="show_content">true</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <single>
+            <title>Inbound events</title>
+            <search>
+              <query>
+                `netflow_search_rule_20062` direction="inbound" threat_list_name="*" 
+                  | search (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                    (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                    src_port="$src_port$" dest_port="$dest_port$" 
+                  | fillnull value="" transport 
+                  | search transport="$protocol_name$" 
+                  | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                  | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                  | stats count
+              </query>
+              <earliest>$earliest$</earliest>
+              <latest>$latest$</latest>
+            </search>
+            <option name="numberPrecision">0</option>
+            <option name="showSparkline">0</option>
+            <option name="useThousandSeparators">1</option>
+<!--            <option name="underLabel">Compared to an hour before</option> -->
+            <option name="drilldown">all</option>        
+            <drilldown target="Inbound">
+              <link><![CDATA[/app/netflow/search?earliest=$earliest$&latest=$latest$&q=`netflow_search_rule_20062` direction="inbound"  threat_list_name="*"]]></link>
+            </drilldown>
+        </single>
+        <single>
+            <title>Outbound events</title>
+            <search>
+              <query>
+                `netflow_search_rule_20062` direction="outbound"  threat_list_name="*"
+                  | search (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                    (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                    src_port="$src_port$" dest_port="$dest_port$" 
+                  | fillnull value="" transport 
+                  | search transport="$protocol_name$" 
+                  | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                  | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                  | stats count
+              </query>
+              <earliest>$earliest$</earliest>
+              <latest>$latest$</latest>
+            </search>
+            <option name="numberPrecision">0</option>
+            <option name="showSparkline">0</option>
+            <option name="useThousandSeparators">1</option>
+<!--            <option name="underLabel">Compared to an hour before</option> -->
+            <option name="drilldown">all</option>      
+            <drilldown target="Outbound">
+                <link><![CDATA[/app/netflow/search?earliest=$earliest$&latest=$latest$&q=`netflow_search_rule_20062` direction="outbound"  threat_list_name="*"]]></link>
+            </drilldown>
+        </single>
+    </row>
+    <row depends="$show_content$">
+        <chart>
+            <title>Inbound - Outbound Traffic over time</title>
+            <search>
+                <query>
+                  `netflow_search_rule_20062`    threat_list_name="*"
+                    | fillnull value=0 bytes_out
+                    | search (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                      (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                      src_port="$src_port$" dest_port="$dest_port$" 
+                    | fillnull value="" transport 
+                    | search transport="$protocol_name$" 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | `dedup_timechart_events`
+                    | bucket _time $span_token$
+                    | fillnull value=""  threat_list_name, app_id
+                    | fillnull value="unknown" app_name username
+                    | `get_exporter_name(exp_ip_name)`
+                    | `format_ip_column(src_ip_string, src_ip, src_host)`
+                    | `format_ip_column(dest_ip_string, dest_ip, dest_host)`
+                    | strcat src_ip_string " - " dest_ip_string host_pair
+                    | eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+                    | eval bytes = bytes_in + bytes_out
+                    | stats sum(bytes) as sumbytes by host_pair,app_port,transport,exp_ip_name,direction,threat_list_name,app_id,app_name,username,_time
+                    | eval summbits= sumbytes*8/($span_int$*1000000)  
+                    | `format_port_column(dest_port_string, app_port)`
+                    | timechart limit=10 $span_token$ sum(summbits) by direction useother="f" 
+                </query>
+                <earliest>$earliest$</earliest>
+                <latest>$latest$</latest>
+            </search>
+            <option name="charting.chart">line</option>
+            <option name="charting.chart.nullValueMode">zero</option>
+            <option name="charting.axisTitleX.text">Time</option>
+            <option name="charting.axisTitleY.text">Mbps</option>
+            <option name="charting.legend.placement">right</option>
+            <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+            <option name="charting.drilldown">none</option>
+            <option name="height">200</option>
+            <selection>
+               <set token="selection.earliest">$start$</set>
+               <set token="selection.latest">$end$</set>
+            </selection>
+        </chart>
+    </row>
+    <row depends="$show_content$">
+        <map>
+            <title>Events by Geo</title>
+            <search>
+                <query>
+                  `netflow_search_rule_20062` threat_list_name="*"
+                    | search (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                      (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                      src_port="$src_port$" dest_port="$dest_port$" 
+                    | fillnull value="" transport 
+                    | fillnull value="Unknown" reputation
+                    | search transport="$protocol_name$" 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | eval ip=if(direction="inbound",src_ip,dest_ip)
+                    | eval attacker = ip . " - " . reputation . " (". direction . ")"
+                    | iplocation ip
+                    | geostats count by attacker
+                </query>
+                <earliest>$earliest$</earliest>
+                <latest>$latest$</latest>
+            </search>
+            <option name="mapping.markerLayer.markerOpacity">0.8</option>
+            <option name="mapping.markerLayer.markerMinSize">10</option>
+            <option name="mapping.markerLayer.markerMaxSize">50</option>
+            <option name="mapping.data.maxClusters">1000</option>
+            <option name="mapping.map.center">(40.45,-2.81)</option>
+            <option name="mapping.map.zoom">2</option>
+            <option name="mapping.tileLayer.minZoom">2</option>
+            <option name="mapping.tileLayer.maxZoom">10</option>
+            <option name="drilldown">all</option>
+        </map>
+    </row>
+    <row depends="$show_content$">
+        <table id="table_1" >
+            <title>Attackers/Victims</title>
+            <search>
+                <query>
+                  `netflow_search_rule_20062` threat_list_name="*" 
+                    | search (src_ip="$src_ip$" OR src_host="$src_ip$") $advanced_filter$
+                      (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                      src_port="$src_port$" dest_port="$dest_port$" 
+                    | fillnull value="" transport src_vm_name dest_vm_name src_cc dest_cc
+                    | search transport="$protocol_name$" 
+                    | fillnull value=0 bytes_out packets_out 
+                    | fillnull value="Unknown" reputation
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group 
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                    | eval attacker_ip = if(direction=="inbound",src_ip,dest_ip)   
+                    | eval attacker_host = if(direction=="inbound",src_host,dest_host) 
+                    | eval attacker_vm = if(direction=="inbound",src_vm_name,dest_vm_name) 
+                    | eval attacker_port = if(direction=="inbound",src_port,dest_port)
+                    | eval attacker_cc = if(direction=="inbound",src_cc,dest_cc)
+                    | eval victim_ip = if(direction=="outbound",src_ip,dest_ip)   
+                    | eval victim_host = if(direction=="outbound",src_host,dest_host) 
+                    | eval victim_vm = if(direction=="outbound",src_vm_name,dest_vm_name) 
+                    | eval victim_port = if(direction=="outbound",src_port,dest_port)  
+                    | eval bytes = bytes_in + bytes_out
+                    | eval packets = packets_in + packets_out
+                    | stats sum(bytes) as sum_bytes sum(packets) as sum_packets
+                      sum(flow_count) as "Flow Count" avg(duration) as avg_duration
+                      by nfo_hostname exp_ip attacker_ip attacker_port attacker_host attacker_vm attacker_cc victim_ip victim_port victim_host victim_vm threat_list_name reputation transport  flow_smpl_id
+                    | eval megabytes = sum_bytes/1024/1024
+                    | sort 0 by - megabytes
+                    | `commas_formatting(Total Traffic MB, megabytes,2)` 
+                    | `commas_formatting(Total Packets, sum_packets)` 
+                    | `commas_formatting(Avg Duration, avg_duration,2)` 
+                    | `get_exporter_name(exp_ip_name)`
+                    | eval attacker_host=if(attacker_vm=="",attacker_host,attacker_host." (".attacker_vm.")")
+                    | eval victim_host=if(victim_vm=="",victim_host,victim_host." (".victim_vm.")")
+                    | `format_port_column(attacker_port, attacker_port)`
+                    | `format_port_column(victim_port, victim_port)`
+                    | table nfo_hostname exp_ip_name attacker_ip attacker_host attacker_port victim_ip victim_host victim_port threat_list_name reputation transport attacker_cc "Total Traffic MB" "Total Packets"  "Flow Count" "Avg Duration"
+                    | rename nfo_hostname as "NFO" 
+                    | rename exp_ip_name as "Device" 
+                    | rename transport as "Protocol"
+                    | rename attacker_ip as "Attacker IP"
+                    | rename attacker_port as "Attacker port"
+                    | rename attacker_host as "Attacker host (VM)"
+                    | rename attacker_cc as "Country"
+                    | rename victim_ip as "Victim IP"
+                    | rename victim_port as "Victim port"
+                    | rename victim_host as "Victim host (VM)"
+                    | rename threat_list_name as "Threat List"
+                    | rename reputation as "Reputation"
+                </query>
+                <earliest>$selection.earliest$</earliest>
+                <latest>$selection.latest$</latest>
+            </search>
+            <option name="count">10</option>
+            <option name="showPager">true</option>
+            <option name="drilldown">none</option>
+        </table>
+    </row>
+    <row depends="$show_hint$">
+      <panel>
+        <html>
+          <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+          <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10062: Network Conversations”</b> (syslogs with nfc_id=20062). This Module identifies and reports hosts with the most traffic (optionally all hosts). It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. For bidirectional flows the Module stitches request-reply flows inverting source and destination for flows in the opposite direction. It reports consolidated flows separating bytes/packets sent and bytes/packets received.</p>
+          <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+          </html>
+        </panel>
+    </row>
+</form>

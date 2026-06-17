@@ -1,0 +1,145 @@
+<%inherit file="//results/EventsViewer_default_renderer.html" />
+
+<%!
+
+    import time
+    import datetime
+    import splunk.bundle as bundle
+    import splunk
+
+    def determineFieldVal(fields, event):
+        for field in fields.split(','):
+            if field in event.fields:
+                toReturn = str(event.fields[field])
+		return toReturn.lower().strip()
+        return None
+
+    retDict = {}
+    try:
+      thing = bundle.getConf('solera', namespace="SoleraDeepSeeApp")
+      for s in thing:
+        retDict[s] = {}
+        retDict[s].update(thing[s].items())
+    except splunk.ResourceNotFound:
+      pass
+
+%>
+
+<%def name="event_layout(job, event, request, options, xslt)">
+
+<%
+  # This is pretty lame. Is there no way to get the config
+  # of an app from inside javascript? Who forgot to add that
+  # feature? It was you, wasnt it.
+%>
+<div class='SoleraConfig'>
+  <input type='hidden' name='SoleraUsername' value='${retDict['appliance']['username']}'>
+  <input type='hidden' name='SoleraPassword' value='${retDict['appliance']['password']}'>
+  <input type='hidden' name='SoleraHostname' value='${retDict['appliance']['hostname']}'>
+  <input type='hidden' name='SoleraPort' value='${retDict['appliance']['port']}'>
+</div>
+
+<table>
+    <tbody>
+        <tr>
+            % if options.get('display_row_numbers', False):
+            <td class="col1"><%self:event_row_number job="${job}" event="${event}" request="${request}" options="${options}" /></td>
+            % endif
+            % if options.get('enable_event_actions', False):
+            <td class="col2"><%self:event_actions job="${job}" event="${event}" request="${request}" options="${options}" /></td>
+            % endif
+            <td class="col2">
+                <%self:event_time job="${job}" event="${event}" request="${request}" options="${options}" />
+		<p>
+		<img class='inspect' src='${make_url("/static/app/SoleraDeepSeeApp/inspect.png")}'>
+		</p>
+            </td>
+            % if '_icon' in event:
+                <td class="col2"><%self:event_icon job="${job}" event="${event}" request="${request}" options="${options}" /></td>
+            % endif
+            <td class="col3">
+<%self:event_audit job="${job}" event="${event}" request="${request}" options="${options}" />
+                % if not event.raw:
+                    <!-- no raw -->
+                % else:
+<%self:event_raw job="${job}" event="${event}" request="${request}" options="${options}" xslt="${xslt}" />
+<%self:event_show_all job="${job}" event="${event}" request="${request}" options="${options}" />
+                % endif
+<%self:event_fields job="${job}" event="${event}" request="${request}" options="${options}" />
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+</%def>
+
+<%def name="event_fields(job, event, request, options)">
+    <%
+    
+    netTuple = {
+        'SoleraEventSrcIp': "none",
+        'SoleraEventSrcPort': "none",
+        'SoleraEventDestIp': "none",
+        'SoleraEventDestPort': "none",
+        'SoleraEventTrans': "none"
+    }
+
+    strEventTime = str(event.time)
+    if strEventTime.find('.') > -1:
+        time_format = "%Y-%m-%d %H:%M:%S.%f"
+    else:
+        time_format = "%Y-%m-%d %H:%M:%S"
+
+    eventTime = datetime.datetime.fromtimestamp(time.mktime(time.strptime(strEventTime, time_format)))
+    eventTimeDelta = datetime.timedelta(minutes=5)
+
+    timespanStart = eventTime - eventTimeDelta
+    timespanStart = timespanStart.strftime('%Y.%m.%d.%H.%M.%S')
+
+    timespanEnd = eventTime + eventTimeDelta
+    timespanEnd = timespanEnd.strftime('%Y.%m.%d.%H.%M.%S')
+
+    fields = retDict['appliance']
+
+    netTuple['SoleraEventSrcIp'] = determineFieldVal(fields['FieldsSourceAddress'], event)
+    netTuple['SoleraEventDestIp'] = determineFieldVal(fields['FieldsDestinationAddress'], event)
+    netTuple['SoleraEventSrcPort'] = determineFieldVal(fields['FieldsSourcePort'], event)
+    netTuple['SoleraEventDestPort'] = determineFieldVal(fields['FieldsDestinationPort'], event)
+    netTuple['SoleraEventTrans'] = determineFieldVal(fields['FieldsProtocol'], event)
+
+    if netTuple['SoleraEventTrans'] is None:
+        netTuple['SoleraEventTrans'] = "tcp"
+
+    %>
+
+    <ul class="fields">
+        <% field_list_items = [x for x in request['field_list'] if event.fields.has_key(x) and x[0]!='_'] %>
+        % for field_list_item_index, field_list_item in enumerate(field_list_items):
+            % for field_index, field in enumerate(event.fields[field_list_item]):
+
+                <li>
+                    <%self:event_field_value_pair field="${field}" name="${field_list_item}" value="${field}" is_highlighted="${field.isHighlighted}" tags="${field.tags}", enable_field_actions="${options.get('enable_field_actions', False)}"/>
+                    % if field_list_item_index+1!=len(field_list_items) or field_index+1!=len(event.fields[field_list_item]):
+                        |&nbsp;&nbsp;
+                    % endif
+                </li>
+            % endfor
+        % endfor
+    </ul>
+
+    <div class='SoleraEventParams'>
+      <input type='hidden' name='SoleraTimespanStart' value='${timespanStart}'>
+      <input type='hidden' name='SoleraTimespanEnd' value='${timespanEnd}'>
+      % for k,v in netTuple.items():
+            <input type='hidden' name='${k}' value='${v}'>
+      % endfor
+    </div>
+</%def>
+
+<%def name="event_field_value_pair(field, name, value, is_highlighted, tags, enable_field_actions)">
+    <em class="k">${name | h}</em>=<em class="${'v h' if is_highlighted else 'v'}">${value | h}</em>&nbsp;
+    <%self:event_field_value_pair_tags tags="${tags}"/>&nbsp;\
+    % if enable_field_actions:    
+    <%self:event_field_value_pair_actions field="${field}"/>\
+    % endif
+</%def>

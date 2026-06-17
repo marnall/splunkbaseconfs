@@ -1,0 +1,298 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+  <label>AWS ENI Utilization (DEPRECATED)</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="vpc_id" searchWhenChanged="false">
+      <label>Exporter (VPC)</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_vpc_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_vpc_name</fieldForLabel>
+      <fieldForValue>vpc_id</fieldForValue>
+    </input>
+    <input type="dropdown" token="ENI" searchWhenChanged="false">
+      <label>ENI (Interface)</label>
+      <default>*</default>
+      <search>
+        <query>
+          | inputlookup interfaces_20003_lookup
+          | lookup `is_local_lookup` nfo_vpc_name_lookup vpc_name as SNMPDeviceName OUTPUT exp_ip as vpc_exp_ip
+          | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT management_ip 
+          | eval management_ip = if(management_ip=="Unassigned", exp_ip, mvindex(management_ip, 0) ) 
+          | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip snmp_index as ifIndex OUTPUT if_name as ifname_interfaces 
+          | eval final_interface = if(ifname_interfaces=="unknown",ifName,ifname_interfaces) 
+          | eval final_interface = if(ifName!="",ifIndex." ( ".final_interface." )",ifIndex)
+          | table exp_ip final_interface ifIndex vpc_exp_ip
+          | eval vpc_id_search=if("$vpc_id$"=="*","null",vpc_exp_ip)
+          | where exp_ip=vpc_id_search  
+          | dedup ifIndex final_interface
+          | appendpipe [ stats count | eval ifIndex="*" | where count==0 | fields - count ]
+        </query>
+      </search>
+      <fieldForLabel>final_interface</fieldForLabel>
+      <fieldForValue>ifIndex</fieldForValue>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>`netflow_search_rule_20267` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <set token="showbase">1</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+        <set token="show">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+      `netflow_search_rule_20267` nfo_hostname="$nfo_hostname$" vpc_id="$vpc_id$" 
+      | eventstats sum(bytes_in) as sum_by_vpc 
+        by vpc_name vpc_id nfo_hostname 
+      | search $advanced_filter$ interface_id="$ENI$"
+      | fillnull value="" transport src_host src_inst_id src_inst_name dest_host dest_inst_id dest_inst_name src_region dest_region src_service dest_service 
+      | bin _time $span_token$
+      | stats sum(bytes_in) as sum_bytes_in sum(packets_in) as sum_packets_in sum(flow_count) as sum_flow_count 
+        by interface_id nfo_hostname vpc_id vpc_name src_ip src_inst_id src_inst_name src_port src_host 
+          dest_ip dest_inst_id dest_inst_name dest_port dest_host 
+          src_region dest_region src_service dest_service transport protocol_id sum_by_vpc _time
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <row depends="$show_content$" id="timechart">
+    <panel>
+      <chart>
+        <title>AWS Top 10 Interfaces by Load</title>
+        <search base="baseSearch">
+          <query>
+            | strcat vpc_name "/" vpc_id "/" interface_id vpc_interface 
+            | `per_second_chart(sum(sum_bytes_in) 
+              by vpc_interface,"$span_token$",$span_int$)`
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+        <selection>
+          <set token="selection.earliest">$start$</set>
+          <set token="selection.latest">$end$</set>
+          <eval token="showbase">if(($selection.latest$-$selection.earliest$ &gt; $range$*.95),1,null)</eval>
+          <eval token="notbase_range">$selection.latest$-$selection.earliest$</eval>
+          <eval token="notbase_span_int">round($notbase_range$/120)</eval>
+          <eval token="notbase_span_token">"span=" . $notbase_span_int$ . "s"</eval>
+          <unset token="VPC_Interface"></unset>
+          <unset token="NFO"></unset>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$,$search_done$">
+    <panel>
+      <table depends="$showbase$" id="table_1_1">
+        <title>Click on a row to drill down</title>
+        <search base="baseSearch">
+          <query>
+            | stats  sum(sum_bytes_in) as sumbytes 
+                sum(sum_packets_in) as sumpacketsin 
+                    by  vpc_name vpc_id sum_by_vpc interface_id _time nfo_hostname
+            | eval avgbits= sumbytes*8/($span_int$)
+            | stats sum(sumbytes) as TrafficAmount 
+                sum(sumpacketsin) as PacketsAmount 
+                perc95(avgbits) as p95
+                max(avgbits) as Max
+                min(avgbits) as Min
+                stdev(avgbits) as StDev
+                    by vpc_name vpc_id sum_by_vpc interface_id nfo_hostname
+            | eval AverageSpeed=(TrafficAmount)*8/$range$
+            | eval PacketsSpeed=(PacketsAmount)/$range$
+            | strcat vpc_name "/" vpc_id "/" interface_id vpc_interface 
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | eval MaxTraffic=Max/1000000
+            | eval MinTraffic=Min/1000000
+            | eval StDev = StDev/1000000
+            | eval p95=p95/1000000
+            | sort - TrafficSpeed
+            | eval pct = TrafficAmount*100/sum_by_vpc
+            | `commas_formatting(pct, pct, 2)`
+            | head 100
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Min Mbps, MinTraffic, 2)`
+            | `commas_formatting(Standard Deviation Mbps, StDev, 2)`
+            | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+            | `commas_formatting(95pct Mbps, p95, 2)`
+            | table nfo_hostname vpc_interface "Max Mbps" "95pct Mbps" "Min Mbps" "Standard Deviation Mbps" "Average Mbps"  pct  "Average Packets/s" 
+            | rename vpc_interface as "VPC/Interface"
+            | rename pct as "% of Total"
+            | rename nfo_hostname as "NFO"
+          </query>
+          <done>
+            <condition>
+            </condition>
+          </done>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="VPC_Interface">$row.VPC/Interface$</set>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+      <table id="table_1_2" rejects="$showbase$">
+        <title>Click on a row to drill down</title>
+        <search>
+          <query>
+            `netflow_search_rule_20267`  nfo_hostname="$nfo_hostname$" vpc_id="$vpc_id$" 
+            | fillnull value="" transport src_host src_inst_id src_inst_name dest_host dest_inst_id dest_inst_name src_region dest_region src_service dest_service 
+            | eventstats sum(bytes_in) as sum_by_vpc 
+              by vpc_name vpc_id nfo_hostname 
+            | search $advanced_filter$ interface_id="$ENI$"
+            | bin _time $notbase_span_token$ 
+            | stats sum(bytes_in) as sum_bytes_in sum(packets_in) as sum_packets_in sum(flow_count) as sum_flow_count 
+              by interface_id nfo_hostname vpc_id vpc_name 
+                src_ip src_inst_id src_inst_name src_port src_host 
+                dest_ip dest_inst_id dest_inst_name dest_port dest_host 
+                src_region dest_region src_service dest_service transport protocol_id sum_by_vpc _time
+            | stats  sum(sum_bytes_in) as sumbytes 
+                sum(sum_packets_in) as sumpacketsin 
+                    by  vpc_name vpc_id sum_by_vpc interface_id _time nfo_hostname
+            | eval avgbits= sumbytes*8/($notbase_span_int$)
+            | stats sum(sumbytes) as TrafficAmount 
+                sum(sumpacketsin) as PacketsAmount 
+                perc95(avgbits) as p95
+                max(avgbits) as Max
+                min(avgbits) as Min
+                stdev(avgbits) as StDev
+                    by vpc_name vpc_id sum_by_vpc interface_id nfo_hostname
+            | eval AverageSpeed=(TrafficAmount)*8/$notbase_range$
+            | eval PacketsSpeed=(PacketsAmount)/$notbase_range$
+            | strcat vpc_name "/" vpc_id "/" interface_id vpc_interface 
+            | eval TrafficSpeed=AverageSpeed/1000000
+            | eval MaxTraffic=Max/1000000
+            | eval MinTraffic=Min/1000000
+            | eval StDev = StDev/1000000
+            | eval p95=p95/1000000
+            | sort - TrafficSpeed
+            | eval pct = TrafficAmount*100/sum_by_vpc
+            | `commas_formatting(pct, pct, 2)`
+            | head 100
+            | `commas_formatting(Average Mbps, TrafficSpeed, 2)`
+            | `commas_formatting(Max Mbps, MaxTraffic, 2)`
+            | `commas_formatting(Min Mbps, MinTraffic, 2)`
+            | `commas_formatting(Standard Deviation Mbps, StDev, 2)`
+            | `commas_formatting(Average Packets/s, PacketsSpeed, 2)`
+            | `commas_formatting(95pct Mbps, p95, 2)`
+            | table nfo_hostname vpc_interface "Max Mbps" "95pct Mbps" "Min Mbps" "Standard Deviation Mbps" "Average Mbps"  pct  "Average Packets/s" 
+            | rename vpc_interface as "VPC/Interface"
+            | rename pct as "% of Total"
+            | rename nfo_hostname as "NFO"
+          </query>
+          <earliest>$selection.earliest$</earliest>
+          <latest>$selection.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="showPager">true</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="VPC_Interface">$row.VPC/Interface$</set>
+          <set token="NFO">$row.NFO$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_3_1_1" depends="$VPC_Interface$,$showbase$">
+        <title>Conversations Traffic Details: "$NFO$/$VPC_Interface$/"</title>
+        <search base="baseSearch">
+          <query>
+            | strcat vpc_name "/" vpc_id "/" interface_id vpc_interface
+            | search nfo_hostname="$NFO$" vpc_interface="$VPC_Interface$"
+            | fillnull value="" src_host dest_host transport
+            | `aws_conversation_basesearch(TrafficAmount,"$span_token$",$span_int$,$range$)`
+          </query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <table id="table_3_1_2" depends="$VPC_Interface$" rejects="$showbase$">
+        <title>Conversations Traffic Details: "$NFO$/$VPC_Interface$/"</title>
+        <search>
+          <query>
+             `netflow_search_rule_20267`  nfo_hostname="$nfo_hostname$" vpc_id="$vpc_id$"  nfo_hostname="$NFO$"
+             | eventstats sum(bytes_in) as sum_by_vpc by vpc_id nfo_hostname
+             | fillnull value="" transport src_host src_inst_id src_inst_name dest_host dest_inst_id dest_inst_name src_region dest_region src_service dest_service 
+             | search $advanced_filter$ interface_id="$ENI$"
+             | strcat vpc_name "/" vpc_id "/" interface_id vpc_interface 
+             | search vpc_interface="$VPC_Interface$"
+             | `aws_conversation(TrafficAmount,"$span_token$",$span_int$,$range$)`
+          </query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10267: AWS Top Traffic Monitor”</b> (syslogs with nfc_id=20267). This Module identifies AWS EC2 instances with the most traffic. It consolidates VPC Flow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol. This Module is packaged in <b>NFO “AWS VPC Flow Logs” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

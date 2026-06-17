@@ -1,0 +1,50 @@
+<form version="1.1" theme="light" script="js/info_tooltip.js" stylesheet="css/info_tooltip.css">
+  <label>Patch Status Overview</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Servers With Missing Patches</title>
+        <input type="text" token="Host_mis">
+            <label>Host:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+      <table>
+        <search>
+          <query>`windowsindex` "Windows Update Client successfully" | rex field=_raw "(?&lt;numpatch&gt;\d+)\supdates" | stats first(numpatch) AS nm,max(_time) AS Time by host | search host="$Host_mis$" | where nm &gt; 0 | table Time host nm | rename host AS Server nm AS "Number of missing patches" | sort - Time | convert timeformat="%H:%M:%S %d.%m.%Y." ctime(Time)
+          </query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Last Update Messages</title>
+        <input type="text" token="Host_last">
+            <label>Host:</label>
+            <default>*</default>
+            <initialValue>*</initialValue>
+        </input>
+      <table>
+        <search>
+          <query>`windowsindex` action=Success "Content Install" "Installation Successful" host="$Host_last$" | rex field=_raw "Content Install\s+(?&lt;message&gt;.*)" | stats first(_time) AS Time, first(message) AS message BY host | table Time host message | sort - Time | rename host AS Server message AS "Last Message" | convert timeformat="%H:%M:%S %d.%m.%Y." ctime(Time)</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="rowNumbers">true</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+</form>

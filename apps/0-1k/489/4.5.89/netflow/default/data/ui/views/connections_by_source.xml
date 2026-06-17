@@ -1,0 +1,253 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js" stylesheet="inputs_layout.css">
+    <label>Connections by Source IP (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+            <label>Source IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="src_port" id="src_port_input" searchWhenChanged="False">
+            <label>Src. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_ip" id="dest_input" searchWhenChanged="False">
+            <label>Dest. IP/mask</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="dest_port" id="dest_port_input" searchWhenChanged="False">
+            <label>Dest. Port</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="protocol_name" id="protocol_input" searchWhenChanged="False">
+            <label>Protocol</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+            <label>Advanced Filter</label>
+            <default>*</default>
+        </input>
+        <input type="time" searchWhenChanged="False">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search>
+        <query>`netflow_search_rule_20063`  | `set_span`</query>
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+                <set token="show_content">true</set>
+                <set token="span_token">$result.span$</set>
+                <set token="span_int">$result.span_int$</set>
+                <set token="range">$result.range$</set>
+                <set token="earliest_token">$result.all_time_earliest$</set>
+                <set token="latest_token">$result.all_time_latest$</set>
+                <unset token="show_hint"/>
+            </condition>
+            <condition>
+                <unset token="show_content"></unset>
+                <set token="show_hint">true</set>
+            </condition>
+        </done>
+    </search>
+    <search>
+        <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+        <done>
+            <condition>
+                <set token="charting.chart_value">$result.charting.chart$</set>
+                <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+            </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <panel>
+            <chart>
+                <title>Connections by Source IP</title>
+                <search>
+                    <query>
+                        `netflow_search_rule_20063` $advanced_filter$
+                        | `dedup_timechart_events`
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                            src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$"
+                        | `sampling(flow_count)`
+                        | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+                        | `format_ip_column(src_ip_string, src_ip, l_src_host)`
+                        | timechart sum(flow_count) by src_ip_string useother="f"
+                    </query>
+                    <earliest>$earliest_token$</earliest>
+                    <latest>$latest_token$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Connections</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">216</option>
+                <selection>
+                    <set token="selection.earliest">$start$</set>
+                    <set token="selection.latest">$end$</set>
+                    <unset token="Source IP"></unset>
+                </selection>
+            </chart>
+            <table id="table_1_1">
+                <search>
+                    <query>
+                        `netflow_search_rule_20063` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | `sampling(flow_count)`
+                        | eventstats sum(flow_count) as sum_by_exp by exp_ip nfo_hostname
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" $advanced_filter$ (src_ip="$src_ip$" OR src_host="$src_ip$") 
+                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                            src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport  src_host
+                        | `get_iface_name(input_iface, input_snmp)`
+                        | `get_iface_name(output_iface, output_snmp)`
+                        | search transport="$protocol_name$"
+                        | `sampling(bytes_in)` 
+                        | `sampling(packets_in)`
+                        | eventstats latest(src_host) as l_src_host by exp_ip src_ip
+                        | bin _time $span_token$
+                        | stats  sum(bytes_in) as sumbytes 
+                            sum(packets_in) as sumpacketsin 
+                            sum(flow_count) as sumflowcount 
+                                by  exp_ip src_ip l_src_host _time sum_by_exp
+                        | eval avgbits= sumbytes*8/($span_int$)
+                        | stats sum(sumbytes) as TrafficAmount 
+                            sparkline(sum(sumbytes)) as TrafficLine
+                            sum(sumpacketsin) as PacketsAmount 
+                            sum(sumflowcount) as Connections 
+                            max(avgbits) as MaxTraffic
+                                by exp_ip src_ip l_src_host sum_by_exp
+                        | sort 0 - Connections 
+                        | eval pct = Connections*100/sum_by_exp                                             
+                        | `commas_formatting(pct, pct, 2)`
+                        | head 100 
+                        | eval AverageSpeed=(TrafficAmount)*8/$range$
+                        | eval PacketsSpeed=(PacketsAmount)/$range$
+                        | `default_preparation_for_comma_formatted_table`
+                        | table src_ip l_src_host exp_ip_name "Max Mbps" "Average Mbps" "Total Traffic MB" pct TrafficLine "Average Packets/s" "Total Packets" "Total Connections"
+                        | rename exp_ip_name as "Device" 
+                        | rename src_ip as "Source IP" 
+                        | rename l_src_host as "Source Host"
+                        | rename TrafficLine as "Traffic Line"
+                        | rename pct as "% of Total"
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">row</option>
+                <drilldown>
+                    <set token="Source IP">$row.Source IP$</set>
+                </drilldown>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_content$">
+        <panel>
+            <chart id="chart_2_1" depends="$Source IP$">
+                <title>Top 10 Destination IPs and Connections for $submitted:Source IP$</title>
+                <search>
+                    <query>
+                        `netflow_search_rule_20063` $advanced_filter$
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" (src_ip="$Source IP$" OR src_host="$Source IP$") 
+                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                            src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | `get_iface_name(input_iface, input_snmp)`
+                        | `get_iface_name(output_iface, output_snmp)`
+                        | search transport="$protocol_name$" 
+                        | `sampling(flow_count)`
+                        | eventstats latest(dest_host) as l_dest_host by exp_ip dest_ip
+                        | `format_ip_column(dest_ip_string, dest_ip, l_dest_host)`
+                        | timechart sum(flow_count) by dest_ip_string useother="f" 
+                    </query>
+                    <earliest>$selection.earliest$</earliest>
+                    <latest>$selection.latest$</latest>
+                </search>
+                <option name="charting.chart">$charting.chart_value$</option>
+                <option name="charting.chart.nullValueMode">zero</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Connections</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+                <option name="charting.drilldown">none</option>
+                <option name="height">200</option>
+                <selection>
+                    <set token="selection.earliest2">$start$</set>
+                    <set token="selection.latest2">$end$</set>
+                </selection>
+            </chart>
+            <table id="table_2_1" depends="$Source IP$">
+                <search>
+                    <query>
+                        `netflow_search_rule_20063` exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$"
+                        | `sampling(flow_count)`
+                        | eventstats sum(flow_count) as sum_by_exp by exp_ip nfo_hostname
+                        | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                        | search exp_group="$exp_group$" (src_ip="$Source IP$" OR src_host="$Source IP$")  $advanced_filter$
+                            (dest_ip="$dest_ip$" OR dest_host="$dest_ip$")
+                            src_port="$src_port$" dest_port="$dest_port$" 
+                        | fillnull value="" transport
+                        | search transport="$protocol_name$" 
+                        | `sampling(bytes_in)` 
+                        | `sampling(packets_in)` 
+                        | `conversation(Connections,"$span_token$",$span_int$,$range$)` 
+                    </query>
+                    <earliest>$selection.earliest2$</earliest>
+                    <latest>$selection.latest2$</latest>
+                </search>
+                <option name="count">10</option>
+                <option name="showPager">true</option>
+                <option name="drilldown">none</option>
+            </table>
+        </panel>  
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10063: Top Connections Monitor”</b> (syslogs with nfc_id=20063). This Module identifies hosts with the most connections. It consolidates NetFlow records over a period of time (Module execution interval) which all have the same combination of Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

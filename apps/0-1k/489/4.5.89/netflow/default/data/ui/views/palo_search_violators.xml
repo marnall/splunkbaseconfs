@@ -1,0 +1,93 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js, table_formatting.js">
+    <label>Palo Alto Networks Search Violators (DEPRECATED)</label>
+    <fieldset autoRun="True">
+        <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+            <label>NFO hostnames</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_nfo_hostnames`</query>
+            </search>
+            <fieldForLabel>nfo_hostname</fieldForLabel>
+            <fieldForValue>nfo_hostname</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_group" searchWhenChanged="false">
+            <label>Device group</label>
+            <default>*</default>
+            <search>
+                <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>exp_group</fieldForLabel>
+            <fieldForValue>exp_group</fieldForValue>
+        </input>
+        <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+            <label>Device</label>
+            <default>*</default>
+            <choice value="*">*</choice>
+            <search>
+                <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+            </search>
+            <fieldForLabel>name</fieldForLabel>
+            <fieldForValue>exp_ip</fieldForValue>
+        </input>
+        <input type="text" token="src_ip" id="src_input" searchWhenChanged="False">
+            <label>Source IP</label>
+            <default>*</default>
+        </input>
+        <input type="text" token="user" searchWhenChanged="false">
+            <label>User</label>
+            <default>*</default>
+        </input>
+        <input type="time" searchWhenChanged="false">
+            <label>Time Range</label>
+            <default>Last 60 minutes</default>
+        </input>
+    </fieldset>
+    <search> 
+        <query>`netflow_search_rule_20032` | head 1
+        </query> 
+        <earliest>$earliest$</earliest>
+        <latest>$latest$</latest>
+        <done>
+            <condition match="'job.resultCount' > 0">
+               <set token="show_content">true</set>
+               <unset token="show_hint"/>
+             </condition>
+             <condition>
+               <unset token="show_content"></unset>
+               <set token="show_hint">true</set>
+             </condition>
+        </done>
+    </search>
+    <row depends="$show_content$">
+        <table>
+            <search>
+                <query>
+                    `netflow_search_rule_20032` 
+                    | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+                    | search exp_group="$exp_group$" exp_ip="$exp_ip$" nfo_hostname="$nfo_hostname$" src_ip="$src_ip$" user="$user$" 
+                    | strcat src_ip "/" user ip_user 
+                    | stats sum(denied_count) as sum_denied_count by ip_user 
+                    | sort - sum_denied_count
+                    | head 100 
+                    | `commas_formatting(Denied flows, sum_denied_count)`
+                    | table ip_user "Denied flows"
+                    | rename ip_user as "Source IP/User" 
+                </query>
+                <earliest>$earliest$</earliest>
+                <latest>$latest$</latest>
+            </search>
+            <option name="count">10</option>
+            <option name="showPager">true</option>
+            <option name="drilldown">none</option>
+        </table>
+    </row>
+    <row depends="$show_hint$">
+        <panel>
+            <html>
+                <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+                <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10032: Hosts with Most Policy Violations for Palo Alto Networks”</b> (syslogs with nfc_id=20032). This Module utilizes Palo Alto Networks NetFlow v9 reporting and provides a list of top firewall policies violators. Top violators are reported by Network Device and by Destination Port over a time interval. The number of reported top violators (N) and the observation interval (T, sec) are configurable. This Module is packaged in <b>NFO “Palo Alto Networks” Module Set</b>.</p>
+                <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+            </html>
+        </panel>
+    </row>
+</form>

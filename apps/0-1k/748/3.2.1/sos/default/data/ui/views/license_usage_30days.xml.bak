@@ -1,0 +1,205 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>License Usage - Last 30 Days</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="level">warn</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">License Usage - Last 30 Days</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="ServerSideInclude" layoutPanel="viewHeader">
+    <param name="src">bubbles_license_redirect.html</param>
+  </module>
+
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">license_usage_30days.html</param>
+    </module>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+  <!-- COMMON CONTROLS END   -->
+
+    <module name="Search">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/pools
+      | rename title AS pool
+      | search [
+        rest splunk_server=local /services/licenser/groups
+        | search is_active=1
+        | eval stack_id=stack_ids
+        | fields stack_id]
+      | fields pool
+      </param>
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">pool_name</param>
+        <param name="template">$value$</param>
+        <param name="label">Pool:</param>
+        <param name="float">left</param>
+        <param name="staticFieldsToDisplay">
+          <list>
+            <param name="label">All Pools</param>
+            <param name="value">*</param>
+          </list>
+        </param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="label">pool</param>
+            <param name="value">pool</param>
+          </list>
+        </param>
+
+         <module name="Pulldown" layoutPanel="mainSearchControls">
+          <param name="name">splitby</param>
+          <param name="template">$value$</param>
+          <param name="label">Split by:</param>
+          <param name="float">left</param>
+          <param name="staticFieldsToDisplay">
+            <list>
+              <param name="label">No split</param>
+              <param name="value">none</param>
+            </list>
+            <list>
+              <param name="label">By pool</param>
+              <param name="value">pool</param>
+            </list>
+            <list>
+              <param name="label">By indexer</param>
+              <param name="value">slave_name</param>
+            </list>
+            <list>
+              <param name="label">By source type</param>
+              <param name="value">st</param>
+            </list>
+            <list>
+              <param name="label">By host</param>
+              <param name="value">h</param>
+            </list>
+            <list>
+              <param name="label">By source</param>
+              <param name="value">s</param>
+            </list>
+          </param>
+
+          <module name="Search" layoutPanel="panel_row1_col1" group="Daily License Usage">
+            <param name="search">
+            | stats count
+            | eval splitby = "$splitby$"
+            | `usage_panel-generate_search_string(splitby,$pool_name$)`
+            | fields search_string
+            </param>
+            <module name="ResultsValueSetter">
+              <param name="fields">search_string</param>
+
+              <!-- Uncomment the HTML module underneath for in-view debugging of this panel
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                pool name value: $pool_name$ <br>
+                splitby value: $splitby$ <br>
+                search string: $search_string$
+                ]]></param>
+              </module>
+              -->
+
+              <module name="Search">
+                <param name="search">$search_string$</param>
+                <param name="earliest">-30d@d</param>
+                <param name="latest">-0d@d</param>
+
+                <module name="JobProgressIndicator">
+                </module>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="primaryAxisTitle.text">Date</param>
+                  <param name="secondaryAxisTitle.text">GB</param>
+                  <module name="JSChart">
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+
+              </module>
+            </module>
+          </module>
+
+
+          <module name="Search" layoutPanel="panel_row2_col1" group="Percentage of Daily License Quota Used">
+            <param name="search">
+            | stats count
+            | eval splitby = "$splitby$"
+            | `pct_used_panel-generate_search_string(splitby,$pool_name$)`
+            | fields search_string
+            </param>
+            <module name="ResultsValueSetter">
+              <param name="fields">search_string</param>
+
+              <!-- Uncomment the HTML module underneath for in-view debugging of this panel
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                pool name value: $pool_name$ <br>
+                splitby value: $splitby$ <br>
+                search string: $search_string$
+                ]]></param>
+              </module>
+              -->
+
+              <module name="Search">
+                <param name="search">$search_string$</param>
+                <param name="earliest">-30d@d</param>
+                <param name="latest">-0d@d</param>
+
+                <module name="JobProgressIndicator">
+                </module>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="primaryAxisTitle.text">Date</param>
+                  <param name="secondaryAxisTitle.text">%</param>
+                  <module name="JSChart">
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+
+              </module>
+            </module>
+          </module>
+
+
+        </module>
+      </module>
+    </module>
+
+
+  </module>
+</view>

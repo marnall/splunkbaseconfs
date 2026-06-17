@@ -1,0 +1,307 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js" stylesheet="inputs_layout.css">
+  <label>Traffic Overview SI</label>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>exp_group</fieldForLabel>
+      <fieldForValue>exp_group</fieldForValue>
+    </input>
+    <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+      <label>Device / Virtual Network</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>name</fieldForLabel>
+      <fieldForValue>exp_ip</fieldForValue>
+    </input>
+    <input type="time" searchWhenChanged="False">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <search>
+    <query>| mstats sum(sum_bytes_in) as sum_bytes_in WHERE `netflow_si_index` `netflow_si_source` | `set_span`</query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <set token="span_token">$result.span$</set>
+        <set token="span_int">$result.span_int$</set>
+        <set token="range">$result.range$</set>
+        <set token="earliest_token">$result.all_time_earliest$</set>
+        <set token="latest_token">$result.all_time_latest$</set>
+        <unset token="show_hint"></unset>
+        <unset token="search_done"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>
+      | mstats sum(sum_bytes_in) as sum_bytes_in 
+        WHERE `netflow_si_index` `netflow_si_source`
+        BY nfo_hostname exp_ip src_ip src_host src_port dest_ip dest_host dest_port protocol_id input_snmp output_snmp transport $span_token$ 
+      | search nfo_hostname="$nfo_hostname$" exp_ip="$exp_ip$" 
+      | lookup `is_local_lookup` exporters_devices_lookup nfo_hostname exp_ip OUTPUT device_group AS exp_group
+      | search  exp_group="$exp_group$" 
+      | eval app_port=if(((src_port&lt;dest_port AND src_port!=0) OR dest_port==0),src_port,dest_port)
+      | `format_port_column(dest_port_string, app_port)`
+      | `format_ip_column(src_ip, src_ip, src_host)`
+      | `format_ip_column(dest_ip, dest_ip, dest_host)`
+      | `get_exporter_name(exp_ip_name)`
+      | `get_iface_name(input_snmp_name, input_snmp)`
+      | `get_iface_name(output_snmp_name, output_snmp)`
+      | strcat exp_ip_name "/" input_snmp_name exp_isnmp
+      | strcat exp_ip_name "/" output_snmp_name exp_osnmp
+      | strcat exp_isnmp "," exp_osnmp snmps
+      | eval snmps = split(snmps, ",")
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+<!--
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+-->    
+  </search>
+  <search>
+    <query>| inputlookup visualisation.parameters_lookup | transpose header_field=param</query>
+    <earliest>-24h@h</earliest>
+    <latest>now</latest>
+    <done>
+      <condition>
+        <set token="charting.chart_value">$result.charting.chart$</set>
+        <set token="charting.chart.stackMode_value">$result.charting.chart.stackMode$</set>
+      </condition>
+    </done>
+  </search>
+  <row depends="$show_content$">
+    <panel>
+      <html>
+        <p>
+          <b>Top Traffic by Source IP</b> <a href="$url1$" target="_blank">Pan-and-zoom and click here to see details</a> 
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+            | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by src_ip useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url1">
+            <![CDATA[ 
+              /app/netflow/traffic_by_source_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <p>
+          <b>Top Traffic by Destination IP</b> <a href="$url2$" target="_blank">Pan-and-zoom and click here to see details</a> 
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+             | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by dest_ip useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url2">
+            <![CDATA[ 
+               /app/netflow/traffic_by_destination_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <html>
+        <p>
+          <b>Top Traffic by Port and Protocol</b> <a href="$url3$" target="_blank">Pan-and-zoom and click here to see details</a>
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+            | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by dest_port_string useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url3">
+            <![CDATA[ 
+              /app/netflow/traffic_by_application_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <p>
+          <b>Top Traffic by Protocol</b> <a href="$url4$" target="_blank">Pan-and-zoom and click here to see details</a> 
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+            | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by transport useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url4">
+            <![CDATA[ 
+              /app/netflow/traffic_by_protocol_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_content$">
+    <panel>
+      <html>
+        <p>
+          <b>Top Devices / Virtual Networks by Traffic</b> <a href="$url5$" target="_blank">Pan-and-zoom and click here to see details</a>
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+              | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by exp_ip_name useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url5">
+            <![CDATA[ 
+              /app/netflow/devices_traf_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+    <panel>
+      <html>
+        <p>
+          <b>Top Interfaces by Traffic by Device</b> <a href="$url6$" target="_blank">Pan-and-zoom and click here to see details</a>
+        </p>
+      </html>
+      <chart>
+        <search base="baseSearch">
+          <query>
+            | timechart limit=10 $span_token$ eval(sum(sum_bytes_in)*8/$span_int$/1000000) by snmps useother="f"
+          </query>
+        </search>
+        <option name="charting.chart">$charting.chart_value$</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Mbps</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.stackMode">$charting.chart.stackMode_value$</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">208</option>
+        <selection>
+          <set token="selection_earliest">$start$</set>
+          <set token="selection_latest">$end$</set>
+          <set token="url6">
+            <![CDATA[ 
+              /app/netflow/interfaces_traffic_si?earliest=$selection_earliest$&latest=$selection_latest$&form.nfo_hostname=$nfo_hostname$&form.exp_group=$exp_group$&form.exp_ip=$exp_ip$
+            ]]>
+          </set>
+        </selection>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by flow data in Metrics Summary Index created by rollup saved searches <a target="_blank" href="https://docs.netflowlogic.com/integ
+rations-and-apps/netflow-analytics-splunk-app/summary-index-for-large-volumes-of-data"
+>(Learn more)</a> of events sent to Splunk by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10067: Top Traffic Monitor”</b> (syslogs with nfc_id=20067). This Module identifies hosts with the most traffic. It consolidates NetFlow records over a period of time (Data Collection Interval) which all have the same combination of the following fields: Source IP address, Destination IP address, Source port number, Destination port number, Layer 3 protocol, Input interface, Output interface. This Module is packaged in <b>NFO “Network Traffic and Devices Monitor” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

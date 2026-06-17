@@ -1,0 +1,204 @@
+<form version="1.1" script="update_dropdown.js" stylesheet="styles/setup_page.css">
+  <label>App Setup</label>
+  <fieldset submitButton="false"></fieldset>
+  <row>
+    <panel>
+      <html>
+      <p>
+        Welcome to the NetFlow Analytics for Splunk Application!
+      </p>
+      <p>
+        <b>IMPORTANT: </b>
+      </p>
+      <p>
+        This App relies on *flow data processed by <b>NetFlow Optimizer™ (NFO)</b> and enables you to analyze it using Splunk® Enterprise or Splunk® Cloud. 
+      </p>
+      <p>
+        NFO supports NetFlow v5, v9, sFlow, J-Flow, IPFIX, Cisco ASA NSEL, Cisco HSL, Cisco AVC, Palo Alto Networks NetFlow, Amazon VPC Flow Logs, Google VPC Flow Logs, Microsoft Azure NSG Flow Logs, etc.
+      </p>
+      <p>
+        <ul>
+            <li>
+                Visit <a target="_blank" href="https://www.netflowlogic.com/download/">https://www.netflowlogic.com/download/</a> to download NFO software.
+            </li>
+            <li>
+                Request a free 60 day NetFlow Optimizer trial license by completing the <a target="_blank" href="https://www.netflowlogic.com/register-form/">simple registration form</a>
+            </li>
+            <li>
+                Configure NetFlow Optimizer input to receive NetFlow/sFlow/IPFIX, and output to send NFO syslogs to your Splunk system.
+            </li>
+        </ul>
+      </p>
+      <p>
+        To learn more about NetFlow Optimizer please visit <a target="_blank" href="https://docs.netflowlogic.com/">https://docs.netflowlogic.com/</a>.
+      </p>
+      <p>
+        The App should be installed on your Splunk Search Heads.
+      </p>
+      <p>
+        This App requires the <b>Technology Add-On for NetFlow (TA-netflow)</b> (<a target="_blank" href="https://splunkbase.splunk.com/app/1838/">https://splunkbase.splunk.com/app/1838/</a>). Install this Add-on on your Splunk Search Head, Indexers, and Heavy Forwarders. To setup TA-netflow go to <a href="/app/TA-netflow/setup_dashboard/" target="_blank">TA-netflow/setup_dashboard</a>.
+      </p>
+      <h3>1. NETFLOW ANALYTICS FOR SPLUNK APP CONFIGURATION</h3>
+      <p>
+        The app can use data from events index and/or metrics index. 
+      </p>
+      <h4>Events Index</h4>
+      <p>
+        To use a different index from the default main or continue using a custom index for your NetFlow events, please perform the following on your searchheads:
+      </p>
+      <p>
+        In Settings-&gt;Advanced search-&gt;Search macros find the “netflow index” macro, click on it and change the value in the Definition field from: <pre>sourcetype=flowintegrator</pre>
+        </p>
+      <p>to: <pre>index=flowintegrator sourcetype=flowintegrator</pre> in case the index where the flow data is stored is named flowintegrator</p>
+      <p>Alternatively, if you have SSH access to your Splunk servers, please perform the following:</p>
+      <p>
+        <ol>
+          <li>
+            Create the file if it does not already exist:
+            <pre>
+              $SPLUNK_ROOT/etc/apps/netflow/local/macros.conf</pre>
+            and add the following lines to it:
+            <pre>
+              [netflow_index]
+              definition = index=flowintegrator sourcetype=flowintegrator</pre>
+          </li>
+          <li>
+              Restart Splunk
+          </li>
+        </ol>
+      </p>
+      <h4>Metrics Index</h4>
+      <p>
+        We are assuming that the metrics index configured in the TA was named "netflow_metrics", if not change the index name in the following steps accordingly.
+        In Settings-&gt;Advanced search-&gt;Search macros find the “netflow_metrics_index” macro, click on it and change the value in the Definition field to use the new index name: <pre>index=netflow_metrics sourcetype=netflow_metrics</pre>
+        </p>
+      <p>Alternatively, if you have SSH access to your Splunk servers, please perform the following:</p>
+      <p>
+        <ol>
+          <li>
+            Create the file if it does not already exist:
+            <pre>
+              $SPLUNK_ROOT/etc/apps/netflow/local/macros.conf</pre>
+            and add the following lines to it:
+            <pre>
+              [netflow_index]
+              definition = index=netflow_metric sourcetype=netflow_metrics</pre>
+          </li>
+          <li>
+              Restart Splunk
+          </li>
+        </ol>
+      </p>
+    </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <p>
+        <b>2. NOTE:</b> Most dashboards have the following dropdwons: "NFO hostnames"/"Device group"/"Device (Exporter)". These dropdowns are populated automatically by saved searches which are running every 30 minutes. To refresh Device dropdown values press the "Update dropdowns" button.
+      </p>
+   </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Dropdowns for netflow data dashboards</title>
+      <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+        <label>NFO hostnames</label>
+        <default>*</default>
+        <search>
+          <query>| `populate_nfo_hostnames`</query>
+        </search>
+        <fieldForLabel>nfo_hostname</fieldForLabel>
+        <fieldForValue>nfo_hostname</fieldForValue>
+      </input>
+      <input type="dropdown" token="exp_group" searchWhenChanged="false">
+        <label>Device group</label>
+        <default>*</default>
+        <search>
+          <query>| `populate_exporter_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>exp_group</fieldForLabel>
+        <fieldForValue>exp_group</fieldForValue>
+      </input>
+      <input type="dropdown" token="exp_ip" searchWhenChanged="false">
+        <label>Device (Exporter)</label>
+        <default>*</default>
+        <choice value="*">*</choice>
+        <search>
+          <query>| `populate_exporter_list_by_nfo_hostname($exp_group$,$nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>name</fieldForLabel>
+        <fieldForValue>exp_ip</fieldForValue>
+      </input>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Dropdowns for snmp polling dashboards</title>
+      <input type="dropdown" token="snmp_nfo_hostname" searchWhenChanged="false">
+        <label>NFO hostnames</label>
+        <default>*</default>
+        <search>
+          <query>| `populate_snmp_nfo_hostnames`</query>
+        </search>
+        <fieldForLabel>nfo_hostname</fieldForLabel>
+        <fieldForValue>nfo_hostname</fieldForValue>
+      </input>
+      <input type="dropdown" token="snmp_device_group" searchWhenChanged="false">
+        <label>Device group</label>
+        <default>*</default>
+        <search>
+          <query>| `populate_snmp_device_group_list_by_nfo_hostname($snmp_nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>device_group</fieldForLabel>
+        <fieldForValue>device_group</fieldForValue>
+      </input>
+      <input type="dropdown" token="device_sysname" searchWhenChanged="false">
+        <label>Device</label>
+        <default>*</default>
+        <choice value="*">*</choice>
+        <search>
+          <query>| `populate_snmp_device_list_by_nfo_hostname($snmp_device_group$,$snmp_nfo_hostname$)`</query>
+        </search>
+        <fieldForLabel>device_sysname</fieldForLabel>
+        <fieldForValue>device_sysname</fieldForValue>
+      </input>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+            Click the button below to populate/update the dropdowns
+            <br/>
+        <br/>
+            <form version="1.1" id="updateexp" action="javascript:void(0);">
+                <input type="submit" value="Update dropdowns" class="btn btn-primary submit"/>
+                <span id="updateexp_text"/>
+            </form>
+    </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+      <h3>3. LOOKUP FILES</h3>
+      <p>
+        Optionally, you can set up various lookup files for specific configurations. For details, visit  <a target="_blank" href="https://docs.netflowlogic.com/integrations-and-apps/integrations-with-splunk/netflow-analytics-splunk-app/administration/#3-lookup-files-">https://docs.netflowlogic.com/integrations-and-apps/integrations-with-splunk/netflow-analytics-splunk-app/administration/#3-lookup-files-</a>
+      </p>
+    </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+      <h3>4. SUMMARY INDEXERS</h3>
+      <p>
+          If you ingest large volumes of NetFlow data, you may consider using summary indexes to improve search efficiency and application performance.
+           For more information on saved searches included in this App, visit <a target="_blank" href="https://docs.netflowlogic.com/integrations-and-apps/integrations-with-splunk/netflow-analytics-splunk-app/summary-index-for-large-volumes-of-data">https://docs.netflowlogic.com/integrations-and-apps/integrations-with-splunk/netflow-analytics-splunk-app/summary-index-for-large-volumes-of-data</a>
+      </p>
+    </html>
+    </panel>
+  </row>
+</form>

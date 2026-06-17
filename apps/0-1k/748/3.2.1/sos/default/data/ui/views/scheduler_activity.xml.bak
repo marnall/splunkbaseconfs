@@ -1,0 +1,353 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Scheduler Activity</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Scheduler Activity</param>
+      </list>
+    </param>
+  </module>
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">scheduler_activity.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search">| inputlookup splunk_servers_cache | search server_role!="forwarder"|sort sort_rank</param>
+      
+      <module name="Pulldown" layoutPanel="mainSearchControls">
+        <param name="name">host</param>
+        <param name="template">host="$value$"</param>
+        <param name="float">left</param>
+        <param name="label">Instance to query :</param>
+        <param name="searchFieldsToDisplay">
+          <list>
+            <param name="value">sos_server</param>
+            <param name="label">server_label</param>
+          </list>
+        </param>
+        <param name="staticFieldsToDisplay">
+        </param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 24 hours</param>
+          <param name="searchWhenChanged">True</param>
+
+          <!-- COMMON CONTROLS END   -->
+
+          <!-- PANEL Activity START -->                
+          <module name="Search" layoutPanel="panel_row1_col1" group="Scheduler activity">
+            <param name="search">`set_internal_index` $host$ source=*scheduler.log | stats count by app</param>
+            <module name="Pulldown">
+              <param name="name">app</param>
+              <param name="template">app="$value$"</param>
+              <param name="label">App :</param>
+              <param name="float">left</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="label">All apps</param>
+                  <param name="value">*</param>
+                  <param name="selected">True</param>
+                </list>
+              </param>
+              <param name="searchFieldsToDisplay">
+                <list>
+                  <param name="label">app</param>
+                  <param name="value">app</param>
+                </list>
+              </param>
+              <module name="Search">
+                <param name="search">`set_internal_index` $host$ source=*scheduler.log $app$ | stats count by savedsearch_name | eval namespace="$app.rawValue$" | eval namespace=if(namespace=="*","-",namespace)</param>
+                <module name="Pulldown">
+                  <param name="name">savedsearch_name</param>
+                  <param name="template">$name$="$value$"</param>
+                  <param name="label">Scheduled search :</param>
+                  <param name="float">left</param>
+                  <param name="staticFieldsToDisplay">
+                    <list>
+                      <param name="label">All scheduled searches</param>
+                      <param name="value">*</param>
+                      <param name="selected">True</param>
+                    </list>
+                  </param>
+                  <param name="searchFieldsToDisplay">
+                    <list>
+                      <param name="label">savedsearch_name</param>
+                      <param name="value">savedsearch_name</param>
+                    </list>
+                  </param>
+                  <module name="ResultsValueSetter">
+                    <param name="fields">namespace</param>
+                    <module name="Search" >
+                      <param name="search"><![CDATA[
+                      `set_internal_index` $host$ source=*scheduler.log $app$ $savedsearch_name$
+                      | stats min(run_time) as "Min runtime (seconds)", median(run_time) as median_runtime, max(run_time) as max_runtime, count(eval(status!="continued")) AS total_exec, count(eval(status=="success")) as "Successful executions", count(eval(status=="skipped")) AS "Skipped executions" by app, savedsearch_name, user
+                      | append [
+                               | entity saved/searches owner="-" namespace="$namespace$" count=1000000
+                               | eval savedsearch_name=_raw
+                               | search sos_server="$host.rawValue$" is_scheduled=1 disabled=0 $savedsearch_name$
+                               | dedup savedsearch_name
+                               | table savedsearch_name, cron_schedule
+                               | lookup cron2basic cron_schedule OUTPUT basic_schedule schedule_period
+                               | eval Schedule=if(isnull(basic_schedule),cron_schedule,basic_schedule)
+                      ]
+                      | stats first(*) as * by savedsearch_name
+                      | eval Schedule=if(isnull(Schedule),"search not currently scheduled",Schedule)
+                      | eval interval_usage_ratio=round((median_runtime/schedule_period),2)
+                      | search total_exec>0
+                      | rename app AS App median_runtime AS "Median runtime (seconds)"  max_runtime AS "Max runtime (seconds)" savedsearch_name AS "Scheduled search name" user AS User total_exec AS "Total executions"
+                      | table interval_usage_ratio App "Scheduled search name" User "Min runtime (seconds)" "Median runtime (seconds)" "Max runtime (seconds)" Schedule "Total executions" "Successful executions" "Skipped executions" 
+                      | sort - "median runtime (seconds)"
+                      ]]></param>
+                      <module name="JobProgressIndicator"></module>
+                      <module name="EnablePreview">
+                        <param name="enable">True</param>
+                        <param name="display">False</param>
+                      </module>
+                      <module name="Paginator">
+                        <param name="entityName">results</param>
+                        <module name="SimpleResultsTable">
+                          <param name="drilldown">row</param>
+                          <param name="displayRowNumbers">false</param>
+                          <module name="Redirector">
+                            <param name="url">charting</param>
+                            <param name="popup">true</param>
+                            <param name="arg.q"><![CDATA[search `set_internal_index` $host$ source=*scheduler.log app=$click.fields.app$ savedsearch_name="$click.fields.savedsearch_name$" | timechart min(run_time) as Min, median(run_time) as Median, max(run_time) as Max, count(eval(status!="continued")) as count]]></param>
+                          </module>
+                        </module>
+                      </module>
+                      <module name="ViewRedirectorLink">
+                        <param name="viewTarget">flashtimeline</param>
+                        <param name="popup">true</param>
+                      </module>                            
+          <module name="HTML" layoutPanel="panel_row1_col1" group="Scheduler activity">
+            <param name="html"><![CDATA[
+            <h3>
+            <font color="#bb2121"><b>Red</b></font>: Median run time exceeds the schedule period. The scheduler is skipping some executions.<br>
+            <font color="#e67918"><b>Orange</b></font>: Median run time represents 80 - 99% of the schedule period. Scheduler is at risk to skip some executions.
+            </h3>
+            ]]></param>
+          </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+          <!-- PANEL Activity END -->
+          <!-- PANEL COUNT START -->
+          <module name="Search" layoutPanel="panel_row2_col1" group="Execution count by app/scheduled search name">
+            <module name="Pulldown">
+            <param name="name">choice</param>
+            <param name="label">By</param>
+            <param name="float">left</param>
+            <param name="staticFieldsToDisplay">
+              <list>
+                <param name="label">App</param>
+                <param name="value">app</param>
+              </list>
+              <list>
+                <param name="label">Search name</param>
+                <param name="value">savedsearch_name</param>
+              </list>                        
+            </param>
+            <module name="Pulldown">
+              <param name="name">spanArg</param>
+              <param name="label">Bucket span:</param>
+              <param name="staticFieldsToDisplay">
+                <list>
+                  <param name="value"></param>
+                  <param name="label">automatic</param>
+                  <param name="selected">true</param>
+                </list>
+                <list>
+                  <param name="label">1 minute buckets</param>
+                  <param name="value">span=1m</param>
+                </list>
+                <list>
+                  <param name="label">5 minute buckets</param>
+                  <param name="value">span=5m</param>
+                </list>
+                <list>
+                  <param name="label">15 minute buckets</param>
+                  <param name="value">span=15m</param>
+                </list>
+                <list>
+                  <param name="label">1 hour buckets</param>
+                  <param name="value">span=1h</param>
+                </list>
+                <list>
+                  <param name="label">1 day buckets</param>
+                  <param name="value">span=1d</param>
+                </list>
+              </param>
+              <module name="Search" >
+                <param name="search">`set_internal_index` $host$ source=*scheduler.log status="*" AND status!="continued" | timechart $spanArg$ limit=0 count by $choice$</param>
+                <module name="JobProgressIndicator"></module>     
+                <module name="HiddenChartFormatter">
+                  <param name="charting.chart">column</param>
+                  <param name="charting.chart.stackMode">stacked</param>
+                  <param name="charting.legend.placement">right</param>
+                  <param name="charting.axisTitleX.visibility">collapsed</param>
+                  <module name="FlashChart">
+                    <param name="height">300px</param>
+                    <!--  begin drilldown to 'advanced charting view' -->
+                    <module name="Redirector" >
+                      <param name="url">charting</param>
+                      <param name="popup">true</param>
+                      <param name="arg.q">search `set_internal_index` $host$ source=*scheduler.log status="*" AND status!="continued" | timechart $spanArg$ limit=0 count by $choice$</param>
+                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                      <param name="arg.latest">$search.timeRange.latest$</param>
+                    </module>
+                  </module>
+                </module>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>                
+        <!-- PANEL COUNT END -->
+        <!-- PANEL Execution report START -->
+          <module name="Search" group="Scheduler execution report" layoutPanel="panel_row4_col1">
+            <param name="search"><![CDATA[
+            `set_internal_index` $host$ source=*metrics.log group=searchscheduler
+            | timechart partial=false sum(dispatched) AS Started, sum(skipped) AS Skipped
+            | appendcols [search `set_internal_index` $host$ sourcetype=scheduler status=continued
+                         | eval savedsearch_id_scheduled_time=savedsearch_id."-".scheduled_time
+                         | timechart dc(savedsearch_id_scheduled_time) AS Deferred]
+            ]]></param>
+            <module name="JobProgressIndicator"></module>
+            <module name="HiddenChartFormatter">
+              <param name="charting.chart">column</param>
+              <param name="charting.nullValueMode">zero</param>
+              <param name="charting.chart.stackMode">stacked</param>
+              <module name="FlashChart">
+                <param name="height">300px</param>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="popup">true</param>
+              </module>
+            </module>
+          </module>
+          <!-- PANEL Execution report END -->
+          <!-- PANEL Skipped  START -->
+          <module name="Search" group="Skipped scheduled searches" layoutPanel="panel_row4_col2">
+            <param name="search"><![CDATA[`set_internal_index` $host$ source=*scheduler.log savedsplunker status=skipped | stats count by savedsearch_name, app, user | sort - SkipCount | rename savedsearch_name AS "Scheduled search name" count AS "Skip count"]]></param>
+            <module name="JobProgressIndicator"></module>
+            <module name="EnablePreview">
+              <param name="enable">True</param>
+              <param name="display">False</param>
+            </module>
+            <module name="Paginator">
+              <param name="entityName">results</param>
+              <module name="SimpleResultsTable">
+                <param name="drilldown">row</param>
+                <module name="Redirector">
+                  <param name="url">flashtimeline</param>
+                  <param name="popup">true</param>
+                  <param name="arg.q"><![CDATA[ search `set_internal_index` $host$ source=*scheduler.log savedsplunker status=skipped savedsearch_name="$click.value$"]]></param>
+                </module>
+              </module>
+            </module>
+            <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+          </module>
+          <!-- PANEL Skipped END -->
+          <!-- PANEL Scheduler Errors START -->
+          <module name="Search" layoutPanel="panel_row5_col1" group="Scheduler errors">
+            <param name="search"><![CDATA[
+            `set_internal_index` $host$ source=*scheduler.log log_level=ERROR OR log_level=WARN
+            | cluster showcount=t
+            | table cluster_count, message, savedsearch_name
+            | sort - cluster_count
+            | rename cluster_count AS count message AS "Error Message" savedsearch_name AS "Scheduled search name"
+            ]]></param>
+            <module name="TimeRangePicker">
+              <param name="selected">Last 7 days</param>
+              <param name="searchWhenChanged">True</param>
+              <module name="JobProgressIndicator"></module>
+              <module name="EnablePreview">
+                <param name="enable">True</param>
+                <param name="display">False</param>
+              </module>
+              <module name="Paginator">
+                <param name="entityName">results</param>
+                <module name="SimpleResultsTable">
+                <param name="drilldown">row</param>
+                <module name="Redirector">
+                  <param name="url">flashtimeline</param>
+                  <param name="popup">true</param>
+                  <param name="arg.q"><![CDATA[search `set_internal_index` $host$ source=*scheduler.log log_level=ERROR OR log_level=WARN | cluster showcount=t | table cluster_count, message, savedsearch_name | sort - cluster_count | rename cluster_count AS count message AS "Error Message" savedsearch_name AS "Scheduled search name"]]></param>
+                </module>
+              </module>
+              </module>
+              <module name="ViewRedirectorLink">
+              <param name="viewTarget">flashtimeline</param>
+              <param name="popup">true</param>
+            </module>
+            </module>
+          </module>
+          <!-- PANEL Scheduler Errors END -->
+          <!-- PANEL Alerts START -->
+          <module name="Search" layoutPanel="panel_row5_col2" group="Alert actions fired">
+            <param name="search"><![CDATA[`set_internal_index` $host$ source="*scheduler.log" | stats count by alert_actions | replace "" with "None" in alert_actions | sort -count ]]></param>
+            <module name="TimeRangePicker">
+              <param name="selected">Last 7 days</param>
+              <param name="searchWhenChanged">True</param>
+              <module name="JobProgressIndicator"></module>
+              <module name="EnablePreview">
+                <param name="enable">True</param>
+                <param name="display">False</param>
+              </module>
+              <module name="Paginator">
+                <param name="entityName">results</param>
+                <module name="SimpleResultsTable">
+                  <param name="drilldown">row</param>
+                  <module name="Redirector">
+                    <param name="url">flashtimeline</param>
+                    <param name="popup">true</param>
+                    <param name="arg.q"><![CDATA[search `set_internal_index` $host$ source="*scheduler.log" alert_actions="$click.value$" | replace "" with "None" in alert_actions]]></param>
+                  </module>
+                </module>
+              </module>
+              <module name="ViewRedirectorLink">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="popup">true</param>
+              </module>
+            </module>
+          </module>
+          <!-- PANEL Alerts END -->
+
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

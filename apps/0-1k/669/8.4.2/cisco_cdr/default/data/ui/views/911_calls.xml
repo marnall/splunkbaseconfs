@@ -1,0 +1,197 @@
+<!-- Copyright (C) 2010-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css">
+  <label>Emergency Calls</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="HTML" layoutPanel="viewHeader">
+    <param name="html"><![CDATA[
+<h1 class="doNotPrint">Emergency Calls</h1>
+
+    ]]></param>
+  </module>
+
+  <module name="URLLoader" layoutPanel="panel_row1_col1">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Search">
+      <param name="search">
+| rest /servicesNS/-/cisco_cdr/admin/macros/911_numbers splunk_server=local
+      </param>
+
+      <module name="ResultsValueSetter">
+        <param name="fields">definition</param>
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+          <b>search criteria:</b>: $definition$
+          <br>
+          <br>
+          ]]></param>
+        </module>
+
+        <module name="Link">
+          <param name="label">Customize this search  (in "Settings > Advanced Search > Search Macros")</param>
+
+          <module name="Redirector">
+            <param name="url">/manager/cisco_cdr/data/macros/911_numbers</param>
+            <param name="arg.uri">/servicesNS/nobody/cisco_cdr/admin/macros/911_numbers</param>
+            <param name="arg.action">edit</param>
+            <param name="arg.ns">cisco_cdr</param>
+            <param name="target">_blank</param>
+          </module>
+        </module>
+      </module>
+    </module>
+
+
+
+    <module name="Search" layoutPanel="panel_row1_col2">
+      <param name="search">
+| rest /servicesNS/-/cisco_cdr/saved/searches/911_calls splunk_server=local
+| fields - display.* eai* auto_summarize*
+      </param>
+
+      <module name="ResultsValueSetter">
+        <param name="fields">is_scheduled,disabled,enableSched,cron_schedule,action.email.to</param>
+
+        <module name="ValueSetter">
+          <param name="name">scheduledState</param>
+          <param name="if.$disabled$=1">disabled</param>
+          <param name="if.$is_scheduled$=0">enabled but has its schedule properties disabled</param>
+          <param name="default">running automatically</param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+            <b>The Emergency Calls Search is currently $scheduledState$</b><br>
+            ]]></param>
+          </module>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+            <p>
+              To enable or disable this alert, and to edit which email address it sends to:
+            </p>
+            <ol>
+              <li>go to <a href="/manager/cisco_cdr/saved/searches?owner=nobody" target="_blank">Settings > Searches &amp; Reports</a>. <br>
+              <li>on the "911_calls" row select "Edit > Enable"</li>
+              <li>to change the email address, select "Edit > Edit Alert", scroll down to the "When triggered" section, click "send email" then enter the email address.</li>
+              <li>To later disable the alert, return to the same page and pick "Edit > Disable".</li>
+            </ol>
+            ]]></param>
+          </module>
+
+        </module>
+      </module>
+    </module>
+
+
+
+
+    <module name="TimePicker" layoutPanel="panel_row2_col1">
+      <param name="default">Last 30 days</param>
+
+      <pattern name="cluster_controls">
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+`custom_index` sourcetype=cucm_cdr $clusterGroup$ $clusterId$ `911_numbers`
+| `customizable_sites_extractions`
+| `get_sites`
+| fields `911_fields`
+| eval duration=tostring(duration,"duration") ]]></param>
+
+          <module name="PostProcess">
+            <param name="search"><![CDATA[
+| eval time = strftime(_time, "%Y-%m-%d %H:%M:%S")
+| rename _time as epochtime
+| fields time duration callingPartyNumber callingPartyGroup callingPartyName originalCalledPartyNumber finalCalledPartyNumber orig* dest* *
+| fields - globalCallId_ClusterID globalCallID_* _*]]></param>
+
+            <module name="SearchControls">
+              <param name="sections">export</param>
+              <param name="float">right</param>
+            </module>
+          </module>
+
+
+
+
+          <!-- TODO - once SVU dependency is at least -->
+          <module name="PostProcess">
+            <param name="search">stats count</param>
+
+            <module name="ResultsValueSetter">
+              <param name="fields">count</param>
+
+              <module name="ValueSetter">
+                <param name="name">pluralize</param>
+                <param name="if.$count$==1"> </param>
+                <param name="default">s</param>
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                  <br clear="left" />
+                  <b>$results.count$ emergency call$pluralize$ found $search.timeRange.label$</b>
+                  ]]></param>
+                </module>
+
+              </module>
+            </module>
+          </module>
+
+          <module name="Pulldown">
+            <param name="float">right</param>
+            <param name="name">results.count</param>
+            <param name="staticOptions">
+              <list><param name="value">10</param></list>
+              <list><param name="value">20</param><param name="selected">True</param></list>
+              <list><param name="value">50</param></list>
+              <list><param name="value">100</param></list>
+              <list><param name="value">200</param></list>
+            </param>
+
+
+            <module name="PostProcess">
+              <param name="search"><![CDATA[
+  | `get_time_window_for_detail_views`
+              ]]></param>
+              <module name="Pager">
+
+                <module name="ProgressIndicator" ></module>
+
+                <module name="Table">
+                  <param name="hiddenFields">globalCallID_callManagerId, globalCallID_callId, globalCallId_ClusterID durationInSeconds detailEarliest detailLatest</param>
+
+                  <module name="Redirector">
+                    <param name="url">call_detail</param>
+                    <param name="arg.globalCallID_callId">$row.fields.globalCallID_callId$</param>
+                    <param name="arg.globalCallID_callManagerId">$row.fields.globalCallID_callManagerId$</param>
+                    <param name="arg.globalCallId_ClusterID">$row.fields.globalCallId_ClusterID$</param>
+                    <param name="arg.autoRun">True</param>
+                    <param name="arg.earliest">$row.fields.detailEarliest$</param>
+                    <param name="arg.latest">$row.fields.detailLatest$</param>
+
+                    <!--  things for breadcrumb links -->
+                    <param name="arg.bc_earliest">$cachedEarliest$</param>
+                    <param name="arg.bc_latest">$cachedLatest$</param>
+                    <param name="arg.bc_type">$type.rawValue$</param>
+                    <param name="arg.bc_number">$number.rawValue$</param>
+                    <param name="arg.bc_numberType">$numberType.rawValue$</param>
+                    <param name="arg.bc_searchterms">$searchterms.rawValue$</param>
+                    <param name="arg.bc_advancedSearchLanguage">$advancedSearchLanguage.rawValue$</param>
+
+                  </module>
+                </module>
+                <module name="Pager"  />
+              </module>
+            </module>
+          </module>
+
+          <pattern name="see_raw_search_syntax" />
+
+        </module>
+      </pattern>
+    </module>
+  </module>
+</view>

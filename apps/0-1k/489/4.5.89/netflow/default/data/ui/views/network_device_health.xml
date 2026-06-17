@@ -1,0 +1,373 @@
+<form version="1.1" onunloadCancelJobs="True" script="table_formatting.js" stylesheet="inputs_layout.css">
+  <label>Network Device Health</label>
+  <init>
+    <set token="advanced_filter">*</set>
+    <set token="interface_load_treshhold">70</set>
+  </init>
+  <search>
+    <query>`netflow_search_rule_20103`  | head 1 | addinfo | eval range=info_max_time-info_min_time </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="range">$result.range$</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <fieldset autoRun="True">
+    <input type="dropdown" token="nfo_hostname" searchWhenChanged="false">
+      <label>NFO hostnames</label>
+      <selectFirstChoice>true</selectFirstChoice>
+      <search>
+        <query>| `populate_snmp_nfo_hostnames`</query>
+      </search>
+      <fieldForLabel>nfo_hostname</fieldForLabel>
+      <fieldForValue>nfo_hostname</fieldForValue>
+      <change>
+        <unset token="Device"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="device_group" searchWhenChanged="false">
+      <label>Device group</label>
+      <default>*</default>
+      <search>
+        <query>| `populate_snmp_device_group_list_by_nfo_hostname($nfo_hostname$)`</query>
+      </search>
+      <fieldForLabel>device_group</fieldForLabel>
+      <fieldForValue>device_group</fieldForValue>
+      <change>
+        <unset token="Device"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="device_sysname" searchWhenChanged="false">
+      <label>Device</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>
+          | `populate_snmp_device_list_by_nfo_hostname($device_group$,$nfo_hostname$)`
+        </query>
+      </search>
+      <fieldForLabel>device_sysname</fieldForLabel>
+      <fieldForValue>device_sysname</fieldForValue>
+      <change>
+        <unset token="Device"></unset>
+        <unset token="Interface"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="device_type" searchWhenChanged="false">
+      <label>Device Type</label>
+      <default>*</default>
+      <choice value="*">*</choice>
+      <search>
+        <query>
+          | `populate_snmp_device_type_by_nfo_hostname($device_group$,$nfo_hostname$,$device_sysname$)`
+        </query>
+      </search>
+      <fieldForLabel>device_type</fieldForLabel>
+      <fieldForValue>device_type</fieldForValue>
+      <change>
+        <unset token="Device"></unset>
+        <unset token="Interface"></unset>
+      </change>
+    </input>
+    <input type="text" token="advanced_filter" id="adv_input" searchWhenChanged="False">
+      <label>Advanced Filter</label>
+      <default>*</default>
+      <change>
+        <unset token="Device"></unset>
+      </change>
+    </input>
+    <input type="time" searchWhenChanged="false">
+      <label>Time Range</label>
+      <default>Last 60 minutes</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel id="hor">
+      <html>
+        <!-- FLEX-ROW CONTAINER -->
+        <div style="display:flex;                 flex-wrap:wrap;          /* wrap on narrow screens   */                 align-items:center;      /* vertical alignment        */                 gap:12px;                /* space between items       */                 font-family:Arial, sans-serif;                 margin:20px;">
+          <!-- Title block -->
+          <div style="display:flex;align-items:center;">
+            <span style="font-size:16px;">Health Score:</span>
+          </div>
+          <!-- Green -->
+          <div style="display:flex;align-items:center;">
+            <span style="width:10px;height:10px;                      border-radius:50%;                      background:#44ce1b;                      margin-right:5px;"/>
+            <span style="font-size:16px;">(100-70)</span>
+          </div>
+          <!-- Yellow -->
+          <div style="display:flex;align-items:center;">
+            <span style="width:10px;height:10px;                      border-radius:50%;                      background:#bbdb44;                      margin-right:5px;"/>
+            <span style="font-size:16px;">(70-50)</span>
+          </div>
+          <!-- Orange -->
+          <div style="display:flex;align-items:center;">
+            <span style="width:10px;height:10px;                      border-radius:50%;                      background:#f7e379;                      margin-right:5px;"/>
+            <span style="font-size:16px;">(50-30)</span>
+          </div>
+          <!-- Red -->
+          <div style="display:flex;align-items:center;">
+            <span style="width:10px;height:10px;                      border-radius:50%;                      background:#f2a134;                      margin-right:5px;"/>
+            <span style="font-size:16px;">(30-5)</span>
+          </div>
+          <!-- Dark-red -->
+          <div style="display:flex;align-items:center;">
+            <span style="width:10px;height:10px;                      border-radius:50%;                      background:#e51f1f;                      margin-right:5px;"/>
+            <span style="font-size:16px;">(5-0)</span>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel id="wide_1">
+      <table id="table_device_health">
+        <search>
+          <query>
+            `netflow_search_rule_20701`  nfo_hostname="$nfo_hostname$"  $advanced_filter$
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | eval group=if(isnotnull(device_group),device_group,group)
+              | fillnull value="" device_type
+              | search  device_sysname="$device_sysname$" device_type="$device_type$"
+              | dedup nfo_hostname group device_sysname device_type
+            | join device_sysname [ search `netflow_search_rule_20103` oid_set=interface_mon nfo_hostname="$nfo_hostname$"   $advanced_filter$
+              | eval snmp_device_group=if(isnotnull(device_group),device_group,group)
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | search  device_sysname="$device_sysname$" snmp_device_group="$device_group$"
+              | fillnull value=0 ifInErrors ifOutErrors ifInDiscards ifOutDiscards ifInUcastPkts ifOutUcastPkts ifInNUcastPkts ifOutNUcastPkts ifHCInOctets ifHCOutOctets ifHighSpeed
+              | streamstats current=f  window=0 
+                last(ifInErrors) as last_ifInErrors
+                last(ifOutErrors) as last_ifOutErrors
+                last(ifInDiscards) as last_ifInDiscards
+                last(ifOutDiscards) as last_ifOutDiscards
+                last(ifInUcastPkts) as last_ifInUcastPkts
+                last(ifOutUcastPkts) as last_ifOutUcastPkts
+                last(ifInNUcastPkts) as last_ifInNUcastPkts
+                last(ifOutNUcastPkts) as last_ifOutNUcastPkts
+                last(ifHCInOctets) as last_ifHCInOctets 
+                last(ifHCOutOctets) as last_ifHCOutOctets
+              by nfo_hostname device_sysname ifIndex ifName exp_ip
+              | eval delta_ifInErrors = last_ifInErrors - ifInErrors
+              | eval delta_ifOutErrors = last_ifOutErrors - ifOutErrors
+              | eval delta_ifInDiscards = last_ifInDiscards - ifInDiscards
+              | eval delta_ifOutDiscards = last_ifOutDiscards - ifOutDiscards
+              | eval delta_ifInUcastPkts = last_ifInUcastPkts - ifInUcastPkts
+              | eval delta_ifOutUcastPkts = last_ifOutUcastPkts - ifOutUcastPkts
+              | eval delta_ifInNUcastPkts = last_ifInNUcastPkts - ifInNUcastPkts
+              | eval delta_ifOutNUcastPkts = last_ifOutNUcastPkts - ifOutNUcastPkts
+              | eval delta_ifHCInOctets = last_ifHCInOctets - ifHCInOctets 
+              | eval delta_ifHCOutOctets = last_ifHCOutOctets - ifHCOutOctets 
+              | eval AL=round(if(ifHighSpeed&gt;0,((((delta_ifHCInOctets+delta_ifHCOutOctets)*8)/(t_int/1000))/(ifHighSpeed*1000000))*100," "),2)
+              | eval RLS=round((100+($interface_load_treshhold$-AL)*(100/$interface_load_treshhold$)))
+              | eval RLS=round(if(RLS&gt;100,100,RLS),2)
+              | eval delta_ifErrorsDiscards = delta_ifInErrors+delta_ifOutErrors+delta_ifInDiscards+delta_ifOutDiscards
+              | eval delta_ifPkts = delta_ifInUcastPkts+delta_ifOutUcastPkts+delta_ifInNUcastPkts+delta_ifOutNUcastPkts+delta_ifErrorsDiscards
+              | fillnull value=0 delta_ifPkts
+              | eval PercentLost = round(if(delta_ifPkts&gt;0,delta_ifErrorsDiscards/delta_ifPkts*100," "),2) 
+              | eval PLS = 100-PercentLost
+              | fillnull value=" " PLS RLS
+              | eval HS=round(if(PLS!=" " AND RLS!=" ",(PLS*0.5)+(RLS*0.5),if(PLS==" " AND RLS!=" ",RLS,if(PLS!=" " AND RLS==" ",PLS," "))),2) 
+              | fillnull value=" " HS
+              | rename RLS as "Relative Load Score"
+              | rename PLS as "Packet Loss Score"
+              | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip as mgmt_ip snmp_index as ifIndex OUTPUT  if_name as ifname_interfaces
+              | eval ifName = if(ifname_interfaces=="unknown",ifName,ifname_interfaces)
+              | stats min(HS) as minHS by device_sysname snmp_device_group
+            ]
+            
+            | table nfo_hostname device_sysname device_type group sysLocation capabilities status minHS 
+            | sort minHS
+            | rename nfo_hostname as "NFO"
+            | rename device_sysname as "Device (sysName)"
+            | rename group as "Device Group"
+            | rename device_type as "Device Type"
+            | rename sysLocation as Location
+            | rename capabilities as Capabilities
+            | rename minHS as "Min Health Score"
+            | rename status as Status
+          </query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+        <format type="color" field="Min Health Score">
+          <colorPalette type="list">[#e51f1f,#f2a134,#f7e379,#bbdb44,#44ce1b]</colorPalette>
+          <scale type="threshold">5,30,50,70</scale>
+        </format>
+        <drilldown>
+          <set token="NFO">$row.NFO$</set>
+          <set token="Device">$row.Device (sysName)$</set>
+          <unset token="Interface"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$Device$">
+    <panel>
+      <table id="table_interfaces">
+        <title>Interfaces of the selected device: $Device$</title>
+        <search>
+          <query>
+           `netflow_search_rule_20103` oid_set=interface_mon nfo_hostname=$NFO$  $advanced_filter$  
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | fillnull value="" device_type
+              | search  device_sysname="$Device$" device_type="$device_type$"
+              | fillnull value=0 ifInErrors ifOutErrors ifInDiscards ifOutDiscards ifInUcastPkts ifOutUcastPkts ifInNUcastPkts ifOutNUcastPkts ifHCInOctets ifHCOutOctets ifHighSpeed
+              | streamstats current=f  window=0 
+                last(ifInErrors) as last_ifInErrors
+                last(ifOutErrors) as last_ifOutErrors
+                last(ifInDiscards) as last_ifInDiscards
+                last(ifOutDiscards) as last_ifOutDiscards
+                last(ifInUcastPkts) as last_ifInUcastPkts
+                last(ifOutUcastPkts) as last_ifOutUcastPkts
+                last(ifInNUcastPkts) as last_ifInNUcastPkts
+                last(ifOutNUcastPkts) as last_ifOutNUcastPkts
+                last(ifHCInOctets) as last_ifHCInOctets 
+                last(ifHCOutOctets) as last_ifHCOutOctets
+              by nfo_hostname mgmt_ip device_sysname device_type ifIndex ifName exp_ip
+              | eval delta_ifInErrors = last_ifInErrors - ifInErrors
+              | eval delta_ifOutErrors = last_ifOutErrors - ifOutErrors
+              | eval delta_ifInDiscards = last_ifInDiscards - ifInDiscards
+              | eval delta_ifOutDiscards = last_ifOutDiscards - ifOutDiscards
+              | eval delta_ifInUcastPkts = last_ifInUcastPkts - ifInUcastPkts
+              | eval delta_ifOutUcastPkts = last_ifOutUcastPkts - ifOutUcastPkts
+              | eval delta_ifInNUcastPkts = last_ifInNUcastPkts - ifInNUcastPkts
+              | eval delta_ifOutNUcastPkts = last_ifOutNUcastPkts - ifOutNUcastPkts
+              | eval delta_ifHCInOctets = last_ifHCInOctets - ifHCInOctets 
+              | eval delta_ifHCOutOctets = last_ifHCOutOctets - ifHCOutOctets 
+              | eval AL=round(if(ifHighSpeed&gt;0,((((delta_ifHCInOctets+delta_ifHCOutOctets)*8)/(t_int/1000))/(ifHighSpeed*1000000))*100," "),2)
+              | eval RLS=round((100+($interface_load_treshhold$-AL)*(100/$interface_load_treshhold$)))
+              | eval RLS=round(if(RLS&gt;100,100,RLS),2)
+              | eval delta_ifErrorsDiscards = delta_ifInErrors+delta_ifOutErrors+delta_ifInDiscards+delta_ifOutDiscards
+              | eval delta_ifPkts = delta_ifInUcastPkts+delta_ifOutUcastPkts+delta_ifInNUcastPkts+delta_ifOutNUcastPkts+delta_ifErrorsDiscards
+              | fillnull value=0 delta_ifPkts
+              | eval PercentLost = round(if(delta_ifPkts&gt;0,delta_ifErrorsDiscards/delta_ifPkts*100," "),2) 
+              | eval PLS = 100-PercentLost
+              | fillnull value=" " PLS RLS
+              | eval HS=round(if(PLS!=" " AND RLS!=" ",(PLS*0.5)+(RLS*0.5),if(PLS==" " AND RLS!=" ",RLS,if(PLS!=" " AND RLS==" ",PLS," "))),2) 
+              | fillnull value=" " HS
+              | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip as mgmt_ip snmp_index as ifIndex OUTPUT  if_name as ifname_interfaces
+              | eval ifName = if(ifname_interfaces=="unknown",ifName,ifname_interfaces)
+              | eval interface = (((ifIndex . " (") . ifName) . ")")
+              | stats min(HS) as minHS  min(PLS) as PLS min(RLS) as RLS avg(AL) as AL sum(delta_ifPkts) as ifPktsChange sum(delta_ifInErrors) as IfInErrorsChange sum(delta_ifInDiscards) as IfInDiscardsChange sum(delta_ifOutErrors) as IfOutErrorsChange sum(delta_ifOutDiscards) as IfOutDiscardsChange min(PercentLost) as PercentLost by interface  ifIndex ifName
+              | eval AL = round(AL,2)
+              | rename AL as "Relative Load"
+              | rename RLS as "Relative Load Score"
+              | rename PLS as "Packet Loss Score"
+              | eval sort_helper=if(trim(minHS)="", 101, tonumber(minHS))
+              | sort  sort_helper
+              | fields - sort_helper
+              | table interface ifIndex ifName ifPktsChange IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost "Relative Load" "Relative Load Score" "Packet Loss Score" minHS
+              | rename interface as "Interface"
+              | rename ifPktsChange as "Packets"
+              | rename IfInErrorsChange as "Receive Errors"
+              | rename IfInDiscardsChange as "Receive Discards"
+              | rename IfOutErrorsChange as "Transmit Errors"
+              | rename IfOutDiscardsChange as "Transmit Discards"
+              | rename PercentLost as "Packets Lost (%)"
+              | rename minHS as "Health Score"  
+         </query>
+        </search>
+        <format type="color" field="Health Score">
+          <colorPalette type="expression">if(value&gt;70,"#44ce1b",if(value&gt;50,"#bbdb44",if(value&gt;30,"#f7e379",if(value&gt;5,"#f2a134",if(value==" ","#FFFFFF","#e51f1f")))))</colorPalette>
+        </format>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="Interface">$row.Interface$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$Device$,$Interface$">
+    <panel>
+      <chart>
+        <title>Interface: $Interface$</title>
+        <search>
+          <query>
+            `netflow_search_rule_20103` oid_set=interface_mon nfo_hostname=$NFO$  $advanced_filter$  
+              | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+              | fillnull value="" device_type
+              | search  device_sysname="$Device$" device_type="$device_type$"
+              | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip as mgmt_ip snmp_index as ifIndex OUTPUT  if_name as ifname_interfaces
+              | eval ifName = if(ifname_interfaces=="unknown",ifName,ifname_interfaces)
+              | eval interface = (((ifIndex . " (") . ifName) . ")")
+              | search interface="$Interface$"
+              | fillnull value=0 ifInErrors ifOutErrors ifInDiscards ifOutDiscards ifInUcastPkts ifOutUcastPkts ifInNUcastPkts ifOutNUcastPkts ifHCInOctets ifHCOutOctets ifHighSpeed
+              | streamstats current=f  window=0 
+                last(ifInErrors) as last_ifInErrors
+                last(ifOutErrors) as last_ifOutErrors
+                last(ifInDiscards) as last_ifInDiscards
+                last(ifOutDiscards) as last_ifOutDiscards
+                last(ifInUcastPkts) as last_ifInUcastPkts
+                last(ifOutUcastPkts) as last_ifOutUcastPkts
+                last(ifInNUcastPkts) as last_ifInNUcastPkts
+                last(ifOutNUcastPkts) as last_ifOutNUcastPkts
+                last(ifHCInOctets) as last_ifHCInOctets 
+                last(ifHCOutOctets) as last_ifHCOutOctets
+              by nfo_hostname mgmt_ip device_sysname ifIndex ifName exp_ip
+              | eval delta_ifInErrors = last_ifInErrors - ifInErrors
+              | eval delta_ifOutErrors = last_ifOutErrors - ifOutErrors
+              | eval delta_ifInDiscards = last_ifInDiscards - ifInDiscards
+              | eval delta_ifOutDiscards = last_ifOutDiscards - ifOutDiscards
+              | eval delta_ifInUcastPkts = last_ifInUcastPkts - ifInUcastPkts
+              | eval delta_ifOutUcastPkts = last_ifOutUcastPkts - ifOutUcastPkts
+              | eval delta_ifInNUcastPkts = last_ifInNUcastPkts - ifInNUcastPkts
+              | eval delta_ifOutNUcastPkts = last_ifOutNUcastPkts - ifOutNUcastPkts
+              | eval delta_ifHCInOctets = last_ifHCInOctets - ifHCInOctets 
+              | eval delta_ifHCOutOctets = last_ifHCOutOctets - ifHCOutOctets 
+              | eval AL=round(if(ifHighSpeed&gt;0,((((delta_ifHCInOctets+delta_ifHCOutOctets)*8)/(t_int/1000))/(ifHighSpeed*1000000))*100," "),2)
+              | eval RLS=round((100+(70-AL)*(100/70)))
+              | eval RLS=round(if(RLS&gt;100,100,RLS),2)
+              | eval delta_ifErrorsDiscards = delta_ifInErrors+delta_ifOutErrors+delta_ifInDiscards+delta_ifOutDiscards
+              | eval delta_ifPkts = delta_ifInUcastPkts+delta_ifOutUcastPkts+delta_ifInNUcastPkts+delta_ifOutNUcastPkts+delta_ifErrorsDiscards
+              | fillnull value=0 delta_ifPkts
+              | eval PercentLost = round(if(delta_ifPkts&gt;0,delta_ifErrorsDiscards/delta_ifPkts*100," "),2) 
+              | eval PLS = 100-PercentLost
+              | fillnull value=" " PLS RLS
+              | eval HS=round(if(PLS!=" " AND RLS!=" ",(PLS*0.5)+(RLS*0.5),if(PLS==" " AND RLS!=" ",RLS,if(PLS!=" " AND RLS==" ",PLS," "))),2) 
+              | fillnull value=" " HS
+              | lookup `is_local_lookup` interfaces_lookup nfo_hostname management_ip as mgmt_ip snmp_index as ifIndex OUTPUT  if_name as ifname_interfaces
+              | eval ifName = if(ifname_interfaces=="unknown",ifName,ifname_interfaces)
+              | eval interface = (((ifIndex . " (") . ifName) . ")")
+              | timechart  min(HS) as "Health Score"  avg(AL) as "Relative Load" min(PercentLost) as "Packets Lost (%)" by interface  
+          </query>
+          <done>
+            <set token="search_done">"done"</set>
+          </done>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Percentage</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">216</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$CSS_ONLY$">
+    <panel>
+      <html>
+        <p>This hidden panel has sytle information.</p>
+        <style>div[id^='narrow']{width: 13%!important;max-height: 435px;overflow-y: auto; } div[id^='wide']{width:75%!important;}td {text-align: center;} div[id^='right']{width:12%!important;}td {text-align: center;}
+        #table_device_health tbody tr:hover td {
+        background-color: transparent !important;  /* no new hover background; keep original cell colors */
+        color: black !important;                  /* ensure text is black on hover */
+      }
+      #table_interfaces tbody tr:hover td {
+        background-color: transparent !important;  /* no new hover background; keep original cell colors */
+        color: black !important;                  /* ensure text is black on hover */
+      }
+        </style>
+      </html>
+    </panel>
+  </row>
+</form>

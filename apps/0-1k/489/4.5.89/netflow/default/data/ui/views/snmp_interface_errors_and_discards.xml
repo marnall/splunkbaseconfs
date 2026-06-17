@@ -1,0 +1,349 @@
+<form version="1.1" onunloadCancelJobs="True" script="search_rerun.js,snmp_interface_errors_and_discards_layout.js">
+  <label>High Errors and Discards</label>
+  <init>
+    <set token="device_ip">*</set>
+    <set token="device_ip_for_snmp_table"></set>
+  </init>
+  <search>
+    <query>`netflow_search_rule_20103`| head 1
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint"></unset>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint">true</set>
+      </condition>
+    </done>
+  </search>
+  <search id="baseSearch">
+    <query>`netflow_search_rule_20103` oid_set=interface_mon 
+          | stats latest(ifInErrors) as maxIfInErrors earliest(ifInErrors) as minIfInErrors
+                latest(ifOutErrors) as maxIfOutErrors earliest(ifOutErrors) as minIfOutErrors
+                latest(ifInDiscards) as maxIfInDiscards earliest(ifInDiscards) as minIfInDiscards
+                latest(ifOutDiscards) as maxIfOutDiscards  earliest(ifOutDiscards) as minIfOutDiscards 
+                latest(ifInUcastPkts) as maxifInUcastPkts  earliest(ifInUcastPkts) as minifInUcastPkts 
+                latest(ifOutUcastPkts) as maxifOutUcastPkts  earliest(ifOutUcastPkts) as minifOutUcastPkts 
+                by nfo_hostname mgmt_ip sysName ifIndex ifName
+          | eval IfInErrorsChange = maxIfInErrors-minIfInErrors
+          | eval IfOutErrorsChange = maxIfOutErrors-minIfOutErrors
+          | eval IfInDiscardsChange = maxIfInDiscards-minIfInDiscards
+          | eval IfOutDiscardsChange = maxIfOutDiscards-minIfOutDiscards
+          | eval ifInUcastPktsChange = maxifInUcastPkts-minifInUcastPkts
+          | eval ifOutUcastPktsChange = maxifOutUcastPkts-minifOutUcastPkts
+          | stats sum(IfInErrorsChange) as IfInErrorsChange sum(IfOutErrorsChange) as IfOutErrorsChange 
+                sum(IfInDiscardsChange) as IfInDiscardsChange sum(IfOutDiscardsChange) as IfOutDiscardsChange 
+                sum(ifInUcastPktsChange) as ifInUcastPktsChange sum(ifOutUcastPktsChange) as ifOutUcastPktsChange 
+                sum(maxIfInErrors) as maxIfInErrors sum(maxIfOutErrors) as maxIfOutErrors 
+                sum(maxIfInDiscards) as maxIfInDiscards sum(maxIfOutDiscards) as maxIfOutDiscards 
+                sum(maxifInUcastPkts) as maxifInUcastPkts sum(maxifOutUcastPkts) as maxifOutUcastPkts 
+                by nfo_hostname mgmt_ip sysName ifIndex ifName
+          | eval ifErrorsDiscardsChange = IfInErrorsChange+IfOutErrorsChange+IfInDiscardsChange+IfOutDiscardsChange
+          | eval ifPktsChange = ifInUcastPktsChange+ifOutUcastPktsChange+ifErrorsDiscardsChange
+          | eval PercentLost = ifErrorsDiscardsChange/ifPktsChange*100
+          | `commas_formatting(PercentLost,PercentLost,2)`
+          | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+          | eval interface = (((ifIndex . " (") . ifName) . ")")
+          | eval Device_IP=mgmt_ip
+          |  sort - PercentLost
+          | lookup `is_local_lookup` tree.csv Device_IP as mgmt_ip OUTPUT Caption State_Level1 District_Level2 Office_Level3
+          | eval Device_Caption = Device_IP . " (". Caption . ")"
+          | table State_Level1 District_Level2 Office_Level3 Device_IP Device_Caption nfo_hostname mgmt_ip device_sysname interface IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost
+          | eventstats max(PercentLost) as devicemaxPercentLost by device_sysname 
+          | eval deviceColor=if(devicemaxPercentLost&lt;10,"green",if(devicemaxPercentLost&lt;50,"yellow","red"))
+          | eval deviceColorN=if(devicemaxPercentLost&lt;10,1,if(devicemaxPercentLost&lt;50,2,3))
+          | eventstats avg(deviceColorN) as avglocationColorN max(deviceColorN) as maxlocationColorN by State_Level1 District_Level2 Office_Level3
+          | eval locationColorN=if(avglocationColorN==maxlocationColorN,maxlocationColorN,2)
+          | eventstats avg(locationColorN) as avgdistrictColorN max(locationColorN) as maxdistrictColorN by State_Level1 District_Level2 
+          | eval districtColorN=if(avgdistrictColorN==maxdistrictColorN,maxdistrictColorN,2)
+          | eventstats avg(districtColorN) as avgstateColorN max(districtColorN) as maxstateColorN by State_Level1 
+          | eval stateColorN=if(avgstateColorN==maxstateColorN,maxstateColorN,2) 
+
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <search id="baseSearchtreestatus">`netflow_search_rule_20103` 
+          | stats latest(ifInErrors) as maxIfInErrors earliest(ifInErrors) as minIfInErrors
+                latest(ifOutErrors) as maxIfOutErrors earliest(ifOutErrors) as minIfOutErrors
+                latest(ifInDiscards) as maxIfInDiscards earliest(ifInDiscards) as minIfInDiscards
+                latest(ifOutDiscards) as maxIfOutDiscards  earliest(ifOutDiscards) as minIfOutDiscards 
+                latest(ifInUcastPkts) as maxifInUcastPkts  earliest(ifInUcastPkts) as minifInUcastPkts 
+                latest(ifOutUcastPkts) as maxifOutUcastPkts  earliest(ifOutUcastPkts) as minifOutUcastPkts 
+                by nfo_hostname mgmt_ip sysName ifIndex ifName
+          | eval IfInErrorsChange = maxIfInErrors-minIfInErrors
+          | eval IfOutErrorsChange = maxIfOutErrors-minIfOutErrors
+          | eval IfInDiscardsChange = maxIfInDiscards-minIfInDiscards
+          | eval IfOutDiscardsChange = maxIfOutDiscards-minIfOutDiscards
+          | eval ifInUcastPktsChange = maxifInUcastPkts-minifInUcastPkts
+          | eval ifOutUcastPktsChange = maxifOutUcastPkts-minifOutUcastPkts
+          | stats sum(IfInErrorsChange) as IfInErrorsChange sum(IfOutErrorsChange) as IfOutErrorsChange 
+                sum(IfInDiscardsChange) as IfInDiscardsChange sum(IfOutDiscardsChange) as IfOutDiscardsChange 
+                sum(ifInUcastPktsChange) as ifInUcastPktsChange sum(ifOutUcastPktsChange) as ifOutUcastPktsChange 
+                sum(maxIfInErrors) as maxIfInErrors sum(maxIfOutErrors) as maxIfOutErrors 
+                sum(maxIfInDiscards) as maxIfInDiscards sum(maxIfOutDiscards) as maxIfOutDiscards 
+                sum(maxifInUcastPkts) as maxifInUcastPkts sum(maxifOutUcastPkts) as maxifOutUcastPkts 
+                by nfo_hostname mgmt_ip sysName ifIndex ifName
+          | eval ifErrorsDiscardsChange = IfInErrorsChange+IfOutErrorsChange+IfInDiscardsChange+IfOutDiscardsChange
+          | eval ifPktsChange = ifInUcastPktsChange+ifOutUcastPktsChange+ifErrorsDiscardsChange
+          | eval PercentLost = ifErrorsDiscardsChange/ifPktsChange*100
+          | `commas_formatting(PercentLost,PercentLost,2)`
+          | eval device_sysname = (((mgmt_ip . " (") . sysName) . ")")
+          | eval interface = (((ifIndex . " (") . ifName) . ")") |  sort - PercentLost  | lookup `is_local_lookup` tree.csv  Device_IP as mgmt_ip OUTPUT State_Level1 District_Level2 Office_Level3
+          | table State_Level1 District_Level2 Office_Level3 nfo_hostname mgmt_ip device_sysname interface IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost
+          | eventstats max(PercentLost) as devicemaxPercentLost by device_sysname 
+          | eval deviceColor=if(devicemaxPercentLost&lt;10,"green",if(devicemaxPercentLost&lt;50,"yellow","red"))
+          | eval deviceColorN=if(devicemaxPercentLost&lt;10,1,if(devicemaxPercentLost&lt;50,2,3))
+          | eventstats avg(deviceColorN) as avglocationColorN max(deviceColorN) as maxlocationColorN by State_Level1  District_Level2 Office_Level3
+          | eval locationColorN=if(avglocationColorN==maxlocationColorN,maxlocationColorN,2)
+          | eventstats avg(locationColorN) as avgdistrictColorN max(locationColorN) as maxdistrictColorN by State_Level1 District_Level2 
+          | eval districtColorN=if(avgdistrictColorN==maxdistrictColorN,maxdistrictColorN,2)
+          | eventstats avg(districtColorN) as avgstateColorN max(districtColorN) as maxstateColorN by State_Level1 
+          | eval stateColorN=if(avgstateColorN==maxstateColorN,maxstateColorN,2) | table State_Level1 District_Level2 Office_Level3 nfo_hostname mgmt_ip device_sysname interface deviceColorN locationColorN districtColorN stateColorN PercentLost | rename mgmt_ip as Device_IP| outputlookup treestatus_lookup create_context=user<query>
+    </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+  </search>
+  <!-- Count total nodes -->
+  <search id="baseSearch_tree_lookup">
+    <query>| inputlookup tree.csv 
+             | fillnull
+             | where State_Level1 != "*"
+             | stats count by State_Level1 District_Level2 Office_Level3 Device_IP
+          </query>
+    <earliest>$earliest$</earliest>
+    <latest>$latest$</latest>
+    <done>
+      <condition match="'job.resultCount' &gt; 0">
+        <set token="show_content">true</set>
+        <unset token="show_hint_lookup"></unset>
+        <set token="total_nodes">$job.resultCount$</set>
+      </condition>
+      <condition>
+        <unset token="show_content"></unset>
+        <set token="show_hint_lookup">true</set>
+      </condition>
+    </done>
+  </search>
+  <fieldset autoRun="True">
+    <input type="time" searchWhenChanged="false">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+    <row>
+    <panel depends="$alwaysHideCSS$">
+      <html>
+        <style>
+          #first_single{
+            font-size:50px !important;
+          }
+
+        </style>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel id="first">
+      <title>Hardware Health - Total Nodes: $total_nodes$</title>
+      <single id="first_single">
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname State_Level1 District_Level2 Office_Level3 Device_IP deviceColorN
+            | search deviceColorN=3 
+            | eval status=case(deviceColorN==1,"Up",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(Device_IP)  as node_count by status deviceColorN
+            | eval status=status." (". node_count .")" 
+            | appendpipe [stats count] 
+            | fillnull status value="Critical" 
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=3
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+      </single>
+      <single>
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname State_Level1 District_Level2 Office_Level3 Device_IP deviceColorN
+            | search deviceColorN=2 
+            | eval status=case(deviceColorN==1,"Up",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(Device_IP) as node_count by status deviceColorN
+            | appendpipe [stats count] 
+            | fillnull status value="Warning" 
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=2
+            | eval status=status." (". node_count .")"
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+      </single>
+      <single>
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname State_Level1 District_Level2 Office_Level3 Device_IP deviceColorN
+            | search deviceColorN=1 
+            | eval status=case(deviceColorN==1,"Normal",deviceColorN==2,"Warning",deviceColorN==3,"Critical")
+            | stats count(Device_IP) as node_count by status deviceColorN
+            | eval status=status." (". node_count .")"
+            | appendpipe [stats count] 
+            | fillnull status value="Normal" 
+            | fillnull node_count value=0 
+            | fillnull deviceColorN value=1
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+          </query>
+        </search>
+        <option name="field">status</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+      </single>
+      <single>
+        <search base="baseSearch">
+          <query>
+            | dedup nfo_hostname State_Level1 District_Level2 Office_Level3 Device_IP deviceColorN
+            | search deviceColorN=* 
+            | stats count(Device_IP) as node_count 
+            | appendpipe [stats count] 
+            | fillnull status value="Undefined" 
+            | fillnull node_count value=0 
+            | eval node_count=$total_nodes$-node_count
+            | eval status="Undefined"." (". node_count .")"
+            | rangemap field=deviceColorN low=1-1 elevated=2-2 severe=3-3
+
+          </query>
+        </search>
+        <option name="field">status</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+      </single>
+    </panel>
+    <panel id="second">
+      <title>SNMP Fields from oid_set=device_info (selected device: $device_ip_for_snmp_table$)</title>
+      <table>
+        <search>
+          <query>
+            index=flowintegrator nfc_id=20103 oid_set=device_info mgmt_ip="$device_ip_for_snmp_table$" 
+              | head 1 
+              | table mgmt_ip sysName ifNumber sysUpTimeInstance IOSVersion sysDescr 
+              | rename mgmt_ip as "Device" sysName as "Device Name" ifNumber as "Count of Interfaces" sysDescr as "Node Description" 
+              | transpose 
+              | rename column as "SNMP Field" "row 1" as "Value"
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel id="third">
+      <viz type="treeview-viz.treeview-viz">
+        <search>Device_IP,Caption,State_Level1,District_Level2,Office_Level3<query>| inputlookup tree.csv  
+                 | dedup State_Level1 
+                 | table State_Level1 
+                 | lookup `is_local_lookup` treestatus_lookup  State_Level1 OUTPUT stateColorN 
+                 | eval colorN=mvindex(stateColorN,0) 
+                 | eval color=case(colorN==3,"#d0201f",colorN==2,"#f2a900",colorN==1,"#65a637",1==1,"#979998")
+                 | eval iconFolder=case(colorN==3,"times-circle",colorN==2,"exclamation-triangle",colorN==1,"check-circle",1==1,"question-circle")
+                 | eval id=State_Level1
+                 | eval label=State_Level1
+                 | eval parentid=""  
+                 | append [ | inputlookup tree.csv  
+                   | dedup State_Level1 District_Level2 
+                   | table State_Level1 District_Level2
+                   | lookup `is_local_lookup` treestatus_lookup District_Level2  OUTPUT districtColorN 
+                   | eval colorN=mvindex(districtColorN,0) 
+                   | eval color=case(colorN==3,"#d0201f",colorN==2,"#f2a900",colorN==1,"#65a637",1==1,"#979998")
+                   | eval iconFolder=case(colorN==3,"times-circle",colorN==2,"exclamation-triangle",colorN==1,"check-circle",1==1,"question-circle")
+                   | eval id=District_Level2
+                   | eval label=District_Level2
+                   | eval parentid=State_Level1 ] 
+                 | append [ | inputlookup tree.csv  
+                   | dedup Office_Level3 District_Level2 
+                   | table Office_Level3 District_Level2
+                   | lookup `is_local_lookup` treestatus_lookup  Office_Level3 OUTPUT officeColorN 
+                   | eval colorN=mvindex(officeColorN,0) 
+                   | eval color=case(colorN==3,"#d0201f",colorN==2,"#f2a900",colorN==1,"#65a637",1==1,"#979998")
+                   | eval iconFolder=case(colorN==3,"times-circle",colorN==2,"exclamation-triangle",colorN==1,"check-circle",1==1,"question-circle")
+                   | eval id=Office_Level3
+                   | eval label=Office_Level3
+                   | eval parentid=District_Level2 ] 
+                 | append [ | inputlookup tree.csv  
+                   | dedup Device_IP Office_Level3 Caption
+                   | table Office_Level3 Device_IP Caption
+                   | lookup `is_local_lookup` treestatus_lookup Device_IP OUTPUT deviceColorN 
+                   | eval colorN=mvindex(deviceColorN,0) 
+                   | eval color=case(colorN==3,"#d0201f",colorN==2,"#f2a900",colorN==1,"#65a637",1==1,"#979998")
+                   | eval iconDoc=case(colorN==3,"times-circle",colorN==2,"exclamation-triangle",colorN==1,"check-circle",1==1,"question-circle")
+                   | eval id=Device_IP
+                   | eval label=Device_IP + " ( " +  Caption + " )"
+                   | eval parentid=Office_Level3 
+                   | table id label parentid color
+                   ]</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">465</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="treeview-viz.treeview-viz.accordionMinWidth">200</option>
+        <option name="treeview-viz.treeview-viz.accordionMode">false</option>
+        <option name="treeview-viz.treeview-viz.accordionModeBgColor">#efefef</option>
+        <option name="treeview-viz.treeview-viz.accordionModeTextColor">#000000</option>
+        <option name="treeview-viz.treeview-viz.autoCollapse">false</option>
+        <option name="treeview-viz.treeview-viz.fontSize">12</option>
+        <option name="treeview-viz.treeview-viz.selectMode">single</option>
+        <option name="treeview-viz.treeview-viz.showCheckbox">false</option>
+        <option name="treeview-viz.treeview-viz.showConnectors">true</option>
+        <option name="treeview-viz.treeview-viz.showFoldersFirst">true</option>
+        <option name="treeview-viz.treeview-viz.showIcons">true</option>
+        <option name="treeview-viz.treeview-viz.skin">custom</option>
+        <option name="treeview-viz.treeview-viz.sortBy">label</option>
+        <option name="treeview-viz.treeview-viz.tokenId">asdf</option>
+        <option name="treeview-viz.treeview-viz.tokenLabel">country</option>
+        <option name="treeview-viz.treeview-viz.tokenParentId">continent</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <drilldown>
+          <set token="device">$row.label$</set>
+          <set token="device_ip">$row.id$</set>
+          <set token="device_ip_for_snmp_table">$row.id$</set>
+        </drilldown>
+      </viz>
+    </panel>
+    <panel id="fourth">
+      <table>
+        <title>Top Interface errors and discards ordered by highest packet loss percentage</title>
+        <search base="baseSearch">
+          <query>
+          | search Device_IP="$device_ip$"
+          | table Device_Caption interface IfInErrorsChange IfInDiscardsChange IfOutErrorsChange IfOutDiscardsChange PercentLost
+          | rename nfo_hostname as "NFO"
+          | rename device_sysname as "Device (sysName)"
+          | rename IfInErrorsChange as "Receive Errors"
+          | rename IfInDiscardsChange as "Receive Discards"
+          | rename IfOutErrorsChange as "Transmit Errors"
+          | rename IfOutDiscardsChange as "Transmit Discards"
+          | rename PercentLost as "% Packets Lost"
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row depends="$show_hint$">
+    <panel>
+      <html>
+        <p>You see this message because there is <b>no data</b> for the selected Time Range or the <a href="/app/netflow/setup_dashboard/" target="_blank">App Setup</a> is not completed.</p>
+        <p>This dashboard is populated by <b>NetFlow Optimizer</b> (NFO) Logic Module <b>“10103: SNMP Custom OID Sets Monitor”</b> (syslogs with nfc_id=20103). This Module enables you to perform SNMP polling from network devices by creating OID Sets. Each set can contain up to 64 OIDs, and has its own polling interval. The polling is performed for all network devices set in SNMP Service. The information is provided per device-OID set. This Module is packaged in <b>NFO “Untilities” Module Set</b>.</p>
+        <p>Please either change the Time Range or make sure that this NFO Logic Module is enabled. See <a href="/app/netflow/configuration/" target="_blank">NSO Configuration</a> for more details.</p>
+      </html>
+    </panel>
+  </row>
+</form>

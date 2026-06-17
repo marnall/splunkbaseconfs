@@ -1,0 +1,224 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>License Usage - Today</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+  
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">License Usage - Today</param>
+      </list>
+    </param>
+  </module>
+  <module name="ServerSideInclude" layoutPanel="viewHeader">
+    <param name="src">bubbles_license_redirect.html</param>
+  </module>
+
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">license_usage_today.html</param>
+    </module>
+  </module>
+
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+  <!-- COMMON CONTROLS END   -->
+
+    <module name="Search" layoutPanel="panel_row1_col1" group="Today's License Usage (GB)">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/pools
+      | rename title AS Pool
+      | search [
+        rest splunk_server=local /services/licenser/groups
+        | search is_active=1
+        | eval stack_id=stack_ids
+        | fields stack_id]
+      | join type=outer stack_id [
+        rest splunk_server=local /services/licenser/stacks
+        | eval stack_id=title
+        | eval stack_quota=quota
+        | fields stack_id stack_quota]
+      | stats sum(used_bytes) as used max(stack_quota) as total
+      | eval usedGB=round(used/1024/1024/1024,3) 
+      | eval totalGB=round(total/1024/1024/1024,3)
+      | eval gauge_base=0
+      | eval gauge_danger=totalGB*0.8
+      | eval gauge_top=totalGB+0.001
+      | gauge usedGB gauge_base gauge_danger totalGB gauge_top
+      </param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">fillerGauge</param>
+        <module name="JSChart">
+        </module>
+      </module>
+      <module name="ViewRedirectorLink">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="popup">true</param>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row1_col2" group="Today's License Usage per Pool">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/pools
+      | rename title AS Pool
+      | search [
+        rest splunk_server=local /services/licenser/groups
+        | search is_active=1
+        | eval stack_id=stack_ids
+        | fields stack_id]
+      | join type=outer stack_id [
+        rest splunk_server=local /services/licenser/stacks
+        | eval stack_id=title
+        | eval stack_quota=quota
+        | fields stack_id stack_quota]
+      | eval quota=if(quota=="MAX",stack_quota,quota)
+      | eval Used=round(used_bytes/1024/1024/1024, 3)
+      | eval Quota=round(quota/1024/1024/1024, 3)
+      | fields Pool Used Quota
+      | fields - _timediff
+      </param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">bar</param>
+        <param name="secondaryAxisTitle.text">GB</param>
+        <module name="JSChart">
+        </module>
+      </module>
+      <module name="ViewRedirectorLink">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="popup">true</param>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row1_col3" group="Today's Percentage of Daily License Quota Used per Pool">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/pools
+      | rename title AS Pool
+      | search [
+        rest splunk_server=local /services/licenser/groups
+        | search is_active=1
+        | eval stack_id=stack_ids
+        | fields stack_id]
+      | join type=outer stack_id [
+        rest splunk_server=local /services/licenser/stacks
+        | eval stack_id=title
+        | eval stack_quota=quota
+        | fields stack_id stack_quota]
+      | eval quota=if(quota=="MAX",stack_quota,quota)
+      | eval "% used"=round(used_bytes/quota*100,2)
+      | fields Pool "% used"
+      | fields - _timediff
+      </param>
+      <module name="HiddenChartFormatter">
+        <param name="chart">bar</param>
+        <param name="charting.axisY.scale">log</param>
+        <param name="charting.legend.placement">none</param>
+        <param name="secondaryAxisTitle.text">%</param>
+        <module name="JSChart">
+        </module>
+      </module>
+      <module name="ViewRedirectorLink">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="popup">true</param>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row2_col1" group="Pool Warning Information">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/messages
+      | where (category=="license_window" OR category=="pool_over_quota") AND create_time >= now() - (30 * 86400)
+      | rename pool_id AS pool
+      | eval warning_day=if(category=="pool_over_quota","(".strftime(create_time,"%B %e, %Y").")",strftime(create_time-43200,"%B %e, %Y"))
+      | fields pool warning_day
+      | join outer pool [
+        rest splunk_server=local /services/licenser/slaves
+        | mvexpand pool_ids
+        | eval slave_name=label
+        | eval pool=pool_ids
+        | fields pool slave_name
+        | stats values(slave_name) as "members" by pool]
+      | join outer pool [
+        rest splunk_server=local /services/licenser/pools
+        | eval pool=title
+        | search [
+          rest splunk_server=local /services/licenser/groups
+          | search is_active=1
+          | eval stack_id=stack_ids
+          | fields stack_id]
+        | join type=outer stack_id [
+          rest splunk_server=local /services/licenser/stacks
+          | eval stack_id=title
+          | eval stack_quota=quota
+          | fields stack_id stack_quota]
+        | eval quota=if(quota=="MAX",stack_quota,quota)
+        | eval quotaGB=round(quota/1024/1024/1024,3)
+        | fields pool stack_id, quotaGB]
+      | stats first(pool) as "Pool" first(stack_id) as "Stack ID" first(members) as "Current Members" first(quotaGB) as "Current Quota (GB)" values(warning_day) AS "Warning Days - (Soft)/Hard" by pool
+      | fields - pool
+      </param>
+      <module name="SimpleResultsTable">
+        <param name="displayRowNumbers">False</param>
+      </module>
+      <module name="ViewRedirectorLink">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="popup">true</param>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row2_col2" group="Slave Warning Information">
+      <param name="search">
+      | rest splunk_server=local /services/licenser/slaves
+      | mvexpand pool_ids
+      | where warning_count>0
+      | eval pool=pool_ids
+      | search [rest splunk_server=local /services/licenser/pools
+        | rename title AS pool
+        | search [
+          rest splunk_server=local /services/licenser/groups
+          | search is_active=1
+          | eval stack_id=stack_ids
+          | fields stack_id]
+        | fields pool]
+      | join type=outer pool [
+        rest splunk_server=local /services/licenser/pools
+        | eval pool=title
+        | fields pool stack_id]
+      | eval in_violation=if(warning_count>4 OR (warning_count>2 AND stack_id=="free"),"yes","no")
+      | fields label, title, pool, warning_count, in_violation
+      | fields - _timediff
+      | rename label as "Slave" title as "GUID" pool as "Pool" warning_count as "Hard Warnings" in_violation AS "In Violation?"
+      </param>
+      <module name="SimpleResultsTable">
+        <param name="displayRowNumbers">False</param>
+      </module>
+      <module name="ViewRedirectorLink">
+        <param name="viewTarget">flashtimeline</param>
+        <param name="popup">true</param>
+      </module>
+    </module>
+
+
+  </module>
+</view>

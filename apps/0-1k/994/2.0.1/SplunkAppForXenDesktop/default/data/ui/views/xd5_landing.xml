@@ -1,0 +1,244 @@
+<?xml version="1.0"?>
+<view template="dashboard.html" stylesheet="dashboard2.css">
+  <label>Environment</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="navigationHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="TitleBar" layoutPanel="viewHeader">
+    <param name="actionsMenuFilter">dashboard</param>
+  </module>
+  <!--
+        Global index summary counts
+    -->
+  <module name="GenericHeader" layoutPanel="panel_row1_col1">
+    <param name="label">Splunk for XenDesktop</param>
+  </module>
+  <module name="StaticContentSample" layoutPanel="panel_row1_col1">
+    <param name="text">This report provides details about the virtual desktop sessions in your environment. Adjust the time range for this report by changing the timerange picker. Filter this view by entering values in the fields below and pressing Enter. Click on a session in the results table to see a resource report for the virtual desktop in use during the selected time range.</param>
+  </module>
+  <module name="TimeRangePicker" layoutPanel="panel_row1_col1">
+    <param name="selected">first 24 Hours</param>
+    <param name="searchWhenChanged">True</param>
+    <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp1">
+      <param name="label">Host Machine Server:</param>
+      <param name="field">HostingServerName</param>
+      <param name="replacementMap">
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="value"/>
+          </param>
+        </param>
+      </param>
+      <param name="intention">
+        <param name="name">stringreplace</param>
+        <param name="arg">
+          <param name="HostingServerName">
+            <param name="default"/>
+            <param name="prefix">HostingServerName="</param>
+            <param name="suffix">"</param>
+            <param name="fillOnEmpty">false</param>
+          </param>
+        </param>
+      </param>
+      <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp2">
+        <param name="label">Desktop Group:</param>
+        <param name="field">DesktopGroupName</param>
+        <param name="replacementMap">
+          <param name="arg">
+            <param name="DesktopGroupName">
+              <param name="value"/>
+            </param>
+          </param>
+        </param>
+        <param name="intention">
+          <param name="name">stringreplace</param>
+          <param name="arg">
+            <param name="DesktopGroupName">
+              <param name="default"/>
+              <param name="prefix">DesktopGroupName="</param>
+              <param name="suffix">"</param>
+              <param name="fillOnEmpty">false</param>
+            </param>
+          </param>
+        </param>
+        <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp3">
+          <param name="label">Desktop Catalog:</param>
+          <param name="field">CatalogName</param>
+          <param name="replacementMap">
+            <param name="arg">
+              <param name="CatalogName">
+                <param name="value"/>
+              </param>
+            </param>
+          </param>
+          <param name="intention">
+            <param name="name">stringreplace</param>
+            <param name="arg">
+              <param name="CatalogName">
+                <param name="default"/>
+                <param name="prefix">CatalogName="</param>
+                <param name="suffix">"</param>
+                <param name="fillOnEmpty">false</param>
+              </param>
+            </param>
+          </param>
+          <module name="ExtendedFieldSearch" layoutPanel="panel_row2_col1_grp4">
+            <param name="label">Desktop Name:</param>
+            <param name="field">vm_name</param>
+            <param name="replacementMap">
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="value"/>
+                </param>
+              </param>
+            </param>
+            <param name="intention">
+              <param name="name">stringreplace</param>
+              <param name="arg">
+                <param name="vm_name">
+                  <param name="default"/>
+                  <param name="prefix">vm_name="</param>
+                  <param name="suffix">"</param>
+                  <param name="fillOnEmpty">false</param>
+                </param>
+              </param>
+            </param>
+            <module name="HiddenSearch" layoutPanel="panel_row3_col1" autoRun="True">
+              <param name="search">`xendesktop_index` `xd_sessions_sourcetype` SessionState=Active Active $vm_name$ | `session_desktop_lookup` | search $CatalogName$ $HostingServerName$ | `client_name` | `get_times` | stats first(SessionState) as SessionState first(dur) as duration first(BrokeringTime) as BrokeringTime first(CatalogName) as CatalogName first(ClientAddress) as ClientAddress first(HostingServerName) as HostingServerName first(client_dvc_type) as client_dvc_type first(ClientName) as ClientName first(ClientVersion) as ClientVersion first(DesktopGroupName) as DesktopGroupName first(ControllerDNSName) as ControllerDNSName first(Protocol) as Protocol first(UserSID) as UserSID first(SessionUID) as SessionUID first(vm_name) as vm_name by _time</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row5_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Broker Session Info</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp1" group="Session Stats" autoRun="True">
+                <param name="search">| dedup SessionUID | stats count | eval range="session"</param>
+                <module name="SingleValue">
+                  <param name="field">count</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Sessions</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp2" group="Session Stats" autoRun="True">
+                <param name="search">| stats dc(UserSID) as users | eval range="user"</param>
+                <module name="SingleValue">
+                  <param name="field">users</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Users</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" layoutPanel="panel_row3_col1_grp3" group="Session Stats" autoRun="True">
+                <param name="search">| stats dc(vm_name) as vms | eval range="session"</param>
+                <module name="SingleValue">
+                  <param name="field">vms</param>
+                  <param name="classField">range</param>
+                  <param name="afterLabel">Virtual Machines</param>
+                  <param name="format">count</param>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" group="Sessions Over Time" layoutPanel="panel_row5_col1" autoRun="True">
+                <param name="search">|timechart dc(UserSID) as Users by DesktopGroupName</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">column</param>
+                  <param name="chart.stackMode">stacked</param>
+                  <param name="legend.placement">bottom</param>
+                  <param name="primaryAxisTitle.text">Sessions Over Time</param>
+                  <module name="JSChart"/>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenSearch" layoutPanel="panel_row4_col1" autoRun="True">
+              <param name="search">`xendesktop_index` `xd_desktopgroup_sourcetype` $vm_name$ | lookup xd5_desktops DesktopGroupName as Name OUTPUT vm_name | search $vm_name$ $CatalogName$ $HostingServerName$ | table _time Name TotalDesktops DesktopsUnregistered DesktopsAvailable DesktopsDisconnected DesktopsInUse | eval DesktopsOff=TotalDesktops -(DesktopsUnregistered+DesktopsAvailable+DesktopsDisconnected+DesktopsInUse) | eval pct_Usage=((DesktopsInUse)/(TotalDesktops)) * 100 | eval pct_Usage = round(pct_Usage,0)</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row4_col1">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Desktop Group Info</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col1" group="Usage by Desktop Group">
+                <param name="search">| stats first(TotalDesktops) as Total first(pct_Usage) as "% Use" first(DesktopsInUse) as "In Use" first(DesktopsAvailable) as Available first(DesktopsDisconnected) as Disconnected first(DesktopsUnregistered) as Unregistered first(DesktopsOff) as Off by Name</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row4_col1">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">all</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_index` `xd_sessions_sourcetype` | `session_desktop_lookup` | `client_name` | search $Name$ | `get_times` | `xd5_sessions_uniq`</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="Name">
+                            <param name="prefix">DesktopGroupName="</param>
+                            <param name="suffix">"</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">xd5_session_info</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+              <module name="HiddenPostProcess" group="% Usage Over Time" layoutPanel="panel_row5_col2" autoRun="True">
+                <param name="search">|timechart max(pct_Usage) as pct_Usage by Name</param>
+                <module name="HiddenChartFormatter">
+                  <param name="chart">line</param>
+                  <param name="chart.stackMode">none</param>
+                  <param name="legend.placement">bottom</param>
+                  <param name="primaryAxisTitle.text">Desktops in Use</param>
+                  <module name="JSChart"/>
+                </module>
+              </module>
+            </module>
+            <module name="HiddenSearch" layoutPanel="panel_row4_col2" autoRun="True">
+              <param name="search">`xendesktop_alerts` $vm_name$ | `session_desktop_lookup` | search $CatalogName$ $HostingServerName$ | lookup xd5_usrexp usrexp OUTPUT Severity| stats count by _time alert_name Severity user Value vm_name | stats count by alert_name vm_name</param>
+              <module name="ViewRedirectorLink" layoutPanel="panel_row4_col2">
+                <param name="viewTarget">flashtimeline</param>
+                <param name="label">View Alert Data</param>
+              </module>
+              <module name="JobProgressIndicator"/>
+              <module name="HiddenPostProcess" layoutPanel="panel_row4_col2" group="Desktop Alerts">
+                <param name="search">rename alert_name as Alert| stats dc(vm_name) as Desktops by Alert</param>
+                <module name="SimpleResultsTable" layoutPanel="panel_row4_col2">
+                  <param name="displayMenu">true</param>
+                  <param name="count">100</param>
+                  <param name="drilldown">all</param>
+                  <param name="entityName">results</param>
+                  <param name="displayRowNumbers">False</param>
+                  <module name="HiddenSearch">
+                    <param name="search">`xendesktop_alerts` $Alert$ | eval entity=alert_name | lookup xd5_usrexp usrexp OUTPUT Severity | stats count by _time alert_name entity Severity user Value vm_name</param>
+                    <module name="ConvertToIntention">
+                      <param name="intention">
+                        <param name="name">stringreplace</param>
+                        <param name="arg">
+                          <param name="Alert">
+                            <param name="prefix">alert_name="</param>
+                            <param name="suffix">"</param>
+                            <param name="fillOnEmpty">True</param>
+                            <param name="value">$click.value$</param>
+                          </param>
+                        </param>
+                      </param>
+                      <module name="ViewRedirector">
+                        <param name="viewTarget">vdi_session_monitor_drilldown</param>
+                      </module>
+                    </module>
+                  </module>
+                </module>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

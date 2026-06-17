@@ -1,0 +1,109 @@
+<view autoCancelInterval="90" isVisible="true" onunloadCancelJobs="true" template="dashboard.html" stylesheet="application.css">
+  <label>Distributed Searches Memory Usage</label>
+  <module name="AccountBar" layoutPanel="appHeader"/>
+  <module name="AppBar" layoutPanel="appHeader"/>
+  <module name="SideviewUtils" layoutPanel="appHeader"/>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">*</param>
+    <param name="clearOnJobDispatch">False</param>
+    <param name="maxSize">1</param>
+  </module>
+  <module name="Message" layoutPanel="messaging">
+    <param name="filter">splunk.search.job</param>
+    <param name="clearOnJobDispatch">True</param>
+    <param name="maxSize">1</param>
+  </module>
+
+  <module name="BreadCrumb" layoutPanel="viewHeader">
+    <param name="options">
+      <list>
+        <param name="view">home</param>
+        <param name="label">S.o.S - Splunk on Splunk</param>
+      </list>
+      <list>
+        <param name="label">Distributed Searches Memory Usage</param>
+      </list>
+    </param>
+  </module>
+
+  <module name="Button" layoutPanel="viewHeader">
+    <param name="label">&#9658; Learn more</param>
+    <param name="customBehavior">helpButton</param>
+    <module name="ServerSideInclude" layoutPanel="viewHeader">
+      <param name="src">splunk_searches_mem_usage.html</param>
+    </module>
+  </module>
+
+  <module name="URLLoader" layoutPanel="viewHeader" autoRun="True">
+
+    <module name="Search">
+      <param name="search"><![CDATA[
+      | inputlookup splunk_servers_cache
+      | search server_role="search-head" OR server_role="stand-alone indexer"
+      | eval search_head=sos_server
+      | fields search_head
+      ]]></param>
+      <module name="ResultsValueSetter">
+        <param name="fields">search_head</param>
+
+        <module name="TimeRangePicker">
+          <param name="selected">Last 4 hours</param>
+          <param name="searchWhenChanged">True</param>
+
+          <!-- COMMON CONTROLS END   -->
+
+          <module name="Search" layoutPanel="panel_row1_col1" title="blah" group="Top 20 memory-consuming distributed searches">
+            <param name="search"><![CDATA[
+            `set_sos_index` sourcetype="ps"
+            | multikv
+            | where like(ARGS,"%search%")
+            | rex field=ARGS "search(_|\s)--id=(?<sid>[_-\w\.]+)(_|\s)--"
+            | rex field=ARGS "--user=(?<user>.+?)(_|\s)--"
+            | eval RSZ_MB=round(RSZ_KB/1024,2)
+            | eval VSZ_MB=round(VSZ_KB/1024,2)
+            | stats max(*SZ_MB) as *SZ_MB by host sid
+            | eval RSZ_VSZ_host = host + ":" + RSZ_MB + ":" + VSZ_MB
+            | stats values(RSZ_VSZ_host) as RSZ_VSZ_host by sid
+            | append [
+                     search `set_audit_index` splunk_server=local action=search (id=* OR search_id=*) search=* OR savedsearch_name=*
+                     | eval sid=if(isnull(search_id), id, search_id)
+                     | replace '*' with * in sid
+                     | rex "(?s)search='(?<search>.*)', autojoin"
+                     | rex "savedsearch_name=\"(?<savedsearch_name>.*?)\"\]\["
+                     | eval user=if(user="n/a", "nobody", user)
+                     | eval search_head="$search_head$"
+                     | stats min(_time) as _time last(user) as user last(search) as search first(savedsearch_name) AS savedsearch_name values(host) AS search_head by sid
+                     | eval search=case(savedsearch_name!="","Scheduled search : ".savedsearch_name,isnotnull(search),search,isnull(search) AND savedsearch_name=="","Could not resolve search ID : ".sid)
+                     | search sid=* sid!="subsearch*" search!=typeahead* search!="|history*"]
+            | stats min(_time) AS stime values(RSZ_VSZ_host) AS RSZ_VSZ_host values(search) AS search values(user) AS User values(search_head) AS search_head by sid
+            | search search=* RSZ_VSZ_host=*
+            | mvexpand RSZ_VSZ_host
+            | rex field=RSZ_VSZ_host "^(?<host>[^:]*?):(?<RSZ>[\d\.]*?):(?<VSZ>[\d\.]*?)$$"
+            | sort - RSZ
+            | head 20
+            | convert timeformat="%m/%d/%Y %H:%M:%S.%3N" ctime(stime)
+            | makemv search delim="|"
+            | fields stime sid host search_head RSZ VSZ User search
+            | rename RSZ AS "Peak Resident Memory Size (MB)" VSZ AS "Peak Virtual Memory Size (MB)" search AS "Search string / Scheduled search" stime AS "Search start time" search_head AS "Search-Head" host AS "Search Peer"
+            ]]></param>
+            <module name="JobProgressIndicator"></module>
+            <module name="SimpleResultsTable">
+              <param name="count">20</param>
+              <param name="drilldown">row</param>
+              <module name="Redirector">
+                <param name="url">flashtimeline</param>
+                <param name="popup">true</param>
+                <param name="arg.q"><![CDATA[search `set_audit_index` (host="$search_head$"OR splunk_server=local) action=search (id=* OR search_id=*) search=* OR savedsearch_name=* search_id="'$click.fields.sid$'"]]></param>
+                <module name="ViewRedirectorLink">
+                  <param name="viewTarget">flashtimeline</param>
+                  <param name="popup">true</param>
+                </module>
+              </module>
+            </module>
+          </module>
+
+        </module>
+      </module>
+    </module>
+  </module>
+</view>
