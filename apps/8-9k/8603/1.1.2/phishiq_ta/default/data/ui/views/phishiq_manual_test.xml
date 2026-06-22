@@ -1,0 +1,89 @@
+<dashboard version="1.1" theme="dark">
+  <label>PhishIQPlus - Manual Test</label>
+  <description>Test URLs with the phishiqplus command: single URL, pasted batch, or a lookup table (CSV) in this app.</description>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 12px;margin-bottom:8px;border-left:4px solid #5c85d6;background:#1e1e1e;">
+          <p><strong>App context</strong></p>
+          <p>This TA is installed as app id <code>phishiq_ta</code> (label: <strong>PhishIQPlus Technical Add-on</strong>). Use the <strong>app picker</strong> next to the Splunk logo (top left) and select that app so <code>inputlookup</code> finds CSVs under <code>etc/apps/phishiq_ta/lookups/</code>.</p>
+          <p>Direct path (adjust host/port): <code>/en-US/app/phishiq_ta/phishiq_manual_test</code></p>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <fieldset submitButton="false">
+    <input type="text" token="test_url">
+      <label>1) Single URL</label>
+      <default>https://example.com</default>
+    </input>
+    <input type="text" token="lookup_table">
+      <label>2) Lookup table name (CSV lookup in this app)</label>
+      <default>demo_phishiq_urls</default>
+    </input>
+    <input type="text" token="batch_urls">
+      <label>3) Batch URLs — separate with | (pipe). Example: https://a.com|https://b.com</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>1) Single URL</title>
+      <table>
+        <search>
+          <query>| makeresults count=1
+| eval url="$test_url$"
+| phishiqplus url_field=url
+| table _time url phishiq_prediction phishiq_source phishiq_confidence phishiq_risk_level phishiq_cached phishiq_error</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>2) Batch from lookup (inputlookup)</title>
+      <table>
+        <search>
+          <query>| inputlookup $lookup_table$
+| fields url
+| where isnotnull(url) AND url!=""
+| head 500
+| phishiqplus url_field=url
+| table _time url phishiq_prediction phishiq_source phishiq_confidence phishiq_risk_level phishiq_cached phishiq_error</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">500</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>3) Batch from pasted list (pipe-separated)</title>
+      <table>
+        <search>
+          <query>| makeresults count=1
+| eval raw="$batch_urls$"
+| makemv delim="|" raw
+| mvexpand raw
+| eval url=trim(raw)
+| where url!="" AND match(url, "^[Hh][Tt][Tt][Pp][Ss]?://")
+| head 500
+| phishiqplus url_field=url
+| table _time url phishiq_prediction phishiq_source phishiq_confidence phishiq_risk_level phishiq_cached phishiq_error</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">500</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

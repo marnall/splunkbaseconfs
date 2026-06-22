@@ -1,0 +1,79 @@
+<form version="1.1" theme="dark">
+  <label>Workflow Overview</label>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="timeTkn">
+      <label></label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="multiselect" token="repoTkn">
+      <label>Repositories</label>
+      <fieldForLabel>repository.name</fieldForLabel>
+      <fieldForValue>repository.name</fieldForValue>
+      <search>
+        <query>`github_webhooks` eventtype="GitHub::Workflow"|dedup repository.name| table repository.name</query>
+        <earliest>$timeTkn.earliest$</earliest>
+        <latest>$timeTkn.latest$</latest>
+      </search>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <initialValue>*</initialValue>
+      <delimiter>,</delimiter>
+      <valuePrefix>"</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Average Workflow Overview</title>
+      <single>
+        <search>
+          <query>`github_webhooks` eventtype="GitHub::Workflow" repository.name IN(""*"") | eval queued=if(action="requested",_time,NULL), completed=if(action="completed",_time,NULL) | stats min(queued) as queued, min(completed) as completed by repository.name,workflow_run.name,workflow_run.id | eval totalTime=completed-queued | fields repository.name,workflow_run.name, workflow_run.id, totalTime | stats avg(totalTime) as totalTime | eval totalTime=toString(round(totalTime),"Duration")</query>
+          <earliest>$timeTkn.earliest$</earliest>
+          <latest>$timeTkn.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">large</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Workflow Analytics by Job Name</title>
+      <table>
+        <search>
+          <query>`github_webhooks` eventtype="GitHub::Workflow" repository.name IN(""*"") | eval queued=if(action="requested",_time,NULL),completed=if(action="completed",_time,NULL) | stats min(queued) as queued, min(completed) as completed by repository.full_name,workflow_run.name,workflow_run.id | eval totalTime=completed-queued | fields repository.full_name,workflow_run.name, workflow_run.id, totalTime | stats avg(totalTime) as totalTime by repository.full_name,workflow_run.name | eval totalTime=toString(round(totalTime),"Duration")</query>
+          <earliest>$timeTkn.earliest$</earliest>
+          <latest>$timeTkn.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

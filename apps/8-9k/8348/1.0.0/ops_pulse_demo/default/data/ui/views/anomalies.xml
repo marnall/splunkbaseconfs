@@ -1,0 +1,83 @@
+<form theme="dark" version="1.1">
+  <label>Anomaly Detection</label>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label></label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Event Volume Anomalies</title>
+      <chart>
+        <title>Detect sudden traffic spikes or drops relative to recent behavior.</title>
+        <search>
+          <query>index=$index$
+| timechart span=1h count AS events
+| eventstats avg(events) AS baseline stdev(events) AS sd
+| eval anomaly=if(events &gt; baseline + (2*sd) OR events &lt; baseline - (2*sd), 1, 0)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">336</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Spike Detection</title>
+      <chart>
+        <title>Detect short-term error explosions, even if volume is normal.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=15m sum(is_error) AS errors count AS total
+| eval error_rate = (errors / total) * 100
+| eventstats avg(error_rate) AS avg_error
+| eval spike = if(error_rate &gt; avg_error * 1.5 AND error_rate &gt; 5, 1, 0)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">367</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Anomalous Time Buckets</title>
+      <table>
+        <title>Give operators exact timestamps where anomalies occurred.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=15m sum(is_error) AS errors count AS total
+| eval error_rate = round((errors / total) * 100, 2)
+| eventstats avg(error_rate) AS avg_error stdev(error_rate) AS sd
+| eval anomaly = if(error_rate &gt; avg_error + (2*sd), "YES", "NO")
+| where anomaly="YES"
+| table _time error_rate avg_error
+| sort - error_rate</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

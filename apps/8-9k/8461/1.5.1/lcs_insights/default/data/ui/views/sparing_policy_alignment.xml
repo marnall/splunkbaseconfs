@@ -1,0 +1,308 @@
+<!--
+  # =========================================================================================================================================
+  #  Sparing Policy Alignment
+  #
+  #  Version History:
+  #  TBD - Updated to remove CSV lookup dependencies, use macro for HW bulletin, inline contract data
+  # =========================================================================================================================================
+-->
+<form version="1.1">
+  <label>Sparing Policy Alignment</label>
+  <description>Optimized.</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="dropdown" token="isSpareInit">
+      <label>Sparing Policy</label>
+      <choice value="eval isSpare = if(like(ProductFamily, &quot;%IP Phone%&quot;) OR like(ProductFamily, &quot;%VG% Series Gateways%&quot;), 1, 0)">Phones and VG's</choice>
+      <choice value="eval isSpare = if(like(ProductFamily, &quot;%IP Phone%&quot;) OR like(ProductFamily, &quot;%VG% Series Gateways%&quot;) OR like(ProductFamily, &quot;%Cisco Aironet%&quot;) OR like(ProductFamily, &quot;%Access Points%&quot;), 1, 0)">AP's, Phones, VG's</choice>
+      <choice value="eval isSpare = if(like(ProductFamily, &quot;%IP Phone%&quot;) OR like(ProductFamily, &quot;%VG% Series Gateways%&quot;) OR like(ProductFamily, &quot;%Cisco Aironet%&quot;) OR like(ProductFamily, &quot;%Access Points%&quot;) OR like(ProductFamily, &quot;%Catalyst 2%&quot;) OR like(ProductFamily, &quot;%Catalyst 3%&quot;) OR like(ProductFamily, &quot;%Catalyst 92%&quot;) OR like(ProductFamily, &quot;%Catalyst 93%&quot;), 1, 0)">AP's, Phones, VG's, Access Switches</choice>
+      <choice value="eval isSpare = if(like(ProductFamily, &quot;%IP Phone%&quot;) OR like(ProductFamily, &quot;%VG% Series Gateways%&quot;) OR like(ProductFamily, &quot;%Cisco Aironet%&quot;) OR like(ProductFamily, &quot;%Access Points%&quot;) OR like(ProductFamily, &quot;%Catalyst 2%&quot;) OR like(ProductFamily, &quot;%Catalyst 3%&quot;) OR like(ProductFamily, &quot;%Catalyst 92%&quot;) OR like(ProductFamily, &quot;%Catalyst 93%&quot;) OR like(ProductFamily, &quot;%Fabric Extenders%&quot;), 1, 0)">AP's, Phones, VG's, Access Switches &amp; FEX's</choice>
+      <default>eval isSpare = if(like(ProductFamily, "%IP Phone%") OR like(ProductFamily, "%VG% Series Gateways%") OR like(ProductFamily, "%Cisco Aironet%") OR like(ProductFamily, "%Access Points%"), 1, 0)</default>
+      <initialValue>eval isSpare = if(like(ProductFamily, "%IP Phone%") OR like(ProductFamily, "%VG% Series Gateways%") OR like(ProductFamily, "%Cisco Aironet%") OR like(ProductFamily, "%Access Points%"), 1, 0)</initialValue>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Data Collection Timeframe</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$HideThis$">
+      <table>
+        <title>Base: Chassis Asset Coverage</title>
+        <search>
+          <done>
+            <set token="base_chassis_coverage_sid">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` 
+     (sourcetype="cisco:bcs:asset" physicalAssetType="Chassis") 
+  OR (sourcetype="cisco:bcs:contractserial") 
+  OR (sourcetype="cisco:bcs:hardwareendoflifebulletin") 
+  OR (sourcetype="cisco:bcs:devicegroupmember")
+| fields sourcetype deviceId deviceName productFamily physicalAssetId productId physicalAssetType serialNumber groupName softwareVersion coveredProductLineEndDate isCovered endOfServiceContractRenewalDate
+| eventstats max(coveredProductLineEndDate) as coveredProductLineEndDate, 
+             max(isCovered) as ContractStatus 
+          by serialNumber 
+| eventstats max(endOfServiceContractRenewalDate) as eoSCR 
+          by productId 
+| eventstats values(groupName) as groupName 
+          by deviceId
+| search sourcetype="cisco:bcs:asset"
+| stats max(*) as * 
+        values(groupName) as groupName 
+     by deviceId physicalAssetId
+| rename physicalAssetType as EquipmentType, productFamily as ProductFamily 
+| where EquipmentType="Chassis"
+| fillnull value="Not Active" ContractStatus
+| eval chassisNoContract = if(ContractStatus!="true" AND EquipmentType="Chassis", 1, 0) 
+| rex field=eoSCR mode=sed "s/T.*$//g" 
+| fillnull value="null" eoSCR 
+| eval timeEoSCR = strptime(eoSCR, "%Y-%m-%d") 
+| eval serviceQuotable = if(eoSCR="null" OR now()&lt;timeEoSCR, 1, 0)
+| $singleLineGroupSelector$</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval AddHeader="Cover"
+| table AddHeader</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0xf8be34","0x0877a6"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Next Coverage Action (NCA)</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search chassisNoContract=1 AND ProductFamily!="*3rd Party*" AND ProductFamily!="UNCLASSIFIED" AND ProductFamily!="Unclassified" AND serviceQuotable=1
+| $isSpareInit$ 
+| search isSpare=0 
+| stats count as Chassis2Add</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0xf1813f","0xf1813f"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Not Spared, Not Covered, Service Orderable</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>NCA: Add - Chassis by Product Family</title>
+      <chart>
+        <title>Top 10</title>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search chassisNoContract=1 AND ProductFamily!="*3rd Party*" AND ProductFamily!="UNCLASSIFIED" AND ProductFamily!="Unclassified" AND serviceQuotable=1
+| $isSpareInit$ 
+| search isSpare=0 
+| stats count as Chassis2Add by ProductFamily
+| sort -Chassis2Add
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>NCA: Add</title>
+      <table>
+        <title>Chassis by Product Family</title>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search chassisNoContract=1 AND ProductFamily!="*3rd Party*" AND ProductFamily!="UNCLASSIFIED" AND ProductFamily!="Unclassified" AND serviceQuotable=1
+| $isSpareInit$ 
+| search isSpare=0 
+| stats count as Chassis2Add by ProductFamily
+| sort -Chassis2Add</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="totalsRow">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval AddHeader="Cancel"
+| table AddHeader</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Next Coverage Action (NCA)</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search ContractStatus="true"
+| $isSpareInit$ 
+| search isSpare=1
+| stats count as Chassis2Cancel</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Spared, but Covered</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>NCA: Cancel - Chassis by Product Family</title>
+      <chart>
+        <title>Top 10</title>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search ContractStatus="true"
+| $isSpareInit$ 
+| search isSpare=1
+| stats count as Chassis2Cancel by productId
+| sort -Chassis2Cancel
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>NCA: Cancel</title>
+      <table>
+        <title>Chassis by Product Family</title>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search ContractStatus="true"
+| $isSpareInit$ 
+| search isSpare=1
+| stats count as Chassis2Cancel by productId
+| sort -Chassis2Cancel</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="totalsRow">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval subTitle="Download"
+| table subTitle</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Support Strategy Details</title>
+      <table>
+        <title>Download dashboard data here</title>
+        <search>
+          <query>| loadjob $base_chassis_coverage_sid$
+| search chassisNoContract=1 AND ProductFamily!="*3rd Party*" AND ProductFamily!="UNCLASSIFIED" AND ProductFamily!="Unclassified" AND serviceQuotable=1
+| $isSpareInit$ 
+| search isSpare=0 
+| table deviceId, physicalAssetId, deviceName, serialNumber, productId, ProductFamily, eoSCR, ContractStatus, coveredProductLineEndDate</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">2</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,78 @@
+<form theme="dark" version="1.1">
+  <label>Degradation &amp; Trends</label>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label></label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Rolling Error Trend</title>
+      <chart>
+        <title>Detect gradual increase in errors using a rolling window.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=1h sum(is_error) AS errors
+| streamstats window=6 avg(errors) AS rolling_error_avg</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Event Volume Drift</title>
+      <chart>
+        <title>Detect gradual increase or decrease in workload volume.</title>
+        <search>
+          <query>index=$index$
+| timechart span=1h count AS events
+| streamstats window=12 avg(events) AS rolling_volume</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Early Warning Indicator</title>
+      <single>
+        <title>Give a simple, explainable warning signal.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=1h sum(is_error) AS errors
+| streamstats window=6 avg(errors) AS rolling_error
+| eventstats avg(rolling_error) AS baseline_error
+| eval warning = if(rolling_error &gt; baseline_error * 1.3 AND rolling_error &gt; 1, "YES", "NO")</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">313</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">large</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+</form>

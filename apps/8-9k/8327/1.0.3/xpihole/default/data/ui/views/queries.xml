@@ -1,0 +1,186 @@
+<form version="1.1">
+  <label>DNS Queries</label>
+  <description>Detailed view of DNS queries processed by Pi-Hole</description>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="action_filter" searchWhenChanged="true">
+      <label>Action Filter</label>
+      <choice value="">All Actions</choice>
+      <choice value="&quot;query[&quot;">Queries</choice>
+      <choice value="(&quot;gravity blocked&quot; OR &quot;exactly denied&quot; OR &quot;special domain&quot; OR &quot;Apple iCloud Private Relay&quot; OR &quot;Designated Resolver&quot; OR &quot;is 0.0.0.0&quot;)">Blocked</choice>
+      <choice value="&quot;forwarded&quot;">Forwarded</choice>
+      <choice value="&quot;cached&quot; NOT &quot;cached-stale&quot;">Cached</choice>
+      <choice value="&quot;cached-stale&quot;">Cached (Stale)</choice>
+      <choice value="&quot;reply&quot;">Reply</choice>
+      <choice value="&quot;Rate-limiting&quot;">Rate Limited</choice>
+      <choice value="&quot;/etc/hosts&quot;">Local Lookup</choice>
+      <default></default>
+    </input>
+    <input type="text" token="domain_filter" searchWhenChanged="true">
+      <label>Domain Filter (optional)</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="client_filter" searchWhenChanged="true">
+      <label>Client IP Filter (optional)</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Query Statistics</title>
+      <table>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$
+| eval action=case(
+    match(_raw, "gravity blocked|exactly denied|Apple iCloud Private Relay|Designated Resolver|special domain|is 0\.0\.0\.0|is ::$"), "blocked",
+    match(_raw, "Rate-limiting"), "rate_limited",
+    match(_raw, "forwarded"), "forwarded",
+    match(_raw, "cached-stale"), "cached_stale",
+    match(_raw, "cached"), "cached",
+    match(_raw, "reply"), "reply",
+    match(_raw, "/etc/hosts"), "local_lookup",
+    match(_raw, "query\["), "query",
+    1=1, "other"
+)
+| stats count as "Total Events", 
+        dc(domain) as "Unique Domains", 
+        dc(client_ip) as "Unique Clients",
+        dc(query_type) as "Query Types"</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Activity Timeline</title>
+      <chart>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$
+| timechart span=5m count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Event Count</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Query Type Breakdown</title>
+      <chart>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$ query_type=*
+| stats count by query_type
+| sort -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Count</option>
+        <option name="charting.axisTitleY.text">Query Type</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Querying Clients</title>
+      <chart>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$ client_ip=*
+| stats count by client_ip
+| sort -count
+| head 10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Count</option>
+        <option name="charting.axisTitleY.text">Client IP</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent DNS Events</title>
+      <table>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$
+| eval action=case(
+    match(_raw, "gravity blocked|exactly denied|Apple iCloud Private Relay|Designated Resolver|special domain|is 0\.0\.0\.0|is ::$"), "blocked",
+    match(_raw, "Rate-limiting"), "rate_limited",
+    match(_raw, "forwarded"), "forwarded",
+    match(_raw, "cached-stale"), "cached_stale",
+    match(_raw, "cached"), "cached",
+    match(_raw, "reply"), "reply",
+    match(_raw, "/etc/hosts"), "local_lookup",
+    match(_raw, "query\["), "query",
+    1=1, "other"
+)
+| table _time, action, query_type, domain, client_ip, ip_address, upstream_ip
+| sort -_time
+| head 100</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+        <option name="wrap">true</option>
+        <format type="color" field="action">
+          <colorPalette type="map">{"blocked":"#D93F3C","query":"#6DB7C6","forwarded":"#65A637","cached":"#F7BC38","cached_stale":"#F2B500","reply":"#F58F39","rate_limited":"#9E2B6E","local_lookup":"#5A4575"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Domains by Event Frequency</title>
+      <table>
+        <search>
+          <query>`pihole_base` $action_filter$ domain=$domain_filter$ client_ip=$client_filter$ domain=*
+| eval action=case(
+    match(_raw, "gravity blocked|exactly denied|Apple iCloud Private Relay|Designated Resolver|special domain|is 0\.0\.0\.0|is ::$"), "blocked",
+    match(_raw, "Rate-limiting"), "rate_limited",
+    match(_raw, "forwarded"), "forwarded",
+    match(_raw, "cached-stale"), "cached_stale",
+    match(_raw, "cached"), "cached",
+    match(_raw, "reply"), "reply",
+    match(_raw, "/etc/hosts"), "local_lookup",
+    match(_raw, "query\["), "query",
+    1=1, "other"
+)
+| stats count as "Event Count", 
+        dc(client_ip) as "Unique Clients",
+        values(action) as "Actions"
+        by domain
+| sort -"Event Count"
+| head 50</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

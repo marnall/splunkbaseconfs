@@ -1,0 +1,81 @@
+<dashboard version="1.1" theme="dark">
+  <label>PhishIQPlus - Performance</label>
+  <description>Latency, throughput, and retry visibility for PhishIQPlus enrichment.</description>
+
+  <fieldset submitButton="false">
+    <input type="text" token="phishiqplus_internal_index">
+      <label>Internal index</label>
+      <default>phishiqplus_internal</default>
+    </input>
+    <input type="text" token="phishiqplus_internal_sourcetype">
+      <label>Internal sourcetype</label>
+      <default>phishiqplus:internal</default>
+    </input>
+    <input type="time" token="time">
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Latency (duration_ms)</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m avg(duration_ms) as avg_ms p95(duration_ms) as p95_ms</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Throughput (URLs processed)</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m sum(urls_total) as urls_total sum(urls_success) as urls_success sum(urls_failed) as urls_failed</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Retries vs attempts</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m sum(client_metrics.attempts) as attempts sum(client_metrics.retries) as retries</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Last error reasons (top)</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| eval err=coalesce(client_metrics.last_error,"none")
+| stats count by err
+| sort - count
+| head 10</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,145 @@
+<form version="1.1">
+  <label>Authentication Trends</label>
+
+  <fieldset autoRun="true" submitButton="true">
+    <input type="time" searchWhenChanged="true">
+      <label>Date Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="checkbox" token="servers">
+      <label>ClearPass Servers</label>
+      <default>*</default>
+      <delimiter> OR </delimiter>
+      <valuePrefix>cphost=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+    <input type="checkbox" token="nas_ips">
+      <label>NAS Device</label>
+      <default>*</default>
+      <delimiter> OR </delimiter>
+      <valuePrefix>nas_ip=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>nas_ip</fieldForValue>
+      <fieldForLabel>nas_ip</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by nas_ip]]></query>
+      </search>
+    </input>
+    <input type="dropdown" token="login_state">
+      <label>Authentication Status</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <choice value="ACCEPT">Successful</choice>
+      <choice value="REJECT">Failed</choice>
+    </input>
+    <input type="text" token="sstring">
+      <label>Search Various Fields (req_source, user_name, error_code, mac_address, service_name, session_id):</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  
+  <row>
+    <single>
+      <search>
+        <query>eventtype=cppm-authentication $servers$ $nas_ips$ login_status=$login_state$ $sstring$ | stats count </query>
+        <earliest>@d</earliest>
+        <latest>now</latest>
+      </search>
+      <option name="underLabel">Logins Today</option>
+    </single>  
+    <single>
+      <search><query>eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-1d@d latest=@d login_status=$login_state$ $sstring$ | stats count </query></search>
+      <option name="underLabel">Logins Yesterday</option>
+    </single>  
+    <single>
+      <search><query>eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-7d@d latest=-6d@d login_status=$login_state$ $sstring$ | stats count </query></search>
+      <option name="underLabel">Logins 7-Days Ago</option>
+    </single>  
+    <single>
+      <search><query> eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-7d@d latest=-1d@d login_status=$login_state$ $sstring$ | stats count |eval count=round(count/7,0) </query></search>
+      <option name="underLabel">Logins Last Week Avg</option>
+    </single>  
+    <single>
+      <search><query> eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-7d@d latest=-1d@d login_status=$login_state$ $sstring$ | stats count |eval count=round(count/30,0) </query></search>
+      <option name="underLabel">Logins Last Month Avg</option>
+    </single>  
+  </row>
+
+
+  <row>
+    <chart>
+      <title>Login Compare - Today vs Yesterday</title>
+      <search><query>
+	eventtype=cppm-authentication $servers$ $nas_ips$ earliest=@d latest=now login_status=$login_state$ $sstring$  |eval day="today" |timechart span=1h count by day | eval hour=strftime(_time,"%H:00")| append [search eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-1d@d latest=@d login_status=$login_state$ $sstring$ |eval day="yesterday" | timechart span=1h count by day | eval hour=strftime(_time,"%H:00")]|chart sum(today) as "Logins Today" , sum(yesterday) as "Logins Yesterday" by hour
+      </query></search>
+    <option name="charting.axisTitleX.text"> Hour of Day </option>
+    <option name="charting.axisTitleY.text"> Logins </option>
+    <option name="charting.axisX.minimumNumber">0</option>
+    <option name="charting.axisX.maximumNumber">24</option>
+    <option name="charting.chart">area</option>
+    </chart>
+    <chart>
+      <title>Login Compare - Today vs 7 Days Ago </title>
+      <search><query>
+	eventtype=cppm-authentication $servers$ $nas_ips$ earliest=@d latest=now login_status=$login_state$ $sstring$  |eval day="today" |timechart span=1h count by day | eval hour=strftime(_time,"%H:00")| append [search eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-7d@d latest=-6d@d login_status=$login_state$ $sstring$ |eval day="lastweek" | timechart span=1h count by day | eval hour=strftime(_time,"%H:00")]|chart sum(today) as "Logins Today" , sum(lastweek) as "Logins 7DaysAgo" by hour
+      </query></search>
+      <option name="charting.axisTitleX.text"> Hour of Day </option>
+      <option name="charting.axisTitleY.text"> Logins </option>
+      <option name="charting.axisX.minimumNumber">0</option>
+      <option name="charting.axisX.maximumNumber">24</option>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+  <row>
+    <chart>
+      <title>Login Trend - Last Week </title>
+      <search><query>
+	eventtype=cppm-authentication $servers$ $nas_ips$ earliest=@d latest=now login_status=$login_state$ $sstring$ |timechart span=1h count | eval hour=strftime(_time,"%H:00") |eval day="Logins Today" | append [search eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-7d@d latest=-1d@d login_status=$login_state$ $sstring$ | timechart span=1h count| eval hour=strftime(_time,"%H:00") |eval count=round(count/7,0) | eval day="Logins Weekly Trend" ]| chart sum(count) by hour, day 
+      </query></search>
+      <option name="charting.axisTitleY.text"> Logins </option>
+      <option name="charting.axisX.minimumNumber">0</option>
+      <option name="charting.axisX.maximumNumber">24</option>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+  <row>
+    <chart>
+      <title>Login Trend - Last  Month</title>
+      <search><query>
+	eventtype=cppm-authentication $servers$ $nas_ips$ earliest=@d latest=now login_status=$login_state$ $sstring$ | timechart span=1h count | eval hour=strftime(_time,"%H:00") |eval day="Logins Today" | append [search eventtype=cppm-authentication $servers$ $nas_ips$ earliest=-30d@d latest=-1d@d login_status=$login_state$ $sstring$ | timechart span=1h count| eval hour=strftime(_time,"%H:00") |eval count=round(count/30,0) | eval day="Logins Monthly Trend" ]| chart sum(count) by hour, day 
+      </query></search>
+      <option name="charting.axisTitleX.text"> Hour of Day </option>
+      <option name="charting.axisTitleY.text"> Logins </option>
+      <option name="charting.axisX.minimumNumber">0</option>
+      <option name="charting.axisX.maximumNumber">24</option>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+  <row>
+    <chart>
+      <title>Logins - Date Range</title>
+      <search>
+        <query>eventtype=cppm-authentication $servers$ $nas_ips$ login_status=$login_state$ $sstring$ | timechart count as Logins</query>
+      </search>
+      <option name="charting.axisX.maximumNumber"> 24 </option>
+      <option name="charting.axisX.minimumNumber"> 0 </option>
+      <option name="charting.axisTitleX.text"> Time </option>
+      <option name="charting.axisTitleY.text"> Logins </option>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+</form>

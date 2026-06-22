@@ -1,0 +1,161 @@
+<dashboard version="1.1" theme="dark">
+    <label>Knowledge layer — health</label>
+    <description>Per-connector latency, routing behaviour, and rule-match telemetry for the AiWorkbench knowledge layer (v0.10.0+). See docs/KNOWLEDGE_LAYER.md.</description>
+
+    <fieldset submitButton="false" autoRun="true">
+        <input type="time" token="time">
+            <label>Time window</label>
+            <default>
+                <earliest>-24h@h</earliest>
+                <latest>now</latest>
+            </default>
+        </input>
+    </fieldset>
+
+    <row>
+        <panel>
+            <title>Calls per kind (route / search / fetch / probe / describe / report)</title>
+            <chart>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics
+| spath path=kind output=k
+| stats count by k
+| sort -count</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+            </chart>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Per-connector search latency (p50 / p95, ms)</title>
+            <table>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_search
+| spath
+| where isnotnull(latency_ms)
+| stats
+    median(latency_ms) as p50_ms,
+    perc95(latency_ms) as p95_ms,
+    count as call_count,
+    sum(eval(ok=="true" OR ok==true)) as ok_count
+    by connector
+| eval p50_ms=round(p50_ms,0), p95_ms=round(p95_ms,0)
+| eval ok_rate=round(ok_count*100/call_count,1)
+| sort -call_count
+| table connector, call_count, p50_ms, p95_ms, ok_rate</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+            </table>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Router shortlist size distribution</title>
+            <chart>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_route
+| spath
+| stats count by shortlist_size</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+                <option name="charting.chart">column</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Routed vs fallback search ratio</title>
+            <chart>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_search
+| spath
+| eval routed=if(was_routed=="true" OR was_routed==true, "routed", "fallback")
+| stats count by routed</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+                <option name="charting.chart">pie</option>
+            </chart>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Timeouts and errors per connector</title>
+            <table>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics (kind=ai_knowledge_timeout OR kind=ai_knowledge_search)
+| spath
+| where (kind="ai_knowledge_timeout") OR ((kind="ai_knowledge_search") AND (ok=="false" OR ok==false))
+| stats
+    sum(eval(kind="ai_knowledge_timeout")) as timeouts,
+    sum(eval(kind="ai_knowledge_search" AND (ok=="false" OR ok==false))) as errors
+    by connector
+| where (timeouts+errors)>0
+| sort -timeouts</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+            </table>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Static-rule match rate (used:true / total reports)</title>
+            <table>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_static_rule_match
+| spath
+| stats
+    count as reports,
+    sum(eval(used=="true" OR used==true)) as used_count
+    by connector, source_id
+| eval use_rate=round(used_count*100/reports,1)
+| sort -reports</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+            </table>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Connectors flagged by injection scanner</title>
+            <table>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_fetch
+| spath
+| where injection_flagged=="true" OR injection_flagged==true
+| stats count by connector, source_id, kind
+| sort -count</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+            </table>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Probe failures by connector (last 24h)</title>
+            <table>
+                <search>
+                    <query>index=* sourcetype=ai_knowledge_metrics kind=ai_knowledge_probe
+| spath
+| where ok=="false" OR ok==false
+| stats latest(reason) as last_reason, count as fail_count by connector
+| sort -fail_count</query>
+                    <earliest>$time.earliest$</earliest>
+                    <latest>$time.latest$</latest>
+                </search>
+            </table>
+        </panel>
+    </row>
+</dashboard>

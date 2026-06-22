@@ -1,0 +1,137 @@
+<dashboard version="2" theme="dark">
+    <label>Log Analytics</label>
+    <description>Monitor log volume, error rates, and data quality across your environment</description>
+    <definition><![CDATA[
+{
+  "title": "Log Analytics",
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {
+          "queryParameters": {
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$"
+          }
+        }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_total_events": {
+      "type": "splunk.singlevalue",
+      "title": "Total Events (24h)",
+      "dataSources": {"primary": "ds_total_events"},
+      "options": {"backgroundColor": "transparent", "numberPrecision": 0, "majorFontSize": 48, "unit": "Events"}
+    },
+    "viz_error_count": {
+      "type": "splunk.singlevalue",
+      "title": "Error Events",
+      "dataSources": {"primary": "ds_error_count"},
+      "options": {"backgroundColor": "#E74C3C", "numberPrecision": 0, "majorFontSize": 48}
+    },
+    "viz_error_rate": {
+      "type": "splunk.singlevalue",
+      "title": "Error Rate",
+      "dataSources": {"primary": "ds_error_rate"},
+      "options": {"backgroundColor": "#F39C12", "numberPrecision": 2, "majorFontSize": 48, "unit": "%"}
+    },
+    "viz_sources_count": {
+      "type": "splunk.singlevalue",
+      "title": "Active Log Sources",
+      "dataSources": {"primary": "ds_sources_count"},
+      "options": {"backgroundColor": "#3498DB", "numberPrecision": 0, "majorFontSize": 48}
+    },
+    "viz_log_volume_trend": {
+      "type": "splunk.area",
+      "title": "Log Volume Trend (24 Hours)",
+      "dataSources": {"primary": "ds_log_volume_trend"},
+      "options": {"backgroundColor": "transparent", "yAxisTitleText": "Events per Minute"}
+    },
+    "viz_log_level_distribution": {
+      "type": "splunk.pie",
+      "title": "Log Level Distribution",
+      "dataSources": {"primary": "ds_log_level_distribution"},
+      "options": {"showDonutHole": true, "backgroundColor": "transparent"}
+    },
+    "viz_error_trend": {
+      "type": "splunk.line",
+      "title": "Error Rate Trend",
+      "dataSources": {"primary": "ds_error_trend"},
+      "options": {"backgroundColor": "transparent", "lineWidth": 2, "yAxisTitleText": "Error %"}
+    },
+    "viz_top_error_sources": {
+      "type": "splunk.table",
+      "title": "Top 10 Error Sources",
+      "dataSources": {"primary": "ds_top_error_sources"},
+      "options": {"count": 10}
+    },
+    "viz_top_log_sources": {
+      "type": "splunk.table",
+      "title": "Top 20 Log Sources by Volume",
+      "dataSources": {"primary": "ds_top_log_sources"},
+      "options": {"count": 20}
+    },
+    "viz_parsing_failures": {
+      "type": "splunk.table",
+      "title": "Parsing Failures (Last 24 Hours)",
+      "dataSources": {"primary": "ds_parsing_failures"},
+      "options": {"count": 20}
+    },
+    "viz_missing_sources": {
+      "type": "splunk.table",
+      "title": "Missing or Silent Log Sources",
+      "dataSources": {"primary": "ds_missing_sources"},
+      "options": {"count": 20}
+    },
+    "viz_data_quality_score": {
+      "type": "splunk.singlevalue",
+      "title": "Data Quality Score",
+      "dataSources": {"primary": "ds_data_quality"},
+      "options": {"backgroundColor": "#2ECC71", "numberPrecision": 1, "majorFontSize": 48, "unit": "/100"}
+    }
+  },
+  "dataSources": {
+    "ds_total_events": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats count"}},
+    "ds_error_count": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | where log_level=\"error\" OR log_level=\"critical\" | stats count"}},
+    "ds_error_rate": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats count as total, count(eval(log_level=\"error\" OR log_level=\"critical\")) as errors | eval error_rate=round((errors/total)*100, 2) | fields error_rate"}},
+    "ds_sources_count": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats dc(source) as sources | fields sources"}},
+    "ds_log_volume_trend": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | timechart span=5m count as \"Events\""}},
+    "ds_log_level_distribution": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats count by log_level | eval log_level=upper(substr(log_level,1,1)).substr(log_level,2) | sort -count"}},
+    "ds_error_trend": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | bin _time span=15m | stats count as total, count(eval(log_level=\"error\" OR log_level=\"critical\")) as errors by _time | eval error_rate=round((errors/total)*100,2) | timechart span=15m avg(error_rate) as \"Error Rate %\""}},
+    "ds_top_error_sources": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | where log_level=\"error\" OR log_level=\"critical\" | stats count as \"Error Count\" by source | sort -count | head 10 | rename source as \"Source\""}},
+    "ds_top_log_sources": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats count as \"Event Count\", dc(host) as \"Hosts\" by source, sourcetype | eval \"Events per Host\"=round(count/Hosts,0) | sort -count | head 20 | rename source as \"Source\", sourcetype as \"Source Type\""}},
+    "ds_parsing_failures": {"type": "ds.search", "options": {"query": "| `log_parsing_errors` | stats count as \"Failures\" by sourcetype, host | sort -Failures | rename sourcetype as \"Source Type\", host as \"Host\""}},
+    "ds_missing_sources": {"type": "ds.search", "options": {"query": "| tstats count where `greenzone_index_logs` by source | eval last_seen=now() | append [| tstats latest(_time) as last_seen where `greenzone_index_logs` by source] | stats latest(last_seen) as last_seen by source | eval time_since=round((now()-last_seen)/60,0) | where time_since>60 | eval \"Last Seen\"=strftime(last_seen, \"%Y-%m-%d %H:%M:%S\"), \"Minutes Ago\"=time_since | sort -time_since | head 20 | table source, \"Last Seen\", \"Minutes Ago\" | rename source as \"Source\""}},
+    "ds_data_quality": {"type": "ds.search", "options": {"query": "| `log_analytics_data` | stats count as total | append [| `log_parsing_errors` | stats count as parse_errors] | stats sum(total) as total, sum(parse_errors) as errors | eval quality_score=round(((total-errors)/total)*100, 1) | fields quality_score"}}
+  },
+  "layout": {
+    "type": "grid",
+    "structure": [
+      {"item": "viz_total_events", "type": "block", "position": {"x": 0, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_error_count", "type": "block", "position": {"x": 300, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_error_rate", "type": "block", "position": {"x": 600, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_sources_count", "type": "block", "position": {"x": 900, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_log_volume_trend", "type": "block", "position": {"x": 0, "y": 150, "w": 800, "h": 300}},
+      {"item": "viz_log_level_distribution", "type": "block", "position": {"x": 800, "y": 150, "w": 400, "h": 300}},
+      {"item": "viz_error_trend", "type": "block", "position": {"x": 0, "y": 450, "w": 600, "h": 300}},
+      {"item": "viz_top_error_sources", "type": "block", "position": {"x": 600, "y": 450, "w": 600, "h": 300}},
+      {"item": "viz_top_log_sources", "type": "block", "position": {"x": 0, "y": 750, "w": 600, "h": 400}},
+      {"item": "viz_parsing_failures", "type": "block", "position": {"x": 600, "y": 750, "w": 600, "h": 400}},
+      {"item": "viz_missing_sources", "type": "block", "position": {"x": 0, "y": 1150, "w": 900, "h": 400}},
+      {"item": "viz_data_quality_score", "type": "block", "position": {"x": 900, "y": 1150, "w": 300, "h": 150}}
+    ],
+    "globalInputs": ["input_time_range"]
+  }
+}
+    ]]></definition>
+</dashboard>

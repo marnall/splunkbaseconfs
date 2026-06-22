@@ -1,0 +1,1035 @@
+
+<dashboard version="2" theme="dark">
+    <label>Jobs / CronJobs</label>
+    <description>Detailed monitoring dashboard for Kubernetes Jobs and CronJobs with completion tracking, failure analysis, and execution history</description>
+    <definition><![CDATA[
+{
+	"visualizations": {
+		"viz_deployment_health": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> primary | seriesByName('health_score') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "%",
+				"majorColor": "> majorValue | rangeValue(healthColorConfig)",
+				"healthColorConfig": [
+					{
+						"value": 0,
+						"to": 70,
+						"color": "#D41F1F"
+					},
+					{
+						"value": 70,
+						"to": 95,
+						"color": "#F5A800"
+					},
+					{
+						"value": 95,
+						"color": "#118832"
+					}
+				]
+			},
+			"dataSources": {
+				"primary": "ds_job_health"
+			},
+			"title": "Job Completion Rate",
+			"description": "Overall health based on replicas and pod status"
+		},
+		"viz_desired_replicas": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Desired",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"sparklineValues": "> primary | seriesByName('desired_successful')"
+			},
+			"dataSources": {
+				"primary": "ds_replica_status"
+			},
+			"title": "Target Completions"
+		},
+		"viz_ready_replicas": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Successful",
+				"majorColor": "#118832",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"sparklineValues": "> primary | seriesByName('successful')"
+			},
+			"dataSources": {
+				"primary": "ds_replica_status"
+			},
+			"title": "Successful"
+		},
+		"viz_available_replicas": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Active",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"sparklineValues": "> primary | seriesByName('active')"
+			},
+			"dataSources": {
+				"primary": "ds_replica_status"
+			},
+			"title": "Active Pods"
+		},
+		"viz_unavailable_replicas": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Failed",
+				"majorColor": "> majorValue | rangeValue(unavailableColorConfig)",
+				"unavailableColorConfig": [
+					{
+						"value": 0,
+						"to": 1,
+						"color": "#118832"
+					},
+					{
+						"value": 1,
+						"color": "#D41F1F"
+					}
+				],
+				"trendValue": "> sparklineValues | delta(-2)",
+				"sparklineValues": "> primary | seriesByName('failed')"
+			},
+			"dataSources": {
+				"primary": "ds_replica_status"
+			},
+			"title": "Failed"
+		},
+		"viz_total_restarts": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"sparklineValues": "> primary | seriesByName('total_restarts')",
+				"numberPrecision": 0,
+				"unit": "Restarts",
+				"majorColor": "> majorValue | rangeValue(restartColorConfig)",
+				"restartColorConfig": [
+					{
+						"value": 0,
+						"to": 5,
+						"color": "#118832"
+					},
+					{
+						"value": 5,
+						"to": 20,
+						"color": "#F5A800"
+					},
+					{
+						"value": 20,
+						"color": "#D41F1F"
+					}
+				]
+			},
+			"dataSources": {
+				"primary": "ds_total_restarts"
+			},
+			"title": "Total Pod Restarts"
+		},
+		"viz_avg_cpu_usage": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"sparklineValues": "> primary | seriesByName('Avg_CPU_Core_Usage')",
+				"numberPrecision": 1,
+				"unit": "c",
+				"trendValue": "> sparklineValues | delta(-2)"
+			},
+			"dataSources": {
+				"primary": "ds_avg_cpu"
+			},
+			"title": "Avg CPU Cores Usage"
+		},
+		"viz_avg_memory_usage": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"sparklineValues": "> primary | seriesByName('avg_memory_mb')",
+				"numberPrecision": 0,
+				"unit": "MB"
+			},
+			"dataSources": {
+				"primary": "ds_avg_memory"
+			},
+			"title": "Avg Memory Usage"
+		},
+		"viz_replica_timeline": {
+			"type": "splunk.line",
+			"options": {
+				"xField": "_time",
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"desired": "#1E93C6",
+					"successful": "#118832",
+					"active": "#f8be44",
+					"failed": "#dc4e41"
+				}
+			},
+			"dataSources": {
+				"primary": "ds_replica_timeline"
+			},
+			"title": "Replica Status Over Time",
+			"description": "Desired vs Ready vs Available replicas"
+		},
+		"viz_cpu_per_pod": {
+			"type": "splunk.column",
+			"options": {},
+			"dataSources": {
+				"primary": "ds_cpu_per_pod"
+			},
+			"title": "CPU Usage per Pod (%)",
+			"description": "Individual pod CPU utilization",
+			"context": {},
+			"containerOptions": {},
+			"showProgressBar": false,
+			"showLastUpdated": false
+		},
+		"viz_memory_per_pod": {
+			"type": "splunk.line",
+			"options": {
+				"xField": "_time",
+				"legendDisplay": "right",
+				"legendTruncation": "ellipsisEnd",
+				"nullValueDisplay": "connect"
+			},
+			"dataSources": {
+				"primary": "ds_memory_per_pod"
+			},
+			"title": "Memory Usage per Pod (MB)",
+			"description": "Individual pod memory consumption"
+		},
+		"viz_cpu_requests_vs_usage": {
+			"type": "splunk.column",
+			"options": {
+				"xField": "pod",
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"cpu_request": "#1E93C6",
+					"cpu_core_usage": "#F5A800"
+				},
+				"stackMode": "stacked"
+			},
+			"dataSources": {
+				"primary": "ds_cpu_requests_vs_usage"
+			},
+			"title": "CPU: Requests vs Actual Usage",
+			"description": "Resource allocation efficiency"
+		},
+		"viz_memory_requests_vs_usage": {
+			"type": "splunk.column",
+			"options": {
+				"xField": "pod",
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"mem_request": "#1E93C6",
+					"mem_usage_mbytes": "#F5A800"
+				},
+				"stackMode": "stacked",
+				"y": "> primary | frameBySeriesNames('mem_request','_timediff','mem_usage_mbytes')"
+			},
+			"dataSources": {
+				"primary": "ds_memory_requests_vs_usage"
+			},
+			"title": "Memory: Requests vs Actual Usage (MB)",
+			"description": "Resource allocation efficiency"
+		},
+		"viz_pod_restart_counts": {
+			"type": "splunk.column",
+			"options": {
+				"xField": "pod",
+				"yField": "restart_count",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F"
+				]
+			},
+			"dataSources": {
+				"primary": "ds_pod_restarts"
+			},
+			"title": "Pod Restart Counts",
+			"description": "Identify crashlooping pods"
+		},
+		"viz_pod_status_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Status') | matchValue(statusColorMap)",
+				"statusColorMap": {
+					"Running": "#118832",
+					"Pending": "#F5A800",
+					"Failed": "#D41F1F",
+					"Unknown": "#999999"
+				},
+				"tableFormat": {
+					"align": "left"
+				},
+				"columnFormat": {
+					"Node": {
+						"width": 157
+					},
+					"Pod": {
+						"width": 155
+					},
+					"Restarts": {
+						"data": "> table | seriesByName(\"Restarts\") | formatByType(RestartsColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Restarts') | pick(RestartsRowColorsEditorConfig)",
+						"rowBackgroundColors": "> table | seriesByName(\"Restarts\") | rangeValue(RestartsRowBackgroundColorsEditorConfig)"
+					},
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(StatusColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Status') | pick(StatusRowColorsEditorConfig)",
+						"rowBackgroundColors": "> table | seriesByName(\"Status\") | matchValue(StatusRowBackgroundColorsEditorConfig)"
+					}
+				}
+			},
+			"dataSources": {
+				"primary": "ds_pod_status_table"
+			},
+			"title": "Pod Details",
+			"description": "Current status of all pods in deployment",
+			"context": {
+				"RestartsColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"StatusColumnFormatEditorConfig": {
+					"string": {
+						"unitPosition": "after"
+					}
+				},
+				"RestartsRowColorsEditorConfig": [
+					"#ffffff"
+				],
+				"RestartsRowBackgroundColorsEditorConfig": [
+					{
+						"value": "#118832",
+						"to": 2
+					},
+					{
+						"value": "#669922",
+						"from": 2,
+						"to": 3
+					},
+					{
+						"value": "#CBA700",
+						"from": 3,
+						"to": 5
+					},
+					{
+						"value": "#D94E17",
+						"from": 5,
+						"to": 7
+					},
+					{
+						"value": "#D41F1F",
+						"from": 7
+					}
+				],
+				"StatusRowColorsEditorConfig": [
+					"#ffffff"
+				],
+				"StatusRowBackgroundColorsEditorConfig": [
+					{
+						"match": "Failed",
+						"value": "#D41F1F"
+					},
+					{
+						"match": "Pending",
+						"value": "#D97A0D"
+					},
+					{
+						"match": "Running",
+						"value": "#9D9F0D"
+					},
+					{
+						"match": "Succeeded",
+						"value": "#118832"
+					}
+				]
+			}
+		},
+		"viz_resource_allocation": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_resource_allocation"
+			},
+			"title": "Resource Allocation Summary",
+			"description": "Total requests, limits, and usage",
+			"options": {
+				"tableFormat": {
+					"align": "left"
+				},
+				"showInternalFields": false
+			}
+		},
+		"viz_deployment_events": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Type') | matchValue(eventColorMap)",
+				"eventColorMap": {
+					"Warning": "#F5A800",
+					"Error": "#D41F1F",
+					"Normal": "#FFFFFF"
+				},
+				"showInternalFields": false
+			},
+			"dataSources": {
+				"primary": "ds_job_events"
+			},
+			"title": "Recent Job Events",
+			"description": "Last 20 events related to Jobs"
+		},
+		"viz_pod_age": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_pod_age"
+			},
+			"title": "Pod Age Analysis",
+			"description": "How long pods have been running"
+		},
+		"viz_network_io": {
+			"type": "splunk.line",
+			"options": {
+				"xField": "_time",
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"rx_mb": "#1E93C6",
+					"tx_mb": "#F5A800"
+				},
+				"nullValueDisplay": "connect"
+			},
+			"dataSources": {
+				"primary": "ds_network_io"
+			},
+			"title": "Network I/O (MB/s)",
+			"description": "Aggregate network traffic for all pods"
+		},
+		"viz_container_status": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_container_status"
+			},
+			"title": "Container Status by Pod",
+			"description": "Individual container health within pods"
+		},
+		"viz_job_history": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_job_history"
+			},
+			"title": "Job Execution History",
+			"description": "Recent job runs with completion status",
+			"options": {
+				"showInternalFields": false,
+				"tableFormat": {
+					"align": "left"
+				}
+			}
+		}
+	},
+	"dataSources": {
+		"ds_cluster_list": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mcatalog values(k8s.cluster.name) as cluster WHERE index=$index_token$ | mvexpand cluster | rename cluster as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Cluster List"
+		},
+		"ds_namespace_list": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mcatalog values(k8s.namespace.name) as namespace WHERE index=$index_token$ | mvexpand namespace | rename namespace as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Namespace List"
+		},
+		"ds_replica_status": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.job.desired_successful_pods OR metric_name=k8s.job.successful_pods OR metric_name=k8s.job.active_pods OR metric_name=k8s.job.failed_pods) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (k8s.job.name=$job_token$ OR k8s.cronjob.name=$job_token$) by metric_name | eval desired=if(match(metric_name, \"job.desired\"), value, null()), available=if(match(metric_name, \"job.successful\"), value, null()), ready=if(match(metric_name, \"active\"), value, null()), unavailable=if(match(metric_name, \"failed\"), value, null()) | stats sum(desired) as desired_successful, sum(available) as successful, sum(ready) as active, sum(unavailable) as failed | fillnull value=0",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Replica Status"
+		},
+		"ds_total_restarts": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats sum(_value) as total_restarts WHERE index=$index_token$ metric_name=k8s.container.restarts k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (k8s.job.name=$job_token$ OR k8s.cronjob.name=$job_token$) span=5m",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Total Restarts"
+		},
+		"ds_avg_cpu": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats p90(_value) as cpu_core_usage WHERE index=$index_token$ metric_name=container.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name span=2m\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| timechart latest(cpu_core_usage) as Avg_CPU_Core_Usage span=2m\n| eval Avg_CPU_Core_Usage=round(Avg_CPU_Core_Usage,3)\n| fillnull value=0",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Average CPU"
+		},
+		"ds_avg_memory": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats avg(_value) as avg_memory_bytes WHERE index=$index_token$ metric_name=container.memory.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name span=2m | eval avg_memory_mb=avg_memory_bytes/1048576\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| fillnull value=0\n| timechart avg(avg_memory_mb) as Avg_Memory_Usage(MB) span=2m",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Average Memory"
+		},
+		"ds_replica_timeline": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.job.desired_successful_pods OR metric_name=k8s.job.successful_pods OR metric_name=k8s.job.active_pods OR metric_name=k8s.job.failed_pods) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (k8s.job.name=$job_token$ OR k8s.cronjob.name=$job_token$) span=5m by metric_name | eval desired=if(match(metric_name, \"job.desired\"), value, null()), successful=if(match(metric_name, \"job.successful\"), value, null()), active=if(match(metric_name, \"active\"), value, null()),failed=if(match(metric_name, \"failed\"), value, null()) | stats sum(desired) as desired, sum(successful) as successful, sum(active) as active, sum(failed) as failed by _time",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Replica Timeline"
+		},
+		"ds_cpu_per_pod": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats p90(_value) as cpu_core_usage WHERE index=$index_token$ metric_name=container.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name span=5m\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| timechart avg(cpu_core_usage) as Avg_CPU_Core_Usage by k8s.pod.name",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "CPU per Pod"
+		},
+		"ds_memory_per_pod": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats avg(_value) as avg_memory_bytes WHERE index=$index_token$ metric_name=container.memory.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name span=5m | eval avg_memory_mb=avg_memory_bytes/1048576\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| timechart avg(avg_memory_mb) as Avg_Memory_Usage(MB) by k8s.pod.name",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Memory per Pod"
+		},
+		"ds_cpu_requests_vs_usage": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats p90(_value) as cpu_core_usage WHERE index=$index_token$ metric_name=container.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| join type=outer k8s.pod.name \n    [| mstats latest(_value) as value WHERE index=$index_token$ ( metric_name=k8s.container.cpu_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by k8s.pod.name, metric_name\n| eval cpu_request=if(match(metric_name, \"request\"), value, null()) | stats avg(cpu_request) as cpu_request by k8s.pod.name| eval cpu_request=round(cpu_request, 3)]\n| fillnull value=0 cpu_request| rename k8s.pod.name as pod\n| fields pod, cpu_request, cpu_core_usage",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "CPU Requests vs Usage"
+		},
+		"ds_memory_requests_vs_usage": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats p90(_value) as mem_usage_bytes WHERE index=$index_token$ metric_name=k8s.pod.memory.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name\n| join type=left k8s.pod.name \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as k8s.pod.name, node as Node]\n| search Workload-Type=\"*Job*\" Workload-Name=$job_token$\n| join type=outer k8s.pod.name \n    [| mstats latest(_value) as value WHERE index=$index_token$ ( metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by k8s.pod.name, metric_name\n| eval mem_request=if(match(metric_name, \"request\"), value, null()) | stats avg(mem_request) as mem_request by k8s.pod.name| eval cpu_request=round(mem_request, 3)]\n| fillnull value=0 mem_request\n| rename k8s.pod.name as pod\n| fields pod, mem_request, mem_usage_bytes\n| eval mem_request=round(mem_request/1048576,2), mem_usage_mbytes=round(mem_usage_bytes/1048576,2)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Memory Requests vs Usage"
+		},
+		"ds_pod_restarts": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats sum(_value) as restart_count WHERE index=$index_token$ metric_name=k8s.container.restarts k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ k8s.job.name=$job_token$ by k8s.pod.name | rename k8s.pod.name as pod | sort -restart_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Pod Restarts"
+		},
+		"ds_pod_status_table": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ k8s.job.name=$job_token$ by k8s.pod.name, k8s.node.name | eval Status=case(phase==1 OR phase==\"Pending\", \"Pending\", phase==2 OR phase==\"Running\", \"Running\", phase==4 OR phase==\"Failed\", \"Failed\", phase==3 OR phase==\"Succeeded\", \"Succeeded\", 1==1, \"Unknown\") | join type=left k8s.pod.name [| mstats p90(_value) as cpu WHERE index=$index_token$ metric_name=k8s.pod.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name] | join type=left k8s.pod.name [| mstats avg(_value) as mem_bytes WHERE index=$index_token$ metric_name=k8s.pod.memory.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by k8s.pod.name | eval mem_mb=mem_bytes/1048576] | join type=left k8s.pod.name [| mstats sum(_value) as restarts WHERE index=$index_token$ metric_name=k8s.container.restarts k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name] | fillnull value=0 cpu, mem_mb, restarts | eval \"CPU cores\"=round(cpu, 3), \"Memory (MB)\"=round(mem_mb, 2), Restarts=round(restarts,0) | rename k8s.pod.name as Pod, k8s.node.name as Node | table Pod, Node, Status, \"CPU cores\", \"Memory (MB)\", Restarts | sort Pod",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Pod Status Table"
+		},
+		"ds_resource_allocation": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as Pod, node as Node\n| search Workload-Type=\"*Job*\"\n| fields  - \"Workload-Type\", Node\n| join type=outer Pod \n    [| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.pod.cpu.request OR metric_name=k8s.container.cpu_request OR metric_name=k8s.container.cpu_limit OR metric_name=k8s.pod.memory.request OR metric_name=k8s.container.memory_request OR metric_name=k8s.container.memory_limit OR metric_name=container.cpu.usage OR metric_name=container.memory.usage) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by  k8s.namespace.name, k8s.pod.name, metric_name\n| eval cpu_limit=if(match(metric_name, \"cpu_limit\"), value, null()), \n       cpu_request=if(match(metric_name, \"cpu_request\"), value, null()), \n       mem_limit=if(match(metric_name, \"memory_limit\"), value/1073741824, null()), \n       mem_request=if(match(metric_name, \"memory_request\"), value/1073741824, null()), \n       cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), \n       mem_usage=if(match(metric_name, \"memory.usage\"), value/1073741824, null())\n| stats avg(cpu_limit) as cpu_limit, avg(cpu_request) as cpu_req, avg(mem_limit) as mem_limit, avg(mem_request) as mem_req, avg(cpu_usage) as cpu_use, avg(mem_usage) as mem_use by k8s.namespace.name , k8s.pod.name\n| eval \"CPU Request\"=round(cpu_req, 2),\"CPU Limit\"=round(cpu_limit, 2), \"CPU Usage\"=round(cpu_use, 2), \"Memory Request (GB)\"=round(mem_req, 2), \"Memory Limit (GB)\"=round(mem_limit, 2), \"Memory Usage (GB)\"=round(mem_use, 2)\n| rename k8s.pod.name as Pod, k8s.namespace.name as Namespace \n| table Pod, Namespace, \"CPU Request\", \"CPU Usage\",\"CPU Limit\", \"Memory Request (GB)\",\"Memory Usage (GB)\", \"Memory Limit (GB)\" \n| sort -\"CPU Usage\"\n| rename \"CPU Usage\" as \"CPU Usage (cores)\", \"CPU Request\" as \"CPU Request (cores)\", \"CPU Limit\" as \"CPU Limit (cores)\"\n| fillnull value=0 \"CPU Request (cores)\", \"CPU Limit (cores)\",\"Memory Request (GB)\", \"Memory Limit (GB)\"]\n| search \"Workload-Name\"=$job_token$",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Resource Allocation"
+		},
+		"ds_pod_age": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ k8s.job.name=$job_token$ by k8s.pod.name, k8s.job.name, k8s.namespace.name, k8s.pod.start_time |rename k8s.pod.start_time as start_time, k8s.pod.name as Pod, k8s.namespace.name as Namespace, k8s.job.name as Job\n| table Pod, start_time, Namespace, Job\n| eval current_time=now()\n| eval start_time_epoch=strptime(start_time, \"%Y-%m-%dT%H:%M:%SZ\")\n| eval age_seconds= current_time-start_time_epoch, age_hours=round(age_seconds/3600, 1), age_days=round(age_seconds/86400, 1)| eval \"Age\"=if(age_days>=1, age_days.\" days\", age_hours.\" hours\")| table Pod, Age | sort -age_seconds",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Pod Age"
+		},
+		"ds_network_io": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats sum(_value) as bytes WHERE index=$index_token$ (metric_name=pod.network.io OR metric_name=k8s.pod.network.io) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  span=5m by k8s.pod.name, direction| eval direction=if(match(direction, \"transmit\"), \"tx_mb\", \"rx_mb\"), mb=bytes/1048576 \n| rename k8s.pod.name as Pod\n| join type=outer Pod \n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$  k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$ \n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as Pod, node as Node\n| search Workload-Type=\"*Job*\"\n| table Pod, Workload-Type, Workload-Name]|search Workload-Name=$job_token$\n| timechart avg(mb) as NW_IO_MB by Workload-Name ",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Network IO"
+		},
+		"ds_container_status": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as ready WHERE index=$index_token$ metric_name=k8s.container.ready k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ k8s.job.name=$job_token$ by k8s.pod.name, k8s.container.name | eval Status=if(ready==1, \"Ready\", \"Not Ready\") | rename k8s.pod.name as Pod, k8s.container.name as Container | table Pod, Container, Status | sort Pod, Container",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Container Status"
+		},
+		"ds_job_list": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mcatalog values(k8s.job.name) as job WHERE index=$index_token$ k8s.namespace.name=$namespace_token$| mvexpand job | rename job as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Job List"
+		},
+		"ds_job_health": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.job.successful_pods OR metric_name=k8s.job.desired_successful_pods) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (k8s.job.name=$job_token$ OR k8s.cronjob.name=$job_token$) by metric_name | eval desired=if(match(metric_name, \"desired_successful\"), value, null()), available=if(match(metric_name, \"job.successful\"), value, null()) | stats sum(desired) as desired, sum(available) as available | eval health_score=if(desired>0, round((available/desired)*100, 0), 0)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Deployment Health"
+		},
+		"ds_job_events": {
+			"type": "ds.search",
+			"options": {
+				"query": "index=$logs_index_token$ k8s.cluster.name=$cluster_token$ (source=*kube-events* OR sourcetype=kube:events)| head 100 | table _time,  k8s.event.reason,k8s.object.name,k8s.object.kind,k8s.namespace.name, _raw | rename _time as Time, reason as Reason, _raw as Message, k8s.object.name as \"Object\", k8s.object.kind as ObjectType, k8s.event.reason as \"Category\", k8s.namespace.name as Namespace | sort -Time\n| search Namespace=$namespace_token$\n| join type=outer Object\n    [| mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as Object, node as Node]\n| search Workload-Type=\"*Job*\"\n| fields - Workload-Type\n| search Workload-Name=$job_token$| eval Time = strftime(Time, \"%Y-%m-%d %H:%M:%S.%3N\")",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Deployment Events"
+		},
+		"ds_job_history": {
+			"type": "ds.search",
+			"options": {
+				"query": "| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.job.successful_pods OR metric_name=k8s.job.failed_pods OR metric_name=k8s.job.active_pods) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (k8s.job.name=$job_token$ OR k8s.cronjob.name=$job_token$) span=1h by metric_name\n| eval successful=if(match(metric_name, \"successful\"), value, null()), failed=if(match(metric_name, \"failed\"), value, null()), active=if(match(metric_name, \"active\"), value, null()) \n| stats sum(successful) as Successful, sum(failed) as Failed, sum(active) as Active by _time \n| eval Status=case(Failed>0, \"Failed\", Successful>0, \"Success\", Active>0, \"Running\", 1==1, \"Unknown\") \n| rename _time as Time \n| table Time, Status, Successful, Failed, Active \n| sort -Time \n| head 20| eval Time = strftime(Time, \"%Y-%m-%d %H:%M:%S.%3N\")",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Job History"
+		},
+		"ds_2Q8kpSOc": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup append=t k8s_metrics_indexes_dropdown_lookup.csv"
+			},
+			"name": "metrics_index_dropdown"
+		},
+		"ds_DjoZeC1x": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup append=t k8s_logs_events_indexes_dropdown_lookup.csv"
+			},
+			"name": "logs_index_dropdown"
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"latest": "$global_time.latest$",
+						"earliest": "$global_time.earliest$"
+					}
+				}
+			}
+		}
+	},
+	"inputs": {
+		"input_global_trp": {
+			"type": "input.timerange",
+			"options": {
+				"token": "global_time",
+				"defaultValue": "-60m@m,now"
+			},
+			"title": "Time Range"
+		},
+		"input_cluster_selector": {
+			"type": "input.dropdown",
+			"options": {
+				"defaultValue": "*",
+				"token": "cluster_token"
+			},
+			"dataSources": {
+				"primary": "ds_cluster_list"
+			},
+			"title": "Cluster"
+		},
+		"input_namespace_selector": {
+			"type": "input.dropdown",
+			"options": {
+				"defaultValue": "*",
+				"token": "namespace_token"
+			},
+			"dataSources": {
+				"primary": "ds_namespace_list"
+			},
+			"title": "Namespace"
+		},
+		"input_index_selector": {
+			"type": "input.dropdown",
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"token": "index_token",
+				"selectFirstSearchResult": true
+			},
+			"title": "Metrics Index",
+			"dataSources": {
+				"primary": "ds_2Q8kpSOc"
+			},
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"statics": [],
+				"label": ">primary | seriesByName(\"metrics_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"value": ">primary | seriesByName(\"metrics_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			}
+		},
+		"input_job_selector": {
+			"type": "input.dropdown",
+			"options": {
+				"defaultValue": "*",
+				"token": "job_token"
+			},
+			"dataSources": {
+				"primary": "ds_job_list"
+			},
+			"title": "Job/CronJob"
+		},
+		"input_1xZxG9Cr": {
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"token": "logs_index_token",
+				"selectFirstSearchResult": true
+			},
+			"title": "Event Logs Index",
+			"type": "input.dropdown",
+			"dataSources": {
+				"primary": "ds_DjoZeC1x"
+			},
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"statics": [],
+				"label": ">primary | seriesByName(\"logs_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"value": ">primary | seriesByName(\"logs_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			}
+		}
+	},
+	"description": "Detailed monitoring dashboard for Kubernetes Jobs and CronJobs with completion tracking, failure analysis, and execution history",
+	"title": "Jobs / CronJobs",
+	"layout": {
+		"tabs": {
+			"items": [
+				{
+					"layoutId": "layout_1",
+					"label": "New tab"
+				}
+			]
+		},
+		"layoutDefinitions": {
+			"layout_1": {
+				"type": "grid",
+				"structure": [
+					{
+						"item": "viz_deployment_health",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 200,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_replica_timeline",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 130,
+							"w": 1200,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_cpu_per_pod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 430,
+							"w": 601,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_cpu_requests_vs_usage",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 730,
+							"w": 601,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_pod_restart_counts",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1030,
+							"w": 1200,
+							"h": 250
+						}
+					},
+					{
+						"item": "viz_pod_status_table",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1280,
+							"w": 1200,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_resource_allocation",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1580,
+							"w": 1200,
+							"h": 385
+						}
+					},
+					{
+						"item": "viz_deployment_events",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1965,
+							"w": 800,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_network_io",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 2265,
+							"w": 800,
+							"h": 250
+						}
+					},
+					{
+						"item": "viz_job_history",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 2515,
+							"w": 1200,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_desired_replicas",
+						"type": "block",
+						"position": {
+							"x": 200,
+							"y": 0,
+							"w": 150,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_ready_replicas",
+						"type": "block",
+						"position": {
+							"x": 350,
+							"y": 0,
+							"w": 151,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_available_replicas",
+						"type": "block",
+						"position": {
+							"x": 501,
+							"y": 0,
+							"w": 148,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_memory_per_pod",
+						"type": "block",
+						"position": {
+							"x": 601,
+							"y": 430,
+							"w": 599,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_memory_requests_vs_usage",
+						"type": "block",
+						"position": {
+							"x": 601,
+							"y": 730,
+							"w": 599,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_unavailable_replicas",
+						"type": "block",
+						"position": {
+							"x": 649,
+							"y": 0,
+							"w": 151,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_pod_age",
+						"type": "block",
+						"position": {
+							"x": 800,
+							"y": 1965,
+							"w": 400,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_container_status",
+						"type": "block",
+						"position": {
+							"x": 800,
+							"y": 2265,
+							"w": 400,
+							"h": 250
+						}
+					},
+					{
+						"item": "viz_total_restarts",
+						"type": "block",
+						"position": {
+							"x": 800,
+							"y": 0,
+							"w": 150,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_avg_cpu_usage",
+						"type": "block",
+						"position": {
+							"x": 950,
+							"y": 0,
+							"w": 125,
+							"h": 130
+						}
+					},
+					{
+						"item": "viz_avg_memory_usage",
+						"type": "block",
+						"position": {
+							"x": 1075,
+							"y": 0,
+							"w": 125,
+							"h": 130
+						}
+					}
+				]
+			}
+		},
+		"globalInputs": [
+			"input_global_trp",
+			"input_index_selector",
+			"input_1xZxG9Cr",
+			"input_cluster_selector",
+			"input_namespace_selector",
+			"input_job_selector"
+		]
+	},
+	"applicationProperties": {
+		"hideEdit": true
+	}
+}
+    ]]></definition>
+</dashboard>

@@ -1,0 +1,32 @@
+<dashboard version="1.1" theme="dark">
+  <label>Administration</label>
+  <description>Configuration Changes, User Management, HSM Operations, VM Operations</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true"><label>Time Range</label><default><earliest>-7d@d</earliest><latest>now</latest></default></input>
+    <input type="dropdown" token="audit_type_filter" searchWhenChanged="true"><label>Audit Type</label><default>*</default><choice value="*">All</choice><choice value="administration">Administration</choice><choice value="policy">Policy</choice><choice value="system">System</choice><choice value="inventory">Inventory</choice></input>
+  </fieldset>
+
+  <!-- ── KPI ROW ── -->
+  <row>
+    <panel><single><title>Total Changes</title><search><query>`asger_admin` audit_type=$audit_type_filter$ | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Policy Changes</title><search><query>`asger_admin` audit_type="policy" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="colorMode">block</option><option name="rangeColors">["#ed8440","#ed8440"]</option><option name="useColors">true</option></single></panel>
+    <panel><single><title>HSM Operations</title><search><query>`asger_admin` event_type="hsm_*" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="colorMode">block</option><option name="rangeColors">["#dc4e41","#dc4e41"]</option><option name="useColors">true</option></single></panel>
+    <panel><single><title>Unique Admins</title><search><query>`asger_admin` | stats dc(user)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+  </row>
+
+  <!-- ── TREND + ACTION DIST ── -->
+  <row>
+    <panel><chart><title>Changes Over Time by Type</title><search><query>`asger_admin` audit_type=$audit_type_filter$ | timechart span=1d count by audit_type</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">column</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><chart><title>Action Distribution</title><search><query>`asger_admin` audit_type=$audit_type_filter$ action=* | top limit=10 action</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">pie</option></chart></panel>
+  </row>
+
+  <!-- ── HSM OPERATIONS ── -->
+  <row>
+    <panel><table><title>HSM Cryptographic Operations (Critical)</title><search><query>`asger_admin` event_type="hsm_*" | table _time, user, event_type, action, outcome, src_ip | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">10</option><option name="drilldown">row</option></table></panel>
+  </row>
+
+  <!-- ── FULL CHANGE LOG ── -->
+  <row>
+    <panel><table><title>Change Audit Log</title><search><query>`asger_admin` audit_type=$audit_type_filter$ | table _time, user, audit_type, event_type, action, resource_name, resource_type, outcome, reason | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">25</option></table></panel>
+  </row>
+</dashboard>

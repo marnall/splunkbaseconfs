@@ -1,0 +1,20 @@
+/*
+PURPOSE:
+  Identify abnormal, bursty failure behavior (flapping).
+WHY:
+  Flapping services create operational noise but may not breach SLAs.
+
+DETECTION LOGIC:
+  - Compare current failures to historical baseline
+  - Flag deviations beyond normal variance
+
+LIMITATIONS:
+  - Requires sufficient historical data
+*/
+
+| timechart span=15m sum(is_failure) AS failures BY service
+| untable _time service failures
+| stats avg(failures) AS avg_failures
+        stdev(failures) AS sd_failures
+  BY service
+| eval unstable = if(failures > avg_failures + (2 * sd_failures), 1, 0)

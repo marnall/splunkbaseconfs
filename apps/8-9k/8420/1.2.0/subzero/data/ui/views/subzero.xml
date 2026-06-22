@@ -1,0 +1,166 @@
+<form version="1.1" theme="dark">
+  <label>subzero</label>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="field1" searchWhenChanged="true">
+      <label>select index</label>
+      <choice value="internalindex.csv">_internal</choice>
+      <choice value="testingindex.csv">testing</choice>
+      <choice value="introindex.csv">_introspection</choice>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total In Frozen For Index</title>
+      <single>
+        <search>
+          <query>|inputlookup $field1$
+|eval timenow=now()
+|rex field=bucket "db_(?&lt;epoch_end&gt;.+?)_"
+|eval nowstring=strftime(now(), "%Y-%m-%d")
+|eval bucketage=timenow-epoch_end
+| eval years = round(bucketage/31540000,0)
+| eval months = round(bucketage/2628000,0)
+| eval weeks = round(bucketage/604800,0)
+| eval days = round(bucketage/86400,0)
+| eval hours = round(bucketage/3600,0)
+|table bucket hours days weeks months years
+|stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Over 10 Days Old</title>
+      <single>
+        <search>
+          <query>|inputlookup $field1$
+|eval timenow=now()
+|rex field=bucket "db_(?&lt;epoch_end&gt;.+?)_"
+|eval nowstring=strftime(now(), "%Y-%m-%d")
+|eval bucketage=timenow-epoch_end
+| eval years = round(bucketage/31540000,0)
+| eval months = round(bucketage/2628000,0)
+| eval weeks = round(bucketage/604800,0)
+| eval days = round(bucketage/86400,0)
+| eval hours = round(bucketage/3600,0)
+|search days&gt;10
+|table bucket hours days weeks months years
+|stats count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Buckets Older Than 10 Days</title>
+      <table>
+        <search>
+          <query>|inputlookup $field1$
+|eval timenow=now()
+|rex field=bucket "db_(?&lt;epoch_end&gt;.+?)_"
+|eval nowstring=strftime(now(), "%Y-%m-%d")
+|eval bucketage=timenow-epoch_end
+| eval years = round(bucketage/31540000,0)
+| eval months = round(bucketage/2628000,0)
+| eval weeks = round(bucketage/604800,0)
+| eval days = round(bucketage/86400,0)
+| eval hours = round(bucketage/3600,0)
+|search days&gt;10
+|table bucket hours days weeks months years</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>all index bucket ages</title>
+      <table>
+        <search>
+          <query>|inputlookup $field1$
+|eval timenow=now()
+|rex field=bucket "db_(?&lt;epoch_end&gt;.+?)_"
+|eval nowstring=strftime(now(), "%Y-%m-%d")
+|eval bucketage=timenow-epoch_end
+| eval years = round(bucketage/31540000,0)
+| eval months = round(bucketage/2628000,0)
+| eval weeks = round(bucketage/604800,0)
+| eval days = round(bucketage/86400,0)
+| eval hours = round(bucketage/3600,0)
+|table bucket hours days weeks months years</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>thaw search</title>
+      <input type="text" token="field2" searchWhenChanged="true">
+        <label>start [YYY-MM-DD]</label>
+      </input>
+      <input type="text" token="field3" searchWhenChanged="true">
+        <label>end [YYY-MM-DD]</label>
+      </input>
+      <table>
+        <search>
+          <query>|inputlookup $field1$
+|rex field=bucket "db_(?&lt;epoch_end&gt;.+?)_"
+|rex field=bucket "db_\S+\_(?&lt;epoch_start&gt;.+?)_"
+|eval epoend=strftime(epoch_end, "%Y-%m-%d")
+|eval epostart=strftime(epoch_start, "%Y-%m-%d")
+|eval instart="$field2$"
+|eval inend="$field3$"
+| eval instart = strptime('instart', "%Y-%m-%d")
+| eval instart=round(instart,0)
+| eval inend = strptime('inend', "%Y-%m-%d")
+| eval inend =round(inend,0)
+| eval diff1=epoch_end-instart
+| eval diff2=inend-epoch_start
+| search diff1&gt;=0 diff2&gt;=0
+|table bucket epoch_end epoend end epoch_start epostart start instart inend diff1 diff2</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>            

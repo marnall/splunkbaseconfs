@@ -1,0 +1,258 @@
+<dashboard version="2" theme="dark">
+    <label>Maze Dashboard</label>
+    <description>Executive overview of Maze vulnerability investigations</description>
+    <definition><![CDATA[
+{
+    "dataSources": {
+        "ds_total": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | stats count as total",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_deprioritized": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | stats count as total, count(eval(exploitability=\"not_exploitable\")) as deprioritized | eval pct=round(deprioritized/total*100, 1) | table deprioritized pct",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_reclassified_from_critical": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | spath path=\"related_scanner_findings{}.severity\" output=scanner_severity | mvexpand scanner_severity | search scanner_severity=\"CRITICAL\" maze_severity!=\"CRITICAL\" | stats dc(id) as reclassified_from_critical",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_reclassified_to_critical": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | spath path=\"related_scanner_findings{}.severity\" output=scanner_severity | mvexpand scanner_severity | search scanner_severity!=\"CRITICAL\" maze_severity=\"CRITICAL\" | stats dc(id) as reclassified_to_critical",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_exploitability_pie": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | eval label=if(exploitability=\"exploitable\", \"Exploitable\", \"Not Exploitable\") | stats count by label",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_severity_bar": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | eval severity_order=case(maze_severity=\"CRITICAL\", 1, maze_severity=\"HIGH\", 2, maze_severity=\"MEDIUM\", 3, maze_severity=\"LOW\", 4, maze_severity=\"NOT_EXPLOITABLE\", 5, 1=1, 6) | stats count by maze_severity severity_order | sort severity_order | fields - severity_order",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_top_assets": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | spath path=\"related_scanner_findings{}.asset_name\" output=asset_name | spath path=\"related_scanner_findings{}.asset_type\" output=asset_type | mvexpand asset_name | mvexpand asset_type | stats count as total_investigations, count(eval(maze_severity=\"CRITICAL\")) as critical, count(eval(maze_severity=\"HIGH\")) as high, count(eval(maze_severity=\"MEDIUM\")) as medium, count(eval(maze_severity=\"LOW\")) as low, count(eval(exploitability=\"exploitable\")) as exploitable by asset_name asset_type | sort - total_investigations | head 10",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_top_cves": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" | stats count as total_investigations, count(eval(maze_severity=\"CRITICAL\")) as critical, count(eval(maze_severity=\"HIGH\")) as high, count(eval(maze_severity=\"MEDIUM\")) as medium, count(eval(maze_severity=\"LOW\")) as low, count(eval(exploitability=\"exploitable\")) as exploitable by cve_id | sort - total_investigations | head 10",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        }
+    },
+    "defaults": {},
+    "inputs": {
+        "input_time": {
+            "type": "input.timerange",
+            "title": "Time Range",
+            "options": {
+                "token": "time_tok",
+                "defaultValue": "-30d@d,now"
+            }
+        },
+        "input_status": {
+            "type": "input.dropdown",
+            "title": "Status",
+            "options": {
+                "token": "status_filter",
+                "defaultValue": "open",
+                "items": [
+                    {"label": "Open", "value": "open"},
+                    {"label": "Closed", "value": "closed"},
+                    {"label": "All", "value": "*"}
+                ]
+            }
+        }
+    },
+    "layout": {
+        "type": "grid",
+        "options": {
+            "width": 1440,
+            "height": 1200
+        },
+        "structure": [
+            {
+                "item": "viz_total",
+                "type": "block",
+                "position": { "x": 0, "y": 0, "w": 360, "h": 180 }
+            },
+            {
+                "item": "viz_deprioritized",
+                "type": "block",
+                "position": { "x": 360, "y": 0, "w": 360, "h": 180 }
+            },
+            {
+                "item": "viz_reclassified_from_critical",
+                "type": "block",
+                "position": { "x": 720, "y": 0, "w": 360, "h": 180 }
+            },
+            {
+                "item": "viz_reclassified_to_critical",
+                "type": "block",
+                "position": { "x": 1080, "y": 0, "w": 360, "h": 180 }
+            },
+            {
+                "item": "viz_exploitability_pie",
+                "type": "block",
+                "position": { "x": 0, "y": 180, "w": 480, "h": 350 }
+            },
+            {
+                "item": "viz_severity_bar",
+                "type": "block",
+                "position": { "x": 480, "y": 180, "w": 960, "h": 350 }
+            },
+            {
+                "item": "viz_top_assets",
+                "type": "block",
+                "position": { "x": 0, "y": 530, "w": 720, "h": 400 }
+            },
+            {
+                "item": "viz_top_cves",
+                "type": "block",
+                "position": { "x": 720, "y": 530, "w": 720, "h": 400 }
+            }
+        ],
+        "globalInputs": ["input_time", "input_status"]
+    },
+    "visualizations": {
+        "viz_total": {
+            "type": "splunk.singlevalue",
+            "title": "Total Investigations",
+            "dataSources": { "primary": "ds_total" },
+            "options": {
+                "majorValue": "> primary | seriesByName('total') | lastPoint()",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_deprioritized": {
+            "type": "splunk.singlevalue",
+            "title": "Deprioritized Findings",
+            "dataSources": { "primary": "ds_deprioritized" },
+            "options": {
+                "majorValue": "> primary | seriesByName('deprioritized') | lastPoint()",
+                "trendValue": "> primary | seriesByName('pct') | lastPoint()",
+                "unit": "",
+                "trendDisplayMode": "absolute",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_reclassified_from_critical": {
+            "type": "splunk.singlevalue",
+            "title": "Reclassified from Critical",
+            "dataSources": { "primary": "ds_reclassified_from_critical" },
+            "options": {
+                "majorValue": "> primary | seriesByName('reclassified_from_critical') | lastPoint()",
+                "majorColor": "#53a051",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_reclassified_to_critical": {
+            "type": "splunk.singlevalue",
+            "title": "Reclassified to Critical",
+            "dataSources": { "primary": "ds_reclassified_to_critical" },
+            "options": {
+                "majorValue": "> primary | seriesByName('reclassified_to_critical') | lastPoint()",
+                "majorColor": "#dc4e41",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_exploitability_pie": {
+            "type": "splunk.pie",
+            "title": "Exploitability Breakdown",
+            "dataSources": { "primary": "ds_exploitability_pie" },
+            "options": {
+                "seriesColors": ["#dc4e41", "#53a051"]
+            }
+        },
+        "viz_severity_bar": {
+            "type": "splunk.bar",
+            "title": "Investigations by Maze Severity",
+            "dataSources": { "primary": "ds_severity_bar" },
+            "options": {
+                "xField": "maze_severity",
+                "seriesColors": ["#af575a"]
+            }
+        },
+        "viz_top_assets": {
+            "type": "splunk.table",
+            "title": "Top 10 Most Vulnerable Assets",
+            "dataSources": { "primary": "ds_top_assets" },
+            "options": {
+                "count": 10
+            },
+            "eventHandlers": [
+                {
+                    "type": "drilldown.linkToDashboard",
+                    "options": {
+                        "app": "maze_security",
+                        "dashboard": "asset_drilldown",
+                        "newTab": false,
+                        "tokens": [
+                            {
+                                "token": "asset_filter",
+                                "value": "row.asset_name.value"
+                            }
+                        ]
+                    }
+                }
+            ]
+        },
+        "viz_top_cves": {
+            "type": "splunk.table",
+            "title": "Top 10 Most Important CVEs",
+            "dataSources": { "primary": "ds_top_cves" },
+            "options": {
+                "count": 10
+            }
+        }
+    },
+    "title": "Maze Dashboard"
+}
+]]>
+    </definition>
+</dashboard>

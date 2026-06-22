@@ -1,0 +1,681 @@
+<form version="1.1" theme="dark">
+  <label>Windows UF Upgrade Troubleshooting</label>
+  <fieldset submitButton="false">
+    <input type="text" token="hostname">
+      <label>Filter by Hostname</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="dropdown" token="DM_Accel">
+      <label>Data Model Acceleration</label>
+      <choice value="true">true</choice>
+      <choice value="false">false</choice>
+      <default>false</default>
+      <initialValue>false</initialValue>
+    </input>
+    <input type="time" token="splunk_upgrade_time">
+      <label>Global Time Picker</label>
+      <default>
+        <earliest>-90d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <style>
+          .section-spacer {
+            margin-top: 28px;
+            margin-bottom: 14px;
+          }
+
+          .section-header-box {
+            display: inline-block;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 10px 14px;
+            color: #ffffff;
+            background-color: transparent;
+          }
+
+          .section-header-box h1 {
+            margin: 0 0 6px 0;
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+          }
+
+          .section-header-box p {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.45;
+            color: #cfcfcf;
+            max-width: 1000px;
+          }
+        </style>
+
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>Windows UF Upgrade Troubleshooting</h1>
+            <p>This dashboard provides deeper diagnostics for failed setup actions, scheduled task issues, Splunk service activity, MSI installer messages, JSON state tracking, retry-loop prevention, force retry helper activity, marker reset activity, and raw upgrade events.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>1. Failure Summary</h1>
+            <p>High-level troubleshooting counts for setup failures, upgrade failures, service restart activity, MSI installer errors, retry-loop prevention, state tracking issues, and installer cleanup status.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Setup Error Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Setup Error Events"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9800, 9801, 9802, 9804, 9806, 9814, 9815, 9816, 9817)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd41f1f","0xd41f1f"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Setup/precheck related errors</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Upgrade Failure Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Upgrade Failure Events"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9811, 9813)
+    AND splunk_upgrade_events.status=Failure
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd94e17","0xd94e17"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Upgrade execution failures</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Service Control Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Service Control Events"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9808, 9809, 9810)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x1182f3","0x1182f3"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Splunk service start/stop/restart events</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>MSI Error Messages</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "MSI Error Messages"
+    FROM datamodel=splunk_upgrade.splunk_msi_events
+    WHERE host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xf8be34","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Installer-level diagnostic messages</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Retry Prevention Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Retry Prevention Events"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9819)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xf8be34","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Same installer skipped to prevent retry loop</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>State Tracking Errors</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "State Tracking Errors"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9822)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd41f1f","0xd41f1f"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">JSON state read/write/hash issues</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Installer Cleanup Failures</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Installer Cleanup Failures"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode=9807
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd94e17","0xd94e17"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">MSI remained in splunk_installer</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Installer Cleanup Success</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Installer Cleanup Success"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9823)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x65a637","0x65a637"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">MSI cleanup completed successfully</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>2. Setup and Precheck Errors</h1>
+            <p>Setup and precheck failures such as missing MSI installer, missing Splunk binary, failed scheduled task creation, failed scheduled task removal, failed scheduled task start, and version validation issues.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Setup Error Trend by Event Code</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9800, 9801, 9802, 9804, 9806, 9814, 9815, 9816, 9817)
+    AND host IN ($hostname$)
+    BY splunk_upgrade_events.eventcode 
+| rename splunk_upgrade_events.eventcode AS eventcode 
+| eval event_description=case(
+    eventcode=9800, "9800 - MSI Not Found",
+    eventcode=9801, "9801 - Splunk Bin Not Found",
+    eventcode=9802, "9802 - Failed to Create Scheduled Task",
+    eventcode=9804, "9804 - Failed to Remove Task",
+    eventcode=9806, "9806 - Failed to Start Task",
+    eventcode=9814, "9814 - Failed to Parse Splunk Version",
+    eventcode=9815, "9815 - MSI Bad Filename",
+    eventcode=9816, "9816 - UF Version Up to Date",
+    eventcode=9817, "9817 - Versions Too Far Apart"
+    ) 
+| sort - count 
+| table event_description, count</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Month</option>
+        <option name="charting.axisTitleY.text">Failure Count</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">252</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="charting.seriesColors">[0x1f77b4]</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Setup Errors by Host</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ fillnull_value="n/a" count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9800, 9801, 9802, 9804, 9806, 9814, 9815, 9816, 9817)
+    AND host IN ($hostname$)
+    BY _time, splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.taskname, splunk_upgrade_events.eventcode 
+| sort 0 -_time 
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.taskname, splunk_upgrade_events.eventcode 
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.eventcode AS EventCode, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.details AS Details, splunk_upgrade_events.taskname AS Taskname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>3. Upgrade Failure Details</h1>
+            <p>Latest failed upgrade event per host with message and detail fields for remediation.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Latest Upgrade Failure by Host</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$
+    latest(_time) AS latest_time
+    latest(splunk_upgrade_events.date) AS Date
+    latest(splunk_upgrade_events.time) AS Time
+    latest(splunk_upgrade_events.current_version) AS "Current UF Version"
+    latest(splunk_upgrade_events.previous_version) AS "Previous UF Version"
+    latest(splunk_upgrade_events.eventcode) AS EventCode
+    latest(splunk_upgrade_events.status) AS Status
+    latest(splunk_upgrade_events.message) AS Message
+    latest(splunk_upgrade_events.details) AS Details
+FROM datamodel=splunk_upgrade.splunk_upgrade_events
+WHERE splunk_upgrade_events.eventcode IN (9811, 9813)
+AND splunk_upgrade_events.status=Failure
+AND host IN ($hostname$)
+BY host
+| rename host AS Hostname
+| eval "Latest Event Time"=strftime(latest_time, "%Y-%m-%d %H:%M:%S")
+| table Date, Time, Hostname, "Previous UF Version", "Current UF Version", EventCode, Status, Message, Details, "Latest Event Time"
+| sort 0 Hostname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>4. Splunk Service Activity</h1>
+            <p>Service start, stop, and restart-related activity generated during the upgrade workflow.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Splunkd Service Activity Over Time</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9808, 9809, 9810, 9811)
+    AND host IN ($hostname$)
+    BY splunk_upgrade_events.eventcode
+| rename splunk_upgrade_events.eventcode AS eventcode
+| eval event_description=case(
+    eventcode=9808, "9808 - Splunkd Start",
+    eventcode=9809, "9809 - Splunkd Failed to Start",
+    eventcode=9810, "9810 - Splunkd Stopped",
+    eventcode=9811, "9811 - Splunkd Failed to Stop"
+)
+| sort - count
+| table event_description, count</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Month</option>
+        <option name="charting.axisTitleY.text">Event Count</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="charting.seriesColors">[0x1f77b4]</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="dropdown" token="splunkd_service_action_token">
+        <label>Splunkd Service Action</label>
+        <choice value="9808, 9809, 9810, 9811">All Splunkd Service Action Events</choice>
+        <fieldForLabel>eventcode_label</fieldForLabel>
+        <fieldForValue>eventcode</fieldForValue>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE host IN ($hostname$) AND splunk_upgrade_events.eventcode IN (9808, 9809, 9810, 9811)
+    BY splunk_upgrade_events.eventcode 
+| rename splunk_upgrade_events.eventcode AS eventcode 
+| eval eventcode_label=case(
+    eventcode="9808", "9808 - Splunkd service started successfully.",
+    eventcode="9809", "9809 - Failed to start the Splunkd service.",
+    eventcode="9810", "9810 - Splunkd service stopped successfully.",
+    eventcode="9811", "9811 - Failed to stop the Splunkd service.",
+    true(), eventcode . " - Unknown event code"
+    ) 
+| fields eventcode, eventcode_label</query>
+          <earliest>-90d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <default>9808, 9809, 9810, 9811</default>
+      </input>
+      <table>
+        <title>Splunkd Start/Stop Activity by Host</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+FROM datamodel=splunk_upgrade.splunk_upgrade_events
+WHERE splunk_upgrade_events.eventcode IN ($splunkd_service_action_token$)
+AND host IN ($hostname$)
+BY _time, splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.eventcode
+| sort 0 _time
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.eventcode
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.eventcode AS EventCode</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>5. MSI Installer Diagnostics</h1>
+            <p>Windows MSI installer messages collected during the upgrade workflow.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>MSI Error Messages by Host</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+FROM datamodel=splunk_upgrade.splunk_msi_events
+WHERE host IN ($hostname$)
+BY _time, host, splunk_msi_events.date, splunk_msi_events.time, splunk_msi_events.msi_error_message
+| sort 0 -_time
+| table splunk_msi_events.date, splunk_msi_events.time, host, splunk_msi_events.msi_error_message
+| rename splunk_msi_events.date AS Date, splunk_msi_events.time AS Time, host AS Hostname, splunk_msi_events.msi_error_message AS "MSI Error Message"</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>6. State Management, Retry Prevention, and Retry Helper Activity</h1>
+            <p>JSON state tracking, retry-loop prevention, force retry activity, helper-created retry flags, marker reset activity, and installer cleanup events used to prevent or intentionally control repeated upgrade attempts against the same MSI installer.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>State, Retry, and Helper Events Over Time</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9807, 9819, 9820, 9821, 9822, 9823, 9830, 9831, 9832, 9833, 9834, 9835)
+    AND host IN ($hostname$)
+    BY splunk_upgrade_events.eventcode
+| rename splunk_upgrade_events.eventcode AS eventcode
+| eval event_description=case(
+    eventcode=9807, "9807 - Installer Cleanup Failed",
+    eventcode=9819, "9819 - Retry Prevented",
+    eventcode=9820, "9820 - Force Retry Consumed",
+    eventcode=9821, "9821 - State File Written",
+    eventcode=9822, "9822 - State Tracking Error",
+    eventcode=9823, "9823 - Installer Removed",
+    eventcode=9830, "9830 - Retry Flag Created",
+    eventcode=9831, "9831 - Retry Helper Skipped",
+    eventcode=9832, "9832 - Retry Helper Failed",
+    eventcode=9833, "9833 - Retry Marker Reset",
+    eventcode=9834, "9834 - Reset Marker Not Present",
+    eventcode=9835, "9835 - Reset Marker Failed"
+)
+| sort - count
+| table event_description, count</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Month</option>
+        <option name="charting.axisTitleY.text">Event Count</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">250</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="charting.seriesColors">[0x1f77b4]</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Retry Prevention and State Tracking Details</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ fillnull_value="n/a" count
+FROM datamodel=splunk_upgrade.splunk_upgrade_events
+WHERE splunk_upgrade_events.eventcode IN (9819, 9820, 9821, 9822)
+AND host IN ($hostname$)
+BY _time, splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.installer_name, splunk_upgrade_events.installer_hash, splunk_upgrade_events.target_version, splunk_upgrade_events.attempt_count, splunk_upgrade_events.last_status, splunk_upgrade_events.cleanup_status, splunk_upgrade_events.do_not_retry
+| sort 0 -_time
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.installer_name, splunk_upgrade_events.target_version, splunk_upgrade_events.attempt_count, splunk_upgrade_events.last_status, splunk_upgrade_events.cleanup_status, splunk_upgrade_events.do_not_retry, splunk_upgrade_events.details
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.eventcode AS EventCode, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.installer_name AS "Installer Name", splunk_upgrade_events.target_version AS "Target Version", splunk_upgrade_events.attempt_count AS "Attempt Count", splunk_upgrade_events.last_status AS "Last Status", splunk_upgrade_events.cleanup_status AS "Cleanup Status", splunk_upgrade_events.do_not_retry AS "Do Not Retry", splunk_upgrade_events.details AS Details</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">true</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Retry Helper and Reset Activity</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ fillnull_value="n/a" count
+FROM datamodel=splunk_upgrade.splunk_upgrade_events
+WHERE splunk_upgrade_events.eventcode IN (9820, 9830, 9831, 9832, 9833, 9834, 9835)
+AND host IN ($hostname$)
+BY _time, splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.force_retry_file, splunk_upgrade_events.marker_file
+| sort 0 -_time
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.force_retry_file, splunk_upgrade_events.marker_file, splunk_upgrade_events.details
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.eventcode AS EventCode, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.force_retry_file AS "Force Retry File", splunk_upgrade_events.marker_file AS "Marker File", splunk_upgrade_events.details AS Details</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Installer Cleanup Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ fillnull_value="n/a" count
+FROM datamodel=splunk_upgrade.splunk_upgrade_events
+WHERE splunk_upgrade_events.eventcode IN (9807, 9823)
+AND host IN ($hostname$)
+BY _time, splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details
+| sort 0 -_time
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.eventcode AS EventCode, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.details AS Details</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>7. Raw Upgrade Events</h1>
+            <p>Raw structured upgrade events for detailed validation of event codes, status values, messages, helper activity, reset activity, and host-level execution behavior.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <input type="dropdown" token="eventcode_token">
+        <label>Event Code</label>
+        <choice value="*">All Event IDs</choice>
+        <default>*</default>
+        <initialValue>*</initialValue>
+        <fieldForLabel>event_code_label</fieldForLabel>
+        <fieldForValue>eventcode</fieldForValue>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE host IN ($hostname$)
+    BY splunk_upgrade_events.eventcode
+| rename splunk_upgrade_events.eventcode AS eventcode
+| eval event_code_label=case(
+    eventcode="9800", "9800 - No MSI installer detected in the splunk_installer directory.",
+    eventcode="9801", "9801 - Splunk executable was not found. The script could not locate splunk.exe.",
+    eventcode="9802", "9802 - Failed to create the Windows Scheduled Task.",
+    eventcode="9803", "9803 - Windows Scheduled Task created successfully.",
+    eventcode="9804", "9804 - Failed to remove the Windows Scheduled Task.",
+    eventcode="9805", "9805 - Windows Scheduled Task started successfully.",
+    eventcode="9806", "9806 - Windows Scheduled Task failed to start.",
+    eventcode="9807", "9807 - Failed to remove the Splunk installer file from the splunk_installer directory.",
+    eventcode="9808", "9808 - Splunkd service started successfully.",
+    eventcode="9809", "9809 - Failed to start the Splunkd service.",
+    eventcode="9810", "9810 - Splunkd service stopped successfully.",
+    eventcode="9811", "9811 - Failed to stop the Splunkd service.",
+    eventcode="9812", "9812 - Splunk Universal Forwarder upgrade completed successfully.",
+    eventcode="9813", "9813 - Splunk Universal Forwarder upgrade failed.",
+    eventcode="9814", "9814 - Failed to parse the currently installed Splunk Universal Forwarder version.",
+    eventcode="9815", "9815 - Unable to extract the target version from the MSI installer filename.",
+    eventcode="9816", "9816 - Target version is equal to or lower than the current version. Upgrade was skipped.",
+    eventcode="9817", "9817 - Major version difference exceeds the supported upgrade path.",
+    eventcode="9818", "9818 - Version validation checks passed.",
+    eventcode="9819", "9819 - Installer already attempted; skipped to prevent retry loop.",
+    eventcode="9820", "9820 - Force retry flag detected and removed; retry allowed.",
+    eventcode="9821", "9821 - Upgrade state file written successfully.",
+    eventcode="9822", "9822 - State file read/write/hash failure or force retry removal failure.",
+    eventcode="9823", "9823 - Splunk installer file removed successfully.",
+    eventcode="9830", "9830 - Force retry flag created by helper app.",
+    eventcode="9831", "9831 - Force retry helper already ran; no new flag created.",
+    eventcode="9832", "9832 - Force retry helper failed to create force retry flag.",
+    eventcode="9833", "9833 - Force retry helper marker removed successfully.",
+    eventcode="9834", "9834 - Force retry helper marker was not present; no reset needed.",
+    eventcode="9835", "9835 - Failed to remove force retry helper marker.",
+    true(), eventcode . " - Unknown event code"
+)</query>
+          <earliest>-90d@d</earliest>
+          <latest>now</latest>
+        </search>
+      </input>
+      <table>
+        <title>Recent Raw Upgrade Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ fillnull_value="n/a" count
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE host IN ($hostname$) AND splunk_upgrade_events.eventcode IN ($eventcode_token$)
+    BY _time, host, splunk_upgrade_events.date, splunk_upgrade_events.time, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.previous_version, splunk_upgrade_events.current_version, splunk_upgrade_events.installer_name, splunk_upgrade_events.target_version, splunk_upgrade_events.attempt_count, splunk_upgrade_events.last_status, splunk_upgrade_events.cleanup_status, splunk_upgrade_events.do_not_retry, splunk_upgrade_events.force_retry_file, splunk_upgrade_events.marker_file
+| sort 0 -_time 
+| table splunk_upgrade_events.date, splunk_upgrade_events.time, host, splunk_upgrade_events.eventcode, splunk_upgrade_events.status, splunk_upgrade_events.message, splunk_upgrade_events.details, splunk_upgrade_events.previous_version, splunk_upgrade_events.current_version, splunk_upgrade_events.installer_name, splunk_upgrade_events.target_version, splunk_upgrade_events.attempt_count, splunk_upgrade_events.last_status, splunk_upgrade_events.cleanup_status, splunk_upgrade_events.do_not_retry, splunk_upgrade_events.force_retry_file, splunk_upgrade_events.marker_file
+| rename splunk_upgrade_events.date AS Date, splunk_upgrade_events.time AS Time, host AS Hostname, splunk_upgrade_events.eventcode AS EventCode, splunk_upgrade_events.status AS Status, splunk_upgrade_events.message AS Message, splunk_upgrade_events.details AS Details, splunk_upgrade_events.previous_version AS "Previous UF Version", splunk_upgrade_events.current_version AS "Current UF Version", splunk_upgrade_events.installer_name AS "Installer Name", splunk_upgrade_events.target_version AS "Target Version", splunk_upgrade_events.attempt_count AS "Attempt Count", splunk_upgrade_events.last_status AS "Last Status", splunk_upgrade_events.cleanup_status AS "Cleanup Status", splunk_upgrade_events.do_not_retry AS "Do Not Retry", splunk_upgrade_events.force_retry_file AS "Force Retry File", splunk_upgrade_events.marker_file AS "Marker File"</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">30</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

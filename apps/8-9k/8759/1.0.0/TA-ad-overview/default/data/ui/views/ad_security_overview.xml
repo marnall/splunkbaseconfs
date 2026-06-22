@@ -1,0 +1,201 @@
+<form version="1.1">
+  <label>AD Security Overview</label>
+  <fieldset submitButton="false">
+    <input type="time" token="field1">
+      <label>time</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <table>
+        <title>Privileged Accounts</title>
+        <search>
+          <query>index=main priority=high
+| stats count by identity bunit managedBy
+| sort -count</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Newly Created Accounts</title>
+        <search>
+          <query>index=main
+        
+| sort _time desc
+| table _time identity first last email bunit managedBy priority</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Disabled or Expired Accounts</title>
+        <search>
+          <query>index=main
+| where endDate!=""
+| eval accountStatus="Expired/Disabled"
+| table identity first last bunit managedBy endDate accountStatus</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Accounts Without Manager Assigned</title>
+        <search>
+          <query>index=main
+| where isnull(managedBy) OR managedBy=""
+| table identity first last bunit email priority</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>High-Risk Business Units</title>
+        <search>
+          <query>index=main priority=high
+| stats count by bunit
+| sort -count</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Users Without Email Address</title>
+        <search>
+          <query>index=main
+| where isnull(email) OR email=""
+| table identity first last bunit managedBy priority</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Duplicate Phone Numbers</title>
+        <search>
+          <query>index=main
+| stats values(identity) as userList count by phone
+| where count &gt; 1 AND phone!=""
+| sort -count</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>High-Priority Users Without Phone Number</title>
+        <search>
+          <query>index=main priority=high
+| where phone="" OR isnull(phone)
+| table identity, bunit, category, phone</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Accounts Created Outside Working Hours</title>
+        <search>
+          <query>index=main
+| eval hour=strftime(_time, "%H")
+| where hour &lt; 07 OR hour &gt; 20
+| table identity, startDate, hour, bunit
+| sort -hour</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Duplicate Managers</title>
+        <search>
+          <query>index=main
+| stats dc(identity) as uniqueIdentities values(identity) as identities by managedBy
+| where uniqueIdentities &gt; 1 AND managedBy!=""
+| sort -uniqueIdentities</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Multiple identities sharing the SAME manager and phone number</title>
+        <search>
+          <query>index=main
+| eval managerName = replace(managedBy,"^CN=","")
+| eval managerName = replace(managerName,",OU.*","")
+| where phone!=""
+| stats values(identity) as identities dc(identity) as identityCount by managerName, phone
+| where identityCount &gt; 1
+| sort -identityCount</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

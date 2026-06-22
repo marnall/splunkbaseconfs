@@ -1,0 +1,104 @@
+<form version="1.1">
+  <label>Deployment Health</label>
+  <description>Errors and stability by Vercel deployment.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="change_id" searchWhenChanged="true">
+      <label>Deployment</label>
+      <choice value="*">All</choice>
+      <search>
+        <query>`vercel_index` sourcetype=vercel:logs change_id=* | stats count by change_id | sort -count | head 50</query>
+      </search>
+      <fieldForLabel>change_id</fieldForLabel>
+      <fieldForValue>change_id</fieldForValue>
+      <default>*</default>
+    </input>
+    <eval token="change_filter">if("$change_id$"="*" OR "$change_id$"="", "", "change_id=\"$change_id$\"")</eval>
+  </fieldset>
+
+  <search id="baseLogs">
+    <query>`vercel_index` sourcetype=vercel:logs $change_filter$</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+
+  <row>
+    <panel>
+      <title>Total errors (status &gt;= 500)</title>
+      <single>
+        <search base="baseLogs">
+          <query>| where status&gt;=500 | stats count as errors</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Error rate</title>
+      <single>
+        <search base="baseLogs">
+          <query>| eval is_error=if(status&gt;=500,1,0) | stats sum(is_error) as errors count as total | eval error_rate=round((errors/total)*100,2)</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Deployments seen</title>
+      <single>
+        <search base="baseLogs">
+          <query>| stats dc(change_id) as deployments</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>5xx errors over time</title>
+      <chart>
+        <search base="baseLogs">
+          <query>| where status&gt;=500 | timechart span=5m count as errors</query>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Requests by status</title>
+      <chart>
+        <search base="baseLogs">
+          <query>| timechart span=5m count by status</query>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Errors by deployment</title>
+      <table>
+        <search base="baseLogs">
+          <query>| where status&gt;=500 | stats count as errors latest(_time) as last_seen by change_id | sort - errors</query>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>Top error URLs</title>
+      <table>
+        <search base="baseLogs">
+          <query>| where status&gt;=500 | stats count as errors by uri_path | sort - errors | head 10</query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

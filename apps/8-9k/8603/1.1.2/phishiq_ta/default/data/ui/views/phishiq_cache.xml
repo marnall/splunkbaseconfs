@@ -1,0 +1,56 @@
+<dashboard version="1.1" theme="dark">
+  <label>PhishIQPlus - Cache</label>
+  <description>Cache hit visibility for PhishIQPlus enrichment.</description>
+
+  <fieldset submitButton="false">
+    <input type="text" token="phishiqplus_internal_index">
+      <label>Internal index</label>
+      <default>phishiqplus_internal</default>
+    </input>
+    <input type="text" token="phishiqplus_internal_sourcetype">
+      <label>Internal sourcetype</label>
+      <default>phishiqplus:internal</default>
+    </input>
+    <input type="time" token="time">
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Cache hits</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m sum(cache_hits) as cache_hits sum(urls_total) as urls_total
+| eval hit_rate=case(urls_total&gt;0, round((cache_hits/urls_total)*100,2), true(), 0)
+| fields _time cache_hits hit_rate</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleY.text">Cache hits / hit rate (%)</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top stanzas by cache hit rate</title>
+      <table>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| stats sum(cache_hits) as cache_hits sum(urls_total) as urls_total by stanza
+| eval hit_rate=case(urls_total&gt;0, round((cache_hits/urls_total)*100,2), true(), 0)
+| sort - hit_rate</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

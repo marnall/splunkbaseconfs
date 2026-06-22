@@ -1,0 +1,24 @@
+/*
+PURPOSE:
+  Convert raw failure signals into a normalized 0–100 reliability score.
+
+WHY:
+  Scores enable comparison across services and time.
+
+SCORING PHILOSOPHY:
+  - Frequency matters more than volume
+  - Consistency matters more than spikes
+
+WHAT AFFECTS SCORE:
+  - Failure ratio
+  - Sustained degradation
+
+WHAT DOES NOT:
+  - Log volume
+  - INFO noise
+*/
+
+| stats count AS total_events sum(is_failure) AS failures BY service
+| eval failure_ratio = if(total_events=0, 0, failures / total_events)
+| eval reliability_score = round(100 - (failure_ratio * 100), 0)
+| eval reliability_score = if(reliability_score < 0, 0, reliability_score)

@@ -1,0 +1,304 @@
+<form version="1.1" theme="light">
+  <label>Software Conformance</label>
+  <description>Optimized with base search optimization using loadjob</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$alwaysHide$">
+    <panel>
+      <title>Base: Conformance</title>
+      <table>
+        <search>
+          <done>
+            <set token="sid_base_conformance">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretrackmember 
+| stats values(softwareTrackId) as softwareTrackId
+        values(softwareTrackName) as softwareTrackName
+        values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant
+        values(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant
+        by deviceId
+| $singleLineGroupSelector$
+| dedup deviceId
+| eventstats dc(deviceId) as totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Conformance"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$HideMe$">
+      <title>Selected Group: Tracked Elements</title>
+      <single>
+        <title></title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvDevices">$result.totalSum$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $sid_base_conformance$
+| table totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Conformant Devices (N)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackCompliant=true
+| stats count as total
+| table total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Conformance (%, N)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackCompliant=true
+| stats count as total, last(totalSum) as totalSum
+| eval percConformant=round(100*total/totalSum)
+| table percConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 60%-80% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Flexibly Conformant (N-1) Devices</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackFlexibleCompliant=true
+| stats count as total
+| table total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Flexible Conformance (%, N-1)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| eventstats dc(deviceId) as Devices 
+| search isSoftwareTrackFlexibleCompliant=true
+| eventstats count as Flex
+| table Flex, Devices
+| head 1
+| eval percFlexConformant=100*Flex/Devices
+| table percFlexConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 70%-90% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 10 by Track Size, then Bottom 5 by Conformance (Not Group-Aware)</title>
+      <chart>
+        <title>Key Enterprise Tracks</title>
+        <search>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretracksummary 
+| dedup softwareTrackId 
+| eval roundedSoftwareTrackCompliancePercent = round(softwareTrackCompliancePercent)
+| table softwareTrackId, softwareTrackName, softwareTrackTotalDeviceCount, roundedSoftwareTrackCompliancePercent 
+| sort -softwareTrackTotalDeviceCount 
+| head 10 
+| sort roundedSoftwareTrackCompliancePercent 
+| head 5 
+| sort -softwareTrackTotalDeviceCount 
+| table softwareTrackName, softwareTrackTotalDeviceCount, roundedSoftwareTrackCompliancePercent</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Enterprise Conformance Details</title>
+      <table>
+        <search>
+          <query>| tstats latest(isSoftwareTrackCompliant) as isSoftwareTrackCompliant,
+    latest(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant,
+    latest(isSoftwareTrackPreviousCompliant) as isSoftwareTrackPreviousCompliant,
+    latest(softwareTrackId) as softwareTrackId,
+    latest(softwareTrackName) as softwareTrackName
+    WHERE (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:softwaretrackmember)
+    by deviceId
+| append
+    [| tstats latest(softwareTrackDescription) as softwareTrackDescription,
+        latest(softwareTrackLastModifiedDate) as softwareTrackLastModifiedDate,
+        latest(softwareTrackRating) as softwareTrackRating,
+        latest(softwareTrackRecommendationDate) as softwareTrackRecommendationDate,
+        latest(softwareTrackPreviousVersion1) as softwareTrackPreviousVersion1,
+        latest(softwareTrackPreviousVersion2) as softwareTrackPreviousVersion2,
+        latest(softwareTrackStandardVersion) as softwareTrackStandardVersion,
+        latest(softwareTrackStatus) as softwareTrackStatus,
+        latest(softwareTrackUpgradeReason) as softwareTrackUpgradeReason,
+        latest(softwareType) as softwareType
+        WHERE (`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:softwaretracksummary)
+        by softwareTrackId]
+| stats values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant,
+    values(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant,
+    values(isSoftwareTrackPreviousCompliant) as isSoftwareTrackPreviousCompliant,
+    values(softwareTrackName) as softwareTrackName,
+    values(softwareTrackDescription) as softwareTrackDescription,
+    values(softwareTrackLastModifiedDate) as softwareTrackLastModifiedDate,
+    values(softwareTrackRating) as softwareTrackRating,
+    values(softwareTrackRecommendationDate) as softwareTrackRecommendationDate,
+    values(softwareTrackPreviousVersion1) as softwareTrackPreviousVersion1,
+    values(softwareTrackPreviousVersion2) as softwareTrackPreviousVersion2,
+    values(softwareTrackStandardVersion) as softwareTrackStandardVersion,
+    values(softwareTrackStatus) as softwareTrackStatus,
+    values(softwareTrackUpgradeReason) as softwareTrackUpgradeReason,
+    values(softwareType) as softwareType,
+    values(deviceId) as deviceId
+    by softwareTrackId
+| mvexpand deviceId
+| $singleLineGroupSelector$ 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName, featureSetDescription, imageName, lastResetTimestamp, productFamily, productId, productType, softwareVersion, resetReason, snmpSysDescription, snmpSysLocation
+| table deviceId, deviceName, softwareTrackId, softwareTrackName, softwareTrackDescription, softwareVersion, softwareType, softwareTrackStandardVersion, softwareTrackPreviousVersion1, softwareTrackPreviousVersion2, productId, productFamily, productType *</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">2</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Standard Recommended Code for all Platforms</title>
+      <table>
+        <title>This table is enterprise wide, and will not change based on the Group selected</title>
+        <search>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretracksummary 
+| stats values(softwareTrackDescription) as softwareTrackDescription
+    values(softwareTrackStandardVersion) as softwareTrackStandardVersion
+    latest(softwareTrackTotalDeviceCount) as softwareTrackTotalDeviceCount
+    latest(softwareTrackNonCompliantDeviceCount) as softwareTrackNonCompliantDeviceCount
+    latest(softwareTrackCompliantDeviceCount) as softwareTrackCompliantDeviceCount
+    values(softwareTrackCompliancePercent) as softwareTrackCompliancePercent
+    values(softwareTrackRating) as softwareTrackRating
+    values(softwareTrackPreviousCompliantDeviceCount) as softwareTrackPreviousCompliantDeviceCount
+    values(softwareTrackFlexibleCompliancePercent) as softwareTrackFlexibleCompliancePercent
+    values(softwareTrackTotalVersionCount) as softwareTrackTotalVersionCount
+    values(softwareTrackPreviousVersion1) as softwareTrackPreviousVersion1
+    values(softwareTrackPreviousVersion2) as softwareTrackPreviousVersion2
+    values(softwareTrackRecommendationDate) as softwareTrackRecommendationDate
+    by softwareTrackName 
+| eval softwareTrackCompliancePercent = round(softwareTrackCompliancePercent) 
+| eval softwareTrackPreviousCompliantDeviceCount = round(softwareTrackPreviousCompliantDeviceCount) 
+| table softwareTrackName, softwareTrackDescription, softwareTrackRecommendationDate, softwareTrackStandardVersion, softwareTrackTotalDeviceCount, softwareTrackNonCompliantDeviceCount, softwareTrackCompliantDeviceCount, softwareTrackCompliancePercent, softwareTrackRating, softwareTrackPreviousCompliantDeviceCount, softwareTrackPreviousCompliantDeviceCount, softwareTrackTotalVersionCount, softwareTrackPreviousVersion1, softwareTrackPreviousVersion2 
+| sort softwareTrackName</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

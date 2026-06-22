@@ -1,0 +1,116 @@
+<form version="1.1" script="javascript/feed_details.js">
+  <label>Feed Details</label>
+  <init>
+    <set token="confidence_score">0</set>
+    <set token="severity_score">0</set>
+  </init>
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="index_name" searchWhenChanged="false">
+      <label>Select Index</label>
+      <fieldForLabel>index</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount summarize=false index=* |dedup index | fields index</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>bitdefender_ti_index</default>
+    </input>
+    <input type="dropdown" token="source_type" searchWhenChanged="false">
+      <label>Feed Name</label>
+      <fieldForLabel>sourcetype_display</fieldForLabel>
+      <fieldForValue>sourcetype</fieldForValue>
+      <search>
+        <query>
+      | makeresults
+      | eval sourcetype="*,bitdefender-ip-feed,bitdefender-web-feed,bitdefender-file-feed"
+      | makemv delim="," sourcetype
+      | mvexpand sourcetype
+      | eval sourcetype_display=if(sourcetype=="*", "All", sourcetype)
+      | eval sourcetype_display=if(sourcetype=="bitdefender-ip-feed", "IP Feed", sourcetype_display)
+      | eval sourcetype_display=if(sourcetype=="bitdefender-web-feed", "Web Feed", sourcetype_display)
+      | eval sourcetype_display=if(sourcetype=="bitdefender-file-feed", "File Feed", sourcetype_display)
+      | fields sourcetype, sourcetype_display
+    </query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <selectFirstChoice>true</selectFirstChoice>
+    </input>
+    <input type="time" token="time" searchWhenChanged="false">
+      <label>Select Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="ioc_value" searchWhenChanged="false">
+      <label>Search (hash, ip, actor, etc)</label>
+      <default>*</default>
+    </input>
+    <html>
+  <label>Minimum Confidence</label>
+  <input type="range" id="confidence_slider_input" value="60" min="0" max="100" step="1"/>
+  <span id="confidence_value_display">60</span>
+</html>
+    <html>
+  <label>Minimum Severity</label>
+  <input type="range" id="severity_slider_input" value="60" min="0" max="100" step="1"/>
+  <span id="severity_value_display">60</span>
+</html>
+  </fieldset>
+  <row>
+    <panel>
+      <table>
+        <title>IOC List</title>
+        <search>
+          <query>index="$index_name$" sourcetype="$source_type$" confidence>=$confidence_score$ severity>=$severity_score$ "*$ioc_value|s$*"
+            | spath path=affected_countries{}.country output=countries
+            | spath path=affected_industries{}.industry output=industries
+            | spath path=tags{} output=tags
+            | eval group_key=case(
+                isnotnull(md5), md5,
+                isnotnull(ip), ip,
+                isnotnull(url), url
+            )
+            | eval base_type=case(
+                isnotnull(md5) OR isnotnull(sha1) OR isnotnull(sha256), "filehash",
+                isnotnull(ip), "ip",
+                isnotnull(url), "url"
+            )
+            | stats
+                values(md5) as md5
+                values(sha1) as sha1
+                values(sha256) as sha256
+                values(first_seen) AS First_seen
+                    values(severity) AS Severity
+                    values(confidence) AS Confidence
+                    values(tags) AS Tags
+                    values(countries) AS Affected_countries
+                    values(industries) AS Affected_industries
+                    values(actor_name) AS Actor
+                    values(threat_type) AS Threat_Type
+                    values(threat_family) AS Threat_Family
+                min(_time) as _time
+                by group_key base_type
+            | eval ioc_type=case(
+                base_type=="filehash", mvappend("md5","sha1","sha256"),
+                base_type=="ip", "ip",
+                base_type=="url", "url"
+            )
+            | eval ioc_value=case(
+                base_type=="filehash", mvappend(md5, sha1, sha256),
+                base_type=="ip", group_key,
+                base_type=="url", group_key
+            )
+            | fields _time ioc_type ioc_value First_seen Severity Confidence Tags Affected_countries Affected_industries Actor Threat_Type Threat_Family</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

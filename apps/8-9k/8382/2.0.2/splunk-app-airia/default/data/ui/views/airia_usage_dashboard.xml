@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form version="1.1">
+  <label>Airia Platform - Usage Analytics</label>
+  <description>Track user activity, prompt usage, and system utilization patterns</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_picker">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Executions Over Time by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| timechart span=1h count by model_display</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.axisTitleY.text">Executions</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Prompts by Usage</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| stats count by prompt_name
+| where isnotnull(prompt_name) AND prompt_name!="null" AND prompt_name!=""
+| sort -count
+| head 10</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Usage Count</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Model Usage Distribution</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| stats count by model_display</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent User Inputs</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where isnotnull(user_input) AND user_input!="null" AND user_input!=""
+| table _time user_input
+| rename user_input as "User Input"
+| sort -_time
+| head 20</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Detailed Prompt Statistics</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where isnotnull(prompt_name) AND prompt_name!="null" AND prompt_name!="" AND tokens_numeric>0 AND cost_numeric>0
+| stats
+    count as "Uses"
+    avg(tokens_numeric) as "Avg Tokens"
+    sum(cost_numeric) as "Total Cost"
+    earliest(_time) as "First Use"
+    latest(_time) as "Last Use"
+    by prompt_name
+| eval "Total Cost"="$".round('Total Cost', 4)
+| eval "Avg Tokens"=round('Avg Tokens', 0)
+| eval "First Use"=strftime('First Use', "%Y-%m-%d %H:%M")
+| eval "Last Use"=strftime('Last Use', "%Y-%m-%d %H:%M")
+| rename prompt_name as "Prompt Name"
+| sort -Uses</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

@@ -1,0 +1,246 @@
+# Ensign Akamai SIEM Add-ons — CLI Configuration Guide
+# =====================================================
+# This guide explains how to configure the add-on via CLI/conf files,
+# which is useful for Deployment Server, scripted deployments, or
+# environments without UI access.
+#
+# IMPORTANT: All configuration files should be placed in the 'local/' 
+# directory, NOT 'default/'. The 'default/' directory is managed by the
+# add-on and will be overwritten during upgrades.
+#
+# Base path: $SPLUNK_HOME/etc/apps/TA-ensign_waf_akamaisiem/local/
+
+
+# =========================================================
+# STEP 1: Configure Akamai Account(s)
+# =========================================================
+# File: local/ta_ensign_waf_akamaisiem_akamai_accounts.conf
+#
+# Create one stanza per Akamai account. The stanza name is the
+# account identifier (no spaces allowed, use underscores).
+#
+# Required fields: akamai_host, client_token, client_secret, access_token
+# Optional fields: account_enabled, disable_ssl, cert_location
+#
+# Example:
+# ---------------------------------------------------------
+# [Production_WAF]
+# account_enabled = 1
+# akamai_host = akab-xxxxx.luna.akamaiapis.net
+# client_token = akab-xxxxxxxxxxxxxxxxx
+# client_secret = xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# access_token = akab-xxxxxxxxxxxxxxxxx
+# disable_ssl = 0
+# cert_location = /opt/splunk/etc/auth/ca_cert.pem
+#
+# [Staging_WAF]
+# account_enabled = 1
+# akamai_host = akab-yyyyy.luna.akamaiapis.net
+# client_token = akab-yyyyyyyyyyyyyyyyy
+# client_secret = yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy
+# access_token = akab-yyyyyyyyyyyyyyyyy
+# disable_ssl = 1
+# ---------------------------------------------------------
+#
+# NOTES:
+# - akamai_host: Do NOT include https://. Just the hostname.
+# - disable_ssl: Set to 1 to skip SSL verification (not recommended
+#   for production). If set to 0, provide cert_location.
+# - account_enabled: Set to 0 to temporarily disable an account
+#   without deleting it.
+# - Credentials will be encrypted automatically by Splunk after
+#   the first restart.
+
+
+# =========================================================
+# STEP 2: Configure Proxy Server(s) (Optional)
+# =========================================================
+# File: local/ta_ensign_waf_akamaisiem_proxy_servers.conf
+#
+# Create one stanza per proxy server. Only needed if your Splunk
+# server requires a proxy to reach the Akamai API.
+#
+# Required fields: proxy_url, proxy_port
+# Optional fields: proxy_enabled, proxy_type, proxy_username,
+#                  proxy_password, proxy_rdns
+#
+# Example:
+# ---------------------------------------------------------
+# [Internal_Proxy]
+# proxy_enabled = 1
+# proxy_type = http
+# proxy_url = 10.0.1.100
+# proxy_port = 8080
+# proxy_username =
+# proxy_password =
+# proxy_rdns = 0
+#
+# [DMZ_Proxy]
+# proxy_enabled = 0
+# proxy_type = http
+# proxy_url = 10.0.2.200
+# proxy_port = 3128
+# ---------------------------------------------------------
+#
+# NOTES:
+# - proxy_type: Supported values: http, https, socks4, socks5
+# - proxy_enabled: Set to 0 to disable without deleting.
+# - proxy_rdns: Set to 1 to resolve DNS via the proxy server.
+# - If ANY proxy is enabled in the system, each input MUST
+#   reference a proxy (enforced at runtime).
+
+
+# =========================================================
+# STEP 3: Configure Logging (Optional)
+# =========================================================
+# File: local/ta_ensign_waf_akamaisiem_settings.conf
+#
+# Example:
+# ---------------------------------------------------------
+# [logging]
+# loglevel = INFO
+# ---------------------------------------------------------
+#
+# Supported values: DEBUG, INFO, WARNING, ERROR, CRITICAL
+# Default: INFO
+# Log location: $SPLUNK_HOME/var/log/splunk/ta_ensign_waf_akamaisiem*.log
+
+
+# =========================================================
+# STEP 4: Configure Input(s)
+# =========================================================
+# File: local/inputs.conf
+#
+# Create one stanza per Akamai Security Config ID you want to
+# collect. Each input references an account and optionally a proxy.
+#
+# Required fields: akamai_account, config_id, interval, index
+# Optional fields: limit_num, proxy_server, custom_sourcetype, disabled
+#
+# Example:
+# ---------------------------------------------------------
+# [akamai_siem_source://Web_Application_WAF]
+# akamai_account = Production_WAF
+# config_id = 12345
+# interval = 60
+# index = main
+# limit_num = 600000
+# proxy_server = Internal_Proxy
+# custom_sourcetype = ensign_akamaisiem
+# disabled = 0
+#
+# [akamai_siem_source://Mobile_App_WAF]
+# akamai_account = Production_WAF
+# config_id = 67890
+# interval = 60
+# index = main
+# limit_num = 600000
+# proxy_server = Internal_Proxy
+# custom_sourcetype = akamaisiem
+# disabled = 0
+#
+# [akamai_siem_source://API_Gateway_WAF]
+# akamai_account = Staging_WAF
+# config_id = 11111
+# interval = 120
+# index = akamai_staging
+# limit_num = 300000
+# disabled = 1
+# ---------------------------------------------------------
+#
+# NOTES:
+# - Input name (after ://): No spaces allowed, use underscores.
+# - akamai_account: Must match the stanza name from Step 1.
+# - proxy_server: Must match the stanza name from Step 2.
+#   Required if any proxy is enabled in the system.
+# - config_id: Akamai Security Configuration ID (numeric).
+# - interval: Collection interval in seconds.
+# - limit_num: Max events per API call (default: 600000).
+# - custom_sourcetype: Override the default sourcetype
+#   (default: ensign_akamaisiem). Useful for migration.
+# - disabled: Set to 1 to disable, 0 to enable.
+
+
+# =========================================================
+# STEP 5: Restart Splunk
+# =========================================================
+# After creating all configuration files, restart Splunk:
+#
+#   $SPLUNK_HOME/bin/splunk restart
+#
+# Or reload the add-on without full restart:
+#
+#   $SPLUNK_HOME/bin/splunk _internal call /services/apps/local/TA-ensign_waf_akamaisiem/_reload -auth admin:password
+
+
+# =========================================================
+# POST-UPGRADE: Clear UI Cache
+# =========================================================
+# After upgrading the add-on, Splunk may serve cached static
+# files (globalConfig.json, etc.). To force a refresh:
+#
+# Method 1 — Browser URL (recommended):
+#   Navigate to: http://<splunk_host>:8000/en-US/_bump
+#   Click "Bump version" to clear all static file caches.
+#   Then hard-refresh the browser (Ctrl+Shift+R).
+#
+# Method 2 — Reload add-on (conf files only):
+#   $SPLUNK_HOME/bin/splunk _internal call \
+#     /services/apps/local/TA-ensign_waf_akamaisiem/_reload \
+#     -method POST -auth admin:password
+#
+# Method 3 — Full restart (most reliable):
+#   $SPLUNK_HOME/bin/splunk restart
+#
+# NOTE: Method 2 only reloads conf files, NOT static assets.
+# If UI still shows old content after Method 2, use Method 1
+# or Method 3. If REST handlers show "Unable to xml-parse"
+# errors, a full restart (Method 3) is required.
+
+
+# =========================================================
+# DEPLOYMENT SERVER USAGE
+# =========================================================
+# When distributing via Deployment Server:
+#
+# 1. Place the add-on in the deployment-apps directory:
+#    $SPLUNK_HOME/etc/deployment-apps/TA-ensign_waf_akamaisiem/
+#
+# 2. Create a local/ directory with your configuration:
+#    $SPLUNK_HOME/etc/deployment-apps/TA-ensign_waf_akamaisiem/local/
+#
+# 3. Add configuration files (accounts, proxy, inputs) as shown above.
+#
+# 4. Create or update serverclass.conf to target the appropriate clients:
+#
+#    [serverClass:AkamaiSIEM]
+#    whitelist.0 = <forwarder_hostname_or_pattern>
+#
+#    [serverClass:AkamaiSIEM:app:TA-ensign_waf_akamaisiem]
+#    restartSplunkWeb = 0
+#    restartSplunkd = 1
+#    stateOnClient = enabled
+#
+# 5. Push the configuration:
+#    $SPLUNK_HOME/bin/splunk reload deploy-server
+
+
+# =========================================================
+# VERIFICATION
+# =========================================================
+# After configuration, verify the add-on is working:
+#
+# 1. Check inputs are running:
+#    | rest /services/data/inputs/akamai_siem_source
+#      | table title, disabled, eai:acl.app
+#
+# 2. Check for events:
+#    index=main sourcetype=ensign_akamaisiem
+#      | stats count by source
+#
+# 3. Check add-on logs for errors:
+#    index=_internal source=*ta_ensign_waf_akamaisiem*.log* ERROR
+#
+# 4. Check modular input status:
+#    index=_internal sourcetype=splunkd component=ModularInputs
+#      akamai_siem_source

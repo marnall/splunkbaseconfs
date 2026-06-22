@@ -1,0 +1,194 @@
+<dashboard version="1.1" hideSplunkBar="False" hideTitle="True" hideEdit="True" stylesheet="nutanix.css" script="nutanix.js">
+    <label>Hosts</label>
+    <search id="clusters_request" ref="Clusters"></search>
+    <search id="hosts_info_table" ref="Hosts Info Table"></search>
+    <search id="hosts_performance_base" ref="Hosts Performance Base"></search>
+
+    <row id="hosts_pc_cluster_table">
+        <panel id="pc_panel_short">
+            <title>Prism Centrals</title>
+            <table id="PC">
+                <search ref="Prism Centrals">
+                    <done>
+                        <set token="pc_ip">$result.pc_ip$</set>
+                    </done>
+                </search>
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <option name="drilldown">cell</option>
+                <fields>Name</fields>
+                <drilldown>
+                    <set token="pc_ip">$row.pc_ip$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel id="cluster_panel_short">
+            <title>Clusters</title>
+            <table id="Clusters">
+                <search base="clusters_request">
+                    <query>search pc_ip="$pc_ip$"</query>
+                    <done>
+                        <set token="cluster_name">$result.extId$</set>
+                    </done>
+                </search>
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <option name="drilldown">cell</option>
+                <fields>Name</fields>
+                <drilldown>
+                    <set token="cluster_name">$row.extId$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel id="hosts_table">
+            <title>Hosts Info</title>
+            <table id="hosts_table_data">
+                <search base="hosts_info_table">
+                    <query>
+                        | search ClusterUUID="$cluster_name$"
+                    </query>
+                    <done>
+                        <set token="host_extId">$result.extId$</set>
+                    </done>
+                </search>
+                <option name="wrap">false</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <fields>"Host name", "Node serial", "Type", "Memory (GB)", "Usage", "CPU HGz", "Block Model", "Block Serial"</fields>
+                <option name="drilldown">cell</option>
+                <drilldown>
+                    <set token="host_extId">$row.extId$</set>
+                </drilldown>
+            </table>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Host Storage usage (%)</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | stats latest(hostStoragePercent) AS value
+                    </query>
+                </search>
+
+
+                <option name="charting.chart">markerGauge</option>
+                <option name="charting.chart.orientation">x</option>
+
+                <option name="charting.chart.showLabels">true</option>
+                <option name="charting.chart.showMajorTicks">true</option>
+                <option name="charting.chart.showMinorTicks">true</option>
+                <option name="charting.chart.showValue">true</option>
+                <option name="charting.chart.showRangeBand">true</option>
+
+                <option name="charting.chart.style">minimal</option>
+                <option name="charting.chart.majorUnit">10</option>
+
+                <option name="charting.chart.rangeValues">[0,70,90,100]</option>
+                <option name="charting.gaugeColors">[0x76EA73,0xF5B53F,0xDF564D]</option>
+
+                <option name="charting.chart.usePercentageValue">true</option>
+                <option name="charting.chart.usePercentageRange">true</option>
+
+            </chart>
+        </panel>
+        <panel>
+            <title>Host CPU Usage (%)</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | timechart eval(round(avg(hypervisorCpuUsagePpm),2)) AS hypervisorCpuUsagePpm by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">CPU Usage (%)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Host Memory Usage (%)</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | timechart eval(round(avg(aggregateHypervisorMemoryUsagePpm),2)) AS aggregateHypervisorMemoryUsagePpm by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Memory Usage (%)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.axisY.minimumNumber">0</option>
+                <option name="charting.axisY.maximumNumber">100</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Host Disk IOPS</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | timechart eval(round(avg(controllerNumIops),2)) AS controllerNumIops by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Disk IOPS</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Host Disk Avg. IO Latency (mc)</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | timechart eval(round(avg(ioLatencyMs),2)) AS ioLatencyMs by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Latency (mc)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Host Disk IO Bandwidth (MB/s)</title>
+            <chart>
+                <search base="hosts_performance_base">
+                    <query>
+                    | search extId="$host_extId$"
+                    | timechart eval(round(avg(ioBandwidthMBps),2)) AS ioBandwidthMBps by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Bandwidth (MB/s)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+</dashboard>

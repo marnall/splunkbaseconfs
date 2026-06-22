@@ -1,0 +1,238 @@
+<dashboard version="2" theme="dark">
+  <label>Overview</label>
+  <description>Global event volume overview across all 21 security data domains ingested by Event Builder For Splunk.</description>
+  <definition><![CDATA[
+{
+  "title": "Overview -- Event Builder For Splunk",
+  "description": "Global event volume across all 21 security data domains. Auto-refreshes every 30 seconds.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1200,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_total_events",    "type": "block", "position": { "x": 0,    "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_active_indexes",  "type": "block", "position": { "x": 360,  "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_eps",             "type": "block", "position": { "x": 720,  "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_sourcetypes",     "type": "block", "position": { "x": 1080, "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_events_by_index", "type": "block", "position": { "x": 0,    "y": 200, "w": 720,  "h": 350 } },
+      { "item": "viz_eps_timeline",    "type": "block", "position": { "x": 720,  "y": 200, "w": 720,  "h": 350 } },
+      { "item": "viz_top_src_ips",     "type": "block", "position": { "x": 0,    "y": 550, "w": 480,  "h": 300 } },
+      { "item": "viz_domain_treemap",  "type": "block", "position": { "x": 480,  "y": 550, "w": 480,  "h": 300 } },
+      { "item": "viz_recent_events",   "type": "block", "position": { "x": 960,  "y": 550, "w": 480,  "h": 300 } },
+      { "item": "viz_hec_health",      "type": "block", "position": { "x": 0,    "y": 850, "w": 1440, "h": 300 } }
+    ],
+    "globalInputs": ["input_time_range"]
+  },
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-5m,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "dataSources": {
+    "ds_total_events": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | stats sum(count) as total",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_active_indexes": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | stats dc(index) as active_indexes",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_eps": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | appendcols [| makeresults | eval duration=300 | table duration] | eval eps=round(count/duration,2) | table eps",
+        "queryParameters": { "earliest": "-5m", "latest": "now" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_sourcetypes": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats dc(sourcetype) as distinct_sourcetypes WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | stats sum(distinct_sourcetypes) as total_sourcetypes",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_events_by_index": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | sort -count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_eps_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) PRESTATS=true BY _time span=1m | timechart span=1m sum(count) as events_per_minute",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_top_src_ips": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | eval src=coalesce(src_ip, clientip, Source_Network_Address, client) | where isnotnull(src) AND src!=\"-\" | top limit=10 src",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_domain_treemap": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | lookup eb_index_domain_map index OUTPUT domain_label | stats sum(count) as count BY domain_label | sort -count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_recent_events": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | head 50 | table _time, index, sourcetype, host",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    },
+    "ds_hec_health": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | bin _time span=1m | stats count BY _time, index | sort _time",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" },
+        "refresh": 30,
+        "refreshType": "delay"
+      }
+    }
+  },
+  "visualizations": {
+    "viz_total_events": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_total_events" },
+      "options": {
+        "majorField": "total",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#00B5F5",
+        "showTrendIndicator": false
+      },
+      "title": "Total Events (last 5 min)"
+    },
+    "viz_active_indexes": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_active_indexes" },
+      "options": {
+        "majorField": "active_indexes",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#7AB8F5"
+      },
+      "title": "Active Indexes"
+    },
+    "viz_eps": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_eps" },
+      "options": {
+        "majorField": "eps",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#ADFF2F",
+        "unitPosition": "after",
+        "unit": " EPS"
+      },
+      "title": "Avg Events Per Second"
+    },
+    "viz_sourcetypes": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_sourcetypes" },
+      "options": {
+        "majorField": "total_sourcetypes",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#FF8C00"
+      },
+      "title": "Active Sourcetypes"
+    },
+    "viz_events_by_index": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_events_by_index" },
+      "options": {
+        "xAxisTitleText": "Index",
+        "yAxisTitleText": "Events",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Events by Index"
+    },
+    "viz_eps_timeline": {
+      "type": "viz.line",
+      "dataSources": { "primary": "ds_eps_timeline" },
+      "options": {
+        "xAxisTitleText": "Time",
+        "yAxisTitleText": "Events / Minute",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Event Volume Over Time"
+    },
+    "viz_top_src_ips": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_top_src_ips" },
+      "options": { "backgroundColor": "transparent", "count": 10 },
+      "title": "Top Source IPs"
+    },
+    "viz_domain_treemap": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_domain_treemap" },
+      "options": {
+        "xAxisTitleText": "Domain",
+        "yAxisTitleText": "Events",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Events by Security Domain"
+    },
+    "viz_recent_events": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_recent_events" },
+      "options": { "backgroundColor": "transparent", "count": 10 },
+      "title": "Recent Events"
+    },
+    "viz_hec_health": {
+      "type": "viz.line",
+      "dataSources": { "primary": "ds_hec_health" },
+      "options": {
+        "xAxisTitleText": "Time",
+        "yAxisTitleText": "Events / min",
+        "legendDisplay": "top",
+        "backgroundColor": "transparent"
+      },
+      "title": "HEC Ingestion Health (1-min buckets, auto-refresh 30s)"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

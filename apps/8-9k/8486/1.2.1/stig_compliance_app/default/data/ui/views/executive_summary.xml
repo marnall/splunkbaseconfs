@@ -1,0 +1,196 @@
+<dashboard version="1.1" theme="dark">
+  <label>Executive Summary</label>
+  <description>High-level compliance posture for leadership reporting (shows latest checklist per host/STIG only)</description>
+
+  <!-- BASE SEARCH: runs once, all panels post-process from this -->
+  <search id="base_latest">
+    <query>`stig_latest` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <!-- Row 1: Overall Metrics -->
+  <row>
+    <panel>
+      <title>Overall Compliance Rate</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS compliant, count AS total | eval compliance_pct=round((compliant/total)*100, 1) | table compliance_pct</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0xd93f3c","0xf7bc38","0x65a637"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Systems Assessed</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats dc(asset_host_name)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>STIGs Applied</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats dc(stig_title)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Findings Reviewed</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Risk Summary -->
+  <row>
+    <panel>
+      <title>Open Findings by Risk Level</title>
+      <chart>
+        <search base="base_latest">
+          <query>| search vuln_status="Open"
+| eval risk_level=case(
+    category=="CAT I", "1 - High (CAT I)",
+    category=="CAT II", "2 - Medium (CAT II)",
+    category=="CAT III", "3 - Low (CAT III)",
+    true(), "Unknown")
+| stats count by risk_level
+| sort risk_level</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.fieldColors">{"1 - High (CAT I)": 0xD93F3C, "2 - Medium (CAT II)": 0xF7BC38, "3 - Low (CAT III)": 0x6DB7C6}</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">250</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Compliance Status Distribution</title>
+      <chart>
+        <search base="base_latest">
+          <query>| eval status_display=case(
+    vuln_status=="NotAFinding", "Compliant",
+    vuln_status=="Not_Applicable", "Not Applicable",
+    vuln_status=="Not_Reviewed", "Pending Review",
+    vuln_status=="Open", "Non-Compliant",
+    true(), vuln_status)
+| stats count by status_display</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.fieldColors">{"Non-Compliant": 0xD93F3C, "Compliant": 0x65A637, "Not Applicable": 0x6DB7C6, "Pending Review": 0xF7BC38}</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">250</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 3: Compliance by System -->
+  <row>
+    <panel>
+      <title>Compliance Rate by System</title>
+      <chart>
+        <search base="base_latest">
+          <query>| stats count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS compliant, count AS total by asset_host_name
+| eval compliance_pct=round((compliant/total)*100, 1)
+| sort - compliance_pct
+| table asset_host_name, compliance_pct
+| rename asset_host_name AS Host, compliance_pct AS "Compliance %"</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.text">Compliance %</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 4: Summary Table -->
+  <row>
+    <panel>
+      <title>System Compliance Summary</title>
+      <table>
+        <search base="base_latest">
+          <query>| stats count(eval(vuln_status="Open")) AS "Open Findings",
+        count(eval(vuln_status="Open" AND category="CAT I")) AS "CAT I Open",
+        count(eval(vuln_status="Open" AND category="CAT II")) AS "CAT II Open",
+        count(eval(vuln_status="Open" AND category="CAT III")) AS "CAT III Open",
+        count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS "Compliant",
+        count AS "Total Findings"
+  by asset_host_name, asset_host_ip
+| eval "Compliance %"=round((Compliant/'Total Findings')*100, 1)
+| eval "Risk Score"=('CAT I Open'*10)+('CAT II Open'*5)+('CAT III Open'*1)
+| rename asset_host_name AS Host, asset_host_ip AS "IP Address"
+| sort - "Risk Score"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="CAT I Open">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="1" maxValue="5"></scale>
+        </format>
+        <format type="color" field="Compliance %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="70" midValue="85" maxValue="100"></scale>
+        </format>
+        <format type="color" field="Risk Score">
+          <colorPalette type="minMidMax" minColor="#65A637" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="50" maxValue="100"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 5: STIG Summary -->
+  <row>
+    <panel>
+      <title>Compliance by STIG</title>
+      <table>
+        <search base="base_latest">
+          <query>| stats count(eval(vuln_status="Open")) AS "Open",
+        count(eval(vuln_status="NotAFinding")) AS "Not a Finding",
+        count(eval(vuln_status="Not_Applicable")) AS "N/A",
+        count(eval(vuln_status="Not_Reviewed")) AS "Not Reviewed",
+        count AS "Total",
+        dc(asset_host_name) AS "Hosts"
+  by stig_title
+| eval "Compliance %"=round((('Not a Finding'+'N/A')/Total)*100, 1)
+| rename stig_title AS STIG
+| sort - Open</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Open">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="25" maxValue="75"></scale>
+        </format>
+        <format type="color" field="Compliance %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="70" midValue="85" maxValue="100"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

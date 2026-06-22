@@ -1,0 +1,464 @@
+<form version="1.1" theme="light">
+  <label>Anchore Security Vulnerability Dashboard</label>
+  <description>Real-time security monitoring dashboard for Anchore vulnerability data. Designed for immediate threat detection and response by security teams.</description>
+  <!-- Set Default Index to Latest -->
+  <search id="set_default_index">
+    <query>| tstats latest(_time) as lastTime where sourcetype="anchore:vulnerabilities" by index 
+           | sort -lastTime 
+           | head 1 
+           | fields index</query>
+    <earliest>0</earliest>
+    <done>
+      <set token="selected_index">$result.index$</set>
+    </done>
+  </search>
+  <!-- Base Search for All Panels -->
+  <search id="base_search">
+    <query>
+      index="$selected_index$" sourcetype="anchore:vulnerabilities"
+      | eval severity_priority = case(
+          severity="Critical", 1,
+          severity="High", 2,
+          severity="Medium", 3,
+          severity="Low", 4,
+          1=1, 5
+        )
+      | eval alert_level = case(
+          severity="Critical", "critical",
+          severity="High", "high",
+          severity="Medium", "medium",
+          1=1, "low"
+        )
+      | eval repo_display = if(isnotnull(repo), repo, "Unknown Repository")
+      | eval registry_display = if(isnotnull(registry), registry, "Unknown Registry")
+      | eval vuln_display = if(isnotnull(vuln_id), vuln_id, "No CVE")
+      | eval package_display = if(isnotnull(package_name), package_name, package)
+      | search ($repository_filter$) ($severity_filter$) ($registry_filter$) ($account_filter$)
+      | fields *
+    </query>
+    <earliest>$timerange.earliest$</earliest>
+    <latest>$timerange.latest$</latest>
+  </search>
+  <!-- Alert Status Search -->
+  <search id="alert_status_search" base="base_search">
+    <query>
+      | stats count(eval(severity="Critical")) as critical_vulns,
+              count(eval(severity="High")) as high_vulns,
+              count(eval(vulnerability_found=false)) as clean_images,
+              count as total_events
+      | eval alert_status = case(
+          critical_vulns &gt; 0, "critical",
+          high_vulns &gt; 5, "warning",
+          1=1, "normal"
+        )
+      | table alert_status, critical_vulns, high_vulns, clean_images, total_events
+    </query>
+    <done>
+      <condition match="'job.resultCount' &gt; 0 AND 'result.alert_status'=&quot;critical&quot;">
+        <set token="alert_status_critical">true</set>
+        <unset token="alert_status_warning"></unset>
+        <unset token="alert_status_normal"></unset>
+      </condition>
+      <condition match="'job.resultCount' &gt; 0 AND 'result.alert_status'=&quot;warning&quot;">
+        <unset token="alert_status_critical"></unset>
+        <set token="alert_status_warning">true</set>
+        <unset token="alert_status_normal"></unset>
+      </condition>
+      <condition>
+        <unset token="alert_status_critical"></unset>
+        <unset token="alert_status_warning"></unset>
+        <set token="alert_status_normal">true</set>
+      </condition>
+    </done>
+  </search>
+  <!-- Input Controls -->
+  <!-- Alert Banner Row -->
+  <!-- KPI Row -->
+  <!-- Critical Issues Table -->
+  <!-- Vulnerability Analysis Row -->
+  <!-- Package Analysis Row -->
+  <!-- Recent Activity -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="timerange" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="selected_index" searchWhenChanged="true">
+      <label>Select Index</label>
+      <search>
+        <query>| tstats count where sourcetype="anchore:vulnerabilities" by index | fields index</query>
+        <earliest>0</earliest>
+      </search>
+      <fieldForLabel>index</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+    </input>
+    <input type="multiselect" token="account_filter" searchWhenChanged="true">
+      <label>Account</label>
+      <choice value="*">All Accounts</choice>
+      <fieldForLabel>account_name</fieldForLabel>
+      <fieldForValue>account_name</fieldForValue>
+      <search>
+        <query>index="$selected_index$" sourcetype="anchore:vulnerabilities"
+          | dedup account_name | sort 0 account_name | table account_name</query>
+        <earliest>$timerange.earliest$</earliest>
+        <latest>$timerange.latest$</latest>
+      </search>
+      <valuePrefix>account_name="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <delimiter> OR</delimiter>
+      <default>*</default>
+      <initialValue>*</initialValue>
+      <change>
+        <unset token="form.registry_filter"></unset>
+        <unset token="form.repository_filter"></unset>
+      </change>
+    </input>
+    <input type="multiselect" token="registry_filter" searchWhenChanged="true">
+      <label>Registry</label>
+      <choice value="*">All Registries</choice>
+      <default>*</default>
+      <search>
+        <query>
+          index="$selected_index$" sourcetype="anchore:vulnerabilities" ($account_filter$)
+          | dedup registry | sort 0 registry | table registry
+        </query>
+        <earliest>$timerange.earliest$</earliest>
+        <latest>$timerange.latest$</latest>
+      </search>
+      <fieldForLabel>registry</fieldForLabel>
+      <fieldForValue>registry</fieldForValue>
+      <delimiter> OR </delimiter>
+      <valuePrefix>registry="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+      <change>
+        <unset token="form.repository_filter"></unset>
+      </change>
+    </input>
+    <input type="multiselect" token="repository_filter" searchWhenChanged="true">
+      <label>Repository</label>
+      <choice value="*">All Repositories</choice>
+      <default>*</default>
+      <search>
+        <query>
+          index="$selected_index$" sourcetype="anchore:vulnerabilities" ($account_filter$) ($registry_filter$)
+          | dedup repo | sort 0 repo | table repo
+        </query>
+        <earliest>$timerange.earliest$</earliest>
+        <latest>$timerange.latest$</latest>
+      </search>
+      <fieldForLabel>repo</fieldForLabel>
+      <fieldForValue>repo</fieldForValue>
+      <delimiter> OR </delimiter>
+      <valuePrefix>repo="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+    </input>
+    <input type="multiselect" token="severity_filter" searchWhenChanged="true">
+      <label>Severity Level</label>
+      <choice value="*">All Severities</choice>
+      <choice value="Critical">Critical</choice>
+      <choice value="High">High</choice>
+      <choice value="Medium">Medium</choice>
+      <choice value="Low">Low</choice>
+      <default>*</default>
+      <delimiter> OR </delimiter>
+      <valuePrefix>severity="</valuePrefix>
+      <valueSuffix>"</valueSuffix>
+    </input>
+    <input type="dropdown" token="vuln_status_filter" searchWhenChanged="true">
+      <label>Vulnerability Status</label>
+      <choice value="*">All Images</choice>
+      <choice value="true">Images with Vulnerabilities</choice>
+      <choice value="false">Clean Images</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$alert_status_critical$">
+      <html>
+        <div style="background-color: #dc3545; color: white; padding: 15px; margin: 10px 0; border-radius: 8px; font-weight: bold; text-align: center;">
+          🚨 CRITICAL: Critical vulnerabilities detected - Immediate security response required!
+        </div>
+      </html>
+    </panel>
+    <panel depends="$alert_status_warning$">
+      <html>
+        <div style="background-color: #ffc107; color: #212529; padding: 15px; margin: 10px 0; border-radius: 8px; font-weight: bold; text-align: center;">
+          ⚠️ WARNING: High severity vulnerabilities detected - Review and remediate
+        </div>
+      </html>
+    </panel>
+    <panel depends="$alert_status_normal$">
+      <html>
+        <div style="background-color: #28a745; color: white; padding: 15px; margin: 10px 0; border-radius: 8px; font-weight: bold; text-align: center;">
+          ✅ Security posture is good - No critical vulnerabilities detected
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Critical Vulnerabilities</title>
+        <search base="base_search">
+          <query>
+            | search severity="Critical"
+            | stats count
+          </query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["#28a745","#ffc107","#dc3545"]</option>
+        <option name="rangeValues">[0,1]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="severity_filter">Critical</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>High Severity Vulnerabilities</title>
+        <search base="base_search">
+          <query>
+            | search severity="High"
+            | stats count
+          </query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["#28a745","#ffc107","#dc3545"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="severity_filter">High</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Total Vulnerabilities</title>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | stats count
+          </query>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Vulnerable Images</title>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | stats dc(image_digest) as vulnerable_images
+          </query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["#28a745","#ffc107","#dc3545"]</option>
+        <option name="rangeValues">[0,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Clean Images</title>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=false
+            | stats dc(image_digest) as clean_images
+          </query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["#dc3545","#ffc107","#28a745"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Security Score</title>
+        <search base="base_search">
+          <query>
+            | stats count(eval(vulnerability_found=false)) as clean,
+                    count(eval(vulnerability_found=true)) as vulnerable
+            | eval total = clean + vulnerable
+            | eval security_score = if(total &gt; 0, round((clean / total) * 100, 1), 100)
+            | table security_score
+          </query>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["#dc3545","#ffc107","#28a745"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Critical Security Issues</title>
+      <table>
+        <search base="base_search">
+          <query>
+            | search severity IN ("Critical", "High")
+            | eval Priority = case(
+                severity="Critical", "🔴 CRITICAL",
+                severity="High", "🟠 HIGH",
+                1=1, "⚪ " + severity
+              )
+            | eval Image = repo_display + ":" + if(isnotnull(tag), tag, "latest")
+            | eval Vulnerability = vuln_display
+            | eval Package = package_display + if(isnotnull(package_version), " (" + package_version + ")", "")
+            | eval Fix = if(isnotnull(fix) AND fix!="", fix, "No fix available")
+            | eval Registry = registry_display
+            | sort severity_priority, vuln_id
+            | head 50
+            | table Priority, Image, Vulnerability, Package, Fix, Registry, account_name
+          </query>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Priority">
+          <colorPalette type="map">{"🔴 CRITICAL":#dc3545,"🟠 HIGH":#fd7e14}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Vulnerabilities by Severity</title>
+      <chart>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | stats count by severity
+            | sort severity_priority
+          </query>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top 10 Vulnerable Repositories</title>
+      <chart>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | stats count by repo_display
+            | sort -count
+            | head 10
+            | rename repo_display as Repository, count as "Vulnerability Count"
+          </query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Vulnerability Trends (Last 24h)</title>
+      <chart>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | timechart span=1h count by severity
+          </query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Most Vulnerable Packages</title>
+      <table>
+        <search base="base_search">
+          <query>
+            | search vulnerability_found=true
+            | stats count as vuln_count, 
+                    dc(vuln_id) as unique_cves,
+                    values(severity) as severities
+                    by package_display
+            | sort -vuln_count
+            | head 20
+            | rename package_display as "Package Name", 
+                     vuln_count as "Total Vulnerabilities",
+                     unique_cves as "Unique CVEs",
+                     severities as "Severity Levels"
+          </query>
+        </search>
+        <option name="drilldown">cell</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Registry Security Overview</title>
+      <table>
+        <search base="base_search">
+          <query>
+            | stats count(eval(vulnerability_found=true)) as vulnerable_images,
+                    count(eval(vulnerability_found=false)) as clean_images,
+                    count(eval(severity="Critical")) as critical_vulns,
+                    count(eval(severity="High")) as high_vulns
+                    by registry_display
+            | eval total_images = vulnerable_images + clean_images
+            | eval security_score = if(total_images &gt; 0, round((clean_images / total_images) * 100, 1), 100)
+            | sort -critical_vulns, -high_vulns
+            | rename registry_display as "Registry",
+                     vulnerable_images as "Vulnerable Images",
+                     clean_images as "Clean Images",
+                     critical_vulns as "Critical",
+                     high_vulns as "High",
+                     security_score as "Security Score %"
+          </query>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Vulnerability Scans</title>
+      <table>
+        <search base="base_search">
+          <query>
+            | eval scan_time = strftime(_time, "%Y-%m-%d %H:%M:%S")
+            | eval Image = repo_display + ":" + if(isnotnull(tag), tag, "latest")
+            | eval Status = if(vulnerability_found=true, 
+                case(
+                  severity="Critical", "🔴 Critical Found",
+                  severity="High", "🟠 High Risk", 
+                  severity="Medium", "🟡 Medium Risk",
+                  1=1, "🔵 Low Risk"
+                ), "✅ Clean")
+            | eval Account = account_name
+            | eval API_Source = api_url
+            | sort -_time
+            | head 100
+            | table scan_time, Image, Status, Account, API_Source, vulnerability_count
+            | rename scan_time as "Scan Time",
+                     vulnerability_count as "Vuln Count"
+          </query>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,152 @@
+<form version="1.1"
+  stylesheet="splunk-innovators-toolkit:css/sit-panel-polish.css,splunk-innovators-toolkit:css/sit-text-whitelist.css,splunk-innovators-toolkit:themes/cyberpunk-neon.css,splunk-innovators-toolkit:backgrounds/cyberpunk-grid-pulse.css,splunk-innovators-toolkit:animations/pulse-attention.css,splunk-innovators-toolkit:animations/hover-glow-border.css,splunk-innovators-toolkit:widgets/kpi-neon-glow.css"
+  script="splunk-innovators-toolkit:backgrounds/background-helper.js,splunk-innovators-toolkit:toggles/dark-light-mode.js,splunk-innovators-toolkit:toggles/fullscreen-mode.js,splunk-innovators-toolkit:toggles/auto-refresh-countdown.js,splunk-innovators-toolkit:js/sit-remix-button.js">
+  <label>Threat Hunter Tactical</label>
+  <description>Cyber threat hunting console with real-time alerts, IOC tracking, and behavioral anomaly detection. Built on Splunk audit + internal telemetry. Powered by Innovators Toolkit.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Hunt Window</label>
+      <default>
+        <earliest>-1h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Active Alerts</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count as alerts</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x00F0FF","0xFF2D95","0xFF1744"]</option>
+        <option name="rangeValues">[50,200]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">last 15 min</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Failed Auth (1h)</title>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=splunkd_ui_access status&gt;=400 | stats count</query>
+          <earliest>-1h@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x00F0FF","0xFF2D95","0xFF1744"]</option>
+        <option name="rangeValues">[5,25]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">brute-force signal</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Distinct Source IPs</title>
+      <single>
+        <search>
+          <query>index=_internal | stats dc(host) as ips</query>
+          <earliest>-1h@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x39FF14","0xFF2D95"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">unique observed</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Anomaly Score</title>
+      <single>
+        <search>
+          <query>index=_internal | stats count(eval(log_level="ERROR" OR log_level="FATAL")) as errs count as total | eval score=if(total&gt;0, round(errs/total*100,0), 0) | table score</query>
+          <earliest>-1h@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x00F0FF","0xFF2D95","0xFF1744"]</option>
+        <option name="rangeValues">[20,60]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">behavioral drift</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Threat Timeline — Severity-Coded</title>
+      <chart>
+        <search>
+          <query>index=_internal log_level=ERROR OR log_level=WARN | eval sev=case(log_level="ERROR","Critical",log_level="WARN","Suspicious",1=1,"Info") | timechart span=2m count by sev</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.fieldColors">{"Critical":"0xFF1744","Suspicious":"0xFF2D95","Info":"0x00F0FF"}</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Attack Surfaces</title>
+      <chart>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count by component | sort -count | head 10</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.fieldColors">{"count":"0xFF2D95"}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Live IOC Feed</title>
+      <table>
+        <search>
+          <query>index=_internal log_level=ERROR OR log_level=WARN | head 25 | eval ioc=case(match(component,"Tcp"),"net.conn", match(component,"Http"),"http.req", match(component,"Auth"),"auth.fail", 1=1,"sys.event") | table _time, log_level, ioc, component, host | rename _time as "Time", log_level as "Severity", ioc as "IOC Type", component as "Source", host as "Host"</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">12</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Hunt Queries Suggested</title>
+      <html>
+        <style>
+          .sit-hunt { padding:14px 18px; }
+          .sit-hunt .hunt-q {
+            display:block; margin:8px 0; padding:10px 14px;
+            background:rgba(0,240,255,0.05); border:1px solid rgba(0,240,255,0.2);
+            border-left:3px solid #00F0FF; border-radius:6px;
+            font-family:'Courier New',monospace; font-size:11.5px; color:#aef0f5;
+            transition:all .25s ease;
+          }
+          .sit-hunt .hunt-q:hover { background:rgba(0,240,255,0.12); border-left-color:#FF2D95; transform:translateX(4px); }
+          .sit-hunt .hunt-tag { color:#FF2D95; font-weight:700; }
+          .sit-hunt .hunt-tip { font-size:10px; color:rgba(255,255,255,0.5); margin-top:3px; font-family:'Splunk Platform Sans',sans-serif; }
+        </style>
+        <div class="sit-hunt">
+          <div class="hunt-q"><span class="hunt-tag">[T1078]</span> index=_audit action=login info=failed | stats count by user, host | where count &gt; 5
+            <div class="hunt-tip">Detect credential stuffing — repeated failed logins per host</div></div>
+          <div class="hunt-q"><span class="hunt-tag">[T1110]</span> index=_internal log_level=ERROR sourcetype=splunkd_access | stats count by clientip
+            <div class="hunt-tip">Surface unusual IPs hitting Splunk's web tier</div></div>
+          <div class="hunt-q"><span class="hunt-tag">[T1059]</span> index=_audit action=search | search search="*delete*" OR search="*outputlookup*"
+            <div class="hunt-tip">Suspicious data-exfil / destructive queries</div></div>
+          <div class="hunt-q"><span class="hunt-tag">[T1098]</span> index=_audit action=edit_user OR action=create_user | table _time, user, info
+            <div class="hunt-tip">Privilege escalation / account modification</div></div>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,743 @@
+<form version="1.1" theme="dark" stylesheet="dashboard_gradient.css">
+  <label>Data Hygiene &amp; Metrics Optimization Dashboard v3</label>
+  <description>Identify redundant data, metrics conversion candidates, and optimize Splunk data tiering</description>
+  <!-- Hidden searches for token population -->
+  <!-- Executive Summary Row - Custom HTML with token values -->
+  <!-- Infrastructure KPI Analysis - Simplified -->
+  <!-- Data Volume Analysis -->
+  <!-- Unused Sourcetypes Analysis -->
+  <!-- Data Quality Analysis -->
+  <!-- Top Priority Actions -->
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_range">
+      <label>Analysis Time Range</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="min_unused_days">
+      <label>Minimum Unused Days</label>
+      <default>30</default>
+    </input>
+    <input type="text" token="metric_threshold">
+      <label>Numeric Field Threshold %</label>
+      <default>70</default>
+    </input>
+  </fieldset>
+  <row depends="$hide$">
+    <panel>
+      <single>
+        <search>
+          <query>
+| rest /services/data/indexes 
+| search disabled=0 title!="_*" title!="summary" title!="history"
+| stats count as total_indexes
+| appendcols [search index=_audit action=search earliest=-30d@d latest=now | rex field=search "index\s*=\s*(?&lt;searched_index&gt;\w+)" | stats dc(searched_index) as used_indexes]
+| eval score=round((used_indexes/total_indexes)*100,1)
+| eval score=coalesce(score,0)
+| fields score
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <done>
+            <set token="hygiene_value">$result.score$</set>
+          </done>
+          <progress>
+            <set token="hygiene_value">...</set>
+          </progress>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>
+index=_internal source=*license_usage.log type=Usage earliest=-30d@d latest=now
+| stats sum(b) as total_bytes by st
+| rename st as sourcetype
+| join type=outer sourcetype [| tstats count WHERE index=* earliest=-30d@d latest=now BY sourcetype | where count=0]
+| where count=0 OR isnull(count)
+| eval monthly_gb=round(total_bytes/1024/1024/1024,2)
+| eval annual_savings=monthly_gb*12
+| stats sum(annual_savings) as total_savings
+| eval total_savings=round(coalesce(total_savings,0),0)
+| fields total_savings
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <done>
+            <set token="savings_value">$result.total_savings$</set>
+          </done>
+          <progress>
+            <set token="savings_value">...</set>
+          </progress>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| stats sum(b) as bytes by st
+| rename st as sourcetype
+| eval is_metrics_candidate=if(match(sourcetype, "(?i)(metric|stats|perf|performance|cpu|memory|disk|network|usage|utilization)"), 1, 0)
+| where is_metrics_candidate=1
+| stats count as candidates
+| eval candidates=coalesce(candidates,0)
+| fields candidates
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <done>
+            <set token="candidates_value">$result.candidates$</set>
+          </done>
+          <progress>
+            <set token="candidates_value">...</set>
+          </progress>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>
+index=_internal source=*license_usage.log type=Usage earliest=-30d@d latest=now
+| search st=*metric* OR st=*stats* OR st=*perf* OR st=*cpu* OR st=*memory*
+| stats sum(b) as total_bytes
+| eval monthly_gb=round(total_bytes/1024/1024/1024,2)
+| eval annual_savings=round(monthly_gb*12*0.5,0)
+| eval annual_savings=coalesce(annual_savings,0)
+| fields annual_savings
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <done>
+            <set token="storage_value">$result.annual_savings$</set>
+          </done>
+          <progress>
+            <set token="storage_value">...</set>
+          </progress>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>
+| rest /services/data/indexes 
+| search disabled=0 title!="_*" title!="summary" title!="history"
+| stats count as total_indexes
+| appendcols 
+    [search index=_audit action=search earliest=-30d@d latest=now 
+    | rex field=search "index\s*=\s*(?&lt;searched_index&gt;\w+)" 
+    | stats dc(searched_index) as used_indexes]
+| appendcols 
+    [search index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+    | stats sum(b) as total_bytes by st
+    | eval is_metrics_candidate=if(match(st, "(?i)(metric|stats|perf|performance|cpu|memory|disk|network|usage|utilization)"), 1, 0)
+    | stats sum(eval(if(is_metrics_candidate=1,total_bytes,0))) as metrics_candidate_bytes, sum(total_bytes) as total_bytes
+    | eval metrics_conversion_pct=round((metrics_candidate_bytes/total_bytes)*100,1)]
+| appendcols
+    [search index=_internal source=*license_usage.log type=Usage earliest=-30d@d latest=now
+    | stats sum(b) as bytes by st
+    | join type=outer st [| tstats count WHERE index=* earliest=-30d@d latest=now BY sourcetype | rename sourcetype as st]
+    | eval is_unused=if(isnull(count) OR count=0, bytes, 0)
+    | stats sum(is_unused) as unused_bytes, sum(bytes) as total_bytes
+    | eval unused_ratio_pct=round((unused_bytes/total_bytes)*100,1)]
+| eval index_utilization=round((used_indexes/total_indexes)*100,1)
+| eval index_utilization=coalesce(index_utilization,0)
+| eval metrics_conversion_pct=coalesce(metrics_conversion_pct,0)
+| eval unused_ratio_pct=coalesce(unused_ratio_pct,0)
+| eval total_optimization=round((index_utilization*0.3 + metrics_conversion_pct*0.4 + (100-unused_ratio_pct)*0.3),1)
+| fields total_optimization
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <done>
+            <set token="optimization_value">$result.total_optimization$</set>
+          </done>
+          <progress>
+            <set token="optimization_value">...</set>
+          </progress>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <style>
+          /* Global dashboard background gradient */
+          body, .dashboard-body, .shared-page {
+            background: linear-gradient(90deg, #000000 0%, #0E0726 50%, #000000 100%) !important;
+          }
+          
+          /* Make all panels transparent */
+          .dashboard-panel, .panel-body, .panel-element-row {
+            background: transparent !important;
+          }
+          
+          .dashboard-panel .panel-head {
+            background: transparent !important;
+          }
+          
+          .dashboard-cell {
+            background: transparent !important;
+          }
+          
+          /* Make tables and charts transparent */
+          .table-chrome, .splunk-table-wrapper, .highcharts-container {
+            background: transparent !important;
+          }
+          
+          /* Global dashboard font improvements */
+          .dashboard-body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          }
+          
+          /* Panel titles */
+          .dashboard-panel h2, .panel-head h3 {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            color: #E0E0E0 !important;
+          }
+          
+          .dashboard-panel .panel-head h3, .dashboard-panel h2.panel-title {
+            font-weight: 700 !important;
+          }
+          
+          /* Table headers and content */
+          .table thead th {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            background-color: #15161A !important;
+          }
+          
+          .table tbody td:not([style*="background-color"]) {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 13px;
+            background-color: #0A0B0E !important;
+          }
+          
+          .table tbody tr:not(:has(td[style*="background-color"])) {
+            background-color: #0A0B0E !important;
+          }
+          
+          .table tbody tr:hover td:not([style*="background-color"]) {
+            background-color: #12131A !important;
+          }
+          
+          /* Chart labels */
+          .highcharts-axis-labels text,
+          .highcharts-legend-item text,
+          .highcharts-data-label text {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+            font-weight: 500;
+          }
+          
+          /* Form inputs */
+          .input-label {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-weight: 500;
+            font-size: 12px;
+            letter-spacing: 0.3px;
+          }
+          
+          .metric-card {
+            background: rgba(20,20,30,0.6);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 5px;
+            flex: 1;
+            min-width: 200px;
+          }
+          .metric-header {
+            font-size: 20px;
+            color: #B0BEC5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            font-weight: 700;
+          }
+          .metric-bar {
+            height: 4px;
+            border-radius: 2px;
+            margin-bottom: 15px;
+          }
+          .metric-value {
+            font-size: 95px;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 5px;
+          }
+          .metric-label {
+            font-size: 20px;
+            color: #90A4AE;
+            font-weight: 500;
+          }
+          
+          .metrics-row {
+            display: flex;
+            gap: 15px;
+            padding: 10px;
+          }
+          .metric-card-1 .metric-bar { background: #1982c4; }
+          .metric-card-2 .metric-bar { background: #1982c4; }
+          .metric-card-3 .metric-bar { background: #1982c4; }
+          .metric-card-4 .metric-bar { background: #1982c4; }
+          .metric-card-5 .metric-bar { background: #1982c4; }
+          
+          /* Thresholding colors for Data Hygiene - value text only */
+          .metric-card-1 .metric-value.good { color: #8ac926; }
+          .metric-card-1 .metric-value.warning { color: #ffca3a; }
+          .metric-card-1 .metric-value.critical { color: #ff595e; }
+          
+          /* Thresholding colors for Total Optimization - value text only */
+          .metric-card-5 .metric-value.good { color: #8ac926; }
+          .metric-card-5 .metric-value.warning { color: #ffca3a; }
+          .metric-card-5 .metric-value.critical { color: #ff595e; }
+          
+          /* Default white color for all other metric values */
+          .metric-card-2 .metric-value,
+          .metric-card-3 .metric-value,
+          .metric-card-4 .metric-value { color: white; }
+          
+          /* Remove chart background */
+          .highcharts-background {
+            fill: transparent !important;
+          }
+          
+          /* Hide all resize handles */
+          .ui-resizable-handle {
+            display: none !important;
+          }
+        </style>
+        
+        <div class="metrics-row">
+          <div class="metric-card metric-card-1">
+            <div class="metric-header">Data Hygiene</div>
+            <div class="metric-bar"/>
+            <div class="metric-value" id="hygiene-value">$hygiene_value$</div>
+            <div class="metric-label">% Utilization</div>
+          </div>
+          
+          <div class="metric-card metric-card-2">
+            <div class="metric-header">Annual Savings</div>
+            <div class="metric-bar"/>
+            <div class="metric-value">$savings_value$</div>
+            <div class="metric-label">GB/year</div>
+          </div>
+          
+          <div class="metric-card metric-card-3">
+            <div class="metric-header">Metrics Candidates</div>
+            <div class="metric-bar"/>
+            <div class="metric-value">$candidates_value$</div>
+            <div class="metric-label">sourcetypes</div>
+          </div>
+          
+          <div class="metric-card metric-card-4">
+            <div class="metric-header">Storage Savings</div>
+            <div class="metric-bar"/>
+            <div class="metric-value">$storage_value$</div>
+            <div class="metric-label">GB estimated</div>
+          </div>
+          
+          <div class="metric-card metric-card-5">
+            <div class="metric-header">Total Optimization</div>
+            <div class="metric-bar"/>
+            <div class="metric-value" id="opt-value">$optimization_value$</div>
+            <div class="metric-label">% Possible Gain</div>
+          </div>
+        </div>
+        <script>
+          setTimeout(function() {
+            // Apply thresholding for Data Hygiene value text
+            var hygieneValue = document.getElementById('hygiene-value');
+            if (hygieneValue) {
+              var hygieneVal = parseFloat(hygieneValue.textContent);
+              if (hygieneVal >= 70) {
+                hygieneValue.classList.add('good');
+              } else if (hygieneVal >= 50) {
+                hygieneValue.classList.add('warning');
+              } else {
+                hygieneValue.classList.add('critical');
+              }
+            }
+            
+            // Apply thresholding for Total Optimization value text
+            var optValue = document.getElementById('opt-value');
+            if (optValue) {
+              var optVal = parseFloat(optValue.textContent);
+              if (optVal >= 40) {
+                optValue.classList.add('good');
+              } else if (optVal >= 20) {
+                optValue.classList.add('warning');
+              } else {
+                optValue.classList.add('critical');
+              }
+            }
+          }, 1000);
+        </script>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel span="8">
+      <title>Infrastructure KPI &amp; Metrics Conversion Candidates</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| stats sum(b) as bytes by st
+| rename st as sourcetype
+| eval daily_gb=round(bytes/1024/1024/1024/7,2)
+| eval is_infrastructure=if(match(sourcetype, "(?i)(cpu|memory|disk|network|performance|metric|stats|system|infrastructure|container|docker|k8s|kubernetes|aws|azure|gcp|vmware)"), "Yes", "No")
+| eval is_metrics_candidate=if(match(sourcetype, "(?i)(metric|stats|perf|performance|cpu|memory|disk|network|usage|utilization)"), "Yes", "No")
+| eval kpi_score=case(
+    is_infrastructure="Yes" AND is_metrics_candidate="Yes", 95,
+    is_infrastructure="Yes", 70,
+    is_metrics_candidate="Yes", 60,
+    1=1, 20)
+| eval recommendation=case(
+    kpi_score >= 80, "HIGH - Convert to Metrics",
+    kpi_score >= 60, "MEDIUM - Review for Metrics",
+    kpi_score >= 40, "LOW - Partial Candidate",
+    1=1, "Keep as Logs")
+| eval annual_savings_gb=if(kpi_score>=60, daily_gb*365*0.5, 0)
+| table sourcetype daily_gb kpi_score recommendation annual_savings_gb
+| rename sourcetype as "Sourcetype", daily_gb as "Daily GB", kpi_score as "KPI Score", recommendation as "Recommendation", annual_savings_gb as "Est. Annual Savings GB"
+| sort - "KPI Score"
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Recommendation">
+          <colorPalette type="map">{"HIGH - Convert to Metrics":"#8ac926","MEDIUM - Review for Metrics":"#ffca3a","LOW - Partial Candidate":"#1982c4","Keep as Logs":"#ff595e"}</colorPalette>
+        </format>
+        <format type="number" field="Daily GB">
+          <option name="precision">2</option>
+        </format>
+        <format type="number" field="Est. Annual Savings GB">
+          <option name="precision">1</option>
+        </format>
+      </table>
+    </panel>
+    <panel span="4">
+      <chart>
+        <title>Data Type Distribution by Volume</title>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| stats sum(b) as bytes by st
+| rename st as sourcetype
+| eval gb=round(bytes/1024/1024/1024,2)
+| eval data_type=case(
+    match(sourcetype, "(?i)(metric|stats|perf)"), "Metrics Candidate (>80% numeric)",
+    match(sourcetype, "(?i)(log|event)"), "Event Logs",
+    match(sourcetype, "(?i)(audit|security)"), "Security/Audit",
+    1=1, "Unstructured/Other")
+| stats sum(gb) as volume_gb by data_type
+| sort - volume_gb
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.seriesColors">[0x8ac926,0x1982c4,0xffca3a,0xff595e]</option>
+        <option name="height">350</option>
+        <option name="resizable">false</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel span="6">
+      <title>Most Underutilized Indexes - 7 Day Trend</title>
+      <chart>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| bin _time span=1d
+| stats sum(b) as bytes by _time, idx
+| rename idx as index
+| eval gb=round(bytes/1024/1024/1024,2)
+| join type=outer index
+    [search index=_audit action=search earliest=-7d@d latest=now
+    | rex field=search "index\s*=\s*[\"']?(?<index_name>[^\"'\s]+)"
+    | stats count as searches by index_name
+    | rename index_name as index]
+| eval searches=coalesce(searches,0)
+| eval utilization_score=case(
+    searches=0, 0,
+    searches<10, 10,
+    searches<50, 30,
+    searches<100, 50,
+    1=1, 100)
+| where utilization_score <= 30
+| eval index_label=index." (".utilization_score."% util)"
+| timechart span=1d sum(gb) as "Volume (GB)" by index_label limit=5
+]]>
+          </query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Volume (GB)</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="resizable">false</option>
+        <option name="charting.seriesColors">[0xff595e,0xffca3a,0x8ac926,0x1982c4]</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.lineWidth">2</option>
+      </chart>
+    </panel>
+    <panel span="6">
+      <title>Search Activity vs Data Volume</title>
+      <chart>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| stats sum(b) as bytes by idx
+| rename idx as index
+| eval gb=round(bytes/1024/1024/1024,2)
+| join type=outer index
+    [search index=_audit action=search earliest=-7d@d latest=now
+    | rex field=search "index\s*=\s*[\"']?(?<index_used>[^\"'\s]+)"
+    | stats count as search_count by index_used
+    | rename index_used as index]
+| eval search_count=coalesce(search_count,0)
+| eval category=case(
+    search_count > 100, "Active",
+    search_count > 10, "Moderate",
+    search_count > 0, "Low Activity",
+    1=1, "Unused")
+| eval sort_order=case(
+    category="Active", 1,
+    category="Moderate", 2,
+    category="Low Activity", 3,
+    category="Unused", 4)
+| stats sum(gb) as "Volume (GB)", count as "Index Count" by category, sort_order
+| sort sort_order
+| fields - sort_order
+| rename category as "Activity Level"
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Activity Level</option>
+        <option name="charting.axisTitleY.text">Total Volume (GB)</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="resizable">false</option>
+        <option name="charting.legend.placement">top</option>
+        <option name="charting.seriesColors">[0x8ac926,0x1982c4]</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.chart.columnSpacing">10</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Unused Sourcetypes - Prime Candidates for Removal</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-30d@d latest=now
+| stats sum(b) as bytes latest(_time) as last_seen by st
+| rename st as sourcetype
+| eval size_gb=round(bytes/1024/1024/1024,2)
+| eval days_since_seen=round((now()-last_seen)/86400,0)
+| join type=outer sourcetype
+    [| tstats latest(_time) as last_searched WHERE index=* earliest=-30d@d latest=now BY sourcetype
+    | eval last_searched_time=last_searched]
+| eval days_since_search=if(isnotnull(last_searched_time), round((now()-last_searched_time)/86400,0), 999)
+| where days_since_search > $min_unused_days$ OR isnull(last_searched_time)
+| eval annual_gb_impact=size_gb*12
+| eval action_required=case(
+    days_since_search > 90 AND size_gb > 10, "CRITICAL - Disable Immediately",
+    days_since_search > 60 AND size_gb > 5, "HIGH - Schedule for Removal",
+    days_since_search > 30, "MEDIUM - Review with Owner",
+    1=1, "LOW - Monitor")
+| table sourcetype days_since_search size_gb annual_gb_impact action_required
+| rename sourcetype as "Sourcetype", days_since_search as "Days Unused", size_gb as "Monthly GB", annual_gb_impact as "Annual GB Impact", action_required as "Action Required"
+| sort - "Annual GB Impact"
+| head 20
+]]>
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Action Required">
+          <colorPalette type="map">{"CRITICAL - Disable Immediately":"#ff595e","HIGH - Schedule for Removal":"#ffca3a","MEDIUM - Review with Owner":"#1982c4","LOW - Monitor":"#8ac926"}</colorPalette>
+        </format>
+        <format type="number" field="Monthly GB">
+          <option name="precision">2</option>
+        </format>
+        <format type="number" field="Annual GB Impact">
+          <option name="precision">1</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel span="6">
+      <title>Indexes by Volume and Usage</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+| stats sum(b) as bytes by idx
+| rename idx as index
+| eval gb=round(bytes/1024/1024/1024,2)
+| join type=outer index
+    [search index=_audit action=search earliest=-7d@d latest=now
+    | rex field=search "index\s*=\s*[\"']?(?<index_name>[^\"'\s]+)"
+    | stats count as searches by index_name
+    | rename index_name as index]
+| eval searches=coalesce(searches,0)
+| eval efficiency=case(
+    searches=0, "UNUSED",
+    searches<10, "Very Low",
+    searches<50, "Low",
+    searches<200, "Medium",
+    1=1, "High")
+| table index gb searches efficiency
+| rename index as "Index", gb as "Weekly GB", searches as "Search Count", efficiency as "Usage Efficiency"
+| sort - "Weekly GB"
+| head 20
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Usage Efficiency">
+          <colorPalette type="map">{"UNUSED":"#ff595e","Very Low":"#ffca3a","Low":"#1982c4","Medium":"#8ac926","High":"#8ac926"}</colorPalette>
+        </format>
+        <format type="number" field="Weekly GB">
+          <option name="precision">2</option>
+        </format>
+      </table>
+    </panel>
+    <panel span="6">
+      <title>Duplicate Sourcetypes Across Indexes</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+| tstats count WHERE index=* earliest=-7d@d latest=now BY sourcetype, index
+| stats values(index) as indexes, dc(index) as index_count by sourcetype
+| where index_count > 1
+| eval indexes_list=mvjoin(indexes,", ")
+| join type=left sourcetype
+    [search index=_internal source=*license_usage.log type=Usage earliest=-7d@d latest=now
+    | stats sum(b) as bytes by st
+    | rename st as sourcetype
+    | eval daily_gb=round(bytes/1024/1024/1024/7,2)]
+| eval consolidation_savings=daily_gb*(index_count-1)*365
+| table sourcetype index_count indexes_list daily_gb consolidation_savings
+| rename sourcetype as "Sourcetype", index_count as "Index Count", indexes_list as "Indexes", daily_gb as "Daily GB", consolidation_savings as "Annual Savings GB"
+| sort - consolidation_savings
+| head 10
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Index Count">
+          <colorPalette type="minMidMax" maxColor="#ff595e" midColor="#ffca3a" minColor="#8ac926"></colorPalette>
+          <scale type="minMidMax" minValue="2" midValue="3" maxValue="5"></scale>
+        </format>
+        <format type="number" field="Daily GB">
+          <option name="precision">2</option>
+        </format>
+        <format type="number" field="Annual Savings GB">
+          <option name="precision">1</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top Priority Actions - Executive Summary</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+| makeresults count=3
+| streamstats count as row
+| eval priority=case(row=1,"CRITICAL",row=2,"HIGH",row=3,"MEDIUM")
+| eval action=case(
+    row=1,"Remove Unused Data",
+    row=2,"Convert to Metrics",
+    row=3,"Consolidate Indexes")
+| eval target=case(
+    row=1,"Sourcetypes unused >90 days",
+    row=2,"Infrastructure/Performance Data",
+    row=3,"Duplicate sourcetypes")
+| eval implementation=case(
+    row=1,"Disable inputs or set retention=0",
+    row=2,"Route to metrics index via transforms.conf",
+    row=3,"Merge into single index")
+| eval estimated_savings=case(
+    row=1,"20-40% license reduction",
+    row=2,"40-60% storage reduction",
+    row=3,"10-20% efficiency gain")
+| table priority action target estimated_savings implementation
+| rename priority as "Priority", action as "Action", target as "Target", estimated_savings as "Estimated Savings", implementation as "Implementation"
+]]>
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+        </search>
+        <option name="drilldown">none</option>
+        <format type="color" field="Priority">
+          <colorPalette type="map">{"CRITICAL":"#ff595e","HIGH":"#ffca3a","MEDIUM":"#1982c4"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

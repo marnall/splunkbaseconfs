@@ -1,0 +1,71 @@
+<dashboard version="1.1">
+  <label>DNS Errors</label>
+  <description>IP Servers with DNS Errors</description>
+  <search>
+    <query>
+      sourcetype="apex" index="*" | where widget="DNS Error Response Error Codes" OR field_name = "Response Packets" |stats latest(_time) as _time by apex_dashboard   |  sort 0 - _time | head 1 | table apex_dashboard | rename apex_dashboard as url_token
+    </query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="url_token">$result.url_token$</set>
+    </done>
+  </search>
+  <row depends="$url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <a href="$url_token$" target="_blank">Click here to visit the Apex dashboard</a>
+      </html>
+    </panel>
+  </row>
+  <row depends="$!url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <div style="color: #ff6b35; padding: 10px; border-left: 4px solid #ff6b35;">
+          <strong>No Apex Dashboard Available</strong><br/>
+          No events received in the last 24 hours. Check your Apex configuration and ensure events are being sent to Splunk.
+          <br/><br/>
+          <a href="/en-US/app/TA-viavi-apex-addon/apex_setup_page">Configure Add-on Settings</a>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>DNS Response Code Distribution</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name="Response Packets" | where isnotnull(response_code) | stats sum(current_value) AS "Response Packets" BY response_code| rename response_code AS "Response Code"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>DNS Error Response Error Codes</title>
+      <table>
+        <title>Response packets by server containing DNS error codes over last 60 minutes</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name="Response Packets" | where isnotnull(current_value) AND isnotnull(ip_address_server)| stats sum(current_value) AS sum_packets BY ip_address_server, response_code, l7_protocol | eval sum_packets=round(sum_packets,0) | eval "Response Packets"=tostring(sum_packets, "commas") | rename ip_address_server AS "Server IP" response_code AS "Response Code" l7_protocol AS "L7 Protocol" | sort - sum_packets | table "Response Code" "L7 Protocol" "Server IP" "Response Packets"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

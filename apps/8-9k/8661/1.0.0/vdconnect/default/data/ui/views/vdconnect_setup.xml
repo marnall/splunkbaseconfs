@@ -1,0 +1,139 @@
+<dashboard version="1.1" theme="dark" stylesheet="vdconnect.css">
+  <label>Setup Guide</label>
+  <description>Getting started with VDConnect for Splunk</description>
+
+  <row>
+    <panel>
+      <html>
+<div style="max-width:900px; margin:0 auto; font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+
+<div style="background:linear-gradient(135deg,#5468FF,#7B68EE); padding:32px 36px; border-radius:12px; margin-bottom:24px;">
+  <h1 style="color:#fff; margin:0 0 8px; font-size:28px;">VDConnect for Splunk</h1>
+  <p style="color:rgba(255,255,255,0.8); margin:0; font-size:15px;">
+    Collect, index, and search logs stored inside vector databases.
+  </p>
+  <p style="color:rgba(255,255,255,0.6); margin:8px 0 0; font-size:13px;">
+    Version 1.0.0 · Supports Milvus, Pinecone, Weaviate, ChromaDB, Qdrant, pgvector
+  </p>
+</div>
+
+<!-- STEP 1 -->
+<div style="background:#1a1d23; border:1px solid #2a2d35; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+  <h2 style="color:#5468FF; margin:0 0 12px; font-size:18px;">Step 1 — Install Python SDK Dependencies</h2>
+  <p style="color:#9ea3b0; font-size:13px; line-height:1.6;">
+    VDConnect requires Python SDK libraries for each vector database you plan to connect to.
+    Install them into the app's <code>lib/</code> directory:
+  </p>
+  <pre style="background:#12141a; padding:14px 18px; border-radius:8px; color:#2DDE98; font-size:12px; overflow-x:auto;">
+# Milvus
+pip install pymilvus --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+
+# Pinecone
+pip install pinecone-client --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+
+# Weaviate
+pip install weaviate-client --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+
+# ChromaDB
+pip install chromadb-client --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+
+# Qdrant
+pip install qdrant-client --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+
+# pgvector (uses psycopg2)
+pip install psycopg2-binary --target=$SPLUNK_HOME/etc/apps/vdconnect/lib
+  </pre>
+</div>
+
+<!-- STEP 2 -->
+<div style="background:#1a1d23; border:1px solid #2a2d35; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+  <h2 style="color:#5468FF; margin:0 0 12px; font-size:18px;">Step 2 — Create Indexes</h2>
+  <p style="color:#9ea3b0; font-size:13px; line-height:1.6;">
+    VDConnect ships with recommended indexes in <code>default/indexes.conf</code>.
+    Verify they are created:
+  </p>
+  <pre style="background:#12141a; padding:14px 18px; border-radius:8px; color:#FFC107; font-size:12px;">
+| rest /services/data/indexes
+| search title=vdconnect_*
+| table title currentDBSizeMB maxTotalDataSizeMB
+  </pre>
+</div>
+
+<!-- STEP 3 -->
+<div style="background:#1a1d23; border:1px solid #2a2d35; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+  <h2 style="color:#5468FF; margin:0 0 12px; font-size:18px;">Step 3 — Configure Your First Input</h2>
+  <p style="color:#9ea3b0; font-size:13px; line-height:1.6;">
+    Copy the example stanzas from <code>default/inputs.conf</code> into
+    <code>local/inputs.conf</code> and customize for your environment:
+  </p>
+  <pre style="background:#12141a; padding:14px 18px; border-radius:8px; color:#00A1EA; font-size:12px; overflow-x:auto;">
+[vdconnect://my_milvus_logs]
+db_type            = milvus
+host               = milvus-prod.company.com
+port               = 19530
+auth_type          = token
+token              = your_token_here
+collection_name    = error_logs
+output_fields      = log_text, timestamp, severity, source
+collection_mode    = rising_column
+rising_column      = timestamp
+interval           = 300
+index              = vdconnect_logs
+sourcetype         = vdconnect:milvus
+disabled           = false
+  </pre>
+</div>
+
+<!-- STEP 4 -->
+<div style="background:#1a1d23; border:1px solid #2a2d35; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+  <h2 style="color:#5468FF; margin:0 0 12px; font-size:18px;">Step 4 — Restart Splunk and Verify</h2>
+  <p style="color:#9ea3b0; font-size:13px; line-height:1.6;">
+    Restart Splunk to load the new input, then verify data is flowing:
+  </p>
+  <pre style="background:#12141a; padding:14px 18px; border-radius:8px; color:#2DDE98; font-size:12px;">
+splunk restart
+
+# Verify inputs are registered
+| rest /services/data/inputs/vdconnect | table title db_type disabled
+
+# Check for collected events
+index=vdconnect_logs sourcetype=vdconnect:milvus | head 20
+
+# Check internal logs for errors
+index=vdconnect_internal sourcetype=vdconnect:internal level=ERROR
+  </pre>
+</div>
+
+<!-- STEP 5 -->
+<div style="background:#1a1d23; border:1px solid #2a2d35; border-radius:10px; padding:24px 28px; margin-bottom:16px;">
+  <h2 style="color:#5468FF; margin:0 0 12px; font-size:18px;">Step 5 — Useful SPL Queries</h2>
+  <p style="color:#9ea3b0; font-size:13px; line-height:1.6; margin-bottom:14px;">
+    Common searches to get started with your vector database logs:
+  </p>
+
+  <p style="color:#fff; font-size:12px; font-weight:600; margin:12px 0 4px;">Errors across all vector databases (last 24h):</p>
+  <pre style="background:#12141a; padding:10px 14px; border-radius:6px; color:#FF6B35; font-size:12px;">
+index=vdconnect_logs sourcetype=vdconnect:* severity=ERROR earliest=-24h
+| stats count by sourcetype, source
+| sort - count
+  </pre>
+
+  <p style="color:#fff; font-size:12px; font-weight:600; margin:12px 0 4px;">Event volume by database type:</p>
+  <pre style="background:#12141a; padding:10px 14px; border-radius:6px; color:#FF6B35; font-size:12px;">
+index=vdconnect_logs OR index=vdconnect_audit sourcetype=vdconnect:*
+| eval db = replace(sourcetype, "vdconnect:", "")
+| timechart span=1h count by db
+  </pre>
+
+  <p style="color:#fff; font-size:12px; font-weight:600; margin:12px 0 4px;">Top error messages from Milvus:</p>
+  <pre style="background:#12141a; padding:10px 14px; border-radius:6px; color:#FF6B35; font-size:12px;">
+index=vdconnect_logs sourcetype=vdconnect:milvus severity=ERROR
+| top limit=20 log_text
+  </pre>
+</div>
+
+</div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

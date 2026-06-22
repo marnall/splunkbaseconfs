@@ -1,0 +1,224 @@
+<form version="1.1">
+  <label>Destinations</label>
+  <description>Geographic visualization of DNS resolution destinations</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Destinations Heatmap by Country</title>
+      <map>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(Country)
+| stats count as query_count by Country
+| geom geo_countries featureIdField=Country</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="mapping.type">choropleth</option>
+        <option name="mapping.choroplethLayer.colorBins">7</option>
+        <option name="mapping.choroplethLayer.colorMode">sequential</option>
+        <option name="mapping.choroplethLayer.maximumColor">0xD93F3C</option>
+        <option name="mapping.choroplethLayer.minimumColor">0x2F25BA</option>
+        <option name="mapping.choroplethLayer.neutralPoint">0</option>
+        <option name="mapping.choroplethLayer.shapeOpacity">0.8</option>
+        <option name="mapping.choroplethLayer.showBorder">1</option>
+        <option name="mapping.map.center">(30,0)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.drilldown">none</option>
+        <option name="height">400</option>
+      </map>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Real-Time Destinations (Last 5 Minutes)</title>
+      <map>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(lat) AND isnotnull(lon)
+| geostats latfield=lat longfield=lon count globallimit=50</query>
+          <earliest>-5m@m</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="mapping.type">marker</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.map.center">(30,0)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.drilldown">none</option>
+        <option name="height">400</option>
+      </map>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Destinations Summary</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| stats count as "Total Queries", 
+        dc(resolved_ip) as "Unique IPs", 
+        dc(domain) as "Unique Domains",
+        dc(Country) as "Countries"</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top Countries by DNS Queries</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(Country)
+| stats count by Country
+| sort -count
+| head 15</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Cities by DNS Queries</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(City)
+| stats count by City, Country
+| sort -count
+| head 15
+| eval Location=City.", ".Country
+| fields Location, count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Queries</option>
+        <option name="charting.axisTitleY.text">Location</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top Destination IPs</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| stats count as "Query Count", 
+        dc(domain) as "Domains", 
+        values(domain) as "Sample Domains"
+        by resolved_ip, Country, City, Region
+| sort -"Query Count"
+| head 25
+| rename resolved_ip as "Destination IP"</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Domains Resolving to Each Country</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+(?&lt;resolved_domain&gt;\S+)\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(Country)
+| stats dc(resolved_ip) as "Unique IPs", 
+        count as "Total Queries", 
+        values(resolved_domain) as "Domains" 
+        by Country
+| sort -"Total Queries"
+| head 20</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Geographic Distribution Over Time</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("reply " OR "cached ")
+| rex field=_raw "(?:reply|cached(?:-stale)?)\s+\S+\s+is\s+(?&lt;resolved_ip&gt;\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+| search resolved_ip=*
+| where NOT match(resolved_ip, "^(10\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|127\.|0\.0\.0\.0|255\.)")
+| iplocation resolved_ip
+| where isnotnull(Country)
+| timechart span=1h count by Country limit=10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Queries</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

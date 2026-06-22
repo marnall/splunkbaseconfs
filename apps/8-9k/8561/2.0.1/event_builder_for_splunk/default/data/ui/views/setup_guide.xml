@@ -1,0 +1,77 @@
+<dashboard version="2" theme="dark">
+  <label>Setup Guide</label>
+  <description>Step-by-step guide to configure Event Builder For Splunk: create HEC token, configure the desktop app, verify ingestion, and enable correlation rules.</description>
+  <definition><![CDATA[
+{
+  "title": "Setup Guide -- Event Builder For Splunk",
+  "description": "Configure your environment in 4 steps to start sending events from the desktop application.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1750,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_step1", "type": "block", "position": { "x": 0, "y": 0,    "w": 1440, "h": 380 } },
+      { "item": "viz_step2", "type": "block", "position": { "x": 0, "y": 380,  "w": 1440, "h": 320 } },
+      { "item": "viz_step3", "type": "block", "position": { "x": 0, "y": 700,  "w": 1440, "h": 350 } },
+      { "item": "viz_step4", "type": "block", "position": { "x": 0, "y": 1050, "w": 1440, "h": 500 } },
+      { "item": "viz_verify","type": "block", "position": { "x": 0, "y": 1550, "w": 1440, "h": 200 } }
+    ]
+  },
+  "dataSources": {
+    "ds_index_verify": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | sort -count",
+        "queryParameters": { "earliest": "-15m", "latest": "now" }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_step1": {
+      "type": "viz.markdown",
+      "options": {
+        "markdown": "## Step 1 -- Create a HEC Token in Splunk\n\n**What is HEC?** The HTTP Event Collector (HEC) lets external applications send data to Splunk over HTTP/HTTPS without a forwarder.\n\n### Instructions\n\n1. Navigate to **Settings -> Data Inputs -> HTTP Event Collector**\n2. Click **New Token**\n3. Set the **Name**: `event_builder_hec`\n4. Set **Source type**: `_json` (the desktop app sets the correct sourcetype per event)\n5. On the **Input Settings** page, select **All 21 indexes** created by this app\n6. Click **Review** then **Submit**\n7. **Copy the generated Token value** -- you will need it in Step 2\n\n> **Security Note:** Keep your HEC token confidential. Do not commit it to version control or share it in screenshots.\n\n### Verify HEC is enabled\n\nIn the HEC settings page, confirm **Enable SSL** and **Enable Token** are both checked.  \nNote the HEC port (default: **8088**).",
+        "backgroundColor": "#1C2A35"
+      },
+      "title": "Step 1: Create HEC Token"
+    },
+    "viz_step2": {
+      "type": "viz.markdown",
+      "options": {
+        "markdown": "## Step 2 -- Configure the Desktop Application\n\nThe **Event Builder For Splunk** desktop app (v2.0.1) connects to Splunk via HEC.\n\n### Connection Settings\n\nOpen the desktop app and navigate to **Settings -> Connection**, then fill in:\n\n- **HEC URL** -- `http(s)://your-splunk-host:8088`  (e.g. `http://localhost:8088`)\n- **HEC Token** -- The token created in Step 1  (e.g. `abcd1234-ef56-...`)\n- **Verify SSL** -- Uncheck if using a self-signed certificate\n- **Batch Size** -- Number of events per HEC request  (recommended: `50`)\n\n### Test the Connection\n\nClick **Test Connection** in the desktop app. A green banner confirms:\n\n`[OK] Connected -- HEC is accepting events`\n\n> **Tip:** If connection fails, verify that port 8088 is reachable from your desktop to the Splunk host.",
+        "backgroundColor": "#1C2A35"
+      },
+      "title": "Step 2: Configure Desktop App"
+    },
+    "viz_step3": {
+      "type": "viz.markdown",
+      "options": {
+        "markdown": "## Step 3 -- Verify Index Ingestion\n\nAfter sending test events from the desktop app, confirm data is landing in the correct indexes.\n\n### Quick Verification Search\n\nRun the following in **Splunk Search**:\n\n```\n| tstats count WHERE index=* BY index\n| search index IN (web, network, linux, windows, dns, vpn, aws, gcp,\n                   ids, email, o365, database, proxy, kubernetes, edr,\n                   identity, virtualization, saas, monitoring, itsm, pam)\n| sort -count\n```\n\n### Expected Results\n\n- Each active stanza in the desktop app should produce rows in the corresponding index\n- `_time` values should match the event generation time\n- `sourcetype` should match what is configured in the desktop app stanza\n\n### Live ingestion status for the last 15 minutes is shown in the table below.",
+        "backgroundColor": "#1C2A35"
+      },
+      "title": "Step 3: Verify Index Ingestion"
+    },
+    "viz_step4": {
+      "type": "viz.markdown",
+      "options": {
+        "markdown": "## Step 4 -- Enable Correlation Rules\n\nThis app includes **10 correlation rules**, all disabled by default. Enable them only after your data is flowing correctly.\n\n### How to Enable\n\n**Option A -- Splunk UI:**\n1. Navigate to **Settings -> Searches, Reports, and Alerts**\n2. Set the App filter to **Event Builder For Splunk**\n3. Find any rule prefixed with `EB -`\n4. Click **Edit -> Enable**\n\n**Option B -- REST API (example):**\n```\ncurl -k -u admin:password -d 'disabled=false' \\\n  https://splunk-host:8089/servicesNS/admin/event_builder_for_splunk/saved/searches/EB%20-%20Brute%20Force%20Login%20Detected\n```\n\n### Available Rules\n\n- **EB - Brute Force Login Detected** -- 10+ auth failures / 5 min window -- runs every 5 min\n- **EB - Impossible Travel Detected** -- same user from 2 countries / 30 min -- runs every 15 min\n- **EB - MFA Bypass or Factor Deactivation** -- MFA disabled then login without MFA / 60 min -- runs every 10 min\n- **EB - Privileged Container Created in K8s** -- pod with privileged:true or runAsUser:0 -- runs every 5 min\n- **EB - AWS IAM Privilege Escalation** -- AttachPolicy or CreateAccessKey targeting admin -- runs every 10 min\n- **EB - Lateral Movement Pass-the-Hash** -- NTLM Type-3 logon to 3+ hosts / 10 min -- runs every 10 min\n- **EB - C2 Beaconing Pattern Detected** -- Suricata C2 alerts or highly regular outbound -- runs every 15 min\n- **EB - Data Exfiltration via Proxy** -- 200MB+ upload to non-business URLs / 1 hr -- runs every hour\n- **EB - Credential Dumping Tool Detected** -- CrowdStrike Credential Access + lsass -- runs every 5 min\n- **EB - PAM Secret Accessed Outside Hours** -- Vault/CyberArk retrieval after 22:00 or on weekends -- runs every 10 min",
+        "backgroundColor": "#1C2A35"
+      },
+      "title": "Step 4: Enable Correlation Rules"
+    },
+    "viz_verify": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_index_verify" },
+      "options": {
+        "backgroundColor": "transparent",
+        "count": 21
+      },
+      "title": "Live: Events per Index (last 15 minutes)"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

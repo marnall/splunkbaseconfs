@@ -1,0 +1,202 @@
+v1.2.5 (2026-05-18) — Build 1779321600
+========================================
+[CRITICAL FIX] SSL/TLS Runtime Crash
+- Fixed fatal SSL_CERTIFICATE_VERIFY_FAILED exception that prevented
+  data collection on all Splunk Enterprise deployments using default
+  self-signed management certificates.
+- Internal REST API call to splunkd (127.0.0.1:8089) reverted to
+  verify=False. Session-key authentication provides sufficient security
+  for this localhost-only request.
+
+[NEW] Comprehensive Operational Logging
+- Added 7 structured log points covering the entire collection cycle:
+  input config, filter config, proxy status, sourcetype resolution,
+  ES client parameters, full Query DSL, and ES response summary.
+- Enables operators to diagnose collection issues directly from
+  index=_internal without inspecting Python source code.
+
+[NEW] Internal Log Monitoring Resilience
+- Added explicit monitor stanza with crcSalt=<SOURCE> to prevent
+  fishbucket CRC corruption after DS push events or log rotation.
+
+[NEW] cert_path.py Hardened Certificate Validation
+- Rejects relative paths, '..' segments, control chars, null bytes,
+  and non-regular files (directories, devices, sockets).
+- Returns canonical realpath() to elasticsearch-py.
+
+[NEW] CheckboxNormalizerMixin (UCC Wire Contract Fix)
+- All REST handlers now normalize checkbox values to '0'/'1'.
+- inputs.conf defaults fixed: 'False' → '0', 'True' → '1'.
+- Resolves checkbox state persistence failure on Create/Edit dialogs
+  caused by UCC 5.69.1 emitting integer 0/1 vs. string comparison.
+- README/*.conf.spec fixed: <boolean> → <bool>.
+
+[SECURITY] Proxy Credential Cleanup Hardening
+- HTTP_PROXY/HTTPS_PROXY env vars now scrubbed in `finally` block.
+- Guarantees cleanup even when exceptions occur before ES client creation.
+
+[SECURITY] REST Handler Enhanced Audit Logging
+- All REST handlers (rh_elasticsearch_source, rh_es_clusters,
+  rh_settings) updated with CheckboxNormalizerMixin and enhanced
+  5W1H audit logging.
+
+Upgrade: Drop-in replacement for v1.2.3. No configuration changes required.
+Compatibility: Splunk Enterprise 9.4, 10.0, 10.1, 10.2
+Requires: Elasticsearch 8.x
+Libraries: elasticsearch-py 8.19.3, elastic-transport 8.17.1
+
+---
+
+v1.2.3 (2026-04-25) — Build 1777152436
+========================================
+[FIX] Python 3.13 Compatibility (Splunkbase AppInspect)
+- [FIX-01] inputs.conf: Added python.required to [elasticsearch_source] stanza.
+  Resolves check_modular_inputs_python_required.
+- [FIX-02] restmap.conf: Added python.required to all three [admin_external]
+  stanzas. Resolves check_admin_python_required.
+- [FIX-03] inputs.conf + restmap.conf: Corrected python.required value from
+  'python3' (invalid/deprecated since Splunk Enterprise 10.2) to '3.9, 3.13'.
+  Value '3.9' ensures backward compatibility with Splunk 9.x; '3.13' enables
+  forward compatibility with Splunk 10.2+ Python 3.13 runtime.
+  Resolves AppInspect Future Failure across Splunk 9.4 to 10.2 version range.
+
+[SECURITY] 5W1H Audit Logging — All Operational Layers
+- escheck_connection/config/indexes: Full WHO/WHEN/WHERE/WHAT/WHICH/HOW
+  logging to index=_internal on every command execution. Includes username,
+  search ID (sid), app context, cluster target, and result outcome.
+  Passwords are NEVER logged (REDACTED marker enforced).
+- rh_settings: Logs all setting changes (loglevel, proxy, checkpoint_storage)
+  with operator identity and timestamp to index=_internal.
+- rh_es_clusters: Logs CREATE/EDIT/DELETE cluster operations. es_pass always
+  REDACTED. Host and port captured on CREATE.
+- rh_elasticsearch_source: Logs CREATE/EDIT/DELETE input operations with
+  cluster target, ES index, and polling interval.
+- Audit query: index=_internal source=*TA-ensign_elasticsearch* "[AUDIT]"
+
+[SECURITY] Bug Fix — escheck_indexes Information Disclosure
+- Implemented the hidden/system index filter (.startswith('.')) that was
+  documented in code comments but never executed. Indices like .security,
+  .kibana, .alerts are now excluded from output to prevent ES internal
+  data exposure (ABUSE-06).
+
+[NEW] KVStore Checkpoint Storage
+- Added configurable checkpoint storage backend (file / kvstore)
+  via Configuration > Checkpoint Settings
+- Smart Fallback: on startup, both file and KVStore checkpoints
+  are read; the most recent bookmark (by timestamp) is used
+  regardless of active backend — enables seamless switching
+  between storage backends without data loss or re-ingestion
+- KVStore mode enables SHC-native checkpoint replication across
+  Search Head Cluster members
+- Seen IDs deduplication guard also supports KVStore backend
+- Default: file (backward-compatible with existing deployments)
+
+[NEW] Custom SPL Diagnostic Commands
+- escheck_connection: Test connectivity to a configured ES cluster
+  (Usage: | escheck_connection cluster_name="<name>")
+- escheck_config: Display full ES cluster configuration with live
+  health status; passwords are masked in output
+  (Usage: | escheck_config cluster_name="<name>")
+- escheck_indexes: List all Elasticsearch indices with health,
+  doc count, store size, shard information
+  (Usage: | escheck_indexes cluster_name="<name>")
+- All commands are app-restricted — they can only be executed
+  from within this add-on's context (runtime validation)
+
+[NEW] Internal Log Parsing
+- Added comprehensive field extractions for sourcetype
+  taensignelasticsearchaddon:log via props.conf/transforms.conf
+- Extracted fields: log_marker, log_level, log_message,
+  stanza_name, events_ingested, events_skipped,
+  es_cluster_status, es_cluster_name, es_node_count,
+  es_host, tls_verify
+
+[IMPROVED] Minimum Interval Enforcement
+- Polling interval now enforced to minimum 15 seconds
+- Validated at both UI/REST layer (MinIntervalValidator) and
+  runtime layer (validate_input in inputs.conf)
+- Clear error message guides user to correct the interval value
+- Prevents resource exhaustion and checkpoint race conditions
+
+[SECURITY] Additional Hardening (v1.2.3)
+- [SEC-01] SPL command input sanitization: cluster_name parameter
+  validated against strict regex (alphanumeric/underscore/hyphen/dot)
+  to prevent injection attacks via REST path traversal
+- [SEC-02] Credential scrubbing: error messages from SPL commands
+  are sanitized to strip embedded credentials (regex-based)
+- [SEC-03] KVStore REST calls use verify=True for all internal
+  splunkd communication (defense-in-depth)
+- [SEC-04] SPL commands enforce app-restriction at runtime to
+  prevent unauthorized execution from other Splunk apps
+
+---
+
+v1.2.1 (2026-04-20) — Build 1776685802
+========================================
+[SECURITY] Additional Hardening
+- [INFO-01] web.conf: Narrowed overly broad "data/*" REST endpoint exposure
+  to "data/indexes" only. Prevents unnecessary exposure of other Splunk
+  data endpoints to the browser UI.
+- [INFO-03] Internal splunkd REST call now uses verify=True (was verify=False).
+  Ensures session_key authentication token is protected even on loopback
+  interface (defense-in-depth). Also added explicit timeout=30s.
+
+---
+
+v1.2.0 (2026-04-20) — Build 1776678842
+========================================
+[NEW] Elasticsearch Cluster Topology Support
+- Multi-node connections: es_host now accepts comma-separated hosts
+  (e.g., "node1.es.local, node2.es.local, node3.es.local")
+- Round-robin load balancing across multiple configured nodes
+- Node sniffing/auto-discovery: automatically discovers all cluster nodes
+  via ES _nodes API (configurable via enable_sniffing toggle)
+- Automatic retry on connection failure with configurable max_retries (default: 3)
+- Retry on timeout with configurable toggle (retry_on_timeout, default: enabled)
+- Configurable connection timeout (connection_timeout, default: 30s)
+
+[NEW] Cluster Health Monitoring
+- Preflight cluster health check before data collection (_cluster/health)
+- Logs cluster status (green/yellow/red), cluster name, and node count
+- Warns on RED cluster status but continues collection (best-effort)
+
+[UPGRADED] Library Updates
+- elasticsearch-py upgraded from 8.8.0 to 8.19.3
+- elastic-transport upgraded from 8.4.0 to 8.17.1
+
+[IMPROVED] ES Cluster Configuration
+- 4 new fields in ES Clusters configuration:
+  - enable_sniffing: Toggle automatic node discovery (default: off)
+  - max_retries: Maximum retry attempts on failure (default: 3)
+  - retry_on_timeout: Retry on connection timeout (default: on)
+  - connection_timeout: Connection timeout in seconds (default: 30)
+
+[SECURITY] Vulnerability Remediations
+- [VULN-01/P0] SSL/TLS certificate verification now defaults to ENABLED.
+  When disabled, a SECURITY WARNING is logged to _internal.
+  verify_cert=1 now works even without a custom cert (uses system CA).
+- [VULN-02/P1] Proxy credentials removed from process environment variables
+  immediately after Elasticsearch client is created (minimizes exposure).
+- [VULN-03/P1] warnings.filterwarnings("ignore") replaced with scoped
+  urllib3 InsecureRequestWarning suppression only.
+- [VULN-04/P2] Log injection prevention: stanza names sanitized (newlines,
+  tabs, control characters stripped) before use in log messages.
+- [VULN-05/P3] cert_location validated: must be absolute path, must exist
+  as a file. Falls back to system CA on failure.
+- [VULN-06/P2] SSRF protection: es_host validated against blocked list
+  (localhost, 0.0.0.0, 169.254.169.254, loopback, link-local IPs).
+- [INFO-02/P3] REST handlers now require capability=admin_all_objects
+  for defense-in-depth access control.
+
+---
+
+v1.1.1
+- Added dedicated collection directory with scroll crash recovery
+- Added document-level deduplication guard (rolling 50k ID cache)
+- Improved checkpoint management for Heavy Forwarder deployments
+- Supports Elasticsearch 8.x REST API with DSL query filters
+- Multi-cluster configuration via es_clusters.conf
+- SSL/TLS certificate verification support
+- Scroll-based pagination with automatic crash recovery
+- Optional proxy configuration
+- All UI text and documentation standardized to English

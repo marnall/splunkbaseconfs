@@ -1,0 +1,119 @@
+<dashboard theme="dark" version="1.1">
+  <label>Data Coverage &amp; Quality Dashboard</label>
+  <description>Detect data blind spots and pipeline issues early.</description>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>index=* earliest=-24h
+| stats count AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x118832"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">Total Events (24h)</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=* earliest=-24h
+| stats dc(sourcetype) AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="underLabel">Active Sourcetypes</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| tstats count WHERE index=* BY sourcetype
+| where count=0
+| stats count AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">Active Sourcetypes</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>index=*
+| stats max(_time) AS last_event_time
+| eval value = strftime(last_event_time, "%Y-%m-%d %H:%M:%S")
+| table value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">241</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Last Event Received</option>
+      </single>
+    </panel>
+    <panel>
+      <chart>
+        <title>Event Volume Trend (24h)</title>
+        <search>
+          <query>index=* earliest=-24h
+| timechart span=1h count AS events</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Events by Sourcetype (24h)</title>
+        <search>
+          <query>index=* earliest=-24h
+| stats count AS events BY sourcetype
+| sort - events</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Silent Sourcetypes Details</title>
+        <search>
+          <query>index=* earliest=-7d
+| stats max(_time) AS last_seen BY sourcetype
+| where last_seen &lt; relative_time(now(), "-24h")
+| eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M:%S")
+| table sourcetype last_seen
+| sort last_seen</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

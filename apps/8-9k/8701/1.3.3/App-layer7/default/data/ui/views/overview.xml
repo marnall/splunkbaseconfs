@@ -1,0 +1,151 @@
+<form version="1.1" theme="dark" script="layer7_refresh_now_v133.js">
+  <label>Alerts Overview</label>
+  <description>High-level view of alerts with trends and top entities.</description>
+  <init><set token="refresh_interval">900</set><set token="form.refresh_interval">900</set></init>
+
+  <fieldset submitButton="false">
+    <input type="time" token="t1">
+      <label>Time range</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="tok_env" searchWhenChanged="true">
+      <label>Environment</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <search>
+        <query>`l7_alerts` | stats count by Environment | sort Environment | rename Environment as SYSTEMENVIRONMENTTEXT | fields SYSTEMENVIRONMENTTEXT</query>
+        <earliest>$t1.earliest$</earliest>
+        <latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>SYSTEMENVIRONMENTTEXT</fieldForLabel>
+      <fieldForValue>SYSTEMENVIRONMENTTEXT</fieldForValue>
+    </input>
+
+    <input type="dropdown" token="tok_system" searchWhenChanged="true">
+      <label>System</label>
+      <choice value=".*">All Systems</choice>
+      <default>.*</default>
+      <search>
+        <query>`l7_alerts` | `l7_env_filter($tok_env$)` | where isnotnull(System) AND len(trim(System))&gt;0 | stats count by System | sort System | fields System</query>
+        <earliest>$t1.earliest$</earliest>
+        <latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>System</fieldForLabel>
+      <fieldForValue>System</fieldForValue>
+    </input>
+    <input type="radio" token="refresh_interval" searchWhenChanged="true">
+      <label>Data Refresh</label>
+      <choice value="300">5 mins</choice>
+      <choice value="600">10 mins</choice>
+      <choice value="900">15 mins</choice>
+      <default>900</default>
+      <initialValue>900</initialValue>
+    </input>
+
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Total Alerts</title>
+      <single>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$tok_system$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+        <option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option>
+      </single>
+    </panel>
+    <panel>
+      <title>High Priority Alerts (Priority 7–8)</title>
+      <single>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | where PriorityNum&gt;=7 AND PriorityNum&lt;=8 | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$tok_system$&amp;form.tok_severity=High&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+        <option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Critical (Priority ≥ 9)</title>
+      <single>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | where PriorityNum&gt;=9 | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$tok_system$&amp;form.tok_severity=Critical&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+        <option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Alerts Over Time by System</title>
+      <chart>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | timechart span=1h limit=7 count by System</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <option name="charting.chart">line</option><option name="charting.axisTitleX.text">_TIME</option><option name="charting.axisTitleY.text">COUNT</option><option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Alerts by Priority</title>
+      <chart>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | stats count by PriorityNum | sort 0 + PriorityNum | rename PriorityNum as Priority</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <option name="charting.chart">column</option><option name="charting.axisTitleX.text">PRIORITY</option><option name="charting.axisTitleY.text">COUNT</option>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$tok_system$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Systems (by Alert Volume)</title>
+      <table>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | stats count by System System_Type Environment | sort - count | head 15</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$row.System$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Alert Names</title>
+      <table>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | eval Alert_Name=coalesce(Alert_Name, Event_Name) | stats count by Alert_Name Alert_Type PriorityNum Environment | sort - count | head 20 | rename PriorityNum as Priority</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_alert_name=$row.Alert_Name$&amp;form.tok_system=$tok_system$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Recent Critical Alerts</title>
+      <table>
+        <search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | where PriorityNum&gt;=9 | eval Time=strftime(_time,"%Y-%m-%d %H:%M:%S"), Alert_Name=coalesce(Alert_Name, Event_Name), Environment=coalesce(Environment,SYSTEMENVIRONMENTTEXT) | sort - _time | table Time System System_Type Alert_Type Severity PriorityNum Alert_Name Environment | rename PriorityNum as Priority | head 50</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown><link>investigations?form.tok_env=$tok_env$&amp;form.tok_system=$row.System$&amp;form.tok_alert_name=$row.Alert_Name$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

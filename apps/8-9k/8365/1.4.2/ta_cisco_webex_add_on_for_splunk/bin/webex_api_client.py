@@ -1,0 +1,175 @@
+# encoding = utf-8
+import import_declare_test
+
+from webex_constants import _BASE_URL, _MAX_PAGE_SIZE, UNAUTHORIZED_STATUS
+from oauth_helper import update_access_token
+import re
+
+def extract_link_regex(link_header_string):
+    """
+    Extracts the URL from a Link header-like string using regex.
+    """
+    match = re.search(r'<([^>]+)>;', link_header_string)
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError(f"Next page link string does not match expected link header format: '{link_header_string}'")
+
+def paging_get_request_to_webex(
+    helper,
+    base_endpoint,
+    endpoint,
+    access_token,
+    refresh_token,
+    account_name,
+    client_id,
+    client_secret,
+    params,
+    response_tag,
+    is_custom_endpoint=False,
+    webex_account_region="us_ca",
+    method = "GET",
+    payload=None
+):
+    results = []
+    # set the page_size
+    params["max"] = _MAX_PAGE_SIZE if not params.get("max") else params["max"]
+
+
+    paging = True
+    next_page_link = None
+    try:
+        while paging:
+            helper.log_debug("[-] next_page_link {}".format(next_page_link))
+            data,response_header = make_get_request_to_webex(
+                helper,
+                base_endpoint,
+                endpoint,
+                access_token,
+                refresh_token,
+                account_name,
+                client_id,
+                client_secret,
+                params,
+                next_page_link,
+                is_custom_endpoint=is_custom_endpoint,
+                webex_account_region=webex_account_region,
+                method = method,
+                payload = payload
+            )
+
+            if data is None or len(data)==0:
+                break
+
+            # append paging data
+            results.extend(data.get(response_tag))
+
+            next_page_link_header = response_header.get("link", None)
+            helper.log_debug("[--] next_page_link_header {}".format(next_page_link_header))
+
+            if next_page_link_header:
+                try:
+                    next_page_link=extract_link_regex(next_page_link_header)
+                    helper.log_debug("[--] next_page_link {}".format(next_page_link))
+                except ValueError as e:
+                    helper.log_error(f"Next page link extraction failed (regex): {e}")
+            else:
+                helper.log_debug("[--] This is the last page for {}".format(endpoint))
+                paging = False
+        return results
+    except Exception as e:
+        helper.log_error(
+            "[-] Paging request failed to get data from webex {} API: {}".format(
+                endpoint, repr(e)
+            )
+        )
+        raise e
+
+
+def make_get_request_to_webex(
+    helper,
+    base_endpoint,
+    endpoint,
+    access_token,
+    refresh_token,
+    account_name,
+    client_id,
+    client_secret,
+    params,
+    next_page_link,
+    is_custom_endpoint=False,
+    webex_account_region="us_ca",
+    method = "GET",
+    payload=None
+):
+    if next_page_link:
+        url = next_page_link
+        params = None
+    else: 
+        url = _BASE_URL.format(base_endpoint=base_endpoint) + endpoint
+        protocol, rest = url.split("//")
+        
+        # reconstruct the url for meeting/qualities and cdr_feed endpoints
+        if not is_custom_endpoint and endpoint == "meeting/qualities":
+            if webex_account_region == "us_ca":
+                url = f"{protocol}//analytics.{rest}"
+            elif webex_account_region == "gov":
+                url = f"{protocol}//analytics.webexgov.us/v1/meeting/qualities"
+            else:
+                url = f"{protocol}//analytics-{webex_account_region}.{rest}"
+        elif not is_custom_endpoint and endpoint == "cdr_feed":
+            #construct the URL depending on the region
+            if webex_account_region == "us_ca":
+                url = f"{protocol}//analytics-calling.{rest}"
+            elif webex_account_region == "gov":
+                url = f"{protocol}//analytics-calling-{webex_account_region}.webexapis.com/v1/cdr_feed"
+            else:
+                url = f"{protocol}//analytics-calling-{webex_account_region}.{rest}"
+       
+    helper.log_debug("[-] url: {} -- method: {} -- params: {}".format(url, method, params))
+    
+    headers = {
+        "Authorization": "Bearer {access_token}".format(access_token=access_token),
+    }
+
+    try:
+        # response = requests.request("GET", url, headers=headers, params=params)
+        # use helper.send_http_request to have proxy enabled
+        response = helper.send_http_request(
+            url,
+            method,
+            parameters=params,
+            payload=payload,
+            headers=headers,
+            cookies=None,
+            verify=False,
+            cert=None,
+            timeout=30,
+            use_proxy=True,
+        )
+        helper.log_debug(
+            "[-] GET data from webex {} API: response.status_code: {}".format(
+                response.url,
+                response.status_code,
+            )
+        )
+        helper.log_debug(f"[-] Request method: {response.request.method}, Request body: {response.request.body}")
+
+        data = None
+        if response.status_code != 200:
+            helper.log_error(
+                "[-] Error happened while getting date from webex {} API: code: {} - body: {}\n[!] You need to re-configure the account in configuration page".format(
+                    response.url, response.status_code, response.text
+                )
+            )
+            response.raise_for_status()
+        else:
+            data = response.json()
+        return data, response.headers
+    except Exception as e:
+        helper.log_error(
+            "[-] Request failed to get date from webex {} API: {}".format(
+                endpoint, repr(e)
+            )
+        )
+        raise e

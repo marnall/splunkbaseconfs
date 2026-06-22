@@ -1,0 +1,497 @@
+<form version="1.1"
+  stylesheet="splunk-innovators-toolkit:css/sit-panel-polish.css,splunk-innovators-toolkit:css/sit-text-whitelist.css,splunk-innovators-toolkit:themes/soc-command-center.css,splunk-innovators-toolkit:backgrounds/circuit-board-trace.css,splunk-innovators-toolkit:animations/hover-glow-border.css"
+  script="splunk-innovators-toolkit:backgrounds/background-helper.js,splunk-innovators-toolkit:toggles/dark-light-mode.js,splunk-innovators-toolkit:toggles/fullscreen-mode.js,splunk-innovators-toolkit:toggles/auto-refresh-countdown.js,splunk-innovators-toolkit:widgets/topology-renderer.js,splunk-innovators-toolkit:js/sit-remix-button.js">
+  <label>Internal Service Topology</label>
+  <description>Live ITSI Service Analyzer-style topology of Splunk internal infrastructure. Health rolls up from leaf processes to top-level domains; data flows up the tree in real time. Powered by Innovators Toolkit.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-15m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <!-- Topology summary KPIs -->
+  <row>
+    <panel>
+      <title>Service Tree Health</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count as errs | eval health=case(errs>500,"CRITICAL",errs>100,"DEGRADED",1=1,"HEALTHY")</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="field">health</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">overall rollup</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Active Components</title>
+      <single>
+        <search>
+          <query>index=_internal | stats dc(component) as comps</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x4FC3F7"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">leaf nodes online</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Errors / 15m</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="rangeValues">[100,500]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">propagating up tree</option>
+      </single>
+    </panel>
+    <panel>
+      <title>MTTD (avg)</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=ERROR | head 100 | streamstats current=f last(_time) as prev | eval gap=_time-prev | stats avg(gap) as mttd | eval mttd=round(mttd,0)</query>
+          <earliest>-1h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">s</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500"]</option>
+        <option name="rangeValues">[120]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">mean time to detect</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- THE TOPOLOGY — full-width hero -->
+  <row>
+    <panel>
+      <title>Live Service Topology — Health rolls up from leaf processes</title>
+      <html>
+        <style>
+          /* === Container === */
+          .sit-topo {
+            position: relative;
+            padding: 18px 22px 28px;
+            font-family: 'Splunk Platform Sans','Proxima Nova',sans-serif;
+            background: radial-gradient(ellipse at top, rgba(253,24,117,0.06), transparent 60%),
+                        linear-gradient(180deg, #0a0d12 0%, #050709 100%);
+            border-radius: 12px;
+            border: 1px solid rgba(253,24,117,0.12);
+            box-shadow: inset 0 0 80px rgba(0,0,0,0.6);
+            overflow: hidden;
+          }
+          /* Animated grid backdrop */
+          .sit-topo::before {
+            content: '';
+            position: absolute; inset: 0;
+            background-image:
+              linear-gradient(rgba(23,162,184,0.06) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(23,162,184,0.06) 1px, transparent 1px);
+            background-size: 28px 28px;
+            mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
+            -webkit-mask-image: radial-gradient(ellipse at center, black 35%, transparent 80%);
+            pointer-events: none;
+          }
+          /* Scanning beam */
+          .sit-topo::after {
+            content: '';
+            position: absolute; left: 0; right: 0; top: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, rgba(93,217,255,0.9), transparent);
+            box-shadow: 0 0 20px rgba(93,217,255,0.7);
+            animation: sit-topo-scan 5.5s linear infinite;
+            pointer-events: none;
+          }
+          @keyframes sit-topo-scan {
+            0%   { transform: translateY(0); opacity: 0; }
+            10%  { opacity: 1; }
+            90%  { opacity: 1; }
+            100% { transform: translateY(720px); opacity: 0; }
+          }
+
+          /* === Legend bar === */
+          .sit-topo-bar {
+            position: relative; z-index: 5;
+            display: flex; align-items: center; gap: 18px;
+            font-size: 11px; color: rgba(255,255,255,0.65);
+            margin-bottom: 16px;
+            padding: 8px 12px;
+            background: rgba(8,12,18,0.6);
+            border: 1px solid rgba(255,255,255,0.06);
+            border-radius: 8px;
+            backdrop-filter: blur(8px);
+          }
+          .sit-topo-bar .dot {
+            display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+            margin-right: 6px; vertical-align: middle;
+            box-shadow: 0 0 8px currentColor;
+          }
+          .sit-topo-bar .scanning {
+            margin-left: auto;
+            display: inline-flex; align-items: center; gap: 8px;
+            color: #5DD9FF; font-weight: 600; letter-spacing: 1.5px; font-size: 10px;
+            text-transform: uppercase;
+          }
+          .sit-topo-bar .scanning::before {
+            content: ''; width: 8px; height: 8px; border-radius: 50%;
+            background: #5DD9FF;
+            box-shadow: 0 0 12px #5DD9FF;
+            animation: sit-topo-blink 1.4s ease-in-out infinite;
+          }
+          @keyframes sit-topo-blink { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+
+          /* === Tree === */
+          .sit-topo-tree {
+            position: relative; z-index: 4;
+            min-height: 640px;
+          }
+
+          /* === Nodes === */
+          .sit-topo-node {
+            position: absolute;
+            background: linear-gradient(180deg, rgba(20,28,40,0.96), rgba(8,12,18,0.96));
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            color: #e6ecf2;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease;
+            backdrop-filter: blur(6px);
+            cursor: default;
+            box-shadow:
+              0 6px 22px rgba(0,0,0,0.55),
+              inset 0 0 0 1px rgba(255,255,255,0.03);
+          }
+          .sit-topo-node:hover {
+            transform: translateY(-3px) scale(1.03);
+            border-color: rgba(253,24,117,0.55);
+            box-shadow:
+              0 14px 34px rgba(253,24,117,0.22),
+              0 0 0 2px rgba(253,24,117,0.18);
+          }
+          .sit-topo-node-inner {
+            display: flex; align-items: center; gap: 10px;
+            padding: 12px 16px;
+          }
+          .sit-topo-node .icon {
+            width: 22px; height: 22px;
+            color: #5DD9FF;
+            flex-shrink: 0;
+            opacity: 0.9;
+          }
+          .sit-topo-node .label  { font-size: 12px; }
+          .sit-topo-node .meta {
+            font-size: 10px; font-weight: 400;
+            opacity: 0.55;
+            margin-left: auto;
+            white-space: nowrap;
+          }
+          .sit-topo-node .badge {
+            width: 10px; height: 10px; border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 0 12px currentColor, 0 0 4px currentColor;
+          }
+          .sit-topo-spark {
+            display: block;
+            width: 60px; height: 16px;
+            opacity: 0.7;
+            margin-left: auto;
+          }
+          .sit-topo-spark-line {
+            stroke: #5DD9FF; stroke-width: 1.2;
+          }
+
+          /* Tier 0 — root (huge, dramatic) */
+          .sit-topo-node.lvl-0 {
+            background:
+              radial-gradient(ellipse at center, rgba(253,24,117,0.35), rgba(40,12,24,0.95) 60%);
+            border: 2px solid rgba(253,24,117,0.55);
+            box-shadow:
+              0 14px 40px rgba(253,24,117,0.35),
+              0 0 0 6px rgba(253,24,117,0.05),
+              inset 0 0 30px rgba(253,24,117,0.15);
+            font-size: 14px;
+          }
+          .sit-topo-node.lvl-0 .icon { color: #FD1875; width: 28px; height: 28px; }
+          .sit-topo-node.lvl-0 .label { font-size: 14px; font-weight: 700; letter-spacing: 0.5px; }
+
+          /* Tier 1 — hexagonal (visually distinct from leaves) */
+          .sit-topo-node.lvl-1 {
+            background:
+              linear-gradient(160deg, rgba(23,162,184,0.22), rgba(8,12,18,0.96) 70%);
+            border: 1px solid rgba(23,162,184,0.45);
+            box-shadow:
+              0 8px 26px rgba(23,162,184,0.2),
+              0 0 0 4px rgba(23,162,184,0.04);
+          }
+          .sit-topo-node.lvl-1 .icon { color: #5DD9FF; width: 24px; height: 24px; }
+
+          /* Status pulse for critical nodes — class-driven (no :has() so it's
+             compatible with older Splunk Web browsers; topology-renderer.js sets
+             .is-critical when a node's status badge becomes critical). */
+          .sit-topo-node.is-critical {
+            border-color: rgba(255,77,77,0.7) !important;
+            animation: sit-topo-crit-pulse 1.4s ease-in-out infinite;
+          }
+          @keyframes sit-topo-crit-pulse {
+            0%,100% { box-shadow: 0 6px 22px rgba(255,77,77,0.18), 0 0 0 0 rgba(255,77,77,0.4); }
+            50%     { box-shadow: 0 8px 30px rgba(255,77,77,0.35), 0 0 0 8px rgba(255,77,77,0); }
+          }
+
+          /* Status colors */
+          .sit-topo-status-ok   { color: #5CC05C; }
+          .sit-topo-status-warn { color: #F7B500; animation: sit-topo-pulse 2s ease-in-out infinite; }
+          .sit-topo-status-crit { color: #FF4D4D; animation: sit-topo-pulse 1.4s ease-in-out infinite; }
+          @keyframes sit-topo-pulse { 0%,100%{opacity:1;} 50%{opacity:0.45;} }
+
+          /* === Edges === */
+          .sit-topo-edge {
+            stroke: rgba(255,255,255,0.10);
+            stroke-width: 1.5; fill: none;
+          }
+          .sit-topo-edge.crit {
+            stroke: rgba(255,77,77,0.6);
+            stroke-width: 2;
+            stroke-dasharray: 5 4;
+            animation: sit-topo-flow 1.2s linear infinite;
+          }
+          @keyframes sit-topo-flow { to { stroke-dashoffset: -18; } }
+          .sit-topo-edge-glow {
+            mix-blend-mode: screen;
+            animation: sit-topo-glow-pulse 4s ease-in-out infinite;
+          }
+          @keyframes sit-topo-glow-pulse {
+            0%,100% { opacity: 0.5; } 50% { opacity: 0.9; }
+          }
+          .sit-topo-packet { mix-blend-mode: screen; }
+
+          /* === Live event ticker === */
+          .sit-topo-ticker {
+            position: relative; z-index: 5;
+            margin-top: 18px;
+            background: linear-gradient(90deg, rgba(253,24,117,0.08), transparent 12%, transparent 88%, rgba(23,162,184,0.08));
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 8px;
+            overflow: hidden;
+            font-family: 'Courier New', ui-monospace, monospace;
+            font-size: 11px;
+            color: rgba(255,255,255,0.65);
+          }
+          .sit-topo-ticker-label {
+            position: absolute; left: 0; top: 0; bottom: 0;
+            background: rgba(253,24,117,0.85);
+            color: #fff; font-size: 9px; letter-spacing: 1.4px;
+            font-weight: 700; text-transform: uppercase;
+            padding: 0 14px; display: flex; align-items: center;
+            font-family: 'Splunk Platform Sans',sans-serif;
+            z-index: 2;
+            box-shadow: 4px 0 12px rgba(0,0,0,0.4);
+          }
+          .sit-topo-ticker-track {
+            display: inline-block; white-space: nowrap;
+            padding: 10px 0 10px 110px;
+            animation: sit-topo-ticker-marquee 60s linear infinite;
+          }
+          .sit-topo-ticker:hover .sit-topo-ticker-track { animation-play-state: paused; }
+          @keyframes sit-topo-ticker-marquee {
+            from { transform: translateX(0); }
+            to   { transform: translateX(-50%); }
+          }
+          .tick-item   { padding: 0 18px; }
+          .tick-sep    { color: rgba(253,24,117,0.4); padding: 0 4px; }
+          .tick-sev    { font-weight: 700; letter-spacing: 1px; margin-right: 4px; }
+          .tick-src    { color: #FD1875; font-weight: 600; margin-right: 6px; }
+          .tick-msg    { color: rgba(255,255,255,0.55); }
+        </style>
+
+        <div class="sit-topo">
+          <div class="sit-topo-bar">
+            <span><span class="dot" style="background:#5CC05C"></span>Healthy</span>
+            <span><span class="dot" style="background:#F7B500"></span>Degraded</span>
+            <span><span class="dot" style="background:#FF4D4D"></span>Critical</span>
+            <span style="opacity:0.45">Live rollup &#8594; data flows from leaves up the tree</span>
+            <span class="scanning">SCANNING</span>
+          </div>
+
+          <div class="sit-topo-tree" id="sit-topo-tree">
+            <svg style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;" id="sit-topo-edges"></svg>
+
+            <!-- Root: Splunk Platform -->
+            <div class="sit-topo-node lvl-0" data-id="splunk" style="left:50%;top:0;transform:translateX(-50%);min-width:240px;">
+              <div class="sit-topo-node-inner" style="justify-content:center;">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Splunk Platform</span>
+                <span class="meta">live rollup</span>
+              </div>
+            </div>
+
+            <!-- Tier 1: Domains -->
+            <div class="sit-topo-node lvl-1" data-id="indexing" style="left:8%;top:140px;min-width:220px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v6c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 11v6c0 1.66 4 3 9 3s9-1.34 9-3v-6"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Indexing</span>
+                <span class="sit-topo-spark" data-spark="indexing"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node lvl-1" data-id="search" style="left:50%;top:140px;transform:translateX(-50%);min-width:220px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Search</span>
+                <span class="sit-topo-spark" data-spark="search"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node lvl-1" data-id="forwarding" style="right:8%;top:140px;min-width:220px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Forwarding</span>
+                <span class="sit-topo-spark" data-spark="forwarding"></span>
+              </div>
+            </div>
+
+            <!-- Tier 2: Indexing leaves (left cluster) -->
+            <div class="sit-topo-node" data-id="parsing" style="left:1%;top:300px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Parsing</span>
+                <span class="sit-topo-spark" data-spark="parsing"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="aggqueue" style="left:14%;top:400px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Agg Queue</span>
+                <span class="sit-topo-spark" data-spark="aggqueue"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="indexqueue" style="left:1%;top:500px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Index Queue</span>
+                <span class="sit-topo-spark" data-spark="indexqueue"></span>
+              </div>
+            </div>
+
+            <!-- Tier 2: Search leaves (center cluster) -->
+            <div class="sit-topo-node" data-id="searchscheduler" style="left:38%;top:300px;min-width:185px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Scheduler</span>
+                <span class="sit-topo-spark" data-spark="scheduler"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="searchparser" style="left:50%;top:400px;transform:translateX(-50%);min-width:185px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Parser</span>
+                <span class="sit-topo-spark" data-spark="parser"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="dispatch" style="left:38%;top:500px;min-width:185px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Dispatch</span>
+                <span class="sit-topo-spark" data-spark="dispatch"></span>
+              </div>
+            </div>
+
+            <!-- Tier 2: Forwarding leaves (right cluster) -->
+            <div class="sit-topo-node" data-id="tcpinput" style="right:14%;top:300px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">TCP Input</span>
+                <span class="sit-topo-spark" data-spark="tcp"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="httpinput" style="right:1%;top:400px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">HTTP Input</span>
+                <span class="sit-topo-spark" data-spark="http"></span>
+              </div>
+            </div>
+            <div class="sit-topo-node" data-id="metricinput" style="right:14%;top:500px;min-width:175px;">
+              <div class="sit-topo-node-inner">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12A10 10 0 1 1 12 2"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                <span class="badge sit-topo-status-ok"></span>
+                <span class="label">Metrics Input</span>
+                <span class="sit-topo-spark" data-spark="metrics"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Event Ticker -->
+          <div class="sit-topo-ticker">
+            <div class="sit-topo-ticker-label">LIVE STREAM</div>
+            <div class="sit-topo-ticker-track" id="sit-topo-ticker-track">Loading live event stream&#8230;</div>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Bottom: Component error feed driving the badges -->
+  <row>
+    <panel>
+      <title>Component Error Heatmap (last 15m)</title>
+      <chart>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count by component | sort -count | head 15</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Service-Level Rollup</title>
+      <table>
+        <search>
+          <query>index=_internal log_level=ERROR
+| eval service=case(
+    match(component,"(?i)Index|Bucket|Hot"), "Indexing",
+    match(component,"(?i)Search|Dispatch|Scheduler"), "Search",
+    match(component,"(?i)Tcp|Http|Forward|Metric"), "Forwarding",
+    1=1, "Other"
+  )
+| stats count as errors by service | sort -errors</query>
+          <earliest>-15m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

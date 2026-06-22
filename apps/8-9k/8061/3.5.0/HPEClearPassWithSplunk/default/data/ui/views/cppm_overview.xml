@@ -1,0 +1,114 @@
+<form version="1.1" refresh="120">
+  <label>Overview</label>
+
+  <description>
+	Overview of ClearPass Status
+  </description>
+
+  <fieldset autoRun="True" submitButton="false">
+    <input type="time" searchWhenChanged="true" token="timeselect">
+      <default>
+        <earliest>-15m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+   <input type="dropdown" token="server">
+      <label>ClearPass Server</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+  </fieldset>
+
+  <search id="mainSearch">
+    <query>eventtype=cppm-authentication cphost=$server$</query>
+    <earliest>$timeselect.earliest$</earliest>
+    <latest>$timeselect.latest$</latest>
+  </search>
+
+  <row>
+    <single>
+      <search>
+        <query>eventtype=cppm-fail-authentication cphost=$server$ | dedup user_name | stats count</query>
+        <earliest>$timeselect.earliest$</earliest>
+        <latest>$timeselect.latest$</latest>
+      </search>
+      <option name="underLabel">Failed Attempts</option>
+      <drilldown>
+        <link target="_blank"><![CDATA[search?q=eventtype%3Dcppm-fail-authentication%20cphost%3D$server$%20%7Cdedup%20user_name&earliest=$timeselect.earliest$&latest=$timeselect.latest$]]></link>
+      </drilldown>
+    </single>
+    <single>
+      <search>
+        <query>eventtype=cppm-pass-authentication cphost=$server$ | dedup mac_address | stats count</query>
+        <earliest>$timeselect.earliest$</earliest>
+        <latest>$timeselect.latest$</latest>
+      </search>
+      <option name="underLabel">Endpoints Authenticated</option>
+      <drilldown>
+        <link target="_blank"><![CDATA[search?q=eventtype%3Dcppm-pass-authentication%20cphost%3D$server$%20%7Cdedup%20user_name&earliest=$timeselect.earliest$&latest=$timeselect.latest$]]></link>
+      </drilldown>
+    </single>  
+    <single>
+      <search>
+        <query>eventtype=cppm-authentication cphost=$server$ nas_ip="*" AND NOT nas_ip="127.0.0.1" | dedup nas_ip | stats count</query>
+        <earliest>$timeselect.earliest$</earliest>
+        <latest>$timeselect.latest$</latest>
+      </search>
+      <option name="underLabel">NAS Devices</option>
+      <drilldown>
+        <link target="_blank"><![CDATA[search?q=eventtype%3Dcppm-authentication%20nas_ip%3D%22*%22%20AND%20NOT%20nas_ip%3D%22127.0.0.1%22%20%7C%20stats%20count%20as%20event_count%20by%20nas_ip&earliest=$timeselect.earliest$&latest=$timeselect.latest$]]></link>
+      </drilldown>
+    </single>
+    <single>
+      <search base="mainSearch"><query>dedup cphost | stats count</query></search>
+      <option name="underLabel">ClearPass Servers</option>
+    </single>
+  </row>
+
+  <row>
+    <chart>
+      <title>Incoming Requests</title>
+      <search base="mainSearch"><query>
+         timechart span=10m count by login_status
+      </query></search>
+      <option name="charting.seriesColors">["0x4572a7","0xaa4643","0x89a54e","0x81699b"]</option>
+      <option name="charting.chart">area</option>
+    </chart>
+
+    <chart>
+      <title>Auth Rate per Min</title>
+      <search base="mainSearch"><query>
+        bucket _time span=1m | stats count as APM by _time | head 1 | table APM
+      </query></search>
+      <option name="charting.chart">radialGauge</option>
+      <option name="charting.chart.style">minimal</option>
+      <option name="charting.chart.rangeValues">[0,200,500,1000]</option>
+      <option name="charting.chart.usePercentageValue">0</option>
+      <option name="charting.chart.usePercentageRange">0</option>
+      <option name="charting.gaugeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+    </chart>
+   </row>
+
+   <row> 
+    <table>
+      <title>Last 10 Auth Requests</title>
+      <search><query>eventtype=cppm-authentication cphost=$server$ | head 10 | table user_name service_name</query></search>
+    </table>
+
+    <table>
+      <title>Last 10 Auth Failures</title>
+      <search><query>eventtype=cppm-fail-authentication cphost=$server$ | head 10 | table user_name error_code_str</query></search>
+    </table>
+
+    <table>
+      <title>Last 10 Alerts</title>
+      <search><query>eventtype=cppm-alert cphost=$server$ | head 10 | table cphost service_name alert</query></search>
+    </table>
+   </row>
+ 
+</form>

@@ -1,0 +1,599 @@
+<form version="1.1">
+  <label>Threats Protection</label>
+  <description>Advanced Threat Protection Dashboard - IPS, DNS Protection, and Anti-Malware</description>
+
+  <!-- Custom CSS to make filter input wider -->
+  <style>
+    input[type="text"] {
+      width: 500px !important;
+    }
+  </style>
+
+  <!-- Time Range Picker and Search Filter -->
+  <fieldset submitButton="true" autoRun="true">
+    <input type="text" token="index" searchWhenChanged="true">
+      <label>Index</label>
+      <default>main</default>
+      <initialValue>main</initialValue>
+    </input>
+
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-2d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+
+    <input type="text" token="search_filter" searchWhenChanged="true">
+      <label>Filter (SPL syntax)</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+      <prefix></prefix>
+      <suffix></suffix>
+    </input>
+  </fieldset>
+
+  <!-- Row 1: Top Metrics - Exact match to Cato Threats Protection Dashboard -->
+  <row>
+    <panel>
+      <title>Blocked IPS Threats</title>
+      <single>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="IPS" action="Block"
+| search $search_filter$
+| stats dc(event_id) as total
+| eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Blocked DNS Threats</title>
+      <single>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="DNS Protection" (action="Block" OR action="Sinkhole")
+| search $search_filter$
+| stats dc(event_id) as total
+| eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Monitored Suspicious Activities Threats</title>
+      <single>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Suspicious Activity" action="Monitor"
+| search $search_filter$
+| stats dc(event_id) as total
+| eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Blocked Malware Threats</title>
+      <single>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Anti Malware" action="Block" (threat_verdict="virus_found" OR threat_verdict="suspicious")
+| search $search_filter$
+| stats dc(event_id) as total
+| eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Dynamic Prevention - Host with Controls</title>
+      <single>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Dynamic Prevention" action="Dynamic Control Applied"
+| search $search_filter$
+| stats dc(host_ip) as total
+| eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Blocked Dynamic Prevention Threats</title>
+      <single>
+        <search>
+          <query>
+              index=$form.index$ sourcetype="cato:security" event_sub_type="Dynamic Prevention" action="Block"
+              | search $search_filter$
+              | stats dc(event_id) as total
+              | eval total=if(isnull(total), 0, total)
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Top Threats, Timeline, Top Countries -->
+  <row>
+    <!-- Left: Top Threats (Horizontal Bar Chart) -->
+    <panel>
+      <title>Top Threats</title>
+      <chart>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security"
+    (event_sub_type="Anti Malware" OR event_sub_type="IPS" OR event_sub_type="DNS Protection")
+| search (event_sub_type="IPS") OR (event_sub_type="DNS Protection") OR (event_sub_type="Anti Malware" threat_verdict!="clean")
+| search $search_filter$
+| dedup event_id
+| stats count by threat_name
+| sort -count
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.orientation">horizontal</option>
+        <option name="charting.axisTitleX.text">Count</option>
+        <option name="charting.axisTitleY.text">Threat Name</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+
+    <!-- Middle: Threats Timeline (Stacked Area Chart) -->
+    <panel>
+      <title>Threats Timeline</title>
+      <chart>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security"
+    (event_sub_type="Anti Malware" OR event_sub_type="IPS" OR event_sub_type="DNS Protection")
+| search (event_sub_type="IPS") OR (event_sub_type="DNS Protection") OR (event_sub_type="Anti Malware" threat_verdict!="clean")
+| search $search_filter$
+| dedup event_id
+| timechart span=1h count by event_sub_type
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Count</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"DNS Protection": 0x0066CC, "IPS": 0x00CCCC, "Anti Malware": 0xFFCC00}</option>
+      </chart>
+    </panel>
+
+    <!-- Right: Top Countries (Table with Map visualization) -->
+    <panel>
+      <title>Top Countries</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security"
+    (event_sub_type="IPS" OR event_sub_type="Anti Malware")
+| search $search_filter$
+| dedup event_id
+| eval country=src_country_code
+| stats dc(event_id) by country
+| sort -count
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="count">
+          <option name="precision">0</option>
+          <option name="useThousandSeparators">true</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Dynamic Prevention Section Header -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin-left: 10px; color: #1e8449;">Dynamic Prevention</h2>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <!-- Left: Host with Controls -->
+    <panel>
+      <title>Host with Controls</title>
+      <table>
+        <search>
+          <query>
+<![CDATA[
+index=$form.index$ sourcetype="cato:security" event_sub_type="Dynamic Prevention" action="Dynamic Control Applied"
+| search $search_filter$
+| dedup event_id
+| stats
+    dc(threat_name) as "Detected Threats",
+    dc(dynamic_control_ids{}) as "Controls",
+    values(dynamic_control_threat_categories{}) as "Control Categories",
+    max(rule_expiration_time) as latest_expiration
+    by src_ip
+| eval "Latest Status"=case(
+    latest_expiration > now(), "Active",
+    latest_expiration <= now(), "Expired",
+    1=1, "Unknown"
+  )
+| eval "Control Categories"=mvjoin('Control Categories', ", ")
+| rename src_ip as "Host"
+| fields "Host" "Detected Threats" "Controls" "Control Categories" "Latest Status"
+| sort -"Detected Threats"
+| head 10
+]]>
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <format type="number" field="Detected Threats">
+          <option name="precision">0</option>
+        </format>
+        <format type="number" field="Controls">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+
+    <!-- Right: Host with Mitigated Threats -->
+    <panel>
+      <title>Host with Mitigated Threats</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Dynamic Prevention" (action="Block" OR action="Monitor")
+| search $search_filter$
+| dedup event_id
+| stats
+    values(action) as "Actions",
+    count as "# Events"
+    by host_ip
+| rename host_ip as "Host"
+| sort -"# Events"
+| head 10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+
+  <!-- Row 3: IPS / Suspicious Activity Section Header -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin-left: 10px; color: #1e8449;">IPS / Suspicious Activity</h2>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Row 4: IPS Event Type Dropdown -->
+  <row>
+    <panel>
+      <input type="dropdown" token="ips_event_type" searchWhenChanged="true">
+        <label>IPS Event Type</label>
+        <choice value="&quot;IPS&quot;">IPS</choice>
+        <choice value="&quot;Suspicious Activity&quot;">Suspicious Activity</choice>
+        <default>"IPS"</default>
+      </input>
+    </panel>
+  </row>
+
+  <!-- Row 5: IPS / Suspicious Activity Panels (dynamically filtered by ips_event_type) -->
+  <row>
+    <!-- Left: Threats Type (Pie Chart) -->
+    <panel>
+      <title>Threats Type</title>
+      <chart>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type=$ips_event_type$
+| search $search_filter$
+| dedup event_id
+| stats count by threat_type
+| sort -count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <!-- Middle: Top Hosts -->
+    <panel>
+      <title>Top Hosts</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type=$ips_event_type$
+| search $search_filter$
+| dedup event_id
+| stats count as "# Events" by src_ip
+| rename src_ip as "Hosts"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+
+    <!-- Right: Top Users -->
+    <panel>
+      <title>Top Users</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type=$ips_event_type$
+| search $search_filter$
+| dedup event_id
+| stats count as "# Events" by vpn_user_email
+| rename vpn_user_email as "Users"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 7: DNS Protection Section Header -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin-left: 10px; color: #1e8449;">DNS Protection</h2>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Row 8: DNS Protection Panels -->
+  <row>
+    <!-- Left: Threats Type (Pie Chart) -->
+    <panel>
+      <title>Threats Type</title>
+      <chart>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="DNS Protection"
+| search $search_filter$
+| dedup event_id
+| stats count by dns_protection_category
+| sort -count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <!-- Middle: Top Domains -->
+    <panel>
+      <title>Top Domains</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="DNS Protection"
+| search $search_filter$
+| dedup event_id
+| stats count as "# Events" by dns_query
+| rename dns_query as "Domains"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+
+    <!-- Right: Top Hosts -->
+    <panel>
+      <title>Top Hosts</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="DNS Protection"
+| search $search_filter$
+| dedup event_id
+| stats count as "# Events" by src_ip
+| rename src_ip as "Hosts"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 10: Malware Protection Section Header -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin-left: 10px; color: #1e8449;">Malware Protection</h2>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Row 11: Malware Protection Filter -->
+  <row>
+    <panel>
+      <input type="dropdown" token="malware_filter" searchWhenChanged="true">
+        <label>Filter</label>
+        <choice value="*">All</choice>
+        <choice value="virus_found">Malicious</choice>
+        <choice value="suspicious">Suspicious</choice>
+        <default>*</default>
+      </input>
+    </panel>
+  </row>
+
+  <!-- Row 12: Malware Protection Panels -->
+  <row>
+    <!-- Left: Top Files (Pie Chart) -->
+    <panel>
+      <title>Top Files</title>
+      <chart>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Anti Malware" (threat_verdict="suspicious" OR threat_verdict="virus_found")
+| search $search_filter$
+| eval filter_match=if("$malware_filter$"="*", 1, if(threat_verdict="$malware_filter$", 1, 0))
+| search filter_match=1
+| dedup event_id
+| stats count by file_name
+| sort -count
+| head 10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <!-- Middle: Top Hosts -->
+    <panel>
+      <title>Top Hosts</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Anti Malware" (threat_verdict="suspicious" OR threat_verdict="virus_found")
+| search $search_filter$
+| eval filter_match=if("$malware_filter$"="*", 1, if(threat_verdict="$malware_filter$", 1, 0))
+| search filter_match=1
+| dedup event_id
+| stats count as "# Events" by src_ip
+| rename src_ip as "Hosts"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+
+    <!-- Right: Top Users -->
+    <panel>
+      <title>Top Users</title>
+      <table>
+        <search>
+          <query>
+index=$form.index$ sourcetype="cato:security" event_sub_type="Anti Malware" (threat_verdict="suspicious" OR threat_verdict="virus_found")
+| search $search_filter$
+| eval filter_match=if("$malware_filter$"="*", 1, if(threat_verdict="$malware_filter$", 1, 0))
+| search filter_match=1
+| dedup event_id
+| stats count as "# Events" by vpn_user_email
+| rename vpn_user_email as "Users"
+| sort -"# Events"
+| head 5
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">5</option>
+        <format type="number" field="# Events">
+          <option name="precision">0</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>
+

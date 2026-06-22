@@ -1,0 +1,200 @@
+<dashboard version="2" theme="dark">
+  <label>Threat Detections</label>
+  <description>Correlation rule triggers, high-risk users and IPs, Suricata critical alerts, and MITRE ATT&amp;CK coverage.</description>
+  <definition><![CDATA[
+{
+  "title": "Threat Detections — Event Builder For Splunk",
+  "description": "Correlation rule results, high-risk entities, Suricata alerts, and MITRE ATT&CK coverage.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1300,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_rule_triggers_kpi",  "type": "block", "position": { "x": 0,    "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_high_risk_users_kpi","type": "block", "position": { "x": 360,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_suricata_critical",  "type": "block", "position": { "x": 720,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_high_risk_ips_kpi",  "type": "block", "position": { "x": 1080, "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_suricata_by_cat",    "type": "block", "position": { "x": 0,    "y": 200, "w": 480, "h": 350 } },
+      { "item": "viz_suricata_timeline",  "type": "block", "position": { "x": 480,  "y": 200, "w": 960, "h": 350 } },
+      { "item": "viz_high_risk_users",    "type": "block", "position": { "x": 0,    "y": 550, "w": 480, "h": 350 } },
+      { "item": "viz_high_risk_ips",      "type": "block", "position": { "x": 480,  "y": 550, "w": 480, "h": 350 } },
+      { "item": "viz_mitre_coverage",     "type": "block", "position": { "x": 960,  "y": 550, "w": 480, "h": 350 } },
+      { "item": "viz_suricata_top_sigs",  "type": "block", "position": { "x": 0,    "y": 900, "w": 720, "h": 300 } },
+      { "item": "viz_auth_anomalies",     "type": "block", "position": { "x": 720,  "y": 900, "w": 720, "h": 300 } },
+      { "item": "viz_threat_events",      "type": "block", "position": { "x": 0,    "y": 1200,"w": 1440,"h": 100 } }
+    ],
+    "globalInputs": ["input_time_range"]
+  },
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": { "token": "time_range", "defaultValue": "-24h,now" },
+      "title": "Time Range"
+    }
+  },
+  "dataSources": {
+    "ds_rule_triggers_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ids sourcetype=suricata | stats count as rule_triggers",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_high_risk_users_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=windows sourcetype=WinEventLog:Security EventCode=4625) OR (index=linux sourcetype=linux_secure \"Failed password\") OR (index=identity sourcetype=OktaIM2:log \"AUTHENTICATION_FAILED\") | eval user=coalesce(Account_Name, user, actor.alternateId) | where isnotnull(user) AND user!=\"-\" | stats count as fail_count BY user | where fail_count >= 5 | stats count as high_risk_users",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_suricata_critical": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ids sourcetype=suricata | eval sev=coalesce(alert.severity, severity, 5) | where sev<=2 | stats count as critical_alerts",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_high_risk_ips_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network (sourcetype=pan:traffic OR sourcetype=fgt_traffic OR sourcetype=cisco:asa) action IN (\"deny\",\"drop\",\"block\",\"denied\")) OR (index=ids sourcetype=suricata) | eval src=coalesce(src_ip, \"Unknown\") | where src!=\"Unknown\" | stats count as events BY src | where events>=10 | stats count as high_risk_ips",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_suricata_by_cat": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ids sourcetype=suricata | eval category=coalesce(alert.category, category, \"Unknown\") | stats count BY category | sort -count | head 10",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_suricata_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ids sourcetype=suricata | eval sev=coalesce(alert.severity, severity, 5) | eval severity_label=case(sev=1, \"Critical\", sev=2, \"High\", sev=3, \"Medium\", true(), \"Low\") | timechart span=10m count BY severity_label",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_high_risk_users": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=windows sourcetype=WinEventLog:Security EventCode=4625) OR (index=linux sourcetype=linux_secure \"Failed password\") OR (index=identity sourcetype=OktaIM2:log \"AUTHENTICATION_FAILED\") OR (index=pam) | eval user=coalesce(Account_Name, user, actor.alternateId) | where isnotnull(user) AND user!=\"-\" | stats count as fail_count, dc(host) as target_hosts, dc(index) as affected_indexes BY user | where fail_count >= 5 | sort -fail_count | head 15",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_high_risk_ips": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network) OR (index=ids sourcetype=suricata) OR (index=windows sourcetype=WinEventLog:Security EventCode=4625) | eval src=coalesce(src_ip, Source_Network_Address, clientip, \"Unknown\") | where src!=\"Unknown\" AND src!=\"-\" AND src!=\"::1\" | stats count as events, dc(index) as indexes_seen BY src | where events>=10 | sort -events | head 15",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_mitre_coverage": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=edr sourcetype=crowdstrike:falcon:json | eval tactic=coalesce(Tactic, \"Unknown\") | eval technique=coalesce(Technique, \"Unknown\") | where tactic!=\"Unknown\" | stats dc(technique) as techniques BY tactic | sort -techniques",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_suricata_top_sigs": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=ids sourcetype=suricata | eval sig=coalesce(alert.signature, signature, \"Unknown\") | eval sev=coalesce(alert.severity, severity, 5) | stats count BY sig, sev | sort -count | head 15",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_auth_anomalies": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=windows sourcetype=WinEventLog:Security EventCode=4625) OR (index=linux sourcetype=linux_secure \"Failed password\") OR (index=identity sourcetype=OktaIM2:log \"AUTHENTICATION_FAILED\") | eval src=coalesce(Source_Network_Address, src_ip, client.ipAddress) | eval user=coalesce(Account_Name, user, actor.alternateId) | where isnotnull(src) AND src!=\"-\" AND src!=\"127.0.0.1\" | bin _time span=5m | stats count as failures BY _time, src, user | where failures >= 5 | sort -_time | head 20",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_threat_events": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=ids sourcetype=suricata) OR (index=edr sourcetype=crowdstrike:falcon:json) | eval src=coalesce(src_ip, \"Unknown\") | eval sig=coalesce(alert.signature, Technique, \"Unknown\") | eval sev=coalesce(alert.severity, severity, Severity, \"Unknown\") | table _time, index, sourcetype, src, sig, sev | sort -_time | head 30",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_rule_triggers_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_rule_triggers_kpi" },
+      "options": { "majorField": "rule_triggers", "majorColor": "#FF8C00", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "IDS Events"
+    },
+    "viz_high_risk_users_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_high_risk_users_kpi" },
+      "options": { "majorField": "high_risk_users", "majorColor": "#FF4444", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "High-Risk Users"
+    },
+    "viz_suricata_critical": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_suricata_critical" },
+      "options": { "majorField": "critical_alerts", "majorColor": "#FF2B2B", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Suricata Critical Alerts"
+    },
+    "viz_high_risk_ips_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_high_risk_ips_kpi" },
+      "options": { "majorField": "high_risk_ips", "majorColor": "#DC143C", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "High-Activity Source IPs"
+    },
+    "viz_suricata_by_cat": {
+      "type": "viz.pie",
+      "dataSources": { "primary": "ds_suricata_by_cat" },
+      "options": { "labelField": "category", "valueField": "count", "backgroundColor": "transparent" },
+      "title": "Suricata Alerts by Category"
+    },
+    "viz_suricata_timeline": {
+      "type": "viz.area",
+      "dataSources": { "primary": "ds_suricata_timeline" },
+      "options": { "xAxisTitleText": "Time", "yAxisTitleText": "Alerts", "legendDisplay": "bottom", "backgroundColor": "transparent" },
+      "title": "Suricata Alert Severity Over Time"
+    },
+    "viz_high_risk_users": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_high_risk_users" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "High-Risk Users (Auth Failures)"
+    },
+    "viz_high_risk_ips": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_high_risk_ips" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "High-Activity Source IPs"
+    },
+    "viz_mitre_coverage": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_mitre_coverage" },
+      "options": { "xAxisTitleText": "MITRE Tactic", "yAxisTitleText": "Techniques Seen", "legendDisplay": "off", "backgroundColor": "transparent" },
+      "title": "MITRE ATT&CK Coverage (CrowdStrike)"
+    },
+    "viz_suricata_top_sigs": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_suricata_top_sigs" },
+      "options": { "backgroundColor": "transparent", "count": 10 },
+      "title": "Top Suricata Signatures"
+    },
+    "viz_auth_anomalies": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_auth_anomalies" },
+      "options": { "backgroundColor": "transparent", "count": 10 },
+      "title": "Auth Anomalies (5+ failures in 5min)"
+    },
+    "viz_threat_events": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_threat_events" },
+      "options": { "backgroundColor": "transparent", "count": 10 },
+      "title": "Recent Threat Events"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

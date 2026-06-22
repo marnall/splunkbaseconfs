@@ -1,0 +1,260 @@
+<dashboard version="2">
+  <label>Whisper - Compliance Summary</label>
+  <description>Executive compliance dashboard mapping DNS and email security posture to NIS2, NIST SP 800-177, and DMARC requirements.</description>
+  <definition><![CDATA[
+
+
+{
+  "title": "Whisper - Compliance Summary",
+  "description": "Executive compliance dashboard mapping DNS and email security posture to NIS2, NIST SP 800-177, and DMARC requirements.",
+  "dataSources": {
+    "ds_overall_score": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" | dedup domain sortby -_time | stats count(eval(spf_exists=\"true\" AND exceeds_limit=\"false\")) AS spf_ok, count AS spf_total | eval spf_rate=if(spf_total>0, round((spf_ok/spf_total)*100, 1), 0) | eval display=spf_rate.\"%\" | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_monitored_domains": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" | stats dc(domain) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_infra_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | stats count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_nis2": {
+      "type": "ds.search",
+      "options": {
+        "query": "| makeresults | eval requirement=\"DNS Infrastructure Monitoring\", status=if(1=1, \"Active\", \"Inactive\"), detail=\"Continuous baseline collection via whisper_baseline input\" | append [| makeresults | eval requirement=\"Change Detection\", status=if(1=1, \"Active\", \"Inactive\"), detail=\"Automated change detection with risk alerting\"] | table requirement, status, detail"
+      }
+    },
+    "ds_nist": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" | dedup domain sortby -_time | stats count AS total, count(eval(spf_exists=\"true\" AND exceeds_limit=\"false\")) AS valid, count(eval(exceeds_limit=\"true\")) AS over_limit | eval spf_rate=round((valid/total)*100, 1).\"%\" | eval recommendation=case(over_limit>0, \"Reduce SPF DNS lookup count\", valid<total, \"Deploy SPF on remaining domains\", 1=1, \"Fully compliant\") | table spf_rate, over_limit, recommendation",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_dmarc": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" | dedup domain sortby -_time | eval spf_ready=if(spf_exists=\"true\" AND exceeds_limit=\"false\", \"Ready\", \"Not Ready\") | stats count(eval(spf_ready=\"Ready\")) AS spf_ready, count(eval(spf_ready=\"Not Ready\")) AS spf_not_ready, count AS total | eval spf_percentage=round((spf_ready/total)*100, 1).\"%\" | table total, spf_ready, spf_not_ready, spf_percentage",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_attack_surface": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" | stats dc(domain) AS domains, dc(eval(if(record_type=\"SUBDOMAIN\", record_value, null()))) AS subdomains, dc(eval(if(record_type=\"A\", record_value, null()))) AS unique_ips, dc(eval(if(record_type=\"NS\", record_value, null()))) AS nameservers, dc(eval(if(record_type=\"MX\", record_value, null()))) AS mail_servers",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_change_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | timechart span=1d count BY record_type",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-7d@d,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_overall_score",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_monitored_domains",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_infra_changes",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_nis2",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 600,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_nist",
+        "position": {
+          "x": 600,
+          "y": 100,
+          "w": 600,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_dmarc",
+        "position": {
+          "x": 0,
+          "y": 300,
+          "w": 1200,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_attack_surface",
+        "position": {
+          "x": 0,
+          "y": 500,
+          "w": 1200,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_change_timeline",
+        "position": {
+          "x": 0,
+          "y": 700,
+          "w": 1200,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_overall_score": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_overall_score"
+      },
+      "title": "Overall Compliance Score",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#65a637",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_monitored_domains": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_monitored_domains"
+      },
+      "title": "Monitored Domains",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_infra_changes": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_infra_changes"
+      },
+      "title": "Infrastructure Changes",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f8be34",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_nis2": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_nis2"
+      },
+      "title": "NIS2 Article 21 - DNS Monitoring"
+    },
+    "viz_nist": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_nist"
+      },
+      "title": "NIST SP 800-177 SPF Alignment"
+    },
+    "viz_dmarc": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_dmarc"
+      },
+      "title": "DMARC Enforcement Readiness"
+    },
+    "viz_attack_surface": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_attack_surface"
+      },
+      "title": "Attack Surface Inventory Summary"
+    },
+    "viz_change_timeline": {
+      "type": "viz.bar",
+      "dataSources": {
+        "primary": "ds_change_timeline"
+      },
+      "title": "Infrastructure Change Timeline",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f", "#d41f1c", "#1a3e5c"],
+        "stackMode": "stacked"
+      }
+    }
+  }
+}
+
+
+  ]]></definition>
+</dashboard>

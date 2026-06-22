@@ -1,0 +1,386 @@
+<dashboard version="2">
+  <label>Whisper - Health &amp; Operations</label>
+  <description>Operational health dashboard: API connectivity, graph statistics, enrichment status, and input monitoring.</description>
+  <definition><![CDATA[
+
+{
+  "title": "Whisper - Health & Operations",
+  "description": "Operational health dashboard: API connectivity, graph statistics, enrichment status, and input monitoring.",
+  "dataSources": {
+    "ds_api_status": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:health\" | sort - _time | head 1 | eval display=if(status=\"UP\", \"Healthy\", status) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_nodes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:health\" | sort - _time | head 1 | eval display=tonumber(total_node_count) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_edges": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:health\" | sort - _time | head 1 | eval display=tonumber(total_edge_count) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_enrichment_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` source=*whisper* (\"action=enrich\" OR \"action=lookup\") | stats count AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_cache_hit_rate": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` source=*whisper* (\"action=cache_hit\" OR \"action=cache_miss\" OR \"cache_hit\" OR \"cache_miss\") | stats count(eval(searchmatch(\"cache_hit\"))) AS hits count(eval(searchmatch(\"cache_miss\"))) AS misses | eval total=hits+misses | eval hit_rate=if(total>0, round((hits/total)*100, 1), 0) | eval display=hit_rate.\"%\" | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_enrichment_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" | timechart count AS \"Enrichments\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_enrichment_status": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:health\" | sort - _time | head 1 | eval threat_intel=if(threat_intel_loaded=\"true\" OR threat_intel_loaded=1, \"Loaded\", \"Not Loaded\"), asn_enrichment=if(asn_enrichment_loaded=\"true\" OR asn_enrichment_loaded=1, \"Loaded\", \"Not Loaded\"), bgp_enrichment=if(prefix_bgp_enrichment_loaded=\"true\" OR prefix_bgp_enrichment_loaded=1, \"Loaded\", \"Not Loaded\"), refresh_status=if(threat_intel_refresh_in_progress=\"true\" OR threat_intel_refresh_in_progress=1, \"In Progress\", \"Idle\") | table threat_intel asn_enrichment bgp_enrichment feed_source_count refresh_status | rename threat_intel AS \"Threat Intel\", asn_enrichment AS \"ASN Enrichment\", bgp_enrichment AS \"BGP Prefix Enrichment\", feed_source_count AS \"Feed Sources\", refresh_status AS \"Refresh Status\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_ti_indicators": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:threat_intel\" | stats count AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_input_status": {
+      "type": "ds.search",
+      "options": {
+        "query": "| rest /services/data/inputs/all splunk_server=local | search eai:type=\"whisper_*\" | eval input_status=if(disabled=0, \"Enabled\", \"Disabled\") | table title, eai:type, input_status, interval | rename title AS \"Input\", eai:type AS \"Input Type\", input_status AS \"Status\", interval AS \"Interval (s)\""
+      }
+    },
+    "ds_input_last_run": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` (sourcetype=\"whisper:health\" OR sourcetype=\"whisper:threat_intel\" OR sourcetype=\"whisper:attack_surface\" OR sourcetype=\"whisper:watchlist\") | stats latest(_time) AS last_run BY sourcetype | eval last_run=strftime(last_run, \"%Y-%m-%d %H:%M:%S\") | rename sourcetype AS \"Sourcetype\", last_run AS \"Last Event\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_health_history": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:health\" | table _time status total_node_count total_edge_count response_time_ms error | rename _time AS \"Time\", status AS \"Status\", total_node_count AS \"Total Nodes\", total_edge_count AS \"Total Edges\", response_time_ms AS \"Response Time (ms)\", error AS \"Error\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_ta_logs": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=_internal (source=*ta_whisper_security.log OR sourcetype=ta_whisper_security*) | rex field=_raw \"^(?<timestamp>\\S+ \\S+)\\s+(?<log_level>\\S+)\\s+(?<component>[^:]+):[^-]+-\\s+(?<message>.*)\" | table _time log_level component message | sort -_time | head 50 | rename _time AS \"Time\", log_level AS \"Level\", component AS \"Component\", message AS \"Message\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_api_status",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_total_nodes",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_total_edges",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_enrichment_count",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_cache_hit_rate",
+        "position": {
+          "x": 400,
+          "y": 100,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_ti_indicators",
+        "position": {
+          "x": 800,
+          "y": 100,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_enrichment_timeline",
+        "position": {
+          "x": 0,
+          "y": 200,
+          "w": 600,
+          "h": 250
+        }
+      },
+      {
+        "item": "viz_enrichment_status",
+        "position": {
+          "x": 600,
+          "y": 200,
+          "w": 600,
+          "h": 250
+        }
+      },
+      {
+        "item": "viz_input_status",
+        "position": {
+          "x": 0,
+          "y": 450,
+          "w": 600,
+          "h": 250
+        }
+      },
+      {
+        "item": "viz_input_last_run",
+        "position": {
+          "x": 600,
+          "y": 450,
+          "w": 600,
+          "h": 250
+        }
+      },
+      {
+        "item": "viz_health_history",
+        "position": {
+          "x": 0,
+          "y": 700,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_ta_logs",
+        "position": {
+          "x": 0,
+          "y": 1000,
+          "w": 1200,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_api_status": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_api_status"
+      },
+      "title": "API Health Status",
+      "options": {
+        "majorFontSize": 28,
+        "majorColor": "#65a637",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_total_nodes": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_nodes"
+      },
+      "title": "Total Nodes",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "useThousandSeparators": true,
+        "numberPrecision": 0,
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_total_edges": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_edges"
+      },
+      "title": "Total Edges",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "useThousandSeparators": true,
+        "numberPrecision": 0,
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_enrichment_count": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_enrichment_count"
+      },
+      "title": "Total Enrichments Performed",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#7B68EE",
+        "useThousandSeparators": true,
+        "numberPrecision": 0,
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_cache_hit_rate": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_cache_hit_rate"
+      },
+      "title": "Cache Hit Rate",
+      "description": "Percentage of enrichment lookups served from cache",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f8be34",
+        "nullValueDisplay": "0%"
+      }
+    },
+    "viz_ti_indicators": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_ti_indicators"
+      },
+      "title": "Threat Intel Indicators Collected",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#1a3e5c",
+        "useThousandSeparators": true,
+        "numberPrecision": 0,
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_enrichment_timeline": {
+      "type": "viz.area",
+      "dataSources": {
+        "primary": "ds_enrichment_timeline"
+      },
+      "title": "Enrichment Timeline",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c"],
+        "yAxisTitleText": "Count"
+      }
+    },
+    "viz_enrichment_status": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_enrichment_status"
+      },
+      "title": "Enrichment Status"
+    },
+    "viz_input_status": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_input_status"
+      },
+      "title": "Modular Input Status"
+    },
+    "viz_input_last_run": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_input_last_run"
+      },
+      "title": "Input Last Run Times"
+    },
+    "viz_health_history": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_health_history"
+      },
+      "title": "Health Check History"
+    },
+    "viz_ta_logs": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_ta_logs"
+      },
+      "title": "TA Logs (index=_internal source=*ta_whisper_security.log)"
+    }
+  }
+}
+
+  ]]></definition>
+</dashboard>

@@ -1,0 +1,473 @@
+<!-- Copyright (C) 2024-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Home</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Search">
+      <param name="search"><![CDATA[
+| rest /services/apps/local splunk_server=local
+| search title="cisco_cdr"
+| stats count last(title) as appContext
+| fillnull appContext value="$sideview.currentApp$"
+      ]]></param>
+
+      <module name="ResultsValueSetter" layoutPanel="viewHeader">
+        <param name="fields">appContext</param>
+
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-app splunk_server=local
+| rename eai:acl.app as app
+| search app="$sideview.currentApp$"
+| stats last(build) as build last(version) as version last(description) as description
+| appendcols [
+  | rest /services/apps/local splunk_server=local
+  | search title="cisco_cdr"
+  | stats count
+  | eval installation_state=if("$test_cisco_cdr_not_installed$_foo"=="1_foo" OR count=0,"cisco_cdr_not_installed","cisco_cdr_is_installed")
+  | table installation_state
+]
+| appendcols [
+  | inputlookup data_types
+  | search app="$sideview.currentApp$"
+  | stats count
+  | eval data_type_enabled=if(count==0,0,1)
+]
+| eval installation_state=if(installation_state=="cisco_cdr_is_installed" AND data_type_enabled==0,"cisco_cdr_installed_but_data_table_not_enabled", installation_state)
+
+          ]]></param>
+          <param name="appContext">$appContext$</param>
+
+
+          <module name="ResultsValueSetter" layoutPanel="viewHeader">
+            <param name="fields">installation_state, version</param>
+
+
+
+            <module name="Button">
+              <param name="label">About this app</param>
+              <param name="float">right</param>
+
+              <module name="Layer">
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+
+                  <h3>How do we use this app?</h3>
+
+                  <p>
+                    Start with the <a href="https://sideviewapps.com/documentation/expressway-cdr" target="_blank">documentation</a> for this app if you haven't already.
+                  </p>
+                  <p>
+                    This app is designed to be used in conjunction with our "TA_expressway_cdr" app, which you deploy to your indexing tier.  This app, which you have correctly installed on the Search Head tier (nicely done),  does all of the search-time field extraction, and it also implements some Sideview conventions that allow the expressway data to be pulled into Sideview's commercial app <a href="https://sideviewapps.com/products/cisco-cdr-reporting" target="_blank">Cisco CDR Reporting and Analytics</a>.
+                  </p>
+
+                  <p>
+                    In practical terms that means you and your team can investigate and chart your way through your expressway data in a sophisticated user interface, covering a wider range of functionality, but without having to learn the Splunk search language, aka SPL.
+                  </p>
+
+                  ]]></param>
+                </module>
+
+                <module name="Switcher">
+                  <param name="selectedGroup">$installation_state$</param>
+
+                  <module name="HTML" group="cisco_cdr_not_installed">
+                    <param name="html"><![CDATA[
+
+
+                    <p>
+                      The Cisco CDR Reporting and Analytics app is not currently installed here,  but you can <a href="https://sideviewapps.com/products/cisco-cdr-reporting">learn more about it on our website</a>. It is available as a free trial and can be set up quite easily <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation" target="_blank">following these steps</a>.
+                    </p>
+                    <p>
+                      No matter your situation, hopefully you are talking to us and you can always reach us at <a href="mailto:info@sideviewapps.com">info@sideviewapps.com</a>.
+                    </p>
+
+
+                    ]]></param>
+                  </module>
+
+
+                </module>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+
+                  <p>(hit Escape to close, or click the little X at the top right here).</p>
+
+                  ]]></param>
+                </module>
+
+
+              </module>
+
+
+
+
+
+
+
+            </module>
+
+            <module name="HTML">
+              <param name="html"><![CDATA[
+              <h2>Welcome to Sideview's Supporting App for Expressway CDR $version$</h2>
+
+              ]]></param>
+            </module>
+
+
+
+
+
+            <module name="Search" layoutPanel="panel_row1_col1">
+              <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-checklist splunk_server=local
+| rename eai:appName as app search as searchToRun
+| search app="$sideview.currentApp$"
+| fields app title searchToRun drilldown
+| search title="critical_*"
+| eval drilldownLabel=if(isnull(drilldown),"see health check results","run troubleshooting search")
+| eval drilldown=if(isnull(drilldown),searchToRun,drilldown)
+              ]]></param>
+
+
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <strong>One or more critical health checks have failed and should be addressed as soon as possible:</strong>
+                ]]></param>
+              </module>
+
+              <module name="Pager">
+
+                <module name="Multiplexer">
+                  <param name="fields">app,searchToRun,drilldown,drilldownLabel</param>
+
+                  <module name="Search">
+                    <param name="search">$searchToRun.rawValue$ | sort - severity_level |  table severity_level metric</param>
+
+                    <module name="ProgressIndicator" />
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                       <p class="checklistConfSeverity$results[0].severity_level$" style="margin-bottom:0px;">
+                          $results[0].metric$
+                        </p>
+                      ]]></param>
+                      <param name="customBehavior">setPageStateIfCriticalHealthCheckFailed</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+
+              <module name="HTML">
+                <param name="html">
+                  If you need more detail or help fixing these issues, contact us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>
+                </param>
+              </module>
+
+            </module>
+
+
+
+            <module name="TimePicker" layoutPanel="mainSearchControls">
+              <param name="default">Last 24 hours</param>
+
+              <module name="Search" layoutPanel="panel_row3_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cisco_expressway_syslog")
+| spath input=details
+| foreach Call.Legs{}.Leg.* [eval '<<FIELD>>'=if('<<FIELD>>'=="", "x", '<<FIELD>>') | eval <<MATCHSTR>>=mvappend('<<MATCHSTR>>', '<<FIELD>>')] | fields - Call.Legs{}.Leg.*
+| rename EncryptionType as encryption Call.Licensed as "licensed" Call.LicensedAsTraversal as "licensed_as_traversal"
+| eval licensed=if(licensed=="True","licensed",null())
+| eval licensed_as_traversal=if(licensed_as_traversal=="True","licensed_as_traversal",null())
+| eval encryption = mvfilter(encryption!="None")
+| eval {licensed}_call_id = call_id
+| eval {licensed_as_traversal}_call_id = call_id
+| fields call_id *_call_id origDeviceName destDeviceName callingPartyNumber calledPartyNumber encryption
+| eval encrypted_call_id = if(isnotnull(encryption),call_id,null())
+
+| stats dc(call_id) as calls dc(encrypted_call_id) as encrypted_calls values(encryption) as encryption_types dc(origDeviceName) as "originating devices" dc(destDeviceName) as "destination devices" dc(callingPartyNumber) as partyNumbers
+| eval encryption_types=mvjoin(encryption_types,", ")
+
+                ]]></param>
+
+                <module name="Pager">
+                  <module name="Table"/>
+                </module>
+              </module>
+
+              <module name="Switcher" layoutPanel="panel_row3_col1">
+                <param name="selectedGroup">$installation_state$</param>
+
+                <module name="HTML" group="cisco_cdr_not_installed">
+                  <param name="html"><![CDATA[
+
+                    WARNING: The Cisco CDR Reporting and Analytics app is not currently installed.   Drilldowns on this page will only include links to the generic Splunk Search UI using raw SPL.
+                  ]]></param>
+                </module>
+
+                <module name="HTML" group="cisco_cdr_installed_but_data_table_not_enabled">
+                  <param name="html"><![CDATA[
+
+                    <p>
+                        WARNING: The Cisco CDR Reporting and Analytics app is  installed but the Expressway data_type has not been enabled yet.   <br>
+                        TO FIX: Navigate to the <a href="../cisco_cdr/setup_data_types">Enable/disable data types</a> page in the Cisco CDR Reporting and Analytics app, and enable the Expressway data_type there.
+                    </p>
+                    <p>
+                      In the meantime drilldowns on this page will only include links to the generic Splunk Search UI using raw SPL.
+                    </p>
+                  ]]></param>
+                </module>
+
+
+
+                <module name="Link" group="cisco_cdr_is_installed">
+                  <param name="label">Investigate these calls in the Cisco CDR Reporting and Analytics app</param>
+
+                  <module name="Redirector">
+                    <param name="url">../cisco_cdr/calls</param>
+                    <param name="arg.earliest">$search.timeRange.earliest$</param>
+                    <param name="arg.latest">$search.timeRange.latest$</param>
+                    <param name="arg.data_type">expressway_cdr_syslog</param>
+
+                  </module>
+                </module>
+
+              </module>
+
+
+
+
+              <module name="Search" layoutPanel="panel_row4_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cisco_expressway_syslog")
+| eval endTime=_time + duration
+| stats min(_time) as _time max(endTime) as end by call_id
+| where isnotnull(end)
+| eval duration=end-_time
+``` inline version of the Cisco CDR apps get_concurrency macro, the simpler version with no split-by ```
+| eval increment = if(duration>0,mvappend("1","-1"),"0")
+| mvexpand increment
+| eval _time = if(increment==1, _time, _time + duration)
+| sort 0 + _time | streamstats sum(increment) as post_concurrency
+| eval concurrency = if(increment==-1, post_concurrency+1, post_concurrency)
+``` inline version of the Cisco CDR apps timechart_for_concurrency macro, the simpler version with no split-by```
+| timechart fixedrange=false bins=400 max(concurrency) as max_concurrency last(post_concurrency) as last_concurrency
+| filldown last_concurrency*
+| eval concurrency=coalesce(max_concurrency,last_concurrency)
+| fields - last_concurrency max_concurrency
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Max Concurrent calls/meetings</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">line</param>
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+                  </module>
+                </module>
+              </module>
+
+
+              <module name="Search" layoutPanel="panel_row5_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cisco_expressway_syslog") callingPartyNumber=* NOT callingPartyNumber=""
+| chart dc(call_id) as calls over callingPartyNumber
+| sort 0 calls desc
+| head 20
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Top 20 Calling Parties</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">bar</param>
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+
+
+                    <module name="Layer">
+                      <param name="cssClass">menu</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$installation_state$</param>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">investigate calls from $chart.xValue$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">expressway_cdr_syslog</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.numberType">callingParty</param>
+
+                          </module>
+                        </module>
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart calls from $chart.xValue$ over time</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">expressway_cdr_syslog</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.numberType">callingParty</param>
+                          </module>
+                        </module>
+
+
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls with $chart.xValue$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart calls with $chart.xValue$ over time (cisco_cdr not installed)</param>
+                        </module>
+
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls with $chart.xValue$ (cisco_cdr is installed but expressway data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart calls with $chart.xValue$ over time (cisco_cdr is installed but expressway data is disabled)</param>
+                        </module>
+
+
+                      </module>
+
+                      <module name="Link">
+                        <param name="cssClass">menuItem</param>
+                        <param name="label">view raw CSV events in Splunk</param>
+
+                        <module name="Redirector">
+                          <param name="url">search</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                          <param name="arg.q">`custom_index` sourcetype="cisco_expressway_syslog" $chart.searchTerms$</param>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+
+              <module name="Search" layoutPanel="panel_row5_col2">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cisco_expressway_syslog") calledPartyNumber=* NOT calledPartyNumber=""
+| chart dc(call_id) over hour_of_day by day_of_week
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Intraday call volume</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">line</param>
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+
+                    <module name="Layer">
+                      <param name="cssClass">menu</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$installation_state$</param>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">investigate calls with $chart.searchTerms$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">expressway_cdr_syslog</param>
+                            <param name="arg.searchterms">$chart.searchTerms$</param>
+                          </module>
+                        </module>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart top callingPartyNumbers for $chart.searchTerms$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">expressway_cdr_syslog</param>
+                            <param name="arg.searchterms">$chart.searchTerms$</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.xField">callingPartyNumber</param>
+                          </module>
+                        </module>
+
+
+
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls with $chart.searchTerms$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top callingPartyNames for $chart.searchTerms$ (cisco_cdr not installed)</param>
+                        </module>
+
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls with $chart.searchTerms$ (cisco_cdr is installed but expressway data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top callingPartyNames for $chart.searchTerms$ (cisco_cdr is installed but expressway data is disabled)</param>
+                        </module>
+
+
+
+                      </module>
+
+                      <module name="Link">
+                        <param name="cssClass">menuItem</param>
+                        <param name="label">view raw CSV events in Splunk</param>
+
+                        <module name="Redirector">
+                          <param name="url">search</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                          <param name="arg.q">`custom_index` ( sourcetype="cisco_expressway_syslog") $chart.searchTerms$</param>
+                        </module>
+                      </module>
+                    </module>
+
+
+                  </module>
+                </module>
+              </module>
+            </module>
+
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

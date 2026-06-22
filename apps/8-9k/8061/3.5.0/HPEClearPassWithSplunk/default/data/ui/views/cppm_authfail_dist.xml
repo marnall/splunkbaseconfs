@@ -1,0 +1,131 @@
+<form version="1.1">
+  <label>Failure Distribution</label>
+
+  <description>
+	 Authentication Failures distribution by Endpoints, Users and Network devices
+  </description>
+
+  <fieldset autoRun="True" submitButton="false">
+    <input type="time" searchWhenChanged="true">
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+   <input type="dropdown" searchWhenChanged="true" token="server">
+      <label>ClearPass Server</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+    <input type="dropdown" searchWhenChanged="true" token="errcode">
+      <label>Failure Type</label>
+      <default>All</default>
+      <choice value="*">All</choice>
+      <choice value="9002">Request timed out</choice>
+      <choice value="9001">Wrong Shared Secret</choice>
+      <choice value="201">User not found</choice>
+      <choice value="202">Password mismatch</choice>
+      <choice value="203">Failed to contact AuthSource</choice>
+      <choice value="204">Failed to classify request to service</choice>
+      <choice value="206">Access denied by policy</choice>
+      <choice value="209">No password in request</choice>
+      <choice value="211">Client certificate not valid</choice>
+      <choice value="212">Client certificate has expired</choice>
+      <choice value="213">Certificate comparison failed</choice>
+      <choice value="214">No certificate in authentication source</choice>
+      <choice value="216">User authentication failed</choice>
+      <choice value="218">Authentication source timed out</choice>
+      <choice value="223">Username not available in request</choice>
+      <choice value="225">User account disabled</choice>
+      <choice value="226">User account expired or not active yet</choice>
+      <choice value="227">User account needs approval</choice>
+      <choice value="228">User account has exceeded bandwidth limit</choice>
+      <choice value="229">User account has exceeded session duration limit</choice>
+      <choice value="230">User account has exceeded session count limit</choice>
+      <choice value="9005">Client does not support posture request</choice>
+      <choice value="9015">Client does not support configured EAP methods</choice>
+      <choice value="9017">Could not contact the OCSP server</choice>
+      <choice value="9019">Client sent conflicting identities</choice>
+      <choice value="5002">Invalid MAC Address</choice>
+      <choice value="5003">Invalid request received</choice>
+      <choice value="5004">Insufficient parameters received</choice>
+      <choice value="5008">Request - MAC address not online</choice>
+      <choice value="6201">Authorization failed as session is not authenticated</choice>
+     </input>
+  </fieldset>
+
+  <search id="baseSearch"><query>
+      eventtype=cppm-fail-authentication cphost=$server$ | table user_name, error_code, error_code_str, nas_ip, mac_address
+  </query></search>
+  
+ <row>
+    <single>
+      <search base="baseSearch"><query>stats count</query></search>
+      <option name="underLabel">Total Failed Attempts</option>
+    </single>
+    <single>
+      <search base="baseSearch"><query>dedup user_name | stats count</query></search>
+      <option name="underLabel">Users Failed</option>
+    </single>
+    <single>
+      <search base="baseSearch"><query>dedup mac_address | stats count</query></search>
+      <option name="underLabel">Endpoints Failed</option>
+    </single>  
+ </row>
+
+  <row>
+    <chart>
+      <title>Authentication Failure by Network Device</title>
+      <search base="baseSearch"><query>
+        | search  nas_ip!="127.0.0.1" error_code!="0" AND error_code="$errcode$" | chart count by nas_ip 
+      </query></search>
+      <option name="charting.chart">pie</option>
+    </chart>
+
+    <chart>
+      <title>Top 10 Failed Attempts by Users</title>
+      <search base="baseSearch"><query>
+        search error_code!="0" AND error_code="$errcode$" | top limit=10 user_name 
+      </query></search>
+      <option name="charting.chart">column</option>
+    </chart>
+
+    <chart>
+      <title>Top 10 Failed Attempts by Endpoints</title>
+      <search base="baseSearch"><query> 
+        search error_code!="0" AND error_code="$errcode$" | top limit=10 mac_address 
+      </query></search>
+      <option name="charting.chart">column</option>
+    </chart>
+ </row>
+
+  <row>
+    <table>
+      <title>Authentication Failure by NAS Device</title>
+      <search base="baseSearch"><query> 
+        search  nas_ip!="127.0.0.1" error_code!="0" AND error_code="$errcode$" | stats count by nas_ip, error_code_str
+      </query></search>
+    </table>
+
+    <table>
+      <title>Top 10 Failed Attempts by Users</title>
+      <search base="baseSearch"><query> 
+        search error_code!="0" AND error_code="$errcode$" | top limit=10 showperc=0 user_name, error_code_str 
+      </query></search>
+    </table>
+
+    <table>
+      <title>Top 10 Failed Attempts by Endpoints</title>
+      <search base="baseSearch"><query> 
+        search error_code!="0" AND error_code="$errcode$" | top limit=10 showperc=0 mac_address, error_code_str 
+      </query></search>
+    </table>
+ </row>
+
+
+</form>

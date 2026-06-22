@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form version="1.1">
+  <label>Airia Platform - Performance Metrics</label>
+  <description>Monitor execution performance, duration trends, token throughput, and model efficiency</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_picker">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <!-- KPI Row: Performance Key Metrics -->
+  <row>
+    <panel>
+      <title>Average Execution Duration</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 0
+| stats avg(duration_seconds) as avg_duration
+| eval avg_duration = round(avg_duration, 2) . " sec"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Average Duration</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[3,10]</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Slow Requests Count</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 5
+| stats count as slow_requests</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Requests &gt; 5 seconds</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Average Tokens per Second</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 0 AND tokens_numeric > 0
+| eval tokens_per_sec = tokens_numeric / duration_seconds
+| stats avg(tokens_per_sec) as avg_tps
+| eval avg_tps = round(avg_tps, 1) . " tok/s"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Avg Tokens/Second</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[50,100]</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Performance Trends Over Time -->
+  <row>
+    <panel>
+      <title>Performance Trends Over Time</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 0
+| timechart span=1h avg(duration_seconds) as "Average Duration" max(duration_seconds) as "Max Duration" median(duration_seconds) as "Median Duration"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Duration (seconds)</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.lineWidth">2</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Duration and Token Throughput Charts -->
+  <row>
+    <panel>
+      <title>Average Duration by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 0
+| stats avg(duration_seconds) as avg_duration by model_display
+| sort -avg_duration
+| head 10</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Average Duration (seconds)</option>
+        <option name="charting.axisTitleY.text">Model</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Token Throughput by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 0 AND tokens_numeric > 0
+| eval tokens_per_sec = tokens_numeric / duration_seconds
+| stats avg(tokens_per_sec) as avg_tps by model_display
+| sort -avg_tps
+| head 10</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Avg Tokens/Second</option>
+        <option name="charting.axisTitleY.text">Model</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Slow Requests Table -->
+  <row>
+    <panel>
+      <title>Slow Requests (Duration &gt; 5 seconds)</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where duration_seconds > 5
+| table _time execution_id model_name prompt_name duration duration_seconds tokens_numeric cost_numeric
+| sort -duration_seconds
+| head 20
+| rename execution_id as "Execution ID", model_name as "Model", prompt_name as "Prompt", duration as "Duration String", duration_seconds as "Duration (sec)", tokens_numeric as "Tokens", cost_numeric as "Cost ($)"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <option name="dataOverlayMode">heatmap</option>
+        <format type="color" field="Duration (sec)">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax" midType="percentile" midValue="50"></scale>
+        </format>
+        <format type="number" field="Duration (sec)">
+          <option name="precision">2</option>
+        </format>
+        <format type="number" field="Cost ($)">
+          <option name="precision">4</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Model Performance Statistics Table -->
+  <row>
+    <panel>
+      <title>Model Performance Statistics</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| eval duration_sec = if(isnotnull(duration_seconds) AND duration_seconds>0, duration_seconds, null())
+| eval tokens = if(isnotnull(tokens_numeric) AND tokens_numeric>0, tokens_numeric, null())
+| eval tokens_per_sec = if(isnotnull(duration_sec) AND duration_sec>0 AND isnotnull(tokens), tokens/duration_sec, null())
+| rex field=_raw "\"Success\":(?&lt;success&gt;true|false)"
+| stats count as "Total Requests",
+        avg(duration_sec) as "Avg Duration (sec)",
+        avg(tokens) as "Avg Tokens",
+        avg(tokens_per_sec) as "Avg Tokens/Sec",
+        count(eval(success="true")) as success_count
+        by model_display
+| eval "Avg Duration (sec)" = round('Avg Duration (sec)', 2)
+| eval "Avg Tokens" = round('Avg Tokens', 0)
+| eval "Avg Tokens/Sec" = round('Avg Tokens/Sec', 1)
+| eval "Success Rate %" = round((success_count / 'Total Requests') * 100, 1)
+| fields model_display "Total Requests" "Avg Duration (sec)" "Avg Tokens" "Avg Tokens/Sec" "Success Rate %"
+| rename model_display as "Model"
+| sort -"Total Requests"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <option name="dataOverlayMode">heatmap</option>
+        <format type="color" field="Avg Duration (sec)">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax" midType="percentile" midValue="50"></scale>
+        </format>
+        <format type="color" field="Avg Tokens/Sec">
+          <colorPalette type="minMidMax" maxColor="#53A051" midColor="#F8BE34" minColor="#DC4E41"></colorPalette>
+          <scale type="minMidMax" midType="percentile" midValue="50"></scale>
+        </format>
+        <format type="color" field="Success Rate %">
+          <colorPalette type="minMidMax" maxColor="#53A051" midColor="#F8BE34" minColor="#DC4E41"></colorPalette>
+          <scale type="minMidMax" midType="number" minValue="0" midValue="95" maxValue="100"></scale>
+        </format>
+        <format type="number" field="Avg Duration (sec)">
+          <option name="precision">2</option>
+        </format>
+        <format type="number" field="Avg Tokens">
+          <option name="precision">0</option>
+        </format>
+        <format type="number" field="Avg Tokens/Sec">
+          <option name="precision">1</option>
+        </format>
+        <format type="number" field="Success Rate %">
+          <option name="precision">1</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+</form>

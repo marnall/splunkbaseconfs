@@ -1,0 +1,342 @@
+<dashboard version="2" theme="dark">
+    <label>Infrastructure Health</label>
+    <description>Monitor infrastructure health with resource metrics and service availability</description>
+    <definition><![CDATA[
+{
+  "title": "Infrastructure Health",
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {
+          "queryParameters": {
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$"
+          }
+        }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_total_hosts": {
+      "type": "splunk.singlevalue",
+      "title": "Total Hosts",
+      "dataSources": {
+        "primary": "ds_host_count"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "numberPrecision": 0,
+        "majorFontSize": 48,
+        "unit": "Hosts"
+      }
+    },
+    "viz_healthy_hosts": {
+      "type": "splunk.singlevalue",
+      "title": "Healthy Hosts",
+      "dataSources": {
+        "primary": "ds_healthy_count"
+      },
+      "options": {
+        "backgroundColor": "#2ECC71",
+        "numberPrecision": 0,
+        "majorFontSize": 48
+      }
+    },
+    "viz_warning_hosts": {
+      "type": "splunk.singlevalue",
+      "title": "Warning Hosts",
+      "dataSources": {
+        "primary": "ds_warning_count"
+      },
+      "options": {
+        "backgroundColor": "#F39C12",
+        "numberPrecision": 0,
+        "majorFontSize": 48
+      }
+    },
+    "viz_critical_hosts": {
+      "type": "splunk.singlevalue",
+      "title": "Critical Hosts",
+      "dataSources": {
+        "primary": "ds_critical_count"
+      },
+      "options": {
+        "backgroundColor": "#E74C3C",
+        "numberPrecision": 0,
+        "majorFontSize": 48
+      }
+    },
+    "viz_health_distribution": {
+      "type": "splunk.pie",
+      "title": "Host Health Distribution",
+      "dataSources": {
+        "primary": "ds_health_distribution"
+      },
+      "options": {
+        "showDonutHole": true,
+        "backgroundColor": "transparent"
+      }
+    },
+    "viz_unhealthy_hosts": {
+      "type": "splunk.table",
+      "title": "Top 10 Unhealthy Hosts",
+      "dataSources": {
+        "primary": "ds_unhealthy_hosts"
+      },
+      "options": {
+        "count": 10
+      }
+    },
+    "viz_cpu_trend": {
+      "type": "splunk.line",
+      "title": "CPU Usage Trend (Last 24 Hours)",
+      "dataSources": {
+        "primary": "ds_cpu_trend"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "lineWidth": 2,
+        "yAxisTitleText": "CPU %"
+      }
+    },
+    "viz_memory_trend": {
+      "type": "splunk.line",
+      "title": "Memory Usage Trend (Last 24 Hours)",
+      "dataSources": {
+        "primary": "ds_memory_trend"
+      },
+      "options": {
+        "backgroundColor": "transparent",
+        "lineWidth": 2,
+        "yAxisTitleText": "Memory %"
+      }
+    },
+    "viz_services_status": {
+      "type": "splunk.table",
+      "title": "Critical Services Status",
+      "dataSources": {
+        "primary": "ds_services_status"
+      },
+      "options": {
+        "count": 20
+      }
+    },
+    "viz_recent_alerts": {
+      "type": "splunk.table",
+      "title": "Recent Infrastructure Alerts (Last 24 Hours)",
+      "dataSources": {
+        "primary": "ds_recent_alerts"
+      },
+      "options": {
+        "count": 20
+      }
+    },
+    "viz_resource_consumers": {
+      "type": "splunk.table",
+      "title": "Top 20 Resource Consumers",
+      "dataSources": {
+        "primary": "ds_resource_consumers"
+      },
+      "options": {
+        "count": 20
+      }
+    }
+  },
+  "dataSources": {
+    "ds_host_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | dedup host | stats count"
+      }
+    },
+    "ds_healthy_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | where health=\"healthy\" | dedup host | stats count"
+      }
+    },
+    "ds_warning_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | where health=\"warning\" | dedup host | stats count"
+      }
+    },
+    "ds_critical_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | where health=\"critical\" | dedup host | stats count"
+      }
+    },
+    "ds_health_distribution": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | dedup host | stats count by health | eval health=upper(substr(health,1,1)).substr(health,2)"
+      }
+    },
+    "ds_unhealthy_hosts": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | where health!=\"healthy\" | dedup host | sort -cpu_pct -mem_pct -disk_pct | head 10 | table host, cpu_pct, mem_pct, disk_pct, health | rename host as \"Host\", cpu_pct as \"CPU %\", mem_pct as \"Memory %\", disk_pct as \"Disk %\", health as \"Health\""
+      }
+    },
+    "ds_cpu_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | timechart span=5m avg(cpu_pct) as \"Average CPU %\" max(cpu_pct) as \"Peak CPU %\""
+      }
+    },
+    "ds_memory_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | timechart span=5m avg(mem_pct) as \"Average Memory %\" max(mem_pct) as \"Peak Memory %\""
+      }
+    },
+    "ds_services_status": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_service_status` | stats count by service_name, status | sort -count | rename service_name as \"Service\", status as \"Status\", count as \"Hosts\""
+      }
+    },
+    "ds_recent_alerts": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | where health=\"critical\" OR health=\"warning\" | sort -_time | head 20 | eval alert_type=case(cpu_pct>90,\"High CPU\",mem_pct>90,\"High Memory\",disk_pct>90,\"Disk Full\",1=1,\"Resource Issue\") | table _time, host, alert_type, cpu_pct, mem_pct, disk_pct | rename _time as \"Time\", host as \"Host\", alert_type as \"Alert Type\", cpu_pct as \"CPU %\", mem_pct as \"Memory %\", disk_pct as \"Disk %\""
+      }
+    },
+    "ds_resource_consumers": {
+      "type": "ds.search",
+      "options": {
+        "query": "| `infrastructure_health_metrics` | dedup host | sort -cpu_pct -mem_pct -disk_pct | head 20 | table host, cpu_pct, mem_pct, disk_pct, health | rename host as \"Host\", cpu_pct as \"CPU %\", mem_pct as \"Memory %\", disk_pct as \"Disk %\", health as \"Health\""
+      }
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "options": {},
+    "structure": [
+      {
+        "item": "viz_total_hosts",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 300,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_healthy_hosts",
+        "type": "block",
+        "position": {
+          "x": 300,
+          "y": 0,
+          "w": 300,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_warning_hosts",
+        "type": "block",
+        "position": {
+          "x": 600,
+          "y": 0,
+          "w": 300,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_critical_hosts",
+        "type": "block",
+        "position": {
+          "x": 900,
+          "y": 0,
+          "w": 300,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_health_distribution",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 600,
+          "h": 400
+        }
+      },
+      {
+        "item": "viz_unhealthy_hosts",
+        "type": "block",
+        "position": {
+          "x": 600,
+          "y": 150,
+          "w": 600,
+          "h": 400
+        }
+      },
+      {
+        "item": "viz_cpu_trend",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 550,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_memory_trend",
+        "type": "block",
+        "position": {
+          "x": 600,
+          "y": 550,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_services_status",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 850,
+          "w": 600,
+          "h": 400
+        }
+      },
+      {
+        "item": "viz_recent_alerts",
+        "type": "block",
+        "position": {
+          "x": 600,
+          "y": 850,
+          "w": 600,
+          "h": 400
+        }
+      },
+      {
+        "item": "viz_resource_consumers",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 1250,
+          "w": 1200,
+          "h": 400
+        }
+      }
+    ],
+    "globalInputs": ["input_time_range"]
+  }
+}
+    ]]></definition>
+</dashboard>

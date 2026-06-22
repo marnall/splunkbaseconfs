@@ -1,0 +1,931 @@
+
+<dashboard version="2" theme="dark">
+    <label>Trace Analysis</label>
+    <description>Comprehensive distributed tracing dashboard with span metrics, latency analysis, error tracking, and service dependency visualization</description>
+    <definition><![CDATA[
+{
+	"title": "Trace Analysis",
+	"description": "Comprehensive distributed tracing dashboard with span metrics, latency analysis, error tracking, and service dependency visualization",
+	"inputs": {
+		"input_cluster_selector": {
+			"dataSources": {
+				"primary": "ds_cluster_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "cluster_token"
+			},
+			"title": "Cluster",
+			"type": "input.dropdown"
+		},
+		"input_global_trp": {
+			"options": {
+				"defaultValue": "-1h@h,now",
+				"token": "global_time"
+			},
+			"title": "Time Range",
+			"type": "input.timerange"
+		},
+		"input_namespace_selector": {
+			"dataSources": {
+				"primary": "ds_namespace_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "namespace_token"
+			},
+			"title": "Namespace",
+			"type": "input.dropdown"
+		},
+		"input_trace_index_selector": {
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"label": ">primary | seriesByName(\"logs_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"statics": [],
+				"value": ">primary | seriesByName(\"logs_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			},
+			"dataSources": {
+				"primary": "ds_QCxtW4wK"
+			},
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"selectFirstSearchResult": true,
+				"token": "trace_index_token"
+			},
+			"title": "Trace Index",
+			"type": "input.dropdown"
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "$global_time.earliest$",
+						"latest": "$global_time.latest$"
+					},
+					"refresh": 65
+				}
+			}
+		}
+	},
+	"visualizations": {
+		"viz_avg_trace_duration": {
+			"dataSources": {
+				"primary": "ds_avg_trace_duration"
+			},
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"sparklineValues": "> primary | seriesByName('avg_duration_ms')",
+				"unit": "ms"
+			},
+			"title": "Avg Trace Duration (1h)",
+			"type": "splunk.singlevalue"
+		},
+		"viz_db_query_performance": {
+			"dataSources": {
+				"primary": "ds_db_query_performance"
+			},
+			"description": "Slowest DB operations",
+			"title": "Database Query Performance",
+			"type": "splunk.table"
+		},
+		"viz_error_rate": {
+			"dataSources": {
+				"primary": "ds_error_rate"
+			},
+			"options": {
+				"errorColorConfig": [
+					{
+						"color": "#118832",
+						"to": 1,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 5,
+						"value": 1
+					},
+					{
+						"color": "#D41F1F",
+						"value": 5
+					}
+				],
+				"majorColor": "> majorValue | rangeValue(errorColorConfig)",
+				"majorValue": "> primary | seriesByName('error_rate') | lastPoint()",
+				"numberPrecision": 2,
+				"unit": "%"
+			},
+			"title": "Trace Error Rate",
+			"type": "splunk.singlevalue"
+		},
+		"viz_error_rate_timeline": {
+			"dataSources": {
+				"primary": "ds_error_rate_timeline"
+			},
+			"options": {
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F"
+				],
+				"xField": "_time",
+				"yField": "error_rate"
+			},
+			"title": "Error Rate Over Time (%)",
+			"type": "splunk.line"
+		},
+		"viz_error_spans": {
+			"dataSources": {
+				"primary": "ds_error_spans"
+			},
+			"description": "Last 50 spans with errors",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Status') | matchValue(statusColorMap)",
+				"showInternalFields": false,
+				"statusColorMap": {
+					"ERROR": "#D41F1F",
+					"OK": "#118832",
+					"UNSET": "#FFFFFF"
+				},
+				"tableFormat": {
+					"align": "left"
+				}
+			},
+			"title": "Recent Error Spans",
+			"type": "splunk.table"
+		},
+		"viz_external_calls": {
+			"dataSources": {
+				"primary": "ds_external_calls"
+			},
+			"description": "HTTP client spans to external services",
+			"options": {
+				"showInternalFields": false,
+				"tableFormat": {
+					"align": "left"
+				}
+			},
+			"title": "External API Calls",
+			"type": "splunk.table"
+		},
+		"viz_http_status_codes": {
+			"dataSources": {
+				"primary": "ds_http_status_codes"
+			},
+			"options": {
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#1E93C6"
+				],
+				"xField": "status_code",
+				"yField": "count"
+			},
+			"title": "HTTP Status Code Distribution",
+			"type": "splunk.column"
+		},
+		"viz_latency_percentiles_timeline": {
+			"dataSources": {
+				"primary": "ds_latency_percentiles_timeline"
+			},
+			"description": "Response time distribution over time",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"p50": "#118832",
+					"p95": "#F5A800",
+					"p99": "#D41F1F"
+				},
+				"xField": "_time"
+			},
+			"title": "Latency Percentiles (P50, P95, P99) in ms",
+			"type": "splunk.line"
+		},
+		"viz_p95_latency": {
+			"dataSources": {
+				"primary": "ds_p95_latency"
+			},
+			"options": {
+				"latencyColorConfig": [
+					{
+						"color": "#118832",
+						"to": 1000,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 3000,
+						"value": 1000
+					},
+					{
+						"color": "#D41F1F",
+						"value": 3000
+					}
+				],
+				"majorColor": "> majorValue | rangeValue(latencyColorConfig)",
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"sparklineValues": "> primary | seriesByName('avg_duration_ms')",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"unit": "ms"
+			},
+			"title": "P95 Latency",
+			"type": "splunk.singlevalue"
+		},
+		"viz_p99_latency": {
+			"dataSources": {
+				"primary": "ds_p99_latency"
+			},
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"sparklineValues": "> primary | seriesByName('avg_duration_ms')",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"unit": "ms"
+			},
+			"title": "P99 Latency",
+			"type": "splunk.singlevalue"
+		},
+		"viz_service_dependency_map": {
+			"dataSources": {
+				"primary": "ds_service_dependencies"
+			},
+			"description": "Caller → Called service relationships",
+			"title": "Service Dependencies",
+			"type": "splunk.table"
+		},
+		"viz_service_latency": {
+			"dataSources": {
+				"primary": "ds_service_latency"
+			},
+			"description": "P50, P95, P99 per service",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"p50": "#118832",
+					"p95": "#F5A800",
+					"p99": "#D41F1F"
+				},
+				"stackMode": "stacked",
+				"xField": "service"
+			},
+			"title": "Latency by Service (ms)",
+			"type": "splunk.column"
+		},
+		"viz_service_request_rate": {
+			"dataSources": {
+				"primary": "ds_service_request_rate"
+			},
+			"options": {
+				"legendDisplay": "off",
+				"stackMode": "stacked",
+				"xField": "service",
+				"yField": "requests_per_min"
+			},
+			"title": "Request Rate by Service (req/min)",
+			"type": "splunk.column"
+		},
+		"viz_services_count": {
+			"dataSources": {
+				"primary": "ds_services_count"
+			},
+			"options": {
+				"majorValue": "> primary | seriesByName('service_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Services"
+			},
+			"title": "Active Services",
+			"type": "splunk.singlevalue"
+		},
+		"viz_slowest_operations": {
+			"dataSources": {
+				"primary": "ds_slowest_operations"
+			},
+			"description": "Top 20 operations by latency",
+			"options": {
+				"showInternalFields": false,
+				"tableFormat": {
+					"align": "left"
+				}
+			},
+			"title": "Slowest Operations (P95)",
+			"type": "splunk.table"
+		},
+		"viz_span_duration_distribution": {
+			"dataSources": {
+				"primary": "ds_span_duration_distribution"
+			},
+			"description": "Histogram of span durations",
+			"options": {
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#1E93C6"
+				],
+				"xField": "duration_bucket",
+				"yField": "count"
+			},
+			"title": "Span Duration Distribution",
+			"type": "splunk.column"
+		},
+		"viz_span_kind_distribution": {
+			"dataSources": {
+				"primary": "ds_span_kind_distribution"
+			},
+			"description": "CLIENT, SERVER, INTERNAL, etc.",
+			"options": {
+				"labelField": "span_kind",
+				"showDonutHole": true,
+				"valueField": "count"
+			},
+			"title": "Span Kind Distribution",
+			"type": "splunk.pie"
+		},
+		"viz_spans_per_trace": {
+			"dataSources": {
+				"primary": "ds_spans_per_trace"
+			},
+			"description": "Trace complexity metric",
+			"options": {
+				"majorValue": "> primary | seriesByName('avg_spans_per_trace') | lastPoint()",
+				"numberPrecision": 1,
+				"unit": "spans/trace"
+			},
+			"title": "Avg Spans per Trace",
+			"type": "splunk.singlevalue"
+		},
+		"viz_total_spans": {
+			"dataSources": {
+				"primary": "ds_total_spans"
+			},
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"sparklineValues": "> primary | seriesByName('span_count')",
+				"unit": "Spans"
+			},
+			"title": "Total Spans (1h)",
+			"type": "splunk.singlevalue"
+		},
+		"viz_total_traces": {
+			"dataSources": {
+				"primary": "ds_total_traces"
+			},
+			"description": "Number of distributed traces",
+			"options": {
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 0,
+				"sparklineValues": "> primary | seriesByName('trace_count')",
+				"unit": "Traces"
+			},
+			"title": "Total Traces (1h)",
+			"type": "splunk.singlevalue"
+		},
+		"viz_trace_volume_timeline": {
+			"dataSources": {
+				"primary": "ds_trace_volume_timeline"
+			},
+			"description": "Number of traces per minute",
+			"options": {
+				"legendDisplay": "off",
+				"xField": "_time",
+				"yField": "trace_count"
+			},
+			"title": "Trace Volume Over Time",
+			"type": "splunk.line"
+		}
+	},
+	"dataSources": {
+		"ds_QCxtW4wK": {
+			"name": "Traces_Index_Dropdown",
+			"options": {
+				"query": "| inputlookup append=t k8s_logs_events_indexes_dropdown_lookup.csv",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_avg_trace_duration": {
+			"name": "Avg Trace Duration",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ parent_span_id=\"\" | stats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time\n| eval duration_ms=duration_ns/1000000 | stats avg(duration_ms) as avg_duration_ms\n| eval avg_duration_ms=round(avg_duration_ms,2)",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_cluster_list": {
+			"name": "Cluster List",
+			"options": {
+				"query": "index=k8s_traces\n| stats count by k8s.cluster.name\n| rename k8s.cluster.name as cluster",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_db_query_performance": {
+			"name": "DB Query Performance",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ attributes.db.system=* attributes.db.statement=*  | eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000 | stats perc95(duration_ms) as p95_ms, count as exec_count by attributes.db.system, attributes.db.statement | eval p95_ms=round(p95_ms, 0) | rename attributes.db.system as \"DB Type\", attributes.db.statement as \"Query\", p95_ms as \"P95 (ms)\", exec_count as \"Exec Count\" | sort -\"P95 (ms)\" | head 20 | table \"DB Type\", \"Query\", \"P95 (ms)\", \"Exec Count\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_error_rate": {
+			"name": "Error Rate",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=* | rename status.code as status_code\n| eval ERROR_FLAG=if(match(status_code,\".*ERROR.*\"), \"1\", \"0\")\n| stats count as total, sum(ERROR_FLAG) as errors | eval error_rate=round((errors/total)*100, 2)",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_error_rate_timeline": {
+			"name": "Error Rate Timeline",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=* | bin _time span=5m | rename status.code as status_code\n| eval ERROR_FLAG=if(match(status_code,\".*ERROR.*\"), \"1\", \"0\")| stats count as total, sum(ERROR_FLAG) as errors  by _time | eval error_rate=round((errors/total)*100, 2)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_error_spans": {
+			"name": "Error Spans",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (status.code=\"*ERROR\" OR status.code=2) | eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=round(duration_ns/1000000,2) | rename service.name as Service, name as Operation, status.code as Status, status.message as \"Error Message\", duration_ms as \"Duration (ms)\" | table _time, Service, Operation, Status, \"Error Message\", \"Duration (ms)\", trace_id | sort -_time | head 50",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_external_calls": {
+			"name": "External Calls",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=*CLIENT attributes.http.url=*  | eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000 | stats avg(duration_ms) as avg_ms, perc95(duration_ms) as p95_ms, count by attributes.http.url, attributes.http.method | eval avg_ms=round(avg_ms, 0), p95_ms=round(p95_ms, 0) | rename attributes.http.url as URL, attributes.http.method as Method, avg_ms as \"Avg (ms)\", p95_ms as \"P95 (ms)\", count as Calls | sort -Calls | head 20 | table URL, Method, \"Avg (ms)\", \"P95 (ms)\", Calls",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_http_status_codes": {
+			"name": "HTTP Status Codes",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ attributes.http.status_code=* | stats count by attributes.http.status_code | rename attributes.http.status_code as status_code | sort status_code",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_latency_percentiles_timeline": {
+			"name": "Latency Percentiles Timeline",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ parent_span_id=\"\"| eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000 | bin _time span=5m | stats perc50(duration_ms) as p50, perc95(duration_ms) as p95, perc99(duration_ms) as p99 by _time",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_messaging_operations": {
+			"name": "Messaging Operations",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ (messaging.system=* OR messaging.destination=*) duration=* | eval duration_ms=duration/1000000 | stats avg(duration_ms) as avg_ms, perc95(duration_ms) as p95_ms, count by messaging.system, messaging.destination, messaging.operation | eval avg_ms=round(avg_ms, 0), p95_ms=round(p95_ms, 0) | rename messaging.system as System, messaging.destination as Destination, messaging.operation as Operation, avg_ms as \"Avg (ms)\", p95_ms as \"P95 (ms)\", count as \"Msg Count\" | sort -\"Msg Count\" | head 20 | table System, Destination, Operation, \"Avg (ms)\", \"P95 (ms)\", \"Msg Count\"",
+				"queryParameters": {
+					"earliest": "$time.earliest$",
+					"latest": "$time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_namespace_list": {
+			"name": "Namespace List",
+			"options": {
+				"query": "index=k8s_traces k8s.cluster.name=$cluster_token$\n| stats count by k8s.namespace.name\n| rename k8s.namespace.name as namespace",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_p95_latency": {
+			"name": "P95 Latency",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ parent_span_id=\"\" | stats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time\n| eval duration_ms=duration_ns/1000000 | stats p95(duration_ms) as avg_duration_ms\n| eval avg_duration_ms=round(avg_duration_ms,2)",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_p99_latency": {
+			"name": "P99 Latency",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ parent_span_id=\"\" | stats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time\n| eval duration_ms=duration_ns/1000000 | stats p99(duration_ms) as avg_duration_ms\n| eval avg_duration_ms=round(avg_duration_ms,2)",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_sampling_rate": {
+			"name": "Sampling Rate",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ span.kind=* | stats count as total, count(eval(sampled=1 OR sampled=\"true\")) as sampled | eval sampling_rate=round((sampled/total)*100, 1)",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_service_dependencies": {
+			"name": "Service Dependencies",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ parent_span_id=* service.name=* | join type=left trace_id, parent_span_id [search index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ | rename span_id as parent_span_id, service.name as caller_service] | table span_id, caller_service, service.name| rename service.name as service_name \n| where isnotnull(caller_service)  AND caller_service!=service_name| stats count by caller_service, service_name| rename caller_service as \"Caller Service\", service_name as \"Called Service\", count as \"Call Count\" | sort -\"Call Count\" | head 30",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_service_latency": {
+			"name": "Service Latency",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ service.name=*| eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000| stats perc50(duration_ms) as p50, perc95(duration_ms) as p95, perc99(duration_ms) as p99 by service.name | rename service.name as service | sort -p95 | head 15",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_service_request_rate": {
+			"name": "Service Request Rate",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ service.name=* | stats count by service.name | eval requests_per_min=round(count/60, 1) | rename service.name as service | sort -requests_per_min | head 15",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_services_count": {
+			"name": "Services Count",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ | stats dc(service.name) as service_count",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_slowest_operations": {
+			"name": "Slowest Operations",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ name=*  service.name=* | eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000 | stats perc95(duration_ms) as p95_ms, count as call_count by name, service.name | eval p95_ms=round(p95_ms, 0) | rename service.name as Service, name as Operation, p95_ms as \"P95 (ms)\", call_count as \"Call Count\" | sort -\"P95 (ms)\" | head 20 | table Service, Operation, \"P95 (ms)\", \"Call Count\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_span_duration_distribution": {
+			"name": "Span Duration Distribution",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ | eventstats earliest(start_time) as trace_start_time, latest(end_time) as trace_end_time by trace_id\n| eval duration_ns=trace_end_time - trace_start_time  | eval duration_ms=duration_ns/1000000 | eval duration_bucket=case(duration_ms<10, \"0-10ms\", duration_ms<50, \"10-50ms\", duration_ms<100, \"50-100ms\", duration_ms<500, \"100-500ms\", duration_ms<1000, \"500ms-1s\", duration_ms<5000, \"1-5s\", 1==1, \"5s+\") | stats count by duration_bucket | sort duration_bucket",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_span_kind_distribution": {
+			"name": "Span Kind Distribution",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=* | stats count by kind | rename kind as span_kind",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_spans_per_trace": {
+			"name": "Spans per Trace",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ trace_id=* | stats count by trace_id | stats avg(count) as avg_spans_per_trace",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_total_spans": {
+			"name": "Total Spans",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=*  | timechart span=5m dc(span_id) as span_count",
+				"queryParameters": {
+					"earliest": "-1h",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_total_traces": {
+			"name": "Total Traces",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=*  |timechart span=5m dc(trace_id) as trace_count",
+				"queryParameters": {
+					"earliest": "-60m@m",
+					"latest": "now"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_trace_volume_timeline": {
+			"name": "Trace Volume Timeline",
+			"options": {
+				"query": "index=$trace_index_token$ k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ kind=* | timechart dc(trace_id) as trace_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		}
+	},
+	"layout": {
+		"globalInputs": [
+			"input_global_trp",
+			"input_trace_index_selector",
+			"input_cluster_selector",
+			"input_namespace_selector"
+		],
+		"layoutDefinitions": {
+			"layout_1": {
+				"options": {
+					"height": 2600
+				},
+				"structure": [
+					{
+						"item": "viz_total_traces",
+						"position": {
+							"h": 130,
+							"w": 180,
+							"x": 10,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_trace_volume_timeline",
+						"position": {
+							"h": 250,
+							"w": 386,
+							"x": 13,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_latency_percentiles_timeline",
+						"position": {
+							"h": 300,
+							"w": 592,
+							"x": 9,
+							"y": 410
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_service_latency",
+						"position": {
+							"h": 300,
+							"w": 592,
+							"x": 10,
+							"y": 720
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_span_duration_distribution",
+						"position": {
+							"h": 250,
+							"w": 591,
+							"x": 9,
+							"y": 1030
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_slowest_operations",
+						"position": {
+							"h": 300,
+							"w": 1180,
+							"x": 10,
+							"y": 1290
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_error_spans",
+						"position": {
+							"h": 300,
+							"w": 1180,
+							"x": 10,
+							"y": 1600
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_service_dependency_map",
+						"position": {
+							"h": 300,
+							"w": 592,
+							"x": 9,
+							"y": 1910
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_external_calls",
+						"position": {
+							"h": 300,
+							"w": 1181,
+							"x": 9,
+							"y": 2220
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_total_spans",
+						"position": {
+							"h": 130,
+							"w": 170,
+							"x": 200,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_avg_trace_duration",
+						"position": {
+							"h": 130,
+							"w": 180,
+							"x": 380,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_span_kind_distribution",
+						"position": {
+							"h": 250,
+							"w": 430,
+							"x": 410,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_error_rate",
+						"position": {
+							"h": 130,
+							"w": 180,
+							"x": 570,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_error_rate_timeline",
+						"position": {
+							"h": 300,
+							"w": 579,
+							"x": 611,
+							"y": 410
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_service_request_rate",
+						"position": {
+							"h": 300,
+							"w": 580,
+							"x": 610,
+							"y": 720
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_http_status_codes",
+						"position": {
+							"h": 250,
+							"w": 579,
+							"x": 611,
+							"y": 1030
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_db_query_performance",
+						"position": {
+							"h": 300,
+							"w": 579,
+							"x": 611,
+							"y": 1910
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_p95_latency",
+						"position": {
+							"h": 130,
+							"w": 188,
+							"x": 760,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_p99_latency",
+						"position": {
+							"h": 130,
+							"w": 340,
+							"x": 850,
+							"y": 270
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_spans_per_trace",
+						"position": {
+							"h": 110,
+							"w": 340,
+							"x": 850,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_services_count",
+						"position": {
+							"h": 130,
+							"w": 227,
+							"x": 962,
+							"y": 10
+						},
+						"type": "block"
+					}
+				],
+				"type": "absolute"
+			}
+		},
+		"tabs": {
+			"items": [
+				{
+					"label": "New tab",
+					"layoutId": "layout_1"
+				}
+			]
+		}
+	},
+	"applicationProperties": {
+		"hideEdit": true
+	}
+}
+    ]]></definition>
+</dashboard>

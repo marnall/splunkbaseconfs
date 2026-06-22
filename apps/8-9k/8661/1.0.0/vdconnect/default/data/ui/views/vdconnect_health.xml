@@ -1,0 +1,152 @@
+<dashboard version="1.1" theme="dark" stylesheet="vdconnect.css">
+  <label>Health Monitor</label>
+  <description>Monitor VDConnect collection health, errors, and performance</description>
+
+  <row>
+    <panel>
+      <title>Healthy Inputs</title>
+      <single>
+        <search>
+          <query>
+            | rest /services/data/inputs/vdconnect
+            | search disabled=0
+            | eval has_errors = if(like(title, "%error%"), 1, 0)
+            | stats count(eval(has_errors==0)) AS healthy
+          </query>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x555555","0x2DDE98"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Errors (1h)</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_internal level=ERROR earliest=-1h | stats count
+          </query>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x2DDE98","0xFFC107","0xFF5252"]</option>
+        <option name="rangeValues">[0,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Collection Time (ms)</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_internal "collection_complete" earliest=-1h
+            | stats avg(duration_ms) AS avg_ms
+            | eval avg_ms = round(avg_ms, 0)
+          </query>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x2DDE98","0xFFC107","0xFF5252"]</option>
+        <option name="rangeValues">[5000,30000]</option>
+        <option name="useColors">1</option>
+        <option name="unit">ms</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Last Successful Run</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_internal "collection_complete" level=INFO earliest=-24h
+            | stats latest(_time) AS last_success
+            | eval last_success = strftime(last_success, "%Y-%m-%d %H:%M:%S")
+          </query>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Error Rate Over Time</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_internal sourcetype=vdconnect:internal earliest=-24h
+            | eval is_error = if(level=="ERROR", 1, 0)
+            | timechart span=30m sum(is_error) AS errors count AS total
+            | eval error_pct = round((errors / total) * 100, 2)
+            | fields _time error_pct errors
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">error_pct</option>
+        <option name="charting.axisTitleY.text">Error Count</option>
+        <option name="charting.axisTitleY2.text">Error %</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Collection Duration by Input</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_internal "collection_complete" earliest=-24h
+            | timechart span=1h avg(duration_ms) by input_name
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleY.text">Duration (ms)</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Rows Collected per Cycle</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_internal "collection_complete" earliest=-24h
+            | timechart span=1h avg(row_count) by input_name
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleY.text">Rows</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent Errors (detailed)</title>
+      <table>
+        <search>
+          <query>
+            index=vdconnect_internal level=ERROR earliest=-24h
+            | table _time input_name db_type message
+            | sort - _time
+            | head 50
+            | rename _time AS "Time", input_name AS "Input",
+                     db_type AS "Database", message AS "Error Message"
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">15</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

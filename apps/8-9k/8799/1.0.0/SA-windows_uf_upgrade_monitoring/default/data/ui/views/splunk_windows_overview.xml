@@ -1,0 +1,418 @@
+<form version="1.1" theme="dark">
+  <label>Windows UF Upgrade Overview</label>
+  <fieldset submitButton="false">
+    <input type="text" token="hostname">
+      <label>Filter by Hostname</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="target_version">
+      <label>Target UF Version</label>
+      <default>9.4.0</default>
+      <initialValue>9.4.0</initialValue>
+    </input>
+    <input type="dropdown" token="DM_Accel">
+      <label>Data Model Acceleration</label>
+      <choice value="true">true</choice>
+      <choice value="false">false</choice>
+      <default>false</default>
+      <initialValue>false</initialValue>
+    </input>
+    <input type="time" token="splunk_upgrade_time">
+      <label>Global Time Picker</label>
+      <default>
+        <earliest>-90d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <style>
+          .section-spacer {
+            margin-top: 28px;
+            margin-bottom: 14px;
+          }
+
+          .section-header-box {
+            display: inline-block;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 10px 14px;
+            color: #ffffff;
+            background-color: transparent;
+          }
+
+          .section-header-box h1 {
+            margin: 0 0 6px 0;
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+          }
+
+          .section-header-box p {
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.45;
+            color: #cfcfcf;
+            max-width: 1000px;
+          }
+        </style>
+
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>Windows UF Upgrade Status</h1>
+            <p>This dashboard answers the primary rollout questions: which hosts upgraded successfully, which hosts failed, which hosts are not on the target UF version, what UF versions are currently deployed, and whether retry prevention, retry control, or installer cleanup issues were observed.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>1. Upgrade Status Summary</h1>
+            <p>High-level view of upgrade attempts, successful upgrades, failed upgrades, current target version coverage, retry prevention, retry control activity, state tracking errors, and installer cleanup status.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Total Hosts Attempted</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ dc(host) AS "Total Hosts Attempted"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9812, 9813)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x1182f3","0x1182f3"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Hosts with upgrade activity</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Hosts Successfully Upgraded</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ dc(host) AS "Successful Upgrades"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9812)
+    AND splunk_upgrade_events.status=Success
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x118832","0x118832"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Hosts reporting successful upgrade</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Hosts With Failed Attempts</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ dc(host) AS "Failed Upgrades"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9811, 9813)
+    AND splunk_upgrade_events.status=Failure
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd41f1f","0xd41f1f"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Hosts requiring review</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Target Version Coverage</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count FROM datamodel=splunk_upgrade.splunk_internal WHERE (source IN (*metrics.log*) AND splunk_internal.group IN (tcpin_connections) AND splunk_internal.os=Windows AND hostname IN ($hostname$)) BY hostname, splunk_internal.version, _time 
+| stats latest(_time) AS last_seen latest(splunk_internal.version) AS uf_version by hostname 
+| stats count AS total_hosts count(eval(uf_version = "$target_version$")) AS target_hosts 
+| eval "Target Version Coverage"=if(total_hosts &gt; 0, round((target_hosts/total_hosts)*100, 2), 0) 
+| fields "Target Version Coverage"</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0xd41f1f","0xf8be34","0x118832"]</option>
+        <option name="rangeValues">[50,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="unit">%</option>
+        <option name="underLabel">Windows UFs on target version</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Retry Prevention Events</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Retry Prevention Events"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode=9819
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xf8be34","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Same MSI skipped to prevent retry loop</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Retry Control Actions</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Retry Control Actions"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9820, 9830, 9833)
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x1182f3","0x1182f3"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Force retry / reset activity observed</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>State Tracking Errors</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "State Tracking Errors"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode=9822
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd41f1f","0xd41f1f"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">JSON state read/write/hash issues</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Installer Cleanup Failures</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Installer Cleanup Failures"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode=9807
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xd94e17","0xd94e17"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">MSI remained in splunk_installer</option>
+        <option name="useColors">1</option>
+      </single>
+      <single>
+        <title>Installer Cleanup Success</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count AS "Installer Cleanup Success"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode=9823
+    AND host IN ($hostname$)</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x65a637","0x65a637"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">MSI cleanup completed successfully</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>2. Host Upgrade Results</h1>
+            <p>Host-level upgrade outcome tables showing which systems completed successfully and which systems reported failed upgrade attempts.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Hosts Successfully Upgraded</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$
+    latest(_time) AS latest_time
+    latest(splunk_upgrade_events.date) AS Date
+    latest(splunk_upgrade_events.time) AS Time
+    latest(splunk_upgrade_events.eventcode) AS EventCode
+    latest(splunk_upgrade_events.status) AS Status
+    latest(splunk_upgrade_events.message) AS Message
+    latest(splunk_upgrade_events.previous_version) AS "Previous UF Version"
+    latest(splunk_upgrade_events.current_version) AS "Current UF Version"
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9812)
+    AND splunk_upgrade_events.status=Success
+    AND host IN ($hostname$)
+    BY host 
+| rename host AS Hostname 
+| eval "Latest Event Time"=strftime(latest_time, "%Y-%m-%d %H:%M:%S") 
+| table Date, Time, Hostname, "Previous UF Version", "Current UF Version", EventCode, Status, Message, "Latest Event Time" 
+| sort 0 Hostname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>Hosts With Failed Upgrade Attempts</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$
+    latest(_time) AS latest_time
+    latest(splunk_upgrade_events.date) AS Date
+    latest(splunk_upgrade_events.time) AS Time
+    latest(splunk_upgrade_events.current_version) AS "Current UF Version"
+    latest(splunk_upgrade_events.eventcode) AS EventCode
+    latest(splunk_upgrade_events.status) AS Status
+    latest(splunk_upgrade_events.message) AS Message
+    latest(splunk_upgrade_events.details) AS Details
+    FROM datamodel=splunk_upgrade.splunk_upgrade_events
+    WHERE splunk_upgrade_events.eventcode IN (9811, 9813)
+    AND splunk_upgrade_events.status=Failure
+    AND host IN ($hostname$)
+    BY host 
+| rename host AS Hostname 
+| eval "Latest Event Time"=strftime(latest_time, "%Y-%m-%d %H:%M:%S") 
+| table Date, Time, Hostname, "Current UF Version", EventCode, Status, Message, Details, "Latest Event Time" 
+| sort 0 Hostname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>3. Current UF Version Inventory</h1>
+            <p>Current Universal Forwarder version distribution based on recent internal forwarder connection data from metrics.log.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Current UF Version Distribution</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count FROM datamodel=splunk_upgrade.splunk_internal WHERE (source IN (*metrics.log*) AND splunk_internal.group IN (tcpin_connections) AND splunk_internal.os=Windows AND hostname IN ($hostname$)) BY hostname, splunk_internal.version, _time, splunk_internal.sourceHost, splunk_internal.os 
+| stats latest(_time) AS last_seen latest(splunk_internal.version) AS "UF Version" latest(splunk_internal.os) AS OS by hostname
+| stats count AS "Host Count" by "UF Version"
+| sort -"Host Count"</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Current UF Version by Host</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count FROM datamodel=splunk_upgrade.splunk_internal WHERE (source IN (*metrics.log*) AND splunk_internal.group IN (tcpin_connections) AND splunk_internal.os=Windows AND hostname IN ($hostname$)) BY hostname, splunk_internal.version, _time, splunk_internal.sourceHost, splunk_internal.os 
+| stats latest(_time) AS last_seen latest(splunk_internal.version) AS "UF Version" latest(splunk_internal.os) AS OS latest(splunk_internal.sourceHost) AS "Source IP" by hostname 
+| rename hostname AS Hostname 
+| eval "Last Seen"=strftime(last_seen, "%Y-%m-%d %H:%M:%S") 
+| eval "Target Status"=if('UF Version'="$target_version$", "On Target", "Not on Target") 
+| table Hostname, "UF Version", "Target Status", OS, "Source IP", "Last Seen" 
+| sort 0 Hostname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div class="section-spacer">
+          <div class="section-header-box">
+            <h1>4. Hosts Requiring Remediation</h1>
+            <p>Windows Universal Forwarders that are not currently reporting the configured target version.</p>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Hosts Not on Target Version</title>
+        <search>
+          <query>| tstats summariesonly=$DM_Accel$ count FROM datamodel=splunk_upgrade.splunk_internal WHERE (source IN (*metrics.log*) AND splunk_internal.group IN (tcpin_connections) AND splunk_internal.os=Windows AND hostname IN ($hostname$)) BY hostname, splunk_internal.version, _time, splunk_internal.sourceHost, splunk_internal.os 
+| stats latest(_time) AS last_seen latest(splunk_internal.version) AS "UF Version" latest(splunk_internal.os) AS OS latest(splunk_internal.sourceHost) AS "Source IP" by hostname 
+| where 'UF Version'!="$target_version$" 
+| rename hostname AS Hostname 
+| eval "Target Version"="$target_version$" 
+| eval "Last Seen"=strftime(last_seen, "%Y-%m-%d %H:%M:%S") 
+| table Hostname, "UF Version", "Target Version", OS, "Source IP", "Last Seen" 
+| sort 0 Hostname</query>
+          <earliest>$splunk_upgrade_time.earliest$</earliest>
+          <latest>$splunk_upgrade_time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

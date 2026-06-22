@@ -1,0 +1,152 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Geo &amp; Source</label>
+  <description>Geographic distribution of WAF traffic and attackers.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="scope_tok" searchWhenChanged="true">
+      <label>Scope</label>
+      <choice value="*">All traffic</choice>
+      <choice value="is_attack=1">Attacks only</choice>
+      <choice value="blocked=1">Blocked only</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <map>
+        <title>Source IPs (cluster map)</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_lat_num=* src_long_num=*
+| geostats latfield=src_lat_num longfield=src_long_num count by src_country</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="mapping.map.center">(20,0)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerOpacity">0.85</option>
+      </map>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <single>
+        <title>Distinct countries</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ | stats dc(src_country)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Distinct cities</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ | stats dc(src_city)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Public sources</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_is_private=0 | stats dc(src_ip)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Private sources</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_is_private=1 | stats dc(src_ip)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Top countries</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_country=* | top limit=15 src_country</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top cities</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_city=* | top limit=15 src_city</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Country breakdown</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_country=*
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        dc(src_ip) AS sources
+        dc(attack_type) AS attack_types
+        by src_country
+| eval block_rate = round(blocked/requests*100, 1)
+| sort - requests
+| head 50</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Top attacker source IPs (geo enriched)</title>
+        <search>
+          <query>`safeline_waf` $scope_tok$ src_ip=*
+| stats count AS hits
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        values(attack_type) AS attack_types
+        values(severity) AS severities
+        latest(_time) AS last_seen
+        by src_ip src_country src_city src_lat src_long
+| eval last_seen = strftime(last_seen, "%F %T")
+| sort - attacks - hits
+| head 50</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+</form>

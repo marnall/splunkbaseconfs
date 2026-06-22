@@ -1,0 +1,272 @@
+<dashboard version="1.1" theme="light">
+    <label>Readiness</label>
+    <description>Environment readiness status for Alpha Level managed alert scoring. All checks must pass before enabling the puller.</description>
+
+    <row>
+        <panel>
+            <title>Checks</title>
+            <table>
+                <search>
+                    <query><![CDATA[| rest /servicesNS/-/TA-alphalevel-alert-refinery/storage/collections/config
+| search title IN ("alphalevel_scores", "alphalevel_readiness")
+| stats count as present
+| eval check_name = "kvstores_present", _key = check_name
+| eval status = if(present >= 2, "ok", "fail"), severity = "high"
+| eval last_run = now(), last_ok = if(status="ok", now(), null())
+| eval detail = "kvstores_present=" . present . "/2"
+| eval remediation = "Reinstall the TA or run splunk reload - the shipped collections.conf should create these automatically."
+| fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+| append [
+    | rest /servicesNS/-/TA-alphalevel-alert-refinery/data/props/lookups
+    | search stanza="source::*" attribute="LOOKUP-alphalevel_scores"
+    | stats count as wired
+    | eval check_name = "auto_lookup_wired", _key = check_name
+    | eval status = if(wired > 0, "ok", "fail"), severity = "high"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "auto_lookups_on_source_wildcard=" . wired
+    | eval remediation = "The shipped props.conf defines the auto-lookup on [source::*]. If missing, check for conflicting local/props.conf overrides."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search `alphalevel_sources` earliest=-24h latest=now
+    | stats count as events_seen
+    | eval check_name = "source_indexes_populated", _key = check_name
+    | eval status = case(events_seen > 0, "ok", events_seen == 0, "fail"), severity = "high"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "events_seen=" . events_seen . " in last 24h"
+    | eval remediation = "Update the alphalevel_sources macro (or alphalevel_custom_sources) to point at indexes that contain your alerts."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search `alphalevel_sources` earliest=-24h latest=now
+    | stats count by index, sourcetype
+    | stats values(sourcetype) as sourcetypes, sum(count) as total_events
+    | eval check_name = "sourcetype_coverage", _key = check_name
+    | eval status = if(total_events > 0, "ok", "warn"), severity = "medium"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "sourcetypes=" . mvjoin(sourcetypes, ",")
+    | eval remediation = "Confirm the listed sourcetypes are the ones Alpha Level should score."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search `alphalevel_sources` earliest=-24h latest=now
+    | head 5000
+    | `alphalevel_normalise`
+    | fieldsummary maxvals=0
+    | eventstats max(count) as total_events
+    | rename field as field_name
+    | lookup alphalevel_required_fields field as field_name OUTPUT required, min_non_null_pct
+    | where required="true"
+    | eval non_null_pct = round(100 * count / total_events, 1)
+    | eval field_ok = if(non_null_pct >= tonumber(min_non_null_pct), 1, 0)
+    | stats sum(field_ok) as ok_fields, count as total_fields,
+            values(eval(if(field_ok=0, field_name . "(" . tostring(non_null_pct) . "%)", null()))) as failing
+    | eval check_name = "schema_conformance", _key = check_name
+    | eval status = case(ok_fields = total_fields, "ok", ok_fields >= total_fields - 1, "warn", 1=1, "fail"), severity = "high"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "required_fields_passing=" . ok_fields . "/" . total_fields . if(isnotnull(failing), " failing=" . mvjoin(failing, ","), "")
+    | eval remediation = "Update alphalevel_normalise in local/macros.conf to map your SIEM fields to the required schema."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search index=`alphalevel_internal_index` sourcetype=alphalevel:heartbeat earliest=-1h
+    | stats max(_time) as last_heartbeat
+    | eval heartbeat_age_seconds = now() - last_heartbeat
+    | eval check_name = "puller_heartbeat", _key = check_name
+    | eval status = case(isnull(last_heartbeat), "fail", heartbeat_age_seconds < 900, "ok", heartbeat_age_seconds < 3600, "warn", 1=1, "fail"), severity = "high"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = if(isnull(last_heartbeat), "no heartbeat seen in last hour", "age=" . round(heartbeat_age_seconds, 0) . "s")
+    | eval remediation = "Check that the Alpha Level puller is enabled, egress IP can reach MGMT port 8089, and the HEC token is valid."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search index=`alphalevel_results_index` sourcetype=alphalevel:result earliest=-1h
+    | stats count as events, max(_time) as last_event
+    | eval last_event_age_seconds = now() - last_event
+    | eval check_name = "result_flow", _key = check_name
+    | eval status = case(events = 0, "warn", last_event_age_seconds < 1800, "ok", last_event_age_seconds < 7200, "warn", 1=1, "fail"), severity = "medium"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "events_last_hour=" . events . if(isnotnull(last_event), ", age=" . round(last_event_age_seconds,0) . "s", "")
+    | eval remediation = "If events=0: the puller is not running or HEC is dropping events. Cross-reference with the puller heartbeat check."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| append [
+    search `alphalevel_sources` earliest=-1h latest=now
+    | head 50
+    | eval hash_direct = sha256(_raw)
+    | eval raw_copy = _raw
+    | eval hash_roundtrip = sha256(raw_copy)
+    | eval match = if(hash_direct == hash_roundtrip, 1, 0)
+    | stats count as sampled, sum(match) as matched
+    | eval check_name = "hash_stability", _key = check_name
+    | eval status = case(sampled = 0, "unknown", matched = sampled, "ok", 1=1, "fail"), severity = "high"
+    | eval last_run = now(), last_ok = if(status="ok", now(), null())
+    | eval detail = "stable_hashes=" . matched . "/" . sampled
+    | eval remediation = "A process is mutating _raw after ingest. Inspect props.conf for _raw-mutating transforms."
+    | fields _key, check_name, status, severity, last_run, last_ok, detail, remediation
+]
+| eval status_icon = case(status="ok", "PASS", status="warn", "WARN", status="fail", "FAIL", 1=1, "?")
+| eval check_label = case(
+    check_name="kvstores_present", "KV stores",
+    check_name="auto_lookup_wired", "Auto-lookup",
+    check_name="source_indexes_populated", "Source indexes",
+    check_name="sourcetype_coverage", "Sourcetype coverage",
+    check_name="schema_conformance", "Schema conformance",
+    check_name="puller_heartbeat", "Puller heartbeat",
+    check_name="result_flow", "Result flow",
+    check_name="hash_stability", "Hash stability",
+    1=1, check_name)
+| eval last_run_str = strftime(last_run, "%Y-%m-%d %H:%M:%S")
+| eval last_ok_str = if(isnotnull(last_ok), strftime(last_ok, "%Y-%m-%d %H:%M:%S"), "-")
+| sort - severity status
+| table status_icon, check_label, severity, detail, last_run_str, last_ok_str, remediation
+| rename status_icon as "Status", check_label as "Check", severity as "Severity",
+         detail as "Detail", last_run_str as "Last run", last_ok_str as "Last OK",
+         remediation as "Remediation"]]></query>
+                    <earliest>-24h</earliest>
+                    <latest>now</latest>
+                </search>
+                <option name="count">20</option>
+                <option name="drilldown">cell</option>
+                <option name="wrap">true</option>
+            </table>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Overall</title>
+            <single>
+                <search>
+                    <query><![CDATA[| inputlookup alphalevel_readiness
+| stats count(eval(status="fail")) as failing,
+        count(eval(status="warn")) as warning,
+        count(eval(status="ok")) as ok,
+        count as total
+| eval label = case(failing > 0, "NOT READY", warning > 0, "DEGRADED", 1=1, "READY")
+| eval value = label . " (" . ok . "/" . total . ")"
+| fields value]]></query>
+                    <earliest>-15m</earliest>
+                    <latest>now</latest>
+                    <refresh>60s</refresh>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="colorBy">value</option>
+                <option name="useColors">1</option>
+                <option name="rangeColors">["0x65a637","0xf7bc38","0xd93f3c"]</option>
+                <option name="rangeValues">[0,0]</option>
+            </single>
+        </panel>
+
+        <panel>
+            <title>Failing checks</title>
+            <single>
+                <search>
+                    <query><![CDATA[| inputlookup alphalevel_readiness
+| stats count(eval(status="fail")) as failing
+| fields failing]]></query>
+                    <earliest>-15m</earliest>
+                    <latest>now</latest>
+                    <refresh>60s</refresh>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="rangeColors">["0x65a637","0xd93f3c"]</option>
+                <option name="rangeValues">[0]</option>
+                <option name="useColors">1</option>
+            </single>
+        </panel>
+
+        <panel>
+            <title>Last puller heartbeat</title>
+            <single>
+                <search>
+                    <query><![CDATA[index=`alphalevel_internal_index` sourcetype=alphalevel:heartbeat earliest=-1h
+| stats max(_time) as last_heartbeat
+| eval value = if(isnull(last_heartbeat), "never", tostring(round(now() - last_heartbeat, 0)) . "s ago")
+| fields value]]></query>
+                    <earliest>-1h</earliest>
+                    <latest>now</latest>
+                    <refresh>60s</refresh>
+                </search>
+                <option name="drilldown">none</option>
+            </single>
+        </panel>
+
+        <panel>
+            <title>Scored events (last hour)</title>
+            <single>
+                <search>
+                    <query><![CDATA[index=`alphalevel_results_index` sourcetype=alphalevel:result earliest=-1h
+| stats count as value]]></query>
+                    <earliest>-1h</earliest>
+                    <latest>now</latest>
+                    <refresh>60s</refresh>
+                </search>
+                <option name="drilldown">none</option>
+            </single>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Source coverage (last 24h)</title>
+            <chart>
+                <search>
+                    <query><![CDATA[`alphalevel_sources` earliest=-24h latest=now
+| timechart span=1h count by sourcetype useother=t limit=10]]></query>
+                    <earliest>-24h</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.chart.stackMode">stacked</option>
+                <option name="charting.legend.placement">bottom</option>
+            </chart>
+        </panel>
+
+        <panel>
+            <title>Scored events via HEC (last 24h)</title>
+            <chart>
+                <search>
+                    <query><![CDATA[index=`alphalevel_results_index` sourcetype=alphalevel:result earliest=-24h latest=now
+| timechart span=1h count by al_determination]]></query>
+                    <earliest>-24h</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.chart.stackMode">stacked</option>
+                <option name="charting.legend.placement">bottom</option>
+            </chart>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <title>Field conformance (sample of last 5,000 in-scope events)</title>
+            <table>
+                <search>
+                    <query><![CDATA[`alphalevel_sources` earliest=-24h latest=now
+| head 5000
+| `alphalevel_normalise`
+| fieldsummary maxvals=0
+| eventstats max(count) as total_events
+| rename field as field_name
+| lookup alphalevel_required_fields field as field_name OUTPUT required, min_non_null_pct, notes
+| where isnotnull(required)
+| eval non_null_pct = round(100 * count / total_events, 1)
+| eval status = case(required="true" AND non_null_pct >= tonumber(min_non_null_pct), "pass", required="true", "FAIL", non_null_pct >= tonumber(min_non_null_pct), "ok", 1=1, "low")
+| sort - required, - non_null_pct
+| table status, field_name, required, non_null_pct, min_non_null_pct, notes
+| rename status as "Status", field_name as "Field", required as "Required",
+         non_null_pct as "Non-null %", min_non_null_pct as "Target %", notes as "Notes"]]></query>
+                    <earliest>-24h</earliest>
+                    <latest>now</latest>
+                    <refresh>15m</refresh>
+                </search>
+                <option name="count">25</option>
+                <option name="wrap">true</option>
+            </table>
+        </panel>
+    </row>
+</dashboard>

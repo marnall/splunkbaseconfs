@@ -1,0 +1,3375 @@
+
+<dashboard version="2" theme="dark">
+    <label>Video Experience Dashboard</label>
+    <description>By Kollective Technology</description>
+    <definition><![CDATA[
+{
+	"title": "Video Experience Dashboard",
+	"description": "By Kollective Technology",
+	"inputs": {
+		"input_global_trp": {
+			"options": {
+				"defaultValue": "-24h@h,now",
+				"token": "global_time"
+			},
+			"title": "Global Time Range",
+			"type": "input.timerange"
+		},
+		"input_location": {
+			"type": "input.dropdown",
+			"title": "Location",
+			"options": {
+				"token": "location",
+				"defaultValue": "*",
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()"
+			},
+			"dataSources": {
+				"primary": "ds_location_list"
+			},
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"statics": [
+					[
+						"All"
+					],
+					[
+						"*"
+					]
+				],
+				"label": ">primary | seriesByName(\"locality_name\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"value": ">primary | seriesByName(\"locality_id\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			}
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "$global_time.earliest$",
+						"latest": "$global_time.latest$"
+					}
+				}
+			},
+			"ds.spl2": {
+				"options": {
+					"queryParameters": {
+						"latest": "$global_time.latest$",
+						"earliest": "$global_time.earliest$"
+					}
+				}
+			}
+		},
+		"visualizations": {
+			"global": {
+				"showProgressBar": true
+			}
+		}
+	},
+	"dataSources": {
+		"ds_location_list": {
+			"type": "ds.search",
+			"name": "location_list",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| dedup locality_id\n| fields locality_name, locality_id"
+			}
+		},
+		"ds_reach": {
+			"type": "ds.search",
+			"name": "reach",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| timechart span=1h sum(reach_count) as hourly_reach\n| stats max(hourly_reach) as \"Max Hourly Reach\""
+			}
+		},
+		"ds_views": {
+			"type": "ds.search",
+			"name": "views",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| timechart span=1h sum(view_count) as hourly_views\n| stats max(hourly_views) as \"Max Hourly Views\""
+			}
+		},
+		"ds_avg_qod": {
+			"type": "ds.search",
+			"name": "avg_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats sum(eval(qod_weighted_avg * qod_histogram_count)) as total, sum(qod_histogram_count) as count\n| eval avg_qod = total / count * 100\n| fields avg_qod"
+			}
+		},
+		"ds_avg_qoe": {
+			"type": "ds.search",
+			"name": "avg_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats sum(eval(qoe_weighted_avg * qoe_histogram_count)) as total, sum(qoe_histogram_count) as count\n| eval avg_qoe = total / count * 100\n| fields avg_qoe"
+			}
+		},
+		"ds_avg_qov": {
+			"type": "ds.search",
+			"name": "avg_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats sum(eval(qov_weighted_avg * qov_histogram_count)) as total, sum(qov_histogram_count) as count\n| eval avg_qov = total / count * 100\n| fields avg_qov"
+			}
+		},
+		"ds_avg_qoen": {
+			"type": "ds.search",
+			"name": "avg_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats sum(eval(qoen_weighted_avg * qoen_histogram_count)) as total, sum(qoen_histogram_count) as count\n| eval avg_qoen = total / count * 100\n| fields avg_qoen"
+			}
+		},
+		"ds_hist_qod": {
+			"type": "ds.search",
+			"name": "hist_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n|  `qox_class(qod_histogram_counts)`\n| stats sum(poor) as Poor, sum(fair) as Fair, sum(good) as Good, sum(excellent) as Excellent\n| table _time, Poor, Fair, Good, Excellent\n| transpose\n| rename column as \"Score Band\", \"row 1\" as \"Sessions\"\n| eval Category = 'Score Band'\n| table Category \"Score band\" Sessions"
+			}
+		},
+		"ds_hist_qoe": {
+			"type": "ds.search",
+			"name": "hist_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_class(qoe_histogram_counts)`\n| stats sum(poor) as Poor, sum(fair) as Fair, sum(good) as Good, sum(excellent) as Excellent\n| table _time, Poor, Fair, Good, Excellent\n| transpose\n| rename column as \"Score Band\", \"row 1\" as \"Sessions\"\n| eval Category = 'Score Band'\n| table Category \"Score band\" Sessions"
+			}
+		},
+		"ds_hist_qov": {
+			"type": "ds.search",
+			"name": "hist_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_class(qov_histogram_counts)`\n| stats \n  sum(poor) as Poor, \n  sum(fair) as Fair, \n  sum(good) as Good, \n  sum(excellent) as Excellent\n| table _time, Poor, Fair, Good, Excellent\n| transpose\n| rename column as \"Score Band\", \"row 1\" as \"Sessions\"\n| eval Category = 'Score Band'\n| table Category \"Score band\" Sessions"
+			}
+		},
+		"ds_hist_qoen": {
+			"type": "ds.search",
+			"name": "hist_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_class(qoen_histogram_counts)`\n| stats \n  sum(poor) as Poor, \n  sum(fair) as Fair, \n  sum(good) as Good, \n  sum(excellent) as Excellent\n| table _time, Poor, Fair, Good, Excellent\n| transpose\n| rename column as \"Score Band\", \"row 1\" as \"Sessions\"\n| eval Category = 'Score Band'\n| table Category \"Score band\" Sessions"
+			}
+		},
+		"ds_combined_timeline": {
+			"type": "ds.search",
+			"name": "combined_timeline",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| eval qod = round(qod_weighted_avg * 100, 1)\n| eval qoe = round(qoe_weighted_avg * 100, 1)\n| eval qov = round(qov_weighted_avg * 100, 1)\n| eval qoen = round(qoen_weighted_avg * 100, 1)\n| timechart span=1h \n  avg(qod) as \"QoD\" \n  avg(qoe) as \"QoE\" \n  avg(qov) as \"QoV\" \n  avg(qoen) as \"QoEn\""
+			}
+		},
+		"ds_reach_views_time": {
+			"type": "ds.search",
+			"name": "reach_views_time",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| timechart span=1h \n  sum(reach_count) as \"Reach\" \n  sum(view_count) as \"Views\" \n  sum(session_count) as \"Sessions\""
+			}
+		},
+		"ds_location_ranking": {
+			"type": "ds.search",
+			"name": "location_ranking",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats max(reach_count) as \"Max Hourly Reach\"\n        max(view_count) as \"Max Hourly Views\"\n        max(session_count) as \"Max Hourly Sessions\"\n        sum(eval(qoe_weighted_avg * qoe_histogram_count)) as qoe_t sum(qoe_histogram_count) as qoe_c\n        sum(eval(qod_weighted_avg * qod_histogram_count)) as qod_t sum(qod_histogram_count) as qod_c\n        sum(eval(qov_weighted_avg * qov_histogram_count)) as qov_t sum(qov_histogram_count) as qov_c\n        sum(eval(qoen_weighted_avg * qoen_histogram_count)) as qoen_t sum(qoen_histogram_count) as qoen_c\n        by locality_name\n| eval \"Avg Hourly QoE\" = round(qoe_t / qoe_c * 100, 1)\n| eval \"Avg Hourly QoD\" = round(qod_t / qod_c * 100, 1)\n| eval \"Avg Hourly QoV\" = round(qov_t / qov_c * 100, 1)\n| eval \"Avg Hourly QoEn\" = round(qoen_t / qoen_c * 100, 1)\n| rename locality_name as Location\n| table Location \"Max Hourly Reach\" \"Max Hourly Views\" \"Max Hourly Sessions\" \"Avg Hourly QoE\" \"Avg Hourly QoD\" \"Avg Hourly QoV\" \"Avg Hourly QoEn\"\n| sort -\"Max Hourly Views\""
+			}
+		},
+		"ds_app_breakdown": {
+			"type": "ds.search",
+			"name": "app_breakdown",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| stats max(reach_count) as \"Max Hourly Reach\"\n        max(view_count) as \"Max Hourly Views\"\n        max(session_count) as \"Max Hourly Sessions\"\n        sum(eval(qoe_weighted_avg * qoe_histogram_count)) as qoe_t sum(qoe_histogram_count) as qoe_c\n        sum(eval(qod_weighted_avg * qod_histogram_count)) as qod_t sum(qod_histogram_count) as qod_c\n        sum(eval(qov_weighted_avg * qov_histogram_count)) as qov_t sum(qov_histogram_count) as qov_c\n        sum(eval(qoen_weighted_avg * qoen_histogram_count)) as qoen_t sum(qoen_histogram_count) as qoen_c\n        by app_names\n| eval \"Avg Hourly QoE\" = round(qoe_t / qoe_c * 100, 1)\n| eval \"Avg Hourly QoD\" = round(qod_t / qod_c * 100, 1)\n| eval \"Avg Hourly QoV\" = round(qov_t / qov_c * 100, 1)\n| eval \"Avg Hourly QoEn\" = round(qoen_t / qoen_c * 100, 1)\n| rename app_names as Application\n| table Application \"Max Hourly Reach\" \"Max Hourly Views\" \"Max Hourly Sessions\" \"Avg Hourly QoE\" \"Avg Hourly QoD\" \"Avg Hourly QoV\" \"Avg Hourly QoEn\"\n| sort -\"Max Hourly Views\""
+			}
+		},
+		"ds_overview_heatmap_qod": {
+			"type": "ds.search",
+			"name": "overview_heatmap_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n| `qox_class(qod_histogram_counts)`\n| timechart span=1h sum(poor) as Poor, sum(fair) as Fair, sum(good) as Good, sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| table Time, Poor, Fair, Good, Excellent"
+			}
+		},
+		"ds_overview_heatmap_qoe": {
+			"type": "ds.search",
+			"name": "overview_heatmap_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_class(qoe_histogram_counts)`\n| timechart span=1h sum(poor) as Poor, sum(fair) as Fair, sum(good) as Good, sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| table Time, Poor, Fair, Good, Excellent"
+			}
+		},
+		"ds_overview_heatmap_qov": {
+			"type": "ds.search",
+			"name": "overview_heatmap_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_class(qov_histogram_counts)`\n| timechart span=1h \n  sum(poor) as Poor, \n  sum(fair) as Fair, \n  sum(good) as Good, \n  sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| table Time, Poor, Fair, Good, Excellent"
+			}
+		},
+		"ds_overview_heatmap_qoen": {
+			"type": "ds.search",
+			"name": "overview_heatmap_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_class(qoen_histogram_counts)`\n| timechart span=1h \n  sum(poor) as Poor, \n  sum(fair) as Fair, \n  sum(good) as Good, \n  sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| table Time, Poor, Fair, Good, Excellent"
+			}
+		},
+		"ds_stacked_qoe": {
+			"type": "ds.search",
+			"name": "stacked_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_class(qoe_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0"
+			}
+		},
+		"ds_pct_qoe": {
+			"type": "ds.search",
+			"name": "pct_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_quant(qoe_histogram_counts)`\n| `qox_wavg(qoe_histogram_counts)`\n| timechart span=1h \n  avg(wavg) as \"Avg\" \n  avg(p50) as \"P50 (Median)\" \n  avg(p95) as \"P95\" \n  avg(p99) as \"P99\""
+			}
+		},
+		"ds_dist_heatmap_qoe": {
+			"type": "ds.search",
+			"name": "dist_heatmap_qoe",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_class(qoe_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| fields - _time _span\n| table Time Poor Fair Good Excellent"
+			}
+		},
+		"ds_stacked_qod": {
+			"type": "ds.search",
+			"name": "stacked_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n| `qox_class(qod_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0"
+			}
+		},
+		"ds_pct_qod": {
+			"type": "ds.search",
+			"name": "pct_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n| `qox_quant(qod_histogram_counts)`\n| `qox_wavg(qod_histogram_counts)`\n| timechart span=1h \n  avg(wavg) as \"Avg\" \n  avg(p50) as \"P50 (Median)\" \n  avg(p95) as \"P95\" \n  avg(p99) as \"P99\""
+			}
+		},
+		"ds_dist_heatmap_qod": {
+			"type": "ds.search",
+			"name": "dist_heatmap_qod",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n| `qox_class(qod_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| fields - _time _span\n| table Time Poor Fair Good Excellent"
+			}
+		},
+		"ds_stacked_qov": {
+			"type": "ds.search",
+			"name": "stacked_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_class(qov_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0"
+			}
+		},
+		"ds_pct_qov": {
+			"type": "ds.search",
+			"name": "pct_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_quant(qov_histogram_counts)`\n| `qox_wavg(qov_histogram_counts)`\n| timechart span=1h \n  avg(wavg) as \"Avg\" \n  avg(p50) as \"P50 (Median)\" \n  avg(p95) as \"P95\" \n  avg(p99) as \"P99\""
+			}
+		},
+		"ds_dist_heatmap_qov": {
+			"type": "ds.search",
+			"name": "dist_heatmap_qov",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_class(qov_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| fields - _time _span\n| table Time Poor Fair Good Excellent"
+			}
+		},
+		"ds_stacked_qoen": {
+			"type": "ds.search",
+			"name": "stacked_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_class(qoen_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0"
+			}
+		},
+		"ds_pct_qoen": {
+			"type": "ds.search",
+			"name": "pct_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_quant(qoen_histogram_counts)`\n| `qox_wavg(qoen_histogram_counts)`\n| timechart span=1h \n  avg(wavg) as \"Avg\" \n  avg(p50) as \"P50 (Median)\" \n  avg(p95) as \"P95\" \n  avg(p99) as \"P99\""
+			}
+		},
+		"ds_dist_heatmap_qoen": {
+			"type": "ds.search",
+			"name": "dist_heatmap_qoen",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_class(qoen_histogram_counts)`\n| timechart span=1h \n   sum(poor) as Poor, \n   sum(fair) as Fair, \n   sum(good) as Good, \n   sum(excellent) as Excellent\n| fillnull value=0\n| eval Time = strftime(_time, \"%b %d %H:%M\")\n| fields - _time _span\n| table Time Poor Fair Good Excellent"
+			}
+		},
+		"ds_N8hWD2UO": {
+			"type": "ds.search",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoe_histogram_counts)\n| `qox_perc(qoe_histogram_counts)`\n| timechart span=1h \n   eval(round(avg(poor), 0)) as Poor, \n   eval(round(avg(fair), 0)) as Fair, \n   eval(round(avg(good), 0)) as Good, \n   eval(round(avg(excellent), 0)) as Excellent"
+			},
+			"name": "qoe_timeseries"
+		},
+		"ds_oirqCBzg": {
+			"type": "ds.search",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qod_histogram_counts)\n|  `qox_perc(qod_histogram_counts)`\n| timechart span=1h \n   eval(round(avg(poor), 0)) as Poor, \n   eval(round(avg(fair), 0)) as Fair, \n   eval(round(avg(good), 0)) as Good, \n   eval(round(avg(excellent), 0)) as Excellent"
+			},
+			"name": "qod_timeseries"
+		},
+		"ds_RrGHU6Iz": {
+			"type": "ds.search",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qov_histogram_counts)\n| `qox_perc(qov_histogram_counts)`\n| timechart span=1h \n   eval(round(avg(poor), 0)) as Poor, \n   eval(round(avg(fair), 0)) as Fair, \n   eval(round(avg(good), 0)) as Good, \n   eval(round(avg(excellent), 0)) as Excellent"
+			},
+			"name": "qov_timeseries"
+		},
+		"ds_jTiu6EPi": {
+			"type": "ds.search",
+			"options": {
+				"query": "| from datamodel:\"ECDN_location_performance\" \n| addinfo\n| where (\"$location$\" = \"*\" or locality_id = \"$location$\")\n| where isnotnull(qoen_histogram_counts)\n| `qox_perc(qoen_histogram_counts)`\n| timechart span=1h \n   eval(round(avg(poor), 0)) as Poor, \n   eval(round(avg(fair), 0)) as Fair, \n   eval(round(avg(good), 0)) as Good, \n   eval(round(avg(excellent), 0)) as Excellent"
+			},
+			"name": "qoen_timeseries"
+		}
+	},
+	"visualizations": {
+		"viz_reach": {
+			"type": "splunk.singlevalue",
+			"title": "Max Hourly Reach",
+			"dataSources": {
+				"primary": "ds_reach"
+			},
+			"description": "Unique viewers in the selected time window. Each viewer counted once."
+		},
+		"viz_views": {
+			"type": "splunk.singlevalue",
+			"title": "Max Hourly Views",
+			"dataSources": {
+				"primary": "ds_views"
+			},
+			"description": "Total viewing sessions. One viewer reconnecting counts as multiple views."
+		},
+		"viz_avg_qod": {
+			"type": "splunk.singlevalueradial",
+			"title": "Avg Hourly QoD (Delivery)",
+			"dataSources": {
+				"primary": "ds_avg_qod"
+			},
+			"options": {
+				"majorColor": "> majorValue | rangeValue(majorColorEditorConfig)"
+			},
+			"context": {
+				"majorColorEditorConfig": [
+					{
+						"value": "#D41F1F",
+						"to": 70
+					},
+					{
+						"value": "#D97A0D",
+						"from": 70,
+						"to": 80
+					},
+					{
+						"value": "#9D9F0D",
+						"from": 80,
+						"to": 90
+					},
+					{
+						"value": "#118832",
+						"from": 90
+					}
+				]
+			},
+			"description": "Avg delivery quality. Near-perfect scores confirm ECDN is working as expected."
+		},
+		"viz_avg_qoe": {
+			"type": "splunk.singlevalueradial",
+			"title": "Avg Hourly QoE (Experience)",
+			"dataSources": {
+				"primary": "ds_avg_qoe"
+			},
+			"options": {
+				"majorColor": "> majorValue | rangeValue(majorColorEditorConfig)"
+			},
+			"context": {
+				"majorColorEditorConfig": [
+					{
+						"value": "#D41F1F",
+						"to": 70
+					},
+					{
+						"value": "#D97A0D",
+						"from": 70,
+						"to": 80
+					},
+					{
+						"value": "#9D9F0D",
+						"from": 80,
+						"to": 90
+					},
+					{
+						"value": "#118832",
+						"from": 90
+					}
+				]
+			},
+			"description": "Avg playback smoothness. Low scores indicate buffering or stall issues."
+		},
+		"viz_avg_qov": {
+			"type": "splunk.singlevalueradial",
+			"title": "Avg Hourly QoV (Video)",
+			"dataSources": {
+				"primary": "ds_avg_qov"
+			},
+			"options": {
+				"majorColor": "> majorValue | rangeValue(majorColorEditorConfig)"
+			},
+			"context": {
+				"majorColorEditorConfig": [
+					{
+						"value": "#D41F1F",
+						"to": 70
+					},
+					{
+						"value": "#D97A0D",
+						"from": 70,
+						"to": 80
+					},
+					{
+						"value": "#9D9F0D",
+						"from": 80,
+						"to": 90
+					},
+					{
+						"value": "#118832",
+						"from": 90
+					}
+				]
+			},
+			"description": "Avg video quality. Influenced by viewer-side bandwidth and screen resolution."
+		},
+		"viz_avg_qoen": {
+			"type": "splunk.singlevalueradial",
+			"title": "Avg Hourly QoEn (Engagement)",
+			"dataSources": {
+				"primary": "ds_avg_qoen"
+			},
+			"options": {
+				"majorColor": "> majorValue | rangeValue(majorColorEditorConfig)"
+			},
+			"context": {
+				"majorColorEditorConfig": [
+					{
+						"value": "#D41F1F",
+						"to": 70
+					},
+					{
+						"value": "#D97A0D",
+						"from": 70,
+						"to": 80
+					},
+					{
+						"value": "#9D9F0D",
+						"from": 80,
+						"to": 90
+					},
+					{
+						"value": "#118832",
+						"from": 90
+					}
+				]
+			},
+			"description": "Avg viewer engagement. Scores below 70 warrant investigation."
+		},
+		"viz_hist_qod": {
+			"type": "splunk.bar",
+			"title": "QoD Session Distribution (Delivery)",
+			"dataSources": {
+				"primary": "ds_hist_qod"
+			},
+			"options": {
+				"xAxisTitleText": "Score Band",
+				"yAxisTitleText": "Sessions",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"xAxisLabelVisibility": "auto",
+				"yAxisAbbreviation": "auto",
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Sessions by delivery score band. Healthy deployments cluster in Excellent."
+		},
+		"viz_hist_qoe": {
+			"type": "splunk.bar",
+			"title": "QoE Session Distribution (Experience)",
+			"dataSources": {
+				"primary": "ds_hist_qoe"
+			},
+			"options": {
+				"xAxisTitleText": "Score Band",
+				"yAxisTitleText": "Sessions",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"xAxisLabelVisibility": "auto",
+				"yAxisAbbreviation": "auto",
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Sessions by experience score band. Left-weighted bars signal issues."
+		},
+		"viz_hist_qov": {
+			"type": "splunk.bar",
+			"title": "QoV Session Distribution (Video)",
+			"dataSources": {
+				"primary": "ds_hist_qov"
+			},
+			"options": {
+				"xAxisTitleText": "Score Band",
+				"yAxisTitleText": "Sessions",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"xAxisLabelVisibility": "auto",
+				"yAxisAbbreviation": "auto",
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Sessions by video quality band. Poor scores often indicate endpoint bandwidth constraints."
+		},
+		"viz_hist_qoen": {
+			"type": "splunk.bar",
+			"title": "QoEn Session Distribution (Engagement)",
+			"dataSources": {
+				"primary": "ds_hist_qoen"
+			},
+			"options": {
+				"xAxisTitleText": "Score Band",
+				"yAxisTitleText": "Sessions",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"xAxisLabelVisibility": "auto",
+				"yAxisAbbreviation": "auto",
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Sessions by engagement band. Poor scores may reflect content rather than delivery."
+		},
+		"viz_combined_timeline": {
+			"type": "splunk.line",
+			"title": "All Metrics Over Time (QoE, QoD, QoV, QoEn)",
+			"dataSources": {
+				"primary": "ds_combined_timeline"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Score (0-100)",
+				"nullValueDisplay": "connect",
+				"yAxisMaxValue": 100,
+				"xAxisTitleText": "Time"
+			}
+		},
+		"viz_reach_views_time": {
+			"type": "splunk.line",
+			"title": "Hourly Reach, Views and Sessions Over Time",
+			"dataSources": {
+				"primary": "ds_reach_views_time"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Count",
+				"nullValueDisplay": "connect",
+				"xAxisTitleText": "Time"
+			}
+		},
+		"viz_location_ranking": {
+			"type": "splunk.table",
+			"title": "Location Performance Ranking",
+			"dataSources": {
+				"primary": "ds_location_ranking"
+			},
+			"options": {
+				"count": 100,
+				"dataOverlayMode": "heatmap"
+			}
+		},
+		"viz_app_breakdown": {
+			"type": "splunk.table",
+			"title": "Performance by Application",
+			"dataSources": {
+				"primary": "ds_app_breakdown"
+			},
+			"options": {
+				"count": 50,
+				"dataOverlayMode": "heatmap"
+			}
+		},
+		"viz_overview_heatmap_qod": {
+			"type": "splunk.table",
+			"title": "QoD Distribution Heatmap (Delivery)",
+			"dataSources": {
+				"primary": "ds_overview_heatmap_qod"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"headerVisibility": "fixed",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Poor\") | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Fair\") | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Good\") | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Excellent\") | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Delivery quality by hour. Red or orange cells warrant investigation.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_overview_heatmap_qoe": {
+			"type": "splunk.table",
+			"title": "QoE Distribution Heatmap (Experience)",
+			"dataSources": {
+				"primary": "ds_overview_heatmap_qoe"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Poor\") | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Fair\") | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Good\") | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Excellent\") | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				},
+				"headerVisibility": "fixed"
+			},
+			"description": "Experience quality by hour. Correlate red cells with event schedule.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_overview_heatmap_qov": {
+			"type": "splunk.table",
+			"title": "QoV Distribution Heatmap (Video)",
+			"dataSources": {
+				"primary": "ds_overview_heatmap_qov"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Poor\") | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Fair\") | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Good\") | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Excellent\") | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				},
+				"headerVisibility": "fixed"
+			},
+			"description": "Video quality by hour. Peak-hour degradation may indicate bandwidth saturation.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_overview_heatmap_qoen": {
+			"type": "splunk.table",
+			"title": "QoEn Distribution Heatmap (Engagement)",
+			"dataSources": {
+				"primary": "ds_overview_heatmap_qoen"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"headerVisibility": "fixed",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Poor\") | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Fair\") | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Good\") | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Excellent\") | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Engagement by hour. Early Poor scores often reflect late joiners.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_stacked_qoe": {
+			"type": "splunk.area",
+			"title": "QoE Session Distribution Over Time (Experience)",
+			"dataSources": {
+				"primary": "ds_stacked_qoe"
+			},
+			"options": {
+				"stackMode": "stacked",
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Sessions",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				},
+				"xAxisTitleVisibility": "hide"
+			},
+			"description": "Experience band distribution per hour. Green bands dominant = healthy event."
+		},
+		"viz_pct_qoe": {
+			"type": "splunk.line",
+			"title": "QoE Percentile Trends - Avg, P50, P95, P99 (Experience)",
+			"dataSources": {
+				"primary": "ds_pct_qoe"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Score (0-100)",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#3B82F6",
+					"#10B981",
+					"#F59E0B",
+					"#EF4444"
+				],
+				"yAxisMaxValue": 100,
+				"xAxisTitleText": "Time",
+				"xAxisTitleVisibility": "hide"
+			},
+			"description": "Experience percentiles per hour. P95/P99 show the floor for worst-affected viewers."
+		},
+		"viz_dist_heatmap_qoe": {
+			"type": "splunk.table",
+			"title": "QoE Distribution Density Heatmap - Bands x Hours (Experience)",
+			"dataSources": {
+				"primary": "ds_dist_heatmap_qoe"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Poor') | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Fair') | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Good') | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Excellent') | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Experience density per hour. Darker green = more sessions at that quality level.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_stacked_qod": {
+			"type": "splunk.area",
+			"title": "QoD Session Distribution Over Time (Delivery)",
+			"dataSources": {
+				"primary": "ds_stacked_qod"
+			},
+			"options": {
+				"stackMode": "stacked",
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Sessions",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				},
+				"xAxisTitleVisibility": "hide"
+			},
+			"description": "Delivery band distribution over time. Any shift from Excellent is worth investigating."
+		},
+		"viz_pct_qod": {
+			"type": "splunk.line",
+			"title": "QoD Percentile Trends - Avg, P50, P95, P99 (Delivery)",
+			"dataSources": {
+				"primary": "ds_pct_qod"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Score (0-100)",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#3B82F6",
+					"#10B981",
+					"#F59E0B",
+					"#EF4444"
+				],
+				"yAxisMaxValue": 100,
+				"xAxisTitleText": "Time",
+				"xAxisTitleVisibility": "hide"
+			},
+			"description": "Delivery percentiles over time. Widening P50-P95 gap signals location degradation."
+		},
+		"viz_dist_heatmap_qod": {
+			"type": "splunk.table",
+			"title": "QoD Distribution Density Heatmap - Bands x Hours (Delivery)",
+			"dataSources": {
+				"primary": "ds_dist_heatmap_qod"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Poor') | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Fair') | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Good') | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Excellent') | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Delivery density per hour. Healthy deployments show darkest cells in Excellent.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_stacked_qov": {
+			"type": "splunk.area",
+			"title": "QoV Session Distribution Over Time (Video)",
+			"dataSources": {
+				"primary": "ds_stacked_qov"
+			},
+			"options": {
+				"stackMode": "stacked",
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Sessions",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Video quality distribution over time. Watch for Fair/Poor spikes at event start."
+		},
+		"viz_pct_qov": {
+			"type": "splunk.line",
+			"title": "QoV Percentile Trends - Avg, P50, P95, P99 (Video)",
+			"dataSources": {
+				"primary": "ds_pct_qov"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Score (0-100)",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#3B82F6",
+					"#10B981",
+					"#F59E0B",
+					"#EF4444"
+				],
+				"yAxisMaxValue": 100,
+				"xAxisTitleText": "Time"
+			},
+			"description": "Video percentiles over time. Sharp P99 drop points to a persistent cohort issue."
+		},
+		"viz_dist_heatmap_qov": {
+			"type": "splunk.table",
+			"title": "QoV Distribution Density Heatmap - Bands x Hours (Video)",
+			"dataSources": {
+				"primary": "ds_dist_heatmap_qov"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Poor') | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Fair') | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Good') | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Excellent') | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Video density per hour. Bimodal patterns (dark green and red) are common in QoV.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_stacked_qoen": {
+			"type": "splunk.area",
+			"title": "QoEn Session Distribution Over Time (Engagement)",
+			"dataSources": {
+				"primary": "ds_stacked_qoen"
+			},
+			"options": {
+				"stackMode": "stacked",
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Sessions",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#D41F1F",
+					"#D97A0D",
+					"#9D9F0D",
+					"#118832"
+				],
+				"seriesColorsByField": {
+					"Poor": "#D41F1F",
+					"Fair": "#D97A0D",
+					"Good": "#9D9F0D",
+					"Excellent": "#118832"
+				}
+			},
+			"description": "Engagement distribution over time. Reveals when viewer drop-off occurs."
+		},
+		"viz_pct_qoen": {
+			"type": "splunk.line",
+			"title": "QoEn Percentile Trends - Avg, P50, P95, P99 (Engagement)",
+			"dataSources": {
+				"primary": "ds_pct_qoen"
+			},
+			"options": {
+				"legendDisplay": "bottom",
+				"yAxisTitleText": "Score (0-100)",
+				"nullValueDisplay": "connect",
+				"seriesColors": [
+					"#3B82F6",
+					"#10B981",
+					"#F59E0B",
+					"#EF4444"
+				],
+				"yAxisMaxValue": 100,
+				"xAxisTitleText": "Time"
+			},
+			"description": "Engagement percentiles. P50 below 70 means more than half of viewers disengaged."
+		},
+		"viz_dist_heatmap_qoen": {
+			"type": "splunk.table",
+			"title": "QoEn Distribution Density Heatmap - Bands x Hours (Engagement)",
+			"dataSources": {
+				"primary": "ds_dist_heatmap_qoen"
+			},
+			"options": {
+				"count": 200,
+				"dataOverlayMode": "none",
+				"columnColors": {
+					"Poor": ">Poor | rangeValue(poorColorConfig)",
+					"Fair": ">Fair | rangeValue(fairColorConfig)",
+					"Good": ">Good | rangeValue(goodColorConfig)",
+					"Excellent": ">Excellent | rangeValue(excellentColorConfig)"
+				},
+				"headerTextAlignment": "center",
+				"columnFormat": {
+					"Poor": {
+						"data": "> table | seriesByName(\"Poor\") | formatByType(PoorColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Poor') | rangeValue(PoorRowColorsEditorConfig)"
+					},
+					"Fair": {
+						"data": "> table | seriesByName(\"Fair\") | formatByType(FairColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Fair') | rangeValue(FairRowColorsEditorConfig)"
+					},
+					"Good": {
+						"data": "> table | seriesByName(\"Good\") | formatByType(GoodColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Good') | rangeValue(GoodRowColorsEditorConfig)"
+					},
+					"Excellent": {
+						"data": "> table | seriesByName(\"Excellent\") | formatByType(ExcellentColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName('Excellent') | rangeValue(ExcellentRowColorsEditorConfig)"
+					}
+				}
+			},
+			"description": "Engagement density per hour. Wide Poor/Excellent split confirms bimodal audience.",
+			"context": {
+				"poorColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFCDD2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#EF9A9A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#C62828",
+						"from": 50
+					}
+				],
+				"fairColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#FFE0B2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#FFAB40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#E65100",
+						"from": 50
+					}
+				],
+				"goodColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#F9FBE7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#C5E1A5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558B2F",
+						"from": 50
+					}
+				],
+				"excellentColorConfig": [
+					{
+						"value": "#FFFFFF",
+						"to": 1
+					},
+					{
+						"value": "#C8E6C9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66BB6A",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1B5E20",
+						"from": 50
+					}
+				],
+				"PoorColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"PoorRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffcdd2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ef9a9a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#c62828",
+						"from": 50
+					}
+				],
+				"FairColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"FairRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#ffe0b2",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#ffab40",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#e65100",
+						"from": 50
+					}
+				],
+				"GoodColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"GoodRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#f9fbe7",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#c5e1a5",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#558b2f",
+						"from": 50
+					}
+				],
+				"ExcellentColumnFormatEditorConfig": {
+					"number": {
+						"thousandSeparated": false,
+						"unitPosition": "after"
+					}
+				},
+				"ExcellentRowColorsEditorConfig": [
+					{
+						"value": "#ffffff",
+						"to": 1
+					},
+					{
+						"value": "#c8e6c9",
+						"from": 1,
+						"to": 10
+					},
+					{
+						"value": "#66bb6a",
+						"from": 10,
+						"to": 50
+					},
+					{
+						"value": "#1b5e20",
+						"from": 50
+					}
+				]
+			}
+		},
+		"viz_definitions": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## Metric Definitions\n\n- **Reach** — Unique viewers. Each viewer counted once regardless of how many sessions they started.\n- **Views** — Total viewing sessions. A viewer who reconnects or re-joins contributes multiple Views.\n- **QoE (Quality of Experience)** — Measures playback smoothness: buffering and stalls during viewing, with a smaller weight on startup time.\n- **QoD (Quality of Delivery)** — Measures whether video data transfers completed successfully within two seconds.\n- **QoV (Quality of Video)** — Measures visual quality: whether resolution was sufficient for screen size and remained stable throughout playback.\n- **QoEn (Quality of Engagement)** — Measures active viewer attention: video visible on screen with audio on or captions enabled during playback.\n\n**Score Tiers:** Excellent 90+ | Good 80-89 | Fair 70-79 | Poor below 70\n\n## How to Read the Distribution Heatmaps\n\nEach heatmap on this tab shows session counts broken down by quality band (Poor, Fair, Good, Excellent) per hour.\n\n- **Rows** — each row is one hour in the selected time window.\n- **Columns** — Poor | Fair | Good | Excellent quality bands.\n- **Cell values** — number of sessions in that quality band during that hour.\n- **Color intensity** — darker cells = more sessions at that quality level. White or near-white = zero or very few sessions.\n\n**What to look for:**\n\n- A healthy event shows the Excellent column consistently darkest across all hours.\n- A red or orange Poor column that deepens during specific hours pinpoints exactly when a delivery issue occurred.\n- Sudden shifts mid-event (a row that looks different from the rows above and below it) are worth investigating against event timing."
+			}
+		},
+		"viz_definitions_trends": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## Trends and Analysis — Reference\n\n**Quality Metrics Timeline — Series Key**\n\n- 🟢 **QoE (Experience)**\n- 🔵 **QoD (Delivery)**\n- 🟡 **QoV (Video)**\n- 🔴 **QoEn (Engagement)**\n\n**Reach, Views and Sessions Timeline — Series Key**\n\n- 🔵 **Reach** — Unique viewers in the selected time window.\n- 🟢 **Views** — Total viewing sessions. A viewer who reconnects contributes multiple Views.\n- 🟡 **Sessions** — Individual player connections. Multiple sessions per viewer may indicate reconnects.\n\n**Metric Definitions**\n\n- **QoE (Quality of Experience)** — Measures playback smoothness: buffering and stalls during viewing, with a smaller weight on startup time.\n- **QoD (Quality of Delivery)** — Measures whether video data transfers completed successfully within two seconds.\n- **QoV (Quality of Video)** — Measures visual quality: whether resolution was sufficient for screen size and remained stable throughout playback.\n- **QoEn (Quality of Engagement)** — Measures active viewer attention: video visible on screen with audio on or captions enabled during playback.\n\n**Score Tiers:** Excellent 90+ | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_reading_guide_qoe": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — QOE Distribution\n\n**Stacked Area Chart** — each color band shows how many sessions fell into that quality tier per hour. A healthy event keeps the Excellent (top) band dominant. Watch for the Poor band growing during specific hours.\n\n**Percentile Trends** — Avg, P50 (median), P95, and P99 plotted over time. P50 tracks the typical viewer. P95 and P99 reveal the experience floor for your worst-affected viewers — useful for SLA conversations. A widening gap between P50 and P99 signals a subset of sessions in persistent trouble.\n\n---\n\n**Distribution Density Heatmap** — rows are hours, columns are quality bands (Poor, Fair, Good, Excellent), cell values are session counts. Darker = more sessions at that quality level.\n\n- Read across a row to see how sessions were distributed in a given hour.\n- Read down a column to see whether a quality band was consistently present or appeared only at specific times.\n- Compare with the stacked chart above: the stacked chart shows proportions, this heatmap shows raw session counts.\n\n---\n\n**QoE note:** Experience scores are primarily driven by buffering and stalls. Poor sessions clustered at the start of an event often indicate slow startup; Poor sessions mid-event suggest a delivery disruption.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_reading_guide_qod": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — QOD Distribution\n\n**Stacked Area Chart** — each color band shows how many sessions fell into that quality tier per hour. A healthy event keeps the Excellent (top) band dominant. Watch for the Poor band growing during specific hours.\n\n**Percentile Trends** — Avg, P50 (median), P95, and P99 plotted over time. P50 tracks the typical viewer. P95 and P99 reveal the experience floor for your worst-affected viewers — useful for SLA conversations. A widening gap between P50 and P99 signals a subset of sessions in persistent trouble.\n\n---\n\n**Distribution Density Heatmap** — rows are hours, columns are quality bands (Poor, Fair, Good, Excellent), cell values are session counts. Darker = more sessions at that quality level.\n\n- Read across a row to see how sessions were distributed in a given hour.\n- Read down a column to see whether a quality band was consistently present or appeared only at specific times.\n- Compare with the stacked chart above: the stacked chart shows proportions, this heatmap shows raw session counts.\n\n---\n\n**QoD note:** Delivery scores should be consistently Excellent for a well-configured ECDN deployment. Any sustained Poor or Fair band is a delivery event worth investigating — check the location ranking table for the affected site.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_reading_guide_qov": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — QOV Distribution\n\n**Stacked Area Chart** — each color band shows how many sessions fell into that quality tier per hour. A healthy event keeps the Excellent (top) band dominant. Watch for the Poor band growing during specific hours.\n\n**Percentile Trends** — Avg, P50 (median), P95, and P99 plotted over time. P50 tracks the typical viewer. P95 and P99 reveal the experience floor for your worst-affected viewers — useful for SLA conversations. A widening gap between P50 and P99 signals a subset of sessions in persistent trouble.\n\n---\n\n**Distribution Density Heatmap** — rows are hours, columns are quality bands (Poor, Fair, Good, Excellent), cell values are session counts. Darker = more sessions at that quality level.\n\n- Read across a row to see how sessions were distributed in a given hour.\n- Read down a column to see whether a quality band was consistently present or appeared only at specific times.\n- Compare with the stacked chart above: the stacked chart shows proportions, this heatmap shows raw session counts.\n\n---\n\n**QoV note:** Video quality is sensitive to viewer-side bandwidth and screen resolution. A bimodal pattern — Excellent and Poor both present simultaneously — is common and often reflects a mix of high and low bandwidth viewers at the same location.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_reading_guide_qoen": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — QOEN Distribution\n\n**Stacked Area Chart** — each color band shows how many sessions fell into that quality tier per hour. A healthy event keeps the Excellent (top) band dominant. Watch for the Poor band growing during specific hours.\n\n**Percentile Trends** — Avg, P50 (median), P95, and P99 plotted over time. P50 tracks the typical viewer. P95 and P99 reveal the experience floor for your worst-affected viewers — useful for SLA conversations. A widening gap between P50 and P99 signals a subset of sessions in persistent trouble.\n\n---\n\n**Distribution Density Heatmap** — rows are hours, columns are quality bands (Poor, Fair, Good, Excellent), cell values are session counts. Darker = more sessions at that quality level.\n\n- Read across a row to see how sessions were distributed in a given hour.\n- Read down a column to see whether a quality band was consistently present or appeared only at specific times.\n- Compare with the stacked chart above: the stacked chart shows proportions, this heatmap shows raw session counts.\n\n---\n\n**QoEn note:** Engagement scores track whether viewers kept video visible and audio on. A bimodal pattern is expected — viewers are either fully engaged or not. Poor engagement early in an event often reflects late joiners; sustained Poor scores suggest content or format issues.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_definitions_location": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — Location Performance\n\nThis table ranks all network locations by Views (descending) and shows all four quality scores side by side.\n\n- **Reach** — unique viewers at this location.\n- **Views** — total viewing sessions at this location.\n- **Sessions** — individual player connections. Higher than Views indicates reconnects.\n- **QoD, QoE, QoV, QoEn** — quality scores for this location. The heatmap overlay colors cells automatically: green = Excellent, stepping through yellow and orange to red = Poor.\n\n**What to look for:**\n\n- Locations with high Reach but low QoE or QoD are your highest-impact problem sites — many viewers affected.\n- Locations with low QoEn but healthy QoD and QoE indicate an engagement or content issue, not a delivery problem.\n- A large gap between Reach and Views at a location may indicate viewers who connected but dropped before watching.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_definitions_app": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## How to Read This Tab — Performance by Application\n\nThis table breaks down quality scores and viewer counts by video application (Microsoft Teams, Webex, Kollective KCaster, etc.).\n\n- **Reach** — unique viewers using this application.\n- **Views** — total viewing sessions via this application.\n- **Avg QoD, QoE, QoV, QoEn** — quality scores for sessions delivered through this application. Heatmap coloring highlights which applications are underperforming at a glance.\n\n**What to look for:**\n\n- Quality differences across applications at the same event can indicate app-specific delivery or codec issues.\n- An application with low QoEn relative to others may reflect differences in how that platform handles video visibility or audio state reporting.\n- Comparing Reach distribution across applications shows which platforms your audience is actually using.\n\n**Score Tiers:** Excellent 90-100 | Good 80-89 | Fair 70-79 | Poor below 70"
+			}
+		},
+		"viz_2MVTLDye": {
+			"type": "splunk.column",
+			"options": {
+				"y": "> primary | frameBySeriesNames('_time','Poor','Fair','Good','Excellent')",
+				"xAxisTitleVisibility": "hide",
+				"yAxisMax": 100,
+				"legendDisplay": "right",
+				"stackMode": "stacked",
+				"seriesColorsByField": {
+					"Excellent": "#53a051",
+					"Good": "#f8be44",
+					"Poor": "#f1813f",
+					"Fair": "#dc4e41"
+				}
+			},
+			"dataSources": {
+				"primary": "ds_N8hWD2UO"
+			},
+			"title": "QoE Distribution Heatmap (Experience)",
+			"description": "Experience quality by hour."
+		},
+		"viz_o6lgtmKK": {
+			"type": "splunk.column",
+			"options": {
+				"y": "> primary | frameBySeriesNames('_time','Poor','Fair','Good','Excellent')",
+				"xAxisTitleVisibility": "hide",
+				"yAxisMax": 100,
+				"legendDisplay": "right",
+				"stackMode": "stacked",
+				"seriesColorsByField": {
+					"Excellent": "#53a051",
+					"Good": "#f8be44",
+					"Fair": "#f1813f",
+					"Poor": "#dc4e41"
+				}
+			},
+			"dataSources": {
+				"primary": "ds_oirqCBzg"
+			},
+			"title": "QoD Distribution Heatmap (Delivery)",
+			"description": "Delivery quality by hour."
+		},
+		"viz_JmFfnzSZ": {
+			"type": "splunk.column",
+			"options": {
+				"y": "> primary | frameBySeriesNames('_time','Excellent','Good','Fair','Poor')",
+				"xAxisTitleVisibility": "hide",
+				"yAxisMax": 100,
+				"legendDisplay": "right",
+				"stackMode": "stacked",
+				"seriesColorsByField": {
+					"Excellent": "#53a051",
+					"Good": "#f8be44",
+					"Fair": "#f1813f",
+					"Poor": "#dc4e41"
+				}
+			},
+			"dataSources": {
+				"primary": "ds_RrGHU6Iz"
+			},
+			"title": "QoV Distribution Heatmap (Video)",
+			"description": "Video quality by hour."
+		},
+		"viz_fvJFRqPV": {
+			"type": "splunk.column",
+			"options": {
+				"y": "> primary | frameBySeriesNames('_time','Poor','Fair','Good','Excellent')",
+				"xAxisTitleVisibility": "hide",
+				"yAxisMax": 100,
+				"legendDisplay": "right",
+				"stackMode": "stacked",
+				"seriesColorsByField": {
+					"Excellent": "#53a051",
+					"Good": "#f8be44",
+					"Fair": "#f1813f",
+					"Poor": "#dc4e41"
+				}
+			},
+			"dataSources": {
+				"primary": "ds_jTiu6EPi"
+			},
+			"title": "QoEn Distribution Heatmap (Engagement)",
+			"description": "Engagement by hour."
+		}
+	},
+	"layout": {
+		"globalInputs": [
+			"input_global_trp",
+			"input_location"
+		],
+		"layoutDefinitions": {
+			"layout_1": {
+				"type": "grid",
+				"options": {
+					"height": 1980,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_reach",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 720,
+							"h": 180
+						}
+					},
+					{
+						"item": "viz_views",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 0,
+							"w": 720,
+							"h": 180
+						}
+					},
+					{
+						"item": "viz_avg_qov",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 180,
+							"w": 360,
+							"h": 288
+						}
+					},
+					{
+						"item": "viz_avg_qoen",
+						"type": "block",
+						"position": {
+							"x": 1080,
+							"y": 180,
+							"w": 360,
+							"h": 288
+						}
+					},
+					{
+						"item": "viz_avg_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 180,
+							"w": 360,
+							"h": 288
+						}
+					},
+					{
+						"item": "viz_avg_qod",
+						"type": "block",
+						"position": {
+							"x": 360,
+							"y": 180,
+							"w": 360,
+							"h": 288
+						}
+					},
+					{
+						"item": "viz_2MVTLDye",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 468,
+							"w": 1440,
+							"h": 283
+						}
+					},
+					{
+						"item": "viz_overview_heatmap_qoe",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 751,
+							"w": 720,
+							"h": 276
+						}
+					},
+					{
+						"item": "viz_hist_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 751,
+							"w": 720,
+							"h": 276
+						}
+					},
+					{
+						"item": "viz_definitions",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 2797,
+							"w": 1440,
+							"h": 396
+						}
+					},
+					{
+						"item": "viz_overview_heatmap_qod",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 1334,
+							"w": 720,
+							"h": 278
+						}
+					},
+					{
+						"item": "viz_o6lgtmKK",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1027,
+							"w": 1440,
+							"h": 307
+						}
+					},
+					{
+						"item": "viz_hist_qod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1334,
+							"w": 720,
+							"h": 278
+						}
+					},
+					{
+						"item": "viz_overview_heatmap_qov",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 1928,
+							"w": 720,
+							"h": 264
+						}
+					},
+					{
+						"item": "viz_JmFfnzSZ",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1612,
+							"w": 1440,
+							"h": 316
+						}
+					},
+					{
+						"item": "viz_hist_qov",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1928,
+							"w": 720,
+							"h": 264
+						}
+					},
+					{
+						"item": "viz_hist_qoen",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 2514,
+							"w": 720,
+							"h": 283
+						}
+					},
+					{
+						"item": "viz_overview_heatmap_qoen",
+						"type": "block",
+						"position": {
+							"x": 720,
+							"y": 2514,
+							"w": 720,
+							"h": 283
+						}
+					},
+					{
+						"item": "viz_fvJFRqPV",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 2192,
+							"w": 1440,
+							"h": 322
+						}
+					}
+				]
+			},
+			"layout_2": {
+				"type": "grid",
+				"options": {
+					"height": 980,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_combined_timeline",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 380
+						}
+					},
+					{
+						"item": "viz_reach_views_time",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 380,
+							"w": 1440,
+							"h": 320
+						}
+					},
+					{
+						"item": "viz_definitions_trends",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 700,
+							"w": 1440,
+							"h": 280
+						}
+					}
+				]
+			},
+			"layout_5": {
+				"type": "grid",
+				"options": {
+					"height": 1220,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_stacked_qov",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 320
+						}
+					},
+					{
+						"item": "viz_pct_qov",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 320,
+							"w": 1440,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_dist_heatmap_qov",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 620,
+							"w": 1440,
+							"h": 340
+						}
+					},
+					{
+						"item": "viz_reading_guide_qov",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 960,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			},
+			"layout_6": {
+				"type": "grid",
+				"options": {
+					"height": 1220,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_stacked_qoen",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 320
+						}
+					},
+					{
+						"item": "viz_pct_qoen",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 320,
+							"w": 1440,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_dist_heatmap_qoen",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 620,
+							"w": 1440,
+							"h": 340
+						}
+					},
+					{
+						"item": "viz_reading_guide_qoen",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 960,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			},
+			"layout_7": {
+				"type": "grid",
+				"options": {
+					"height": 1460,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_location_ranking",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 1200
+						}
+					},
+					{
+						"item": "viz_definitions_location",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 1200,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			},
+			"layout_8": {
+				"type": "grid",
+				"options": {
+					"height": 860,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_app_breakdown",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 600
+						}
+					},
+					{
+						"item": "viz_definitions_app",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 600,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			},
+			"layout_3": {
+				"type": "grid",
+				"options": {
+					"height": 1220,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_stacked_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 320
+						}
+					},
+					{
+						"item": "viz_pct_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 320,
+							"w": 1440,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_dist_heatmap_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 620,
+							"w": 1440,
+							"h": 340
+						}
+					},
+					{
+						"item": "viz_reading_guide_qoe",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 960,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			},
+			"layout_4": {
+				"type": "grid",
+				"options": {
+					"height": 1220,
+					"width": 1440
+				},
+				"structure": [
+					{
+						"item": "viz_stacked_qod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 1440,
+							"h": 320
+						}
+					},
+					{
+						"item": "viz_pct_qod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 320,
+							"w": 1440,
+							"h": 300
+						}
+					},
+					{
+						"item": "viz_dist_heatmap_qod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 620,
+							"w": 1440,
+							"h": 340
+						}
+					},
+					{
+						"item": "viz_reading_guide_qod",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 960,
+							"w": 1440,
+							"h": 260
+						}
+					}
+				]
+			}
+		},
+		"options": {},
+		"tabs": {
+			"items": [
+				{
+					"label": "Overview",
+					"layoutId": "layout_1"
+				},
+				{
+					"label": "Trends and Analysis",
+					"layoutId": "layout_2"
+				},
+				{
+					"label": "QoE Distribution",
+					"layoutId": "layout_3"
+				},
+				{
+					"label": "QoD Distribution",
+					"layoutId": "layout_4"
+				},
+				{
+					"label": "QoV Distribution",
+					"layoutId": "layout_5"
+				},
+				{
+					"label": "QoEn Distribution",
+					"layoutId": "layout_6"
+				},
+				{
+					"label": "Location Performance",
+					"layoutId": "layout_7"
+				},
+				{
+					"label": "App Performance",
+					"layoutId": "layout_8"
+				}
+			]
+		}
+	}
+}
+    ]]></definition>
+</dashboard>

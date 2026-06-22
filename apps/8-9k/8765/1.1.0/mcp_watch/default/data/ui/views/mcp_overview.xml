@@ -1,0 +1,132 @@
+<dashboard version="1.1">
+  <label>MCP Overview</label>
+  <description>At-a-glance picture of MCP / AI-agent activity in this Splunk instance over the last 24 hours.</description>
+
+  <!--
+    Performance pattern: a single Base Search drives the KPI panels below.
+    Splunk dispatches the heavy `mcp_audit_searches` once; each panel post-processes.
+  -->
+  <search id="base_24h">
+    <query>`mcp_audit_searches` earliest=-24h latest=now | `mcp_spl_extract` | `mcp_antipattern_check` | `mcp_risk_score`</query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+  </search>
+
+  <row>
+    <panel>
+      <title>MCP liveness — UP (fresh + active) · IDLE (fresh, no queries last hour) · STALE (no heartbeat ≥ 6 min)</title>
+      <table>
+        <search>
+          <query>| `mcp_heartbeats`
+            | append [ search `mcp_audit_searches` earliest=-1h latest=now | stats count | eval _activity_marker=1 ]
+            | eventstats max(count) as activity_1h
+            | where isnull(_activity_marker)
+            | fillnull value=0 activity_1h
+            | eval status=case(fresh=0,"○ STALE", fresh=1 AND activity_1h>0,"● UP", true(),"◐ IDLE"),
+                   last_heartbeat=strftime(last_seen,"%Y-%m-%d %H:%M:%S")
+            | table mcp_id status kind host age_seconds last_heartbeat
+            | sort mcp_id</query>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <format type="color" field="status">
+          <colorPalette type="map">{"● UP":#53a051,"◐ IDLE":#f8be34,"○ STALE":#dc4e41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Last MCP activity</title>
+      <single>
+        <search>
+          <query>search `internal_index` sourcetype=splunkd_access earliest=-24h | lookup mcp_user_agents useragent_pattern AS useragent OUTPUT client_label | where isnotnull(client_label) OR like(uri_path,"%/services/mcp%") | stats count as c latest(_time) as last_seen | eval mins=if(c=0,-1,round((now()-last_seen)/60)) | fields mins</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">min ago</option>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[15,60]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Queries (last 24h)</title>
+      <single>
+        <search base="base_24h">
+          <query>stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["0x53a051","0x0877a6"]</option>
+        <option name="rangeValues">[1]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Active MCP users</title>
+      <single>
+        <search base="base_24h">
+          <query>stats dc(user) as users</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Risky queries % · MEDIUM+ (24h)</title>
+      <single>
+        <search base="base_24h">
+          <query>eval _r=if(risk_score>=3,1,0) | stats count as total sum(_r) as risky | eval pct=if(total>0,round(100*risky/total),0) | fields pct</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">%</option>
+        <option name="unitPosition">after</option>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xd93f3c"]</option>
+        <option name="rangeValues">[10,40]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Unique SPL bodies</title>
+      <single>
+        <search base="base_24h">
+          <query>stats dc(spl_body) as bodies</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Query volume — 15-min buckets</title>
+      <chart>
+        <search base="base_24h">
+          <query>timechart span=15m count by user useother=f</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 5 SPL bodies (24h)</title>
+      <table>
+        <search base="base_24h">
+          <query>stats count by spl_body | sort - count | head 5</query>
+        </search>
+        <option name="drilldown">cell</option>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

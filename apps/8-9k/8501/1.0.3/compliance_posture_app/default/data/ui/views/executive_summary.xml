@@ -1,0 +1,216 @@
+<dashboard version="1.1" theme="dark" hideTimeRangePicker="true">
+  <label>Executive Summary</label>
+  <description>Leadership-ready CIS Benchmark compliance posture — overall scores, system distribution, and benchmark coverage (shows latest scan per host/benchmark/profile only)</description>
+
+  <!-- BASE SEARCH: runs once, all panels post-process from this -->
+  <search id="base_latest">
+    <query>`ciscat_latest` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <!-- Row 1: Overall KPIs -->
+  <row>
+    <panel>
+      <title>Overall Compliance Score</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats mean(compliance_score) AS score | eval score=round(score, 1) | table score</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0xd93f3c","0xf7bc38","0x65a637"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Systems Assessed</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats dc(asset_hostname)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Benchmarks Applied</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats dc(benchmark_title)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Rules Reviewed</title>
+      <single>
+        <search base="base_latest">
+          <query>| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Failed Rules</title>
+      <single>
+        <search base="base_latest">
+          <query>| search result="fail" OR result="error" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xf7bc38","0xd93f3c"]</option>
+        <option name="rangeValues">[0,50]</option>
+        <option name="height">150</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Result Distribution + Compliance by Host -->
+  <row>
+    <panel>
+      <title>Compliance Status Distribution</title>
+      <chart>
+        <search base="base_latest">
+          <query>| eval result_display=case(
+    result=="pass", "Pass",
+    result=="fail", "Fail",
+    result=="error", "Error",
+    result=="notapplicable", "Not Applicable",
+    result=="informational", "Manual Review",
+    true(), result)
+| stats count by result_display</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.fieldColors">{"Pass": 0x65A637, "Fail": 0xD93F3C, "Error": 0xF7BC38, "Not Applicable": 0x6DB7C6, "Manual Review": 0x8E929B}</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Compliance Score by System</title>
+      <chart>
+        <search base="base_latest">
+          <query>| stats mean(compliance_score) AS score by asset_hostname
+| eval score=round(score, 1)
+| sort - score
+| rename asset_hostname AS Host, score AS "Compliance Score %"</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisTitleX.text">Compliance Score %</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 3: System Compliance Summary Table -->
+  <row>
+    <panel>
+      <title>System Compliance Summary</title>
+      <table>
+        <search base="base_latest">
+          <query>| stats max(compliance_score) AS "Compliance Score %",
+        count(eval(result="pass")) AS Pass,
+        count(eval(result="fail" OR result="error")) AS Fail,
+        count(eval(result="notapplicable" OR result="informational")) AS Excluded,
+        count AS Total
+  by asset_hostname, asset_ip, benchmark_title, profile
+| eval "Compliance Score %"=round('Compliance Score %', 1)
+| rename asset_hostname AS Host, asset_ip AS "IP Address", benchmark_title AS Benchmark, profile AS Profile
+| sort - "Compliance Score %"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Compliance Score %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="60" midValue="80" maxValue="100"></scale>
+        </format>
+        <format type="color" field="Fail">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="10" maxValue="30"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 4: Compliance by Benchmark -->
+  <row>
+    <panel>
+      <title>Compliance by Benchmark</title>
+      <table>
+        <search base="base_latest">
+          <query>| stats count(eval(result="pass")) AS Pass,
+        count(eval(result="fail" OR result="error")) AS Fail,
+        count(eval(result="notapplicable")) AS "Not Applicable",
+        count(eval(result="informational")) AS "Manual Review",
+        count AS Total,
+        dc(asset_hostname) AS Hosts,
+        mean(compliance_score) AS "Avg Score %"
+  by benchmark_title
+| eval "Avg Score %"=round('Avg Score %', 1)
+| rename benchmark_title AS Benchmark
+| sort - Fail</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Avg Score %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="60" midValue="80" maxValue="100"></scale>
+        </format>
+        <format type="color" field="Fail">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="25" maxValue="75"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 5: Benchmark + Profile Distribution -->
+  <row>
+    <panel>
+      <title>Benchmark Distribution</title>
+      <chart>
+        <search base="base_latest">
+          <query>| stats dc(asset_hostname) AS Hosts by benchmark_title
+| rename benchmark_title AS Benchmark</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">250</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Profile Distribution (Level 1 vs Level 2)</title>
+      <chart>
+        <search base="base_latest">
+          <query>| eval profile_level=case(
+    like(profile, "Level 2%"), "Level 2",
+    like(profile, "Level 1%"), "Level 1",
+    true(), profile)
+| stats dc(asset_hostname) AS Hosts by profile_level
+| rename profile_level AS Profile</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">250</option>
+      </chart>
+    </panel>
+  </row>
+
+</dashboard>

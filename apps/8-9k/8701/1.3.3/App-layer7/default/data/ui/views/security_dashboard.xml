@@ -1,0 +1,148 @@
+<form version="1.1" theme="dark" script="layer7_refresh_now_v133.js">
+  <label>Layer Seven Security</label>
+  <description>Dashboard for SAP alerts, vulnerabilities and security notes.</description>
+  <init><set token="refresh_interval">900</set><set token="form.refresh_interval">900</set></init>
+
+  <fieldset submitButton="false">
+    <input type="radio" token="view">
+      <label>Area</label>
+      <choice value="alerts">Alerts</choice>
+      <choice value="vulns">Vulnerabilities</choice>
+      <choice value="notes">Security Notes</choice>
+      <default>alerts</default>
+      <change>
+        <condition value="alerts"><set token="show_alerts">true</set><unset token="show_vulns"></unset><unset token="show_notes"></unset></condition>
+        <condition value="vulns"><unset token="show_alerts"></unset><set token="show_vulns">true</set><unset token="show_notes"></unset></condition>
+        <condition value="notes"><unset token="show_alerts"></unset><unset token="show_vulns"></unset><set token="show_notes">true</set></condition>
+      </change>
+    </input>
+
+    <input type="time" token="t1"><label>Time range</label><default><earliest>-7d@d</earliest><latest>now</latest></default></input>
+    <input type="dropdown" token="tok_env" searchWhenChanged="true"><label>Environment</label><choice value="*">All</choice><default>*</default>
+      <search><query>`l7_base` | `l7_normalize` | stats count by Environment | sort Environment | rename Environment as SYSTEMENVIRONMENTTEXT | fields SYSTEMENVIRONMENTTEXT</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>SYSTEMENVIRONMENTTEXT</fieldForLabel><fieldForValue>SYSTEMENVIRONMENTTEXT</fieldForValue></input>
+    <input type="dropdown" token="tok_system" searchWhenChanged="true"><label>System</label><choice value=".*">All Systems</choice><default>.*</default>
+      <search><query>`l7_base` | `l7_normalize` | `l7_env_filter($tok_env$)` | where isnotnull(System) AND len(trim(System))&gt;0 | stats count by System | sort System | fields System</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>System</fieldForLabel><fieldForValue>System</fieldForValue></input>
+    <input type="multiselect" token="tok_status" searchWhenChanged="true"><label>Status</label><choice value=".*">All Statuses</choice><choice value="Open">Open</choice><choice value="New">New</choice><choice value="Risk Accepted">Risk Accepted</choice><choice value="Risk Mitigated">Risk Mitigated</choice><choice value="Remediation Scheduled">Remediation Scheduled</choice><choice value="Remediation In Progress">Remediation In Progress</choice><choice value="Implemented">Implemented</choice><choice value="Postponed">Postponed</choice><choice value="To Be Implemented">To Be Implemented</choice><choice value="Resolved">Resolved</choice><choice value="Closed">Closed</choice><choice value="Irrelevant">Irrelevant</choice><default>.*</default><delimiter>|</delimiter></input>
+    <input type="radio" token="refresh_interval" searchWhenChanged="true">
+          <label>Data Refresh</label>
+          <choice value="300">5 mins</choice>
+          <choice value="600">10 mins</choice>
+          <choice value="900">15 mins</choice>
+          <default>900</default>
+          <initialValue>900</initialValue>
+        </input>
+</fieldset>
+
+  <!-- ALERTS -->
+  <row depends="$show_alerts$">
+    <panel><title>Total Alerts</title><single><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_system=$tok_system$&amp;form.tok_env=$tok_env$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option></single></panel>
+    <panel><title>High Priority Alerts (Priority 7–8)</title><single><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | where PriorityNum&gt;=7 AND PriorityNum&lt;=8 | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_system=$tok_system$&amp;form.tok_env=$tok_env$&amp;form.tok_severity=High&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option></single></panel>
+    <panel><title>Critical (Priority ≥ 9)</title><single><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | where PriorityNum&gt;=9 | stats count</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_system=$tok_system$&amp;form.tok_env=$tok_env$&amp;form.tok_severity=Critical&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option></single></panel>
+  </row>
+  <row depends="$show_alerts$"><panel><title>Alerts Over Time by System</title><chart><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | timechart span=1h limit=5 count by System</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_system=$tok_system$&amp;form.tok_env=$tok_env$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown><option name="charting.chart">line</option><option name="charting.axisTitleX.text">_TIME</option><option name="charting.axisTitleY.text">COUNT</option><option name="charting.legend.placement">right</option></chart></panel></row>
+  <row depends="$show_alerts$">
+    <panel><title>Top Systems (by Alert Volume)</title><table><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | stats count by System System_Type Environment | sort - count | head 15</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_system=$row.System$&amp;form.tok_env=$tok_env$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown></table></panel>
+    <panel><title>Top Alerts</title><table><search><query>`l7_alerts` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | eval Alert_Name=coalesce(Alert_Name, Event_Name) | stats count by Alert_Name Alert_Type PriorityNum Environment | sort - count | head 20 | rename PriorityNum as Priority</query><earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><link>investigations?form.tok_alert_name=$row.Alert_Name$&amp;form.tok_system=$tok_system$&amp;form.tok_env=$tok_env$&amp;form.t1.earliest=$t1.earliest$&amp;form.t1.latest=$t1.latest$</link></drilldown></table></panel>
+  </row>
+
+  <!-- VULNS -->
+  <row depends="$show_vulns$">
+    <panel><title>Total Vulnerabilities</title><single><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option><drilldown><set token="tok_vuln_search">*</set></drilldown></single></panel>
+    <panel><title>High Vulnerabilities</title><single><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where PRIORITY="High" | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#4b86b4</option><drilldown><set token="tok_vuln_search">PRIORITY=&quot;High&quot;</set></drilldown></single></panel>
+    <panel><title>Critical Vulnerabilities</title><single><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where PRIORITY="Critical" | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#eaba27</option><drilldown><set token="tok_vuln_search">PRIORITY=&quot;Critical&quot;</set></drilldown></single></panel>
+  </row>
+  <row depends="$show_vulns$"><panel><title>Vulnerabilities by System</title><chart><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | stats count by SYSTEM | sort - count | head 5</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="charting.chart">bar</option><option name="charting.axisTitleX.text">COUNT</option><option name="charting.axisTitleY.text">SYSTEM</option><option name="charting.axisTitleX.visibility">visible</option><option name="charting.legend.placement">right</option><drilldown><set token="tok_vuln_search">System=&quot;$click.value$&quot;</set></drilldown></chart></panel></row>
+  <row depends="$show_vulns$"><panel><title>Vulnerabilities by Priority</title><chart><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(PRIORITY) AND PRIORITY!="Null" AND PRIORITY!="" | eval Priority_Order=case(PRIORITY="Critical",1,PRIORITY="High",2,PRIORITY="Medium",3,PRIORITY="Low",4,true(),5) | stats count by PRIORITY Priority_Order | sort Priority_Order | fields - Priority_Order</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="charting.chart">bar</option><option name="charting.legend.placement">none</option><drilldown><set token="tok_vuln_search">PRIORITY=&quot;$click.value$&quot;</set></drilldown></chart></panel></row>
+  <row depends="$show_vulns$">
+    <panel><title>Top Systems (by Vulnerability Volume)</title><table><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | stats count as COUNT by SYSTEM SYSTEM_TYPE ENVIRONMENT | sort - COUNT | head 15 | rename SYSTEM as System SYSTEM_TYPE as System_Type</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><set token="tok_vuln_search">System=&quot;$row.System$&quot;</set></drilldown></table></panel>
+    <panel><title>Top Vulnerabilities</title><table><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(CHECKID) AND CHECKID!="" AND isnotnull(VULNERABILITY) AND VULNERABILITY!="" | stats count as COUNT by VULNERABILITY CHECKID SYSTEM SYSTEM_TYPE CATEGORY PRIORITY STATUS ENVIRONMENT | sort - COUNT | head 100 | table VULNERABILITY CHECKID SYSTEM SYSTEM_TYPE CATEGORY PRIORITY STATUS ENVIRONMENT COUNT</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><set token="tok_vuln_search">CHECKID=&quot;$row.CHECKID$&quot; SYSTEM=&quot;$row.SYSTEM$&quot; ENVIRONMENT=&quot;$row.ENVIRONMENT$&quot;</set></drilldown></table></panel>
+  </row>
+  <row depends="$show_vulns$"><panel depends="$tok_vuln_search$"><title>Vulnerability Details</title><table><search><query>`l7_vulns_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | search $tok_vuln_search$ | where isnotnull(CHECKID) AND CHECKID!="" | table VULNERABILITY CHECKID CATEGORY PRIORITY SYSTEM SYSTEM_TYPE STATUS ENVIRONMENT</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search></table></panel></row>
+  <!-- NOTES -->
+  <row depends="$show_notes$">
+    <panel><title>Total Security Notes</title><single><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#ff5a4f</option><drilldown><set token="tok_note_filter">*</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></single></panel>
+    <panel><title>Hot News Security Notes</title><single><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where PRIORITY="Hot News" | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#4b86b4</option><drilldown><set token="tok_note_filter">PRIORITY=&quot;Hot News&quot;</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></single></panel>
+    <panel><title>High Security Notes</title><single><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where PRIORITY="High" | stats count</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="colorMode">block</option><option name="useColors">1</option><option name="singleValueColor">#eaba27</option><drilldown><set token="tok_note_filter">PRIORITY=&quot;High&quot;</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></single></panel>
+  </row>
+  <row depends="$show_notes$"><panel><title>Security Notes by System</title><chart><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(SYSTEM) | stats count by SYSTEM | sort - count | head 5 | rename SYSTEM as System</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="charting.chart">bar</option><option name="charting.axisTitleX.text">SYSTEM</option><option name="charting.axisTitleY.text">COUNT</option><option name="charting.legend.placement">none</option><drilldown><set token="tok_note_filter">SYSTEM=&quot;$click.value$&quot;</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></chart></panel></row>
+  <row depends="$show_notes$"><panel><title>Security Notes by Priority</title><chart><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(PRIORITY) | eval Priority_Order=case(PRIORITY="Hot News",1,PRIORITY="High",2,PRIORITY="Medium",3,PRIORITY="Low",4,true(),5) | stats count by PRIORITY Priority_Order | sort Priority_Order | fields - Priority_Order</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><option name="charting.chart">bar</option><option name="charting.axisTitleX.text">PRIORITY</option><option name="charting.axisTitleY.text">COUNT</option><option name="charting.legend.placement">none</option><option name="charting.fieldColors">{"Hot News":0xFF0000,"High":0xFFFF00,"Medium":0x0000FF,"Low":0x00FF00}</option><drilldown><set token="tok_note_filter">PRIORITY=&quot;$click.value$&quot;</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></chart></panel></row>
+  <row depends="$show_notes$">
+    <panel><title>Top Security Notes (by System Volume)</title><table><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(SYSTEM) | stats count as COUNT by SYSTEM SYSTEM_TYPE ENVIRONMENT | sort - COUNT | head 15 | rename SYSTEM as System SYSTEM_TYPE as System_Type</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><set token="tok_note_filter">SYSTEM=&quot;$row.System$&quot;</set><set token="tok_note_drilldown">1</set><unset token="tok_note_desc"></unset><unset token="tok_note_number"></unset></drilldown></table></panel>
+    <panel><title>Top Security Notes</title><table><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | where isnotnull(NOTE_DESCRIPTION) AND NOTE_DESCRIPTION!="" | stats count as COUNT by NOTE_DESCRIPTION NOTE_NUMBER SYSTEM SYSTEM_TYPE PRIORITY STATUS ENVIRONMENT | sort - COUNT | head 100 | table NOTE_DESCRIPTION NOTE_NUMBER SYSTEM SYSTEM_TYPE PRIORITY STATUS ENVIRONMENT COUNT</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search><drilldown><set token="tok_note_number">$row.NOTE_NUMBER$</set><set token="tok_note_desc">$row.NOTE_DESCRIPTION$</set><set token="tok_note_filter">NOTE_NUMBER=&quot;$row.NOTE_NUMBER$&quot; SYSTEM=&quot;$row.SYSTEM$&quot; ENVIRONMENT=&quot;$row.ENVIRONMENT$&quot;</set><set token="tok_note_drilldown">1</set></drilldown></table></panel>
+  </row>
+  <row depends="$show_notes$,$tok_note_drilldown$"><panel><title>Security Note Details</title><table><search><query>`l7_notes_current` | `l7_env_filter($tok_env$)` | `l7_system_filter($tok_system$)` | `l7_status_filter($tok_status$)` | search $tok_note_filter$ | where isnotnull(NOTE_DESCRIPTION) AND NOTE_DESCRIPTION!="" | table NOTE_DESCRIPTION NOTE_NUMBER PRIORITY SYSTEM SYSTEM_TYPE STATUS ENVIRONMENT</query><earliest>0</earliest><latest>now</latest>
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search></table></panel></row>
+</form>

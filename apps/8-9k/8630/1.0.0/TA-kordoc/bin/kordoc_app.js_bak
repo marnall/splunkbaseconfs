@@ -1,0 +1,35 @@
+import { parse } from "kordoc";
+import { readFileSync, existsSync } from "fs";
+// 1. Splunk 명령어에서 파일 경로 인수 추출
+const args = process.argv.slice(2);
+let filePath = "";
+for (const arg of args) {
+    if (arg.startsWith('file=')) {
+        filePath = arg.split('=')[1].replace(/^["']|["']$/g, '');
+    }
+}
+async function processDocument() {
+    // 2. Splunk가 읽을 수 있도록 첫 줄에 CSV 필드 헤더를 출력
+    console.log("filename,success,markdown,error_message");
+    if (!filePath || !existsSync(filePath)) {
+        console.log(`"${filePath}",false,"","File not found"`);
+        return;
+    }
+    try {
+        const buffer = readFileSync(filePath);
+        // 3. kordoc 파서 실행
+        const result = await parse(buffer.buffer);
+        if (result.success) {
+            // 마크다운 내의 큰따옴표 이스케이프 처리 (Splunk 테이블 오류 방지)
+            const escapedMarkdown = result.markdown.replace(/"/g, '""');
+            console.log(`"${filePath}",true,"${escapedMarkdown}",""`);
+        }
+        else {
+            console.log(`"${filePath}",false,"","Parsing result returned false"`);
+        }
+    }
+    catch (error) {
+        console.log(`"${filePath}",false,"","${error.message}"`);
+    }
+}
+processDocument();

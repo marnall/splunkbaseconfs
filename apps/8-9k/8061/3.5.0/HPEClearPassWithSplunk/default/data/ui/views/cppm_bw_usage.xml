@@ -1,0 +1,64 @@
+<form version="1.1">
+  <label>BandWidth Usage</label>
+
+  <fieldset autoRun="True" submitButton="false">
+    <input type="time" searchWhenChanged="true">
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+   <input type="dropdown" token="server">
+      <label>ClearPass Server</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+  </fieldset>
+  
+    <row>
+    <single>
+      <search><query>
+	eventtype="cppm-radius" acct_status_type=* cphost=$server$ |stats earliest(_time) as start, earliest(acct_input_octets) as startinp, earliest(acct_output_octets) as startout, latest(_time) as stop, latest(acct_input_octets) as stopinp, latest(acct_output_octets) as stopout by session_id|eval diffinp=stopinp-startinp |eval diffout=stopout-startout |eval difftime=stop-start|stats sum(diffinp) as totin, sum(diffout) as totout, sum(difftime) as tottime |eval totalkbps=round((totin+totout)/(tottime*1024),2)|fields totalkbps
+      </query></search>
+      <option name="underLabel">KBPS</option>
+    </single>
+    <single>
+      <search><query>
+	eventtype="cppm-radius" acct_status_type=* cphost=$server$ |stats earliest(_time) as start, earliest(acct_input_octets) as startinp, latest(_time) as stop, latest(acct_input_octets) as stopinp by session_id|eval diffinp=stopinp-startinp |stats sum(diffinp) as totinp|eval totalinpmb=round(totinp/(1024*1024),2)|fields totalinpmb
+      </query></search>
+      <option name="underLabel">Input MB</option>
+    </single>
+    <single>
+      <search><query>
+	eventtype="cppm-radius" acct_status_type=* cphost=$server$ |stats earliest(_time) as start, earliest(acct_output_octets) as startout, latest(_time) as stop, latest(acct_output_octets) as stopout by session_id|eval diffout=stopout-startout |stats sum(diffout) as totout|eval totaloutmb=round(totout/(1024*1024),2)|fields totaloutmb
+      </query></search>
+      <option name="underLabel">Output MB</option>
+    </single>
+
+    </row>
+    <row>
+    <chart>
+      <title>Top Bandwidth Users MB</title>
+      <search><query>
+	eventtype="cppm-radius" cphost=$server$ acct_status_type=*|stats earliest(acct_input_octets) as startinp, earliest(acct_output_octets) as startout, latest(acct_input_octets) as stopinp, latest(acct_output_octets) as stopout  by session_id,user_name|eval diffinpout=(stopout+stopinp-startinp-startout)/(1024*1024)|fields user_name, diffinpout|stats sum(diffinpout) as suminpout by user_name| sort -suminpout | head 10
+      </query></search>
+      <option name="charting.chart">column</option>
+    </chart>
+    </row>
+    <row>
+    <chart>
+      <title>Bandwidth Usage by Users MB</title>
+      <search><query>
+	eventtype="cppm-radius" cphost=$server$ acct_status_type=* |fillnull value=0 acct_input_octets| fillnull value acct_output_octets| eval inpout=(acct_input_octets+acct_output_octets)/(1024*1024)|fields _time, user_name, inpout|timechart span=1h useother=f avg(inpout) by user_name
+      </query></search>
+      <option name="charting.axisY.scale">log</option>
+      <option name="charting.chart">line</option>
+    </chart>
+    </row>
+
+</form>

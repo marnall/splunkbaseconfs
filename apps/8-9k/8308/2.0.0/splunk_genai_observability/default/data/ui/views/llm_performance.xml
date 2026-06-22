@@ -1,0 +1,240 @@
+<form version="1.1" theme="dark">
+  <label>LLM Performance</label>
+  <description>Deep dive into LLM model performance - latency, throughput, tokens, and efficiency metrics</description>
+  <!-- Performance KPIs -->
+  <!-- Latency Charts -->
+  <!-- Token Analysis -->
+  <!-- Model Comparison -->
+  <!-- Efficiency Metrics -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="model_filter" searchWhenChanged="true">
+      <label>Model</label>
+      <choice value="*">All Models</choice>
+      <default>*</default>
+      <search>
+        <query>`genai_llm_spans` | stats count by model_name | sort - count</query>
+        <earliest>-7d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>model_name</fieldForLabel>
+      <fieldForValue>model_name</fieldForValue>
+    </input>
+    <input type="dropdown" token="provider_filter" searchWhenChanged="true">
+      <label>Provider</label>
+      <choice value="*">All Providers</choice>
+      <default>*</default>
+      <search>
+        <query>`genai_llm_spans` | stats count by model_provider | sort - count</query>
+        <earliest>-7d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>model_provider</fieldForLabel>
+      <fieldForValue>model_provider</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Requests</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x006d9c"]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Latency</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.duration_ms) as avg from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ | eval avg = round(avg, 0)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">ms</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[2000,5000]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>P95 Latency</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true perc95(GenAI_Span.duration_ms) as p95 from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ | eval p95 = round(p95, 0)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">ms</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[3000,8000]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Throughput</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as total from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ | eval rpm = round(total / 60, 1)</query>
+          <earliest>-1h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">req/min</option>
+        <option name="rangeColors">["0x006d9c"]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Tokens/sec</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.output_tokens) as total from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ | eval tps = round(total / 3600, 0)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x006d9c"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Error Rate</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as total_requests sum(GenAI_Span.is_error) as error_count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ | eval error_rate=round((error_count/total_requests)*100,2) | fields error_rate</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[2,5]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Latency Distribution Over Time</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true median(GenAI_Span.duration_ms) perc75(GenAI_Span.duration_ms) perc90(GenAI_Span.duration_ms) perc95(GenAI_Span.duration_ms) perc99(GenAI_Span.duration_ms) from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by _time span=1h | timechart span=1h median(GenAI_Span.duration_ms) as P50 perc75(GenAI_Span.duration_ms) as P75 perc90(GenAI_Span.duration_ms) as P90 perc95(GenAI_Span.duration_ms) as P95 perc99(GenAI_Span.duration_ms) as P99</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Latency (ms)</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Latency Histogram</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by GenAI_Span.latency_bucket | rename GenAI_Span.latency_bucket as latency_bucket | sort latency_bucket</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Latency Bucket</option>
+        <option name="charting.axisTitleY.text">Count</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Token Usage Over Time</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) sum(GenAI_Span.output_tokens) from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by _time span=1h | timechart span=1h sum(GenAI_Span.input_tokens) as "Input Tokens" sum(GenAI_Span.output_tokens) as "Output Tokens"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Tokens per Request Distribution</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by GenAI_Span.token_bucket | rename GenAI_Span.token_bucket as token_bucket</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Token Bucket</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Model Performance Comparison</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as requests avg(GenAI_Span.duration_ms) as avg_latency perc50(GenAI_Span.duration_ms) as p50_latency perc95(GenAI_Span.duration_ms) as p95_latency perc99(GenAI_Span.duration_ms) as p99_latency avg(GenAI_Span.input_tokens) as avg_input avg(GenAI_Span.output_tokens) as avg_output sum(GenAI_Span.is_error) as errors from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by GenAI_Span.model_name GenAI_Span.model_provider | rename GenAI_Span.* as * | eval error_rate = round((errors/requests)*100, 2) | eval avg_latency = round(avg_latency, 0) | eval p50_latency = round(p50_latency, 0) | eval p95_latency = round(p95_latency, 0) | eval p99_latency = round(p99_latency, 0) | eval avg_input = round(avg_input, 0) | eval avg_output = round(avg_output, 0) | sort - requests | table model_name, model_provider, requests, avg_latency, p50_latency, p95_latency, p99_latency, avg_input, avg_output, error_rate | rename model_name as "Model", model_provider as "Provider", requests as "Requests", avg_latency as "Avg (ms)", p50_latency as "P50 (ms)", p95_latency as "P95 (ms)", p99_latency as "P99 (ms)", avg_input as "Avg Input", avg_output as "Avg Output", error_rate as "Error %"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Error %">
+          <colorPalette type="list">[#53A051,#F8BE34,#F1813F,#DC4E41]</colorPalette>
+          <scale type="threshold">1,3,5</scale>
+        </format>
+        <format type="color" field="P95 (ms)">
+          <colorPalette type="list">[#53A051,#F8BE34,#F1813F,#DC4E41]</colorPalette>
+          <scale type="threshold">2000,5000,10000</scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Output Tokens per Second (Generation Speed)</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true avg(GenAI_Span.tokens_per_sec) from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by _time span=1h GenAI_Span.model_name | timechart span=1h avg(GenAI_Span.tokens_per_sec) as "Tokens/sec" by GenAI_Span.model_name</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Tokens/sec</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Time to First Token (TTFT) Estimate</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true avg(GenAI_Span.ttft_estimate) from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.model_provider=$provider_filter$ by _time span=1h GenAI_Span.model_name | timechart span=1h avg(GenAI_Span.ttft_estimate) as "Est. TTFT (ms)" by GenAI_Span.model_name</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">TTFT (ms)</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+</form>

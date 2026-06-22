@@ -1,0 +1,696 @@
+
+<dashboard version="2" theme="dark">
+    <label>Nodes</label>
+    <description>Detailed node monitoring dashboard with CPU, memory, disk, network metrics and node conditions</description>
+    <definition><![CDATA[
+{
+	"title": "Nodes",
+	"description": "Detailed node monitoring dashboard with CPU, memory, disk, network metrics and node conditions",
+	"inputs": {
+		"input_cluster_selector": {
+			"dataSources": {
+				"primary": "ds_cluster_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "cluster_token"
+			},
+			"title": "Select Cluster",
+			"type": "input.dropdown"
+		},
+		"input_global_trp": {
+			"options": {
+				"defaultValue": "-60m@m,now",
+				"token": "global_time"
+			},
+			"title": "Global Time Range",
+			"type": "input.timerange"
+		},
+		"input_htve4zz4": {
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"label": ">primary | seriesByName(\"logs_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"statics": [],
+				"value": ">primary | seriesByName(\"logs_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			},
+			"dataSources": {
+				"primary": "ds_ZDUQWNCs"
+			},
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"selectFirstSearchResult": true,
+				"token": "logs_index"
+			},
+			"title": "Logs Index",
+			"type": "input.dropdown"
+		},
+		"input_index_selector": {
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"label": ">primary | seriesByName(\"metrics_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"statics": [],
+				"value": ">primary | seriesByName(\"metrics_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			},
+			"dataSources": {
+				"primary": "ds_zI3tjKX1"
+			},
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"selectFirstSearchResult": true,
+				"token": "index_token"
+			},
+			"title": "Metric Indexes",
+			"type": "input.dropdown"
+		},
+		"input_node_selector": {
+			"dataSources": {
+				"primary": "ds_node_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "node_token"
+			},
+			"title": "Select Node",
+			"type": "input.dropdown"
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "$global_time.earliest$",
+						"latest": "$global_time.latest$"
+					},
+					"refresh": 65
+				}
+			}
+		}
+	},
+	"visualizations": {
+		"viz_avg_node_cpu": {
+			"dataSources": {
+				"primary": "ds_avg_node_cpu"
+			},
+			"options": {
+				"cpuColorConfig": [
+					{
+						"color": "#118832",
+						"to": 70,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 85,
+						"value": 70
+					},
+					{
+						"color": "#D41F1F",
+						"value": 85
+					}
+				],
+				"majorColor": "> majorValue | rangeValue(cpuColorConfig)",
+				"majorValue": "> sparklineValues | lastPoint()",
+				"numberPrecision": 1,
+				"sparklineValues": "> primary | seriesByName('avg_cpu')",
+				"unit": "cores"
+			},
+			"title": "Node CPU Cores in use",
+			"type": "splunk.singlevalue"
+		},
+		"viz_avg_node_memory": {
+			"dataSources": {
+				"primary": "ds_avg_node_memory"
+			},
+			"options": {
+				"majorColor": "> majorValue | rangeValue(memoryColorConfig)",
+				"majorValue": "> sparklineValues | lastPoint()",
+				"memoryColorConfig": [
+					{
+						"color": "#118832",
+						"to": 70,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 85,
+						"value": 70
+					},
+					{
+						"color": "#D41F1F",
+						"value": 85
+					}
+				],
+				"numberPrecision": 1,
+				"sparklineValues": "> primary | seriesByName('avg_memory_mb')",
+				"trendValue": "> sparklineValues | delta(-2)",
+				"unit": "MB"
+			},
+			"title": "Avg Node Memory in use (MB)",
+			"type": "splunk.singlevalue"
+		},
+		"viz_node_capacity": {
+			"dataSources": {
+				"primary": "ds_node_capacity"
+			},
+			"description": "CPU and Memory capacity per node",
+			"title": "Node Capacity and Allocatable Resources",
+			"type": "splunk.table"
+		},
+		"viz_node_conditions": {
+			"context": {
+				"ValueColumnFormatEditorConfig": {
+					"string": {
+						"unitPosition": "after"
+					}
+				},
+				"ValueRowBackgroundColorsEditorConfig": [
+					{
+						"match": "READY",
+						"value": "#118832"
+					},
+					{
+						"match": "DOWN",
+						"value": "#8c1c08"
+					},
+					{
+						"match": "Unknown",
+						"value": "#555555"
+					}
+				],
+				"ValueRowColorsEditorConfig": [
+					"#ffffff"
+				]
+			},
+			"dataSources": {
+				"primary": "ds_node_conditions"
+			},
+			"description": "Detailed condition status for the selected node",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Value') | matchValue(conditionColorMap)",
+				"columnFormat": {
+					"Value": {
+						"align": "auto",
+						"data": "> table | seriesByName(\"Value\") | formatByType(ValueColumnFormatEditorConfig)",
+						"headerAlign": "auto",
+						"rowBackgroundColors": "> table | seriesByName(\"Value\") | matchValue(ValueRowBackgroundColorsEditorConfig)",
+						"rowColors": "> table | seriesByName('Value') | pick(ValueRowColorsEditorConfig)",
+						"textOverflow": "break-word"
+					}
+				},
+				"conditionColorMap": {
+					"False": "#118832",
+					"True": "#D41F1F",
+					"Unknown": "#999999"
+				}
+			},
+			"title": "Node Conditions (Selected Node)",
+			"type": "splunk.table"
+		},
+		"viz_node_count": {
+			"dataSources": {
+				"primary": "ds_node_count"
+			},
+			"options": {
+				"majorValue": "> primary | seriesByName('node_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Nodes"
+			},
+			"title": "Total Nodes",
+			"type": "splunk.singlevalue"
+		},
+		"viz_node_cpu_timeline": {
+			"containerOptions": {
+				"visibility": {}
+			},
+			"dataSources": {
+				"primary": "ds_node_cpu_timeline"
+			},
+			"description": "CPU cores utilised per node",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {},
+				"showYAxisWithZero": true,
+				"xField": "_time"
+			},
+			"title": "Node CPU Utilization Over Time",
+			"type": "splunk.line"
+		},
+		"viz_node_disk_usage": {
+			"dataSources": {
+				"primary": "ds_node_disk_usage"
+			},
+			"description": "Filesystem usage per node",
+			"options": {
+				"legendDisplay": "bottom",
+				"xField": "_time"
+			},
+			"title": "Node Disk Usage Over Time",
+			"type": "splunk.line"
+		},
+		"viz_node_events": {
+			"dataSources": {
+				"primary": "ds_node_events"
+			},
+			"description": "Events related to selected node (last 20)",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Type') | matchValue(eventColorMap)",
+				"eventColorMap": {
+					"Error": "#D41F1F",
+					"Normal": "#FFFFFF",
+					"Warning": "#F5A800"
+				}
+			},
+			"title": "Recent Node Events",
+			"type": "splunk.table"
+		},
+		"viz_node_memory_timeline": {
+			"dataSources": {
+				"primary": "ds_node_memory_timeline"
+			},
+			"description": "Memory % per node",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {},
+				"xField": "_time"
+			},
+			"title": "Node Memory Utilization Over Time",
+			"type": "splunk.line"
+		},
+		"viz_node_network_io": {
+			"dataSources": {
+				"primary": "ds_node_network_io"
+			},
+			"description": "Network mbytes transmitted and received",
+			"options": {
+				"legendDisplay": "bottom",
+				"xField": "_time"
+			},
+			"title": "Node Network I/O",
+			"type": "splunk.line"
+		},
+		"viz_notready_nodes": {
+			"dataSources": {
+				"primary": "ds_notready_nodes"
+			},
+			"options": {
+				"majorColor": "#D41F1F",
+				"majorValue": "> primary | seriesByName('notready_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Not Ready"
+			},
+			"title": "Not Ready Nodes",
+			"type": "splunk.singlevalue"
+		},
+		"viz_pods_per_node": {
+			"dataSources": {
+				"primary": "ds_pods_per_node"
+			},
+			"description": "Number of pods per node",
+			"options": {
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#1E93C6"
+				],
+				"xField": "node",
+				"yField": "pod_count"
+			},
+			"title": "Pod Distribution Across Nodes",
+			"type": "splunk.column"
+		},
+		"viz_ready_nodes": {
+			"dataSources": {
+				"primary": "ds_ready_nodes"
+			},
+			"options": {
+				"majorColor": "#118832",
+				"majorValue": "> primary | seriesByName('ready_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Ready"
+			},
+			"title": "Ready Nodes",
+			"type": "splunk.singlevalue"
+		}
+	},
+	"dataSources": {
+		"ds_ZDUQWNCs": {
+			"name": "logs_index_dropdown",
+			"options": {
+				"query": "| inputlookup append=t k8s_logs_events_indexes_dropdown_lookup.csv"
+			},
+			"type": "ds.search"
+		},
+		"ds_avg_node_cpu": {
+			"name": "Average Node CPU",
+			"options": {
+				"query": "| mstats p90(_value) as avg_cpu WHERE index=$index_token$ (metric_name=node.cpu.usage OR metric_name=k8s.node.cpu.usage) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ span=1m",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_avg_node_memory": {
+			"name": "Average Node Memory",
+			"options": {
+				"query": "| mstats avg(_value) as avg_memory WHERE index=$index_token$ (metric_name=node.memory.utilization OR metric_name=k8s.node.memory.usage) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ span=1m\n| eval avg_memory_mb=avg_memory/1024/1024",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_cluster_list": {
+			"name": "Cluster List",
+			"options": {
+				"query": "| mcatalog values(k8s.cluster.name) as clusters WHERE index=k8s_metrics | mvexpand clusters | rename clusters as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_capacity": {
+			"name": "Node Capacity",
+			"options": {
+				"query": "| mstats latest(_value) as capacity WHERE index=$index_token$ (metric_name=k8s.node.allocatable_cpu OR metric_name=k8s.node.allocatable_memory) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name, metric_name \n| eval resource_type=if(match(metric_name, \"cpu\"), \"CPU Cores\", \"Memory GB\"), resource_value=if(match(metric_name, \"cpu\"), capacity, capacity/1073741824) \n| eval resource_value=round(resource_value, 2) \n| xyseries k8s.node.name resource_type resource_value \n| rename k8s.node.name as \"Node Name\" \n| table \"Node Name\", \"CPU Cores\", \"Memory GB\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_conditions": {
+			"name": "Node Conditions",
+			"options": {
+				"query": "| mstats latest(_value) as condition_value WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name \n| eval Value=case(condition_value==1, \"READY\", condition_value==0, \"DOWN\", 1==1, \"Unknown\") \n| rename k8s.node.name as Node\n| table Node, Value",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_count": {
+			"name": "Node Count",
+			"options": {
+				"query": "| mstats latest(_value) as ready_val WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name | stats dc(k8s.node.name) as node_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_cpu_timeline": {
+			"name": "Node CPU Timeline",
+			"options": {
+				"query": "| mstats p90(_value) as cpu_percent WHERE index=$index_token$ (metric_name=node.cpu.usage OR metric_name=k8s.node.cpu.usage) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ span=1m by k8s.node.name\n| timechart max(cpu_percent) as cpu_core by k8s.node.name",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_details_table": {
+			"name": "Node Details Table",
+			"options": {
+				"query": "| mstats latest(_value) as ready_val WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name \n| eval Status=if(ready_val==1, \"Ready\", if(ready_val==0, \"NotReady\", \"Unknown\")) \n| join type=left k8s.node.name \n    [| mstats avg(_value) as cpu_pct WHERE index=$index_token$ (metric_name=node.cpu.utilization OR metric_name=k8s.node.cpu.utilization) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name] \n| join type=left k8s.node.name \n    [| mstats avg(_value) as mem_pct WHERE index=$index_token$ (metric_name=node.memory.utilization OR metric_name=k8s.node.memory.usage) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name] \n| join type=left k8s.node.name \n    [| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.pod.name, k8s.node.name \n    | stats dc(k8s.pod.name) as pod_cnt by k8s.node.name] \n| fillnull value=0 cpu_pct, mem_pct, pod_cnt \n| eval \"CPU %\"=round(cpu_pct, 1), \"Memory %\"=round(mem_pct, 1), Pods=pod_cnt \n| rename k8s.node.name as \"Node Name\" \n| table \"Node Name\", Status, \"CPU %\", \"Memory %\", Pods \n| sort -\"CPU %\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_disk_usage": {
+			"name": "Node Disk Usage",
+			"options": {
+				"query": "| mstats avg(\"k8s.node.filesystem.usage\") as disk_usage, avg(\"k8s.node.filesystem.capacity\") as disk_capacity WHERE \"index\"=$index_token$ k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ span=10s by k8s.node.name\n| eval filesystem_%=(disk_usage/disk_capacity)*100\n| timechart max(filesystem_%) as FileSystem_Usage_% by k8s.node.name",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_events": {
+			"name": "Node Events",
+			"options": {
+				"query": "index=$logs_index$ k8s.cluster.name=$cluster_token$ (source=*kube-events* OR sourcetype=kube:events) k8s.node.name=$node_token$| head 20 | table _time, \"otel.log.severity.text\", k8s.namespace.name, k8s.event.reason, _raw | rename _time as Time, \"otel.log.severity.text\" as Type, k8s.namespace.name as Namespace, k8s.event.reason as Reason, _raw as Message | sort -Time\n| eval Time = strftime(Time, \"%Y-%m-%d %H:%M:%S\")",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_list": {
+			"name": "Node List",
+			"options": {
+				"query": "| mstats latest(_value) WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ by k8s.node.name | stats count by k8s.node.name | rename k8s.node.name as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_memory_timeline": {
+			"name": "Node Memory Timeline",
+			"options": {
+				"query": "| mstats p90(\"k8s.node.memory.available\") as mem_available, p90(\"k8s.node.memory.usage\") as mem_used WHERE \"index\"=$index_token$ k8s.node.name=$node_token$ k8s.cluster.name=$cluster_token$ span=1m BY \"k8s.node.name\"\n| eval mem_% = (mem_used/(mem_used + mem_available))*100| timechart p90(mem_%) as Memory_Usage_Percent by k8s.node.name",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_network_io": {
+			"name": "Node Network IO",
+			"options": {
+				"query": "| mstats avg(_value) as bytes WHERE index=$index_token$ (metric_name=node.network.io OR metric_name=k8s.node.network.io OR metric_name=system.network.io) k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ span=1m by k8s.node.name, metric_name, direction\n| rename k8s.node.name as node | eval shortdirection=if(direction=\"transmit\", \"TX\", \"RX\")| eval bytes_mb=bytes/1048576, host_direction=shortdirection+\"-\"+node\n| timechart sum(bytes_mb) as Network_IO_mb by host_direction span=1m",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_notready_nodes": {
+			"name": "Not Ready Nodes",
+			"options": {
+				"query": "| mstats latest(_value) as ready_status WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name | stats count(eval(ready_status==0)) as notready_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_pods_per_node": {
+			"name": "Pods Per Node",
+			"options": {
+				"query": "| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.pod.name, k8s.node.name \n| stats dc(k8s.pod.name) as pod_count by k8s.node.name \n| rename k8s.node.name as node \n| sort -pod_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_ready_nodes": {
+			"name": "Ready Nodes",
+			"options": {
+				"query": "| mstats latest(_value) as ready_status WHERE index=$index_token$ metric_name=k8s.node.condition_ready k8s.cluster.name=$cluster_token$ k8s.node.name=$node_token$ by k8s.node.name | stats count(eval(ready_status==1)) as ready_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_zI3tjKX1": {
+			"name": "metrics_index_dropdown",
+			"options": {
+				"query": "| inputlookup append=t k8s_metrics_indexes_dropdown_lookup.csv"
+			},
+			"type": "ds.search"
+		}
+	},
+	"layout": {
+		"globalInputs": [
+			"input_global_trp",
+			"input_index_selector",
+			"input_htve4zz4",
+			"input_cluster_selector",
+			"input_node_selector"
+		],
+		"layoutDefinitions": {
+			"layout_1": {
+				"structure": [
+					{
+						"item": "viz_node_capacity",
+						"position": {
+							"h": 200,
+							"w": 601,
+							"x": 0,
+							"y": 430
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_disk_usage",
+						"position": {
+							"h": 250,
+							"w": 601,
+							"x": 0,
+							"y": 630
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_conditions",
+						"position": {
+							"h": 250,
+							"w": 601,
+							"x": 0,
+							"y": 880
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_pods_per_node",
+						"position": {
+							"h": 200,
+							"w": 599,
+							"x": 601,
+							"y": 430
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_network_io",
+						"position": {
+							"h": 250,
+							"w": 599,
+							"x": 601,
+							"y": 630
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_events",
+						"position": {
+							"h": 250,
+							"w": 599,
+							"x": 601,
+							"y": 880
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_count",
+						"position": {
+							"h": 130,
+							"w": 200,
+							"x": 0,
+							"y": 0
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_cpu_timeline",
+						"position": {
+							"h": 300,
+							"w": 601,
+							"x": 0,
+							"y": 130
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_ready_nodes",
+						"position": {
+							"h": 130,
+							"w": 200,
+							"x": 200,
+							"y": 0
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_notready_nodes",
+						"position": {
+							"h": 130,
+							"w": 201,
+							"x": 400,
+							"y": 0
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_avg_node_cpu",
+						"position": {
+							"h": 130,
+							"w": 299,
+							"x": 601,
+							"y": 0
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_memory_timeline",
+						"position": {
+							"h": 300,
+							"w": 599,
+							"x": 601,
+							"y": 130
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_avg_node_memory",
+						"position": {
+							"h": 130,
+							"w": 300,
+							"x": 900,
+							"y": 0
+						},
+						"type": "block"
+					}
+				],
+				"type": "grid"
+			}
+		},
+		"tabs": {
+			"items": [
+				{
+					"label": "New tab",
+					"layoutId": "layout_1"
+				}
+			]
+		}
+	},
+	"applicationProperties": {
+		"hideEdit": true
+	}
+}
+    ]]></definition>
+</dashboard>

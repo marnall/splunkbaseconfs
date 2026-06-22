@@ -1,0 +1,139 @@
+<form version="1.1"
+  stylesheet="splunk-innovators-toolkit:css/sit-panel-polish.css,splunk-innovators-toolkit:css/sit-text-whitelist.css,splunk-innovators-toolkit:themes/synthwave-sunset.css,splunk-innovators-toolkit:backgrounds/aurora-borealis.css,splunk-innovators-toolkit:animations/stagger-grid.css,splunk-innovators-toolkit:animations/hover-glow-border.css,splunk-innovators-toolkit:widgets/kpi-neon-glow.css"
+  script="splunk-innovators-toolkit:backgrounds/background-helper.js,splunk-innovators-toolkit:toggles/dark-light-mode.js,splunk-innovators-toolkit:toggles/fullscreen-mode.js,splunk-innovators-toolkit:toggles/auto-refresh-countdown.js,splunk-innovators-toolkit:js/sit-remix-button.js">
+  <label>DevOps Pipeline Pulse</label>
+  <description>Real-time view of deployment cadence, build health, and release velocity — built on Splunk internals as a stand-in for CI/CD logs. Powered by Innovators Toolkit.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Deploys / 24h</title>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=scheduler | stats count as deploys</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0xFF0080","0xFF6EC7"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">total deploy events</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Build Success Rate</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=* | eval ok=if(log_level="ERROR",0,1) | stats avg(ok) as rate | eval rate=round(rate*100,1)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0xDC3545","0xF7B500","0x5CC05C"]</option>
+        <option name="rangeValues">[90,98]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">last 24h success</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Lead Time (median)</title>
+      <single>
+        <search>
+          <query>index=_internal | stats count | eval lead=240 | table lead</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">m</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="rangeValues">[120,360]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">commit -&gt; prod</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Change Failure Rate</title>
+      <single>
+        <search>
+          <query>index=_internal log_level=ERROR | stats count as errs | appendpipe [ search index=_internal | stats count as total ] | stats max(errs) as errs max(total) as total | eval cfr=round(errs/total*100,1) | table cfr</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="rangeValues">[5,15]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">DORA CFR</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Deployment Frequency Timeline</title>
+      <chart>
+        <search>
+          <query>index=_internal sourcetype=scheduler | timechart span=30m count as deploys</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.fieldColors">{"deploys":"0xFF0080"}</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Build Stage Throughput</title>
+      <chart>
+        <search>
+          <query>index=_internal | eval stage=case(match(component,"Search"),"Test", match(component,"Index"),"Build", match(component,"Tcp"),"Deploy", 1=1,"Verify") | timechart span=15m count by stage limit=4</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Release Train — Recent Deploys</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype=scheduler | head 20 | eval action=status | eval status=case(match(_raw,"(?i)error|failed"),"FAIL", match(_raw,"(?i)warn"),"WARN", 1=1,"PASS") | table _time, user, action, status | rename _time as "Time", user as "Engineer", action as "Stage", status as "Result"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top Contributors (24h)</title>
+      <chart>
+        <search>
+          <query>index=_internal sourcetype=scheduler | stats count by user | sort -count | head 8</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">1</option>
+      </chart>
+    </panel>
+  </row>
+</form>

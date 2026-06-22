@@ -1,0 +1,382 @@
+"""POST / GET /services/itmip_llm/conf_package
+
+Generate and deliver a deployment-ready **4-app Splunk config package** as a
+downloadable `.tar.gz`, for the v1.5.0 Data Foundation "Data Source Onboarding"
+flow (DATA_FOUNDATION_AND_PLATFORM_OPS_SPEC.md §4).
+
+POST  body { sourcetype, apps: { <app>: { <file.conf|.meta|.csv>: <body> } },
+             ttl_seconds? }
+      → assembles the apps into a gzip tarball (stdlib only), stores it base64 in
+        the `itmip_ai_artifact_packages` KVStore collection with a TTL, prunes
+        expired rows, and returns { id, filename, size_bytes, file_count, apps,
+        expires_epoch, download_path }.
+
+GET   ?id=<uuid>
+      → owner/admin + expiry checked; returns { filename, content_type, b64 }
+        for the browser to turn into a Blob download (same pattern as the Audit
+        CSV export — no binary streamed through splunkd). 410 expired / 403 not
+        owner / 404 unknown.
+
+The package generator is a WRITE / creates-objects feature, so POST is gated on
+the `data_onboarding` capability (Professional+). Below the cap it refuses
+GRACEFULLY (403), never 500. The package bytes live only in this collection —
+never in an audit index. Spec: instructions/DATA_FOUNDATION_AND_PLATFORM_OPS_SPEC.md
+"""
+
+from __future__ import annotations
+
+import base64
+import gzip
+import io
+import json
+import os
+import re
+import sys
+import tarfile
+import time
+import uuid
+
+APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+for _p in (os.path.join(APP_DIR, "lib"), os.path.dirname(os.path.abspath(__file__))):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+import splunk.persistconn.application as application  # type: ignore
+import splunk.rest as rest  # type: ignore
+
+from itmip_llm_common import (  # noqa: E402
+    APP_NAME,
+    err,
+    ok,
+    is_admin,
+    system_token,
+    user_name,
+    user_token,
+)
+from itmip_llm_license import capability_enabled  # noqa: E402
+
+try:
+    from itmip_llm_common import resolve_caller_tenant  # noqa: E402
+except Exception:  # pragma: no cover - resolve_caller_tenant is optional context
+    resolve_caller_tenant = None
+
+COLLECTION = "itmip_ai_artifact_packages"
+
+# Safety caps — keep KVStore rows small and the assembly bounded.
+MAX_APPS = 8
+MAX_FILES_PER_APP = 24
+MAX_FILE_BYTES = 256 * 1024
+MAX_TOTAL_BYTES = 2 * 1024 * 1024
+TTL_MIN = 60
+TTL_MAX = 86400
+TTL_DEFAULT = 3600
+PRUNE_LIMIT = 200
+
+_APP_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+_FILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(conf|meta|csv)$")
+
+# Where each file kind lands inside an app, by extension — this is what makes
+# the output a real, deployable app layout and also blocks path traversal (the
+# caller never controls a directory component).
+_EXT_DIR = {"conf": "default", "meta": "metadata", "csv": "lookups"}
+
+
+def _coll_url(suffix=""):
+    return (
+        "/servicesNS/nobody/{app}/storage/collections/data/{coll}{suffix}"
+        "?output_mode=json"
+    ).format(app=APP_NAME, coll=COLLECTION, suffix=suffix)
+
+
+def _kv_insert(sys_token, row):
+    resp, content = rest.simpleRequest(
+        _coll_url(), sessionKey=sys_token, method="POST",
+        jsonargs=json.dumps(row),
+    )
+    if getattr(resp, "status", 0) not in (200, 201):
+        raise RuntimeError("kvstore insert %s: %s" % (getattr(resp, "status", "?"),
+                                                      (content or b"")[:160]))
+
+
+def _kv_get(sys_token, key):
+    resp, content = rest.simpleRequest(
+        _coll_url("/" + key), sessionKey=sys_token, method="GET",
+    )
+    if getattr(resp, "status", 0) == 404:
+        return None
+    if getattr(resp, "status", 0) != 200:
+        return None
+    try:
+        return json.loads(content)
+    except Exception:
+        return None
+
+
+def _kv_delete(sys_token, key):
+    try:
+        rest.simpleRequest(_coll_url("/" + key), sessionKey=sys_token,
+                           method="DELETE", rawResult=True)
+    except Exception:
+        pass
+
+
+def _prune_expired(sys_token, now):
+    """Best-effort reap of rows past their TTL. Capped; never raises."""
+    try:
+        q = json.dumps({"expires_epoch": {"$lt": int(now)}})
+        url = _coll_url() + "&query=" + _url_quote(q) + "&limit=%d" % PRUNE_LIMIT
+        resp, content = rest.simpleRequest(url, sessionKey=sys_token, method="GET")
+        if getattr(resp, "status", 0) != 200:
+            return
+        for r in (json.loads(content) or []):
+            if isinstance(r, dict) and r.get("_key"):
+                _kv_delete(sys_token, r["_key"])
+    except Exception:
+        pass
+
+
+def _url_quote(s):
+    try:
+        from urllib.parse import quote
+        return quote(s, safe="")
+    except Exception:
+        return s
+
+
+def _safe_sourcetype_slug(st):
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", (st or "source").strip()) or "source"
+    return slug[:80]
+
+
+def _app_conf_body(app, sourcetype):
+    return (
+        "# Generated by AiWorkbench — Data Source Onboarding (sourcetype: %s)\n"
+        "[install]\nis_configured = true\n\n"
+        "[ui]\nis_visible = false\nlabel = %s\n\n"
+        "[launcher]\nauthor = AiWorkbench\n"
+        "description = AiWorkbench-generated config for sourcetype %s\n"
+        "version = 1.0.0\n\n"
+        "[package]\nid = %s\n"
+    ) % (sourcetype, app, sourcetype, app)
+
+
+def _meta_body():
+    return "[]\naccess = read : [ * ], write : [ admin ]\nexport = system\n"
+
+
+def _validate_apps(apps):
+    """Return (cleaned_apps, error_or_None). cleaned_apps is an ordered list of
+    (app_name, {filename: body}). Enforces the caps + name safety."""
+    if not isinstance(apps, dict) or not apps:
+        return None, "apps must be a non-empty object of {app: {file: body}}."
+    if len(apps) > MAX_APPS:
+        return None, "Too many apps (max %d)." % MAX_APPS
+    total = 0
+    cleaned = []
+    for app, files in apps.items():
+        if not _APP_NAME_RE.match(str(app or "")):
+            return None, "Invalid app name '%s' (alnum . _ - only)." % app
+        if not isinstance(files, dict) or not files:
+            return None, "App '%s' has no files." % app
+        if len(files) > MAX_FILES_PER_APP:
+            return None, "App '%s' has too many files (max %d)." % (app, MAX_FILES_PER_APP)
+        cfiles = {}
+        for fname, body in files.items():
+            if not _FILE_NAME_RE.match(str(fname or "")):
+                return None, ("Invalid file name '%s' in app '%s' (must be "
+                              "<name>.conf|.meta|.csv)." % (fname, app))
+            if not isinstance(body, str):
+                return None, "File '%s/%s' body must be a string." % (app, fname)
+            b = body.encode("utf-8")
+            if len(b) > MAX_FILE_BYTES:
+                return None, "File '%s/%s' exceeds %d bytes." % (app, fname, MAX_FILE_BYTES)
+            total += len(b)
+            if total > MAX_TOTAL_BYTES:
+                return None, "Total package size exceeds %d bytes." % MAX_TOTAL_BYTES
+            cfiles[fname] = body
+        cleaned.append((app, cfiles))
+    return cleaned, None
+
+
+def _assemble_targz(sourcetype, cleaned_apps, now):
+    """Build the gzip tarball bytes. Each app gets its files placed by extension
+    (default/ metadata/ lookups/) plus an auto app.conf and metadata/local.meta
+    when the caller didn't supply them, so the result is deployment-ready."""
+    buf = io.BytesIO()
+    file_count = 0
+    # Deterministic gzip (no mtime in the gzip header) so identical input → identical bytes.
+    gz = gzip.GzipFile(fileobj=buf, mode="wb", mtime=0)
+    tar = tarfile.open(fileobj=gz, mode="w")
+    try:
+        for app, files in cleaned_apps:
+            has_app_conf = any(f == "app.conf" for f in files)
+            has_meta = any(f.endswith(".meta") for f in files)
+            for fname, body in files.items():
+                ext = fname.rsplit(".", 1)[-1].lower()
+                sub = _EXT_DIR.get(ext, "default")
+                _add(tar, "%s/%s/%s" % (app, sub, fname), body, now)
+                file_count += 1
+            if not has_app_conf:
+                _add(tar, "%s/default/app.conf" % app,
+                     _app_conf_body(app, sourcetype), now)
+                file_count += 1
+            if not has_meta:
+                _add(tar, "%s/metadata/local.meta" % app, _meta_body(), now)
+                file_count += 1
+    finally:
+        tar.close()
+        gz.close()
+    return buf.getvalue(), file_count
+
+
+def _add(tar, path, body, now):
+    data = body.encode("utf-8")
+    info = tarfile.TarInfo(name=path)
+    info.size = len(data)
+    info.mtime = int(now)
+    info.mode = 0o644
+    info.uid = info.gid = 0
+    info.uname = info.gname = ""
+    tar.addfile(info, io.BytesIO(data))
+
+
+def _caller_tenant(args, sys_token, roles):
+    if resolve_caller_tenant is None:
+        return "DFLT", "DFLT"
+    try:
+        t = resolve_caller_tenant(args, rest, sys_token, roles=roles)
+        return (t.get("org_short") or "DFLT"), (t.get("bu_short") or "DFLT")
+    except Exception:
+        return "DFLT", "DFLT"
+
+
+def _parse_query(args):
+    out = {}
+    for pair in (args.get("query") or []):
+        try:
+            out[pair[0]] = pair[1]
+        except Exception:
+            continue
+    return out
+
+
+class Handler(application.PersistentServerConnectionApplication):
+    def __init__(self, command_line, command_arg):
+        super(Handler, self).__init__()
+
+    def handle(self, in_string):
+        try:
+            args = json.loads(in_string)
+            method = (args.get("method") or "GET").upper()
+            if not user_token(args):
+                return err(401, "Not authenticated.")
+            sys_token = system_token(args)
+            if not sys_token:
+                return err(503, "System auth token not provided.")
+            user = user_name(args) or "unknown"
+            now = time.time()
+
+            if method == "GET":
+                return self._download(args, sys_token, user, now)
+            if method == "POST":
+                return self._create(args, sys_token, user, now)
+            return err(405, "Only GET and POST are supported.")
+        except Exception as exc:
+            sys.stderr.write("itmip_llm_conf_package error: %s\n" % exc)
+            return err(500, "Internal error: %s" % exc)
+
+    # ── POST — assemble + stage ──
+    def _create(self, args, sys_token, user, now):
+        # write/creates-objects → gate on data_onboarding (Pro+). Graceful 403.
+        if not capability_enabled(sys_token, "data_onboarding"):
+            return err(403, "Generating config packages requires a Professional "
+                            "or higher license.")
+        try:
+            payload = json.loads(args.get("payload") or "{}")
+        except Exception:
+            return err(400, "Invalid JSON payload.")
+
+        sourcetype = str(payload.get("sourcetype") or "").strip()
+        if not sourcetype:
+            return err(400, "'sourcetype' is required.")
+        cleaned, verr = _validate_apps(payload.get("apps"))
+        if verr:
+            return err(400, verr)
+
+        ttl = payload.get("ttl_seconds")
+        try:
+            ttl = int(ttl) if ttl is not None else TTL_DEFAULT
+        except (TypeError, ValueError):
+            ttl = TTL_DEFAULT
+        ttl = max(TTL_MIN, min(TTL_MAX, ttl))
+
+        try:
+            blob, file_count = _assemble_targz(sourcetype, cleaned, now)
+        except Exception as exc:
+            return err(500, "Failed to assemble package: %s" % exc)
+
+        org, bu = _caller_tenant(args, sys_token, payload.get("roles"))
+        key = uuid.uuid4().hex
+        slug = _safe_sourcetype_slug(sourcetype)
+        filename = "%s_config_package.tar.gz" % slug
+        row = {
+            "_key": key,
+            "sourcetype": sourcetype,
+            "filename": filename,
+            "b64": base64.b64encode(blob).decode("ascii"),
+            "size_bytes": len(blob),
+            "file_count": file_count,
+            "apps": [a for a, _ in cleaned],
+            "owner_user": user,
+            "org_short": org,
+            "bu_short": bu,
+            "created_epoch": int(now),
+            "expires_epoch": int(now) + ttl,
+        }
+        try:
+            _kv_insert(sys_token, row)
+        except Exception as exc:
+            return err(502, "Could not stage package: %s" % exc)
+        _prune_expired(sys_token, now)
+
+        return ok({
+            "ok": True,
+            "id": key,
+            "filename": filename,
+            "size_bytes": len(blob),
+            "file_count": file_count,
+            "apps": row["apps"],
+            "expires_epoch": row["expires_epoch"],
+            "ttl_seconds": ttl,
+            "download_path": "/services/itmip_llm/conf_package?id=%s" % key,
+        })
+
+    # ── GET — serve the staged package (owner-checked, TTL-checked) ──
+    def _download(self, args, sys_token, user, now):
+        key = (_parse_query(args).get("id") or "").strip()
+        if not key:
+            return err(400, "Query parameter 'id' is required.")
+        row = _kv_get(sys_token, key)
+        if not isinstance(row, dict):
+            return err(404, "Package not found (it may have expired).")
+        if int(row.get("expires_epoch") or 0) < int(now):
+            _kv_delete(sys_token, key)
+            return err(410, "This package download link has expired. Re-generate it.")
+        owner = row.get("owner_user") or ""
+        if owner != user and not is_admin(args, rest):
+            return err(403, "This package belongs to another user.")
+        return ok({
+            "ok": True,
+            "id": key,
+            "filename": row.get("filename") or "config_package.tar.gz",
+            "content_type": "application/gzip",
+            "size_bytes": row.get("size_bytes"),
+            "expires_epoch": row.get("expires_epoch"),
+            "b64": row.get("b64") or "",
+        })
+
+    def handleStream(self, *_a, **_k):
+        raise NotImplementedError()
+
+    def done(self):
+        pass

@@ -1,0 +1,145 @@
+<form theme="dark" version="1.1">
+  <label>SLA Risk &amp; Early Warning</label>
+  <description>Early warning dashboard that identifies services trending toward SLA breach using rolling failure analysis.
+Enables proactive intervention before customer impact occurs.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>service_reliability_test</default>
+    </input>
+    <input type="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Current SLA Risk Level</title>
+      <single>
+        <search>
+          <query>`svc_sla_risk($index$)`
+            | stats 
+                count(eval(sla_risk="HIGH")) AS high,
+                count(eval(sla_risk="MEDIUM")) AS medium,
+                count(eval(sla_risk="LOW")) AS low
+            | eval risk_score = case(
+                high &gt; 0, 3,
+                medium &gt; 0, 2,
+                true(), 1
+              )
+            | eval risk_label = case(
+                risk_score=3, "HIGH",
+                risk_score=2, "MEDIUM",
+                true(), "LOW"
+              )</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">147</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Services Trending Toward SLA Breach</title>
+      <table>
+        <title>Services ranked by rolling failure behavior. HIGH risk services should be investigated immediately.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h sum(is_failure) AS failures BY service
+            | untable _time service failures
+            | streamstats window=6 avg(failures) AS rolling_failures BY service
+            | eval sla_risk = case(
+                rolling_failures &gt;= 5, "HIGH",
+                rolling_failures &gt;= 2, "MEDIUM",
+                true(), "LOW"
+              )
+            | stats latest(rolling_failures) AS rolling_failures
+                    latest(sla_risk) AS sla_risk
+              BY service
+            | sort - rolling_failures</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SLA Risk Heatmap (Hourly)</title>
+      <viz type="Splunk_ML_Toolkit.HeatmapViz">
+        <title>Visualizes accumulation of failure pressure over time. Darker regions indicate periods where services are approaching SLA thresholds.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h sum(is_failure) BY service</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="Splunk_ML_Toolkit.HeatmapViz.highlightDiagonals">true</option>
+        <option name="drilldown">none</option>
+      </viz>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Early Degradation Trend</title>
+      <chart>
+        <title>Rolling failure average used to detect gradual reliability degradation before SLA breach conditions are met.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h sum(is_failure) AS failures
+            | streamstats window=6 avg(failures) AS rolling_failures</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+  <panel>
+    <title>How SLA Risk Is Calculated</title>
+    <html>
+      <div>
+        <h3>Purpose of This Dashboard</h3>
+        <p>
+          This dashboard identifies services that are trending toward SLA breach before
+          an actual outage or violation occurs.
+        </p>
+
+        <h3>SLA Risk Levels</h3>
+        <ul>
+          <li><b>LOW</b> – Normal failure behavior.</li>
+          <li><b>MEDIUM</b> – Increasing failure frequency; monitor closely.</li>
+          <li><b>HIGH</b> – Strong likelihood of SLA breach.</li>
+        </ul>
+
+        <h3>How Risk Is Determined</h3>
+        <p>
+          SLA risk is based on rolling failure averages over time, not on single spikes.
+          This reduces noise and focuses on sustained degradation.
+        </p>
+
+        <h3>Recommended Actions</h3>
+        <ul>
+          <li>Investigate HIGH risk services immediately.</li>
+          <li>Use Incident Patterns dashboard for deeper analysis.</li>
+        </ul>
+      </div>
+    </html>
+  </panel>
+</row>
+</form>

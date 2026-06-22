@@ -1,0 +1,1231 @@
+<!--
+Version 1.1:
+Feedback from RC.
+  Note: Process to migrate from Customer OnPrem to OnPrem PreProd (as-01): 1) Replace index=splunk_poc with `cisco_oi_index("$cpyKey$")` 2) Add Customer menu.
+--><form version="1.1" theme="light">
+  <init>
+    <set token="kvShowTreat">"No"</set>
+    <set token="kvShowReload">"No"</set>
+  </init>
+  <label>Get Well Plan 4</label>
+  <description>Version 1.1: Note: you cannot switch customers.  Instead, relaunch dashboard from menu and choose customer again.</description>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupNameSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupNameSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+      <change>
+        <unset token="showAddDetails"></unset>
+        <unset token="showCorrectDetails"></unset>
+        <unset token="showSecureDetails"></unset>
+        <unset token="showCoverDetails"></unset>
+        <unset token="showUpgradeDrilldown"></unset>
+        <unset token="showRefreshDetails"></unset>
+        <unset token="showInventoryData"></unset>
+      </change>
+    </input>
+    <input type="dropdown" token="ratingLabels" searchWhenChanged="true">
+      <label>Percentage &amp; Rating Captions</label>
+      <choice value="On">Captions On</choice>
+      <choice value="Off">Captions Off</choice>
+      <change>
+        <condition match="match( value, &quot;On&quot;)">
+          <set token="hardwareLegend">Green &lt; Yellow=10%-15% &lt; Red</set>
+          <set token="softwareLegend">Green &lt; Yellow=10%-20% &lt; Red</set>
+          <set token="supportLegend">Green &lt; Yellow=15%-30% &lt; Red</set>
+          <set token="securityLegend">Green &lt; Yellow=10%-25% &lt; Red</set>
+          <set token="configLegend">Green &lt; Yellow=15%-40% &lt; Red</set>
+          <set token="dataLegend">Green &lt; Yellow=25%-50% &lt; Red</set>
+        </condition>
+        <condition match="match( value, &quot;Off&quot;)">
+          <set token="hardwareLegend"></set>
+          <set token="softwareLegend"></set>
+          <set token="supportLegend"></set>
+          <set token="securityLegend"></set>
+          <set token="configLegend"></set>
+          <set token="dataLegend"></set>
+        </condition>
+      </change>
+      <default>On</default>
+      <initialValue>On</initialValue>
+    </input>
+    <input type="dropdown" token="showInventoryData">
+      <label>Show Inventory Details</label>
+      <choice value="1">Yes</choice>
+      <choice value="0">No</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+      <change>
+        <condition label="No">
+          <unset token="showInventoryData"></unset>
+        </condition>
+        <condition label="Yes">
+          <set token="showInventoryData">1</set>
+        </condition>
+      </change>
+    </input>
+    <input type="time" token="TimeSelectionToken">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$Hide_Panel$">
+    <panel>
+      <title>HIDDEN BASE QUERY 0</title>
+      <table>
+        <title>BASE QUERY  = INVENTORY</title>
+        <search>
+          <done>
+            <set token="INVENTORY">$job.sid$</set>
+            <unset token="search_msg_INVENTORY"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_INVENTORY">Inventory Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+    (sourcetype="cisco:bcs:asset" physicalAssetType="Chassis" ) 
+    OR (sourcetype="cisco:bcs:devicegroupmember") 
+| fields sourcetype deviceId deviceName productFamily productId productType physicalAssetId physicalAssetType serialNumber groupName 
+| eventstats values(groupName) as groupName 
+    by deviceId 
+| fields deviceId deviceName productFamily productType productId physicalAssetId physicalAssetType serialNumber groupName 
+| stats max(*) as * 
+    values(groupName) as groupName
+    by deviceId physicalAssetId 
+| table deviceId physicalAssetId deviceName physicalAssetType serialNumber productId productFamily productType groupName</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$hide_Panel$">
+    <panel>
+      <title>HIDDEN BASE QUERY 1</title>
+      <table>
+        <title>BASE QUERY  = REFRESH</title>
+        <search>
+          <done>
+            <set token="REFRESH">$job.sid$</set>
+            <unset token="search_msg_REFRESH"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_REFRESH">Hardware Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+        (sourcetype="cisco:bcs:asset" physicalAssetType="Chassis" ) 
+     OR (sourcetype="cisco:bcs:hardwareendoflifebulletin") 
+     OR (sourcetype="cisco:bcs:devicegroupmember")
+     OR (sourcetype="cisco:bcs:softwareendoflifebulletin")
+     
+| fields sourcetype deviceId deviceName productFamily productId physicalAssetId physicalAssetType serialNumber groupName softwareVersion lastDayOfSupportDate
+| eval LDoS = if(sourcetype="cisco:bcs:hardwareendoflifebulletin",lastDayOfSupportDate,null()) 
+| eventstats first(LDoS) as LDoS 
+          by productId 
+| eventstats values(groupName) as groupName 
+          by deviceId         
+| fields _time deviceId deviceName productFamily productId physicalAssetId physicalAssetType serialNumber groupName softwareVersion LDoS
+| stats max(*) as * 
+        values(groupName) as groupName
+     by deviceId physicalAssetId
+| search serialNumber!=""
+| rex field=LDoS mode=sed "s/T.*$//g" 
+| fillnull value="null" LDoS 
+| eval yrs2hw_ldos = round(((strptime(LDoS,"%Y-%m-%d"))-now())/(86400*365),2) 
+| eval REFRESH = if(yrs2hw_ldos&lt;1,"Yes","No")
+| table _time deviceId deviceName productFamily productId physicalAssetId physicalAssetType serialNumber groupName softwareVersion LDoS yrs2hw_ldos REFRESH</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>HIDDEN BASE QUERY 2</title>
+      <table>
+        <title>BASE QUERY  = UPGRADE</title>
+        <search>
+          <done>
+            <set token="UPGRADE">$job.sid$</set>
+            <unset token="search_msg_UPGRADE"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_UPGRADE">Software Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+        (sourcetype="cisco:bcs:hardwareendoflife" physicalAssetType="Chassis")
+     OR (sourcetype="cisco:bcs:softwareendoflife")
+     OR (sourcetype="cisco:bcs:hardwareendoflifebulletin")  
+     OR (sourcetype="cisco:bcs:devicegroupmember")
+     OR (sourcetype="cisco:bcs:softwareendoflifebulletin")
+| fields sourcetype deviceId physicalAssetId productId hardwareEndOfLifeId deviceName softwareEndOfLifeId softwareVersion softwareType groupName lastDayOfSupportDate
+| eval swLdosDate = if(sourcetype="cisco:bcs:softwareendoflifebulletin",lastDayOfSupportDate,null()) 
+| eval hwLdosDate = if(sourcetype="cisco:bcs:hardwareendoflifebulletin",lastDayOfSupportDate,null()) 
+| eventstats max(hwLdosDate) as hwLdosDate by hardwareEndOfLifeId 
+| eventstats max(swLdosDate) as swLdosDate by softwareEndOfLifeId 
+| eventstats values(groupName) as groupName 
+          by deviceId    
+| stats max(*) as * 
+        values(groupName) as groupName 
+        by deviceId 
+| where isnotnull(deviceId) 
+| fillnull value="NA" hwLdosDate, swLdosDate 
+| eval yrs2hw_ldos = if(hwLdosDate!="NA", round((strptime(hwLdosDate,"%Y-%m-%d") - now()) / (86400*365), 2), null()) 
+| eval yrs2sw_ldos = if(swLdosDate!="NA", round((strptime(swLdosDate,"%Y-%m-%d") - now()) / (86400*365), 2), null()) 
+| eval UPGRADE = if(yrs2sw_ldos &lt; 1 AND (yrs2hw_ldos &gt; 1 OR hwLdosDate="NA"),"Yes", "No")
+| fields deviceId physicalAssetId productId hardwareEndOfLifeId deviceName softwareEndOfLifeId softwareVersion softwareType groupName hwLdosDate swLdosDate UPGRADE yrs2sw_ldos yrs2hw_ldos</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>HIDDEN BASE QUERY 3</title>
+      <table>
+        <title>BASE QUERY  = COVER</title>
+        <search>
+          <preview>
+            <set token="search_msg_COVER">Support Search is running, please wait a few seconds.</set>
+          </preview>
+          <done>
+            <set token="COVER">$job.sid$</set>
+            <unset token="search_msg_COVER"></unset>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` 
+     (sourcetype="cisco:bcs:asset" physicalAssetType="Chassis") 
+  OR (sourcetype="cisco:bcs:contractserial") 
+  OR (sourcetype="cisco:bcs:hardwareendoflifebulletin" ) 
+  OR (sourcetype="cisco:bcs:devicegroupmember")
+| fields sourcetype deviceId deviceName productFamily physicalAssetId productId physicalAssetType serialNumber groupName softwareVersion coveredProductLineEndDate isCovered endOfServiceContractRenewalDate
+| eventstats max(coveredProductLineEndDate) as coveredProductLineEndDate, 
+             max(isCovered) as ContractStatus 
+          by serialNumber 
+| eventstats max(endOfServiceContractRenewalDate) as eoSCR 
+          by productId 
+| eventstats values(groupName) as groupName 
+          by deviceId
+| search sourcetype="cisco:bcs:asset"
+| stats max(*) as * 
+        values(groupName) as groupName 
+     by deviceId physicalAssetId
+| rename physicalAssetType as EquipmentType, productFamily as ProductFamily 
+| where EquipmentType="Chassis"
+| fillnull value="Not Active" ContractStatus
+| eval chassisNoContract = if(ContractStatus!="true" AND EquipmentType="Chassis", 1, 0) 
+| eval isSpare = case(like(ProductFamily, "%*IP Phone%"),1,
+                      like(ProductFamily, "%Cisco Aironet%"),1,
+                      like(ProductFamily, "%Access Points%"),1,
+                      like(ProductFamily, "%Cisco VG% Series Gateways%"), 1,
+                      1=1,0) 
+| rex field=eoSCR mode=sed "s/T.*$//g" 
+| fillnull value="null" eoSCR 
+| eval timeEoSCR = strptime(eoSCR, "%Y-%m-%d") 
+| eval serviceQuotable = if(eoSCR="null" OR now()&lt;timeEoSCR, 1, 0) 
+| eval AddNca = if(serviceQuotable=1 AND chassisNoContract=1 AND isSpare=0, 1, 0)
+| eval COVER = if(ProductFamily!="Missing" AND ProductFamily!="null" AND AddNca=1,"Yes","No")</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$hide_Panel$">
+    <panel>
+      <title>HIDDEN BASE QUERY 4</title>
+      <table>
+        <title>BASE QUERY  = SECURITY</title>
+        <search>
+          <done>
+            <set token="SECURITY">$job.sid$</set>
+            <unset token="search_msg_SECURITY"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_SECURITY">Security Advisories Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+        (sourcetype="cisco:bcs:securityadvisory" matchConfidence="Vulnerable")
+      OR (sourcetype="cisco:bcs:securityadvisorybulletin")
+      OR (sourcetype="cisco:bcs:devicegroupmember")
+      OR (sourcetype="cisco:bcs:device") 
+| fields deviceId deviceName groupName matchConfidence securityAdvisoryColdId securityImpactRating matchConfidenceReason bulletinTitle softwareVersion productId productFamily
+| eventstats max(securityImpactRating) as sir 
+             max(bulletinTitle) as bulletinTitle
+          by securityAdvisoryColdId
+| eval SECURITY = if(sir="Critical","Yes", "No")
+| stats max(*) as * 
+        values(groupName) as groupName 
+        by deviceId
+| fields deviceId matchConfidence matchConfidenceReason securityAdvisoryColdId sir groupName bulletinTitle deviceName, softwareVersion, productId, productFamily SECURITY</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>HIDDEN BASE QUERY 5</title>
+      <table>
+        <title>BASE QUERY  = CORRECT</title>
+        <search>
+          <done>
+            <set token="CORRECT">$job.sid$</set>
+            <unset token="search_msg_CORRECT"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_CORRECT">Configuration Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+        (sourcetype="cisco:bcs:configbestpracticedetail") 
+     OR (sourcetype="cisco:bcs:configbestpracticesummary")
+     OR (sourcetype="cisco:bcs:devicegroupmember")
+     OR (sourcetype="cisco:bcs:device") 
+| fields sourcetype deviceId bestPracticeRuleId bestPracticeRisk groupName deviceName bestPracticeNuggetId productId productFamily softwareVersion HighBpDevices
+| eventstats first(bestPracticeRisk) as bestPracticeRisk by bestPracticeRuleId 
+| eval CORRECT = if(bestPracticeRisk="High", "Yes", "No")
+| stats max(*) as * 
+        values(groupName) as groupName 
+        by deviceId</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>HIDDEN BASE QUERY 6</title>
+      <table>
+        <title>BASE QUERY  = DISCOVER</title>
+        <search>
+          <done>
+            <set token="DISCOVER">$job.sid$</set>
+            <unset token="search_msg_DISCOVER"></unset>
+          </done>
+          <preview>
+            <set token="search_msg_DISCOVER">Data Collection Search is running, please wait a few seconds.</set>
+          </preview>
+          <query>`cisco_oi_index("$cpyKey$")` 
+(sourcetype="cisco:bcs:uirdetails") 
+    OR ( sourcetype="cisco:bcs:device") OR (sourcetype="cisco:bcs:devicegroupmember") 
+| eventstats values(deviceName) as deviceName by deviceId 
+| rename seenByManagedDeviceName as DeviceName 
+| rex field=DeviceName mode=sed "s/ \(.*//g" 
+| eval deviceName= coalesce(DeviceName, deviceName) 
+| eventstats values(deviceId) as deviceId by deviceName 
+| eventstats values(groupName) as groupName by deviceId 
+| table unidentifiedDeviceName unidentifiedDeviceIpAddress unidentifiedDeviceSource collectorName unidentifiedDeviceStatus unidentifiedDevicePlatform unidentifiedDeviceScore uirNceComments uirFilter groupName, timestamp deviceName deviceId 
+| stats max(*) as * 
+    values(groupName) as groupName
+    by deviceId
+| search unidentifiedDeviceScore&gt;=1| sort -unidentifiedDeviceScore 
+| where LIKE(unidentifiedDevicePlatform, "%cisco%") OR LIKE(unidentifiedDevicePlatform, "%Cisco%")
+    OR LIKE(unidentifiedDevicePlatform, "%sns%") OR LIKE(unidentifiedDevicePlatform, "%SNS%") 
+    OR LIKE(unidentifiedDevicePlatform, "%ucs%") OR LIKE(unidentifiedDevicePlatform, "%UCS%")
+    OR LIKE(unidentifiedDevicePlatform, "%ise%") OR LIKE(unidentifiedDevicePlatform, "%ISE%")
+    OR LIKE(unidentifiedDevicePlatform, "%WS-C%-%")
+    OR LIKE(unidentifiedDevicePlatform, "%N%-C%")
+    OR LIKE(unidentifiedDevicePlatform, "%AIR-%")
+    OR LIKE(unidentifiedDevicePlatform, "%C9%00%")
+    OR LIKE(unidentifiedDevicePlatform, "%C68%")
+    OR LIKE(unidentifiedDevicePlatform, "%DS-C%") 
+| fields - uirNceComments uirFilter 
+| search unidentifiedDevicePlatform!=*AIR* AND unidentifiedDevicePlatform!=*9130* AND unidentifiedDevicePlatform!=*9117*
+| eval DISCOVER="Yes"</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$HideThis$">
+      <title>Chassis Count</title>
+      <single>
+        <title>In Selected Group</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvChassis">$result.Chassis_unformatted$</set>
+              <set token="kvChassisFormatted">$result.Chassis_formatted$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $INVENTORY$ 
+| $groupSelector$ 
+| stats dc(physicalAssetId) as Chassis_unformatted
+| eval Chassis_formatted = tostring(Chassis_unformatted, "commas")
+| table Chassis_unformatted, Chassis_formatted</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendInterval">-7d</option>
+      </single>
+    </panel>
+    <panel depends="$HideThis$">
+      <title>Managed Element Count</title>
+      <single>
+        <title>In Selected Group</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvManagedElements">$result.Elements_unformatted$</set>
+              <set token="kvManagedElementsFormatted">$result.Elements_formatted$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $INVENTORY$
+| $groupSelector$
+| stats dc(deviceId) as Elements_unformatted
+| eval Elements_formatted = tostring(Elements_unformatted, "commas")
+| table Elements_unformatted, Elements_formatted
+</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendInterval">-7d</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 35px !important; line-height: 40px !important">
+          <b>
+              <center>Group: $groupNameSelected$</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 35px !important; line-height: 40px !important">
+          <b>
+              <center>Chassis: $kvChassisFormatted$</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 35px !important; line-height: 40px !important">
+          <b>
+              <center>Elements: $kvManagedElementsFormatted$</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showInventoryData$">
+    <panel>
+      <table>
+        <title>Chassis Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $INVENTORY$ 
+| eval stoppanelfromloadingifnotclicked = $showInventoryData$ 
+| $groupSelector$
+| fields - groupName</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showInventoryData"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel id="category_panel">
+      <html>
+    <style>
+      /* Remove Splunk's default padding and force the background color */
+      #category_panel .panel-body {
+        padding: 0 !important;
+        background-color: #27ae60 !important;
+      }
+      #category_panel .dashboard-panel {
+        background-color: #27ae60 !important;
+        border: none !important;
+      }
+    </style>
+    <div style="width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; background-color: #27ae60; color: #fff;">
+      <div style="font-size: 30px; font-weight: bold; margin: 0; transform: translateY(1px);">
+        Category
+      </div>
+    </div>
+  </html>
+    </panel>
+    <panel id="criteria_panel">
+      <html>
+    <style>
+      /* Remove Splunk's default padding and force the background color */
+      #criteria_panel .panel-body {
+        padding: 0 !important;
+        background-color: #27ae60 !important;
+      }
+      #criteria_panel .dashboard-panel {
+        background-color: #27ae60 !important;
+        border: none !important;
+      }
+    </style>
+    <div style="width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; background-color: #27ae60; color: #fff;">
+      <div style="font-size: 30px; font-weight: bold; margin: 0; transform: translateY(1px);">
+        Criteria
+      </div>
+    </div>
+  </html>
+    </panel>
+    <panel id="devices_panel">
+      <html>
+    <style>
+      /* Remove Splunk's default padding and force the background color */
+      #devices_panel .panel-body {
+        padding: 0 !important;
+        background-color: #27ae60 !important;
+      }
+      #devices_panel .dashboard-panel {
+        background-color: #27ae60 !important;
+        border: none !important;
+      }
+    </style>
+    <div style="width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; background-color: #27ae60; color: #fff;">
+      <div style="font-size: 30px; font-weight: bold; margin: 0; transform: translateY(1px);">
+        Devices
+      </div>
+    </div>
+  </html>
+    </panel>
+    <panel id="percentage_and_rating_panel">
+      <html>
+    <style>
+      /* Remove Splunk's default padding and force the background color */
+      #percentage_and_rating_panel .panel-body {
+        padding: 0 !important;
+        background-color: #27ae60 !important;
+      }
+      #percentage_and_rating_panel .dashboard-panel {
+        background-color: #27ae60 !important;
+        border: none !important;
+      }
+    </style>
+    <div style="width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; background-color: #27ae60; color: #fff;">
+      <div style="font-size: 30px; font-weight: bold; margin: 0; transform: translateY(1px);">
+        Percentage &amp; Rating
+      </div>
+    </div>
+  </html>
+    </panel>
+    <panel id="recommendation_panel">
+      <html>
+    <style>
+      /* Remove Splunk's default padding and force the background color */
+      #recommendation_panel .panel-body {
+        padding: 0 !important;
+        background-color: #27ae60 !important;
+      }
+      #recommendation_panel .dashboard-panel {
+        background-color: #27ae60 !important;
+        border: none !important;
+      }
+    </style>
+    <div style="width: 100%; height: 50px; display: flex; align-items: center; justify-content: center; background-color: #27ae60; color: #fff;">
+      <div style="font-size: 30px; font-weight: bold; margin: 0; transform: translateY(1px);">
+        Recommendation
+      </div>
+    </div>
+  </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 60px; color: #000; line-height: 40px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 60px !important">
+          <b>
+              <center>Hardware</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          Hardware LDoS Already <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">or within 1 year</p>
+          </p>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $REFRESH$
+| where REFRESH="Yes"
+| $groupSelector$
+|  stats dc(serialNumber) as Chassis2Refresh</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0xf58f39","0xf58f39"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showRefreshDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $REFRESH$
+| where REFRESH="Yes"
+| $groupSelector$
+| stats dc(serialNumber) as Chassis2Refresh
+| eval countRefresh = Chassis2Refresh
+| eval percentRefresh = round(100 * countRefresh/ $kvChassis$ )
+| table percentRefresh</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[10,15]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$hardwareLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Refresh</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showRefreshDetails$">
+    <panel>
+      <table>
+        <title>Hardware End of Life Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $REFRESH$  
+| eval stoppanelfromloadingifnotclicked = $showRefreshDetails$
+| where REFRESH="Yes"
+| $groupSelector$
+| rename physicalAssetType as EquipmentType, productFamily as ProductFamily 
+| table deviceName ProductFamily productId EquipmentType LDoS serialNumber softwareVersion yrs2hw_ldos physicalAssetId</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showRefreshDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 60px !important">
+          <b>
+              <center>Software</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          &gt; 1 year until Hardware LDoS</p>
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          &lt; 1 year until Software LDoS</p>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $UPGRADE$ 
+| where UPGRADE="Yes" 
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| stats dc(deviceId) as Chassis2Upgrade</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0xf6a639","0xf6a639"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$countUnderLabel$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showUpgradeDrilldown">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $UPGRADE$
+| where UPGRADE="Yes"
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| stats dc(deviceId) as Chassis2Upgrade
+| eval percentUpgrade = (100 * Chassis2Upgrade/$kvManagedElements$)
+| table percentUpgrade</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[10,20]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$softwareLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Upgrade</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showUpgradeDrilldown$">
+    <panel>
+      <table>
+        <title>Software End of Life Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $UPGRADE$
+| eval stoppanelfromloadingifnotclicked = $showUpgradeDrilldown$
+| where UPGRADE="Yes"
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| table  deviceId physicalAssetId productId hardwareEndOfLifeId deviceName softwareEndOfLifeId softwareVersion softwareType hwLdosDate swLdosDate yrs2sw_ldos yrs2hw_ldos</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showUpgradeDrilldown"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 60px !important">
+          <b>
+              <center>Support</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%; line-height: 75%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          Not Currently Covered </p>
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+            Not Spared</p>
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">SMARTnet Still Orderable</p>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $COVER$
+| where COVER="Yes"
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| stats dc(physicalAssetId) as countCover
+| table countCover</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0xf6a639","0xf6a639"]</option>
+        <option name="rangeValues">[80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$countUnderLabel$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showCoverDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $COVER$
+| where COVER="Yes"
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| stats dc(physicalAssetId) as countCover
+| eval percentCover = round(100 * countCover/$kvManagedElements$)
+| table percentCover</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[14,30]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$supportLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Cover</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showCoverDetails$">
+    <panel>
+      <table>
+        <title>Add Coverage Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $COVER$
+| eval stoppanelfromloadingifnotclicked = $showCoverDetails$
+| where COVER="Yes"
+| where isnotnull(deviceId) 
+| $groupSelector$ 
+| table deviceName ProductFamily productId EquipmentType ContractStatus eoSCR chassisNoContract isSpare serialNumber softwareVersion physicalAssetId deviceId timeEoSCR serviceQuotable AddNca</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showCoverDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 35px !important; line-height: 60px !important">
+          <b>
+              <center>Security Advisories</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          Devices Vulnerable to
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+         Critical PSIRTs</p>
+        </p>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $SECURITY$
+| where SECURITY="Yes" 
+| $groupSelector$ 
+| stats dc(deviceId) as Secure
+| table Secure</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0xc0c856","0xc0c856"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showSecureDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $SECURITY$
+| where SECURITY="Yes" 
+| $groupSelector$ 
+| stats dc(deviceId) as Secure
+| eval percentSecure = round(100 * (Secure)/$kvManagedElements$) 
+| table percentSecure</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[10,25]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$securityLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Secure</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showSecureDetails$">
+    <panel>
+      <table>
+        <title>Critical PSIRT Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $SECURITY$
+| eval stoppanelfromloadingifnotclicked = $showSecureDetails$
+| where SECURITY="Yes" 
+| $groupSelector$ 
+| table deviceId bulletinTitle matchConfidence matchConfidenceReason securityAdvisoryColdId sir deviceName softwareVersion productId productFamily</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showSecureDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 60px !important">
+          <b>
+              <center>Configuration</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          Best Practice Rules:
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          High Risk</p>
+        </p>
+        </div>      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $CORRECT$
+| where CORRECT="Yes" 
+| $groupSelector$ 
+| stats dc(deviceId) as Correct
+| table Correct</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0xc0c856","0xc0c856"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$countUnderLabel$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showCorrectDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $CORRECT$
+| where CORRECT="Yes" 
+| $groupSelector$ 
+| stats dc(deviceId) as Correct
+| eval percentCorrect = round(100 * (Correct)/$kvManagedElements$) 
+| table percentCorrect</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[14,40]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$configLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Correct</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showCorrectDetails$">
+    <panel>
+      <table>
+        <title>Configuration Best Practices Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $CORRECT$
+| eval stoppanelfromloadingifnotclicked = $showCorrectDetails$
+| where CORRECT="Yes" 
+| $groupSelector$ 
+| eventstats dc(deviceId) as HighBpDevices by bestPracticeNuggetId
+| table deviceName bestPracticeNuggetId productId productFamily softwareVersion HighBpDevices</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showCorrectDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 60px !important">
+          <b>
+              <center>Data Collection</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+    <panel>
+      <html>
+        <div style="height: 100%; width: 100%;">
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          Unidentified Inventory: 
+          <p style="font-size: 22px; font-family: 'Arial Regular', Arial, serif; color: black;">
+          CDP &amp; Syslog Inferred Devices  </p>
+        </p>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $DISCOVER$ 
+| where DISCOVER="Yes" 
+| $groupSelector$ 
+| stats count as Discover 
+| table Discover</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$countUnderLabel$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showAddDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $DISCOVER$ 
+| where DISCOVER="Yes" 
+| $groupSelector$ 
+| stats count as Discover 
+| eval percentDiscover = round(100 * (Discover)/$kvManagedElements$) 
+| table percentDiscover</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">80</option>
+        <option name="rangeColors">["0x53a051","0xf7dc58","0xd93f3c"]</option>
+        <option name="rangeValues">[25,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">$dataLegend$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <html>
+          <div style="width: 100%; height: 40px; color: #000; line-height: 10px; text-align: center;">
+          <h8 style="font-size: 40px !important; line-height: 40px !important">
+          <b>
+              <center>Add</center>
+            </b>
+        </h8> 
+      </div>
+	    </html>
+    </panel>
+  </row>
+  <row depends="$showAddDetails$">
+    <panel>
+      <table>
+        <title>Unidentified Inventory Drilldown. To sort the table, click a header once or twice. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $DISCOVER$
+| eval stoppanelfromloadingifnotclicked = $showAddDetails$
+| where DISCOVER="Yes" 
+| table unidentifiedDeviceName unidentifiedDeviceIpAddress unidentifiedDeviceSource collectorName unidentifiedDeviceStatus unidentifiedDevicePlatform unidentifiedDeviceScore uirNceComments uirFilter timestamp deviceName deviceId 
+| $groupSelector$
+| sort - unidentifiedDeviceScore 
+| where LIKE(unidentifiedDevicePlatform, "%cisco%") OR LIKE(unidentifiedDevicePlatform, "%Cisco%")
+    OR LIKE(unidentifiedDevicePlatform, "%sns%") OR LIKE(unidentifiedDevicePlatform, "%SNS%") 
+    OR LIKE(unidentifiedDevicePlatform, "%ucs%") OR LIKE(unidentifiedDevicePlatform, "%UCS%")
+    OR LIKE(unidentifiedDevicePlatform, "%ise%") OR LIKE(unidentifiedDevicePlatform, "%ISE%")
+    OR LIKE(unidentifiedDevicePlatform, "%WS-C%-%")
+    OR LIKE(unidentifiedDevicePlatform, "%N%-C%")
+    OR LIKE(unidentifiedDevicePlatform, "%AIR-%")
+    OR LIKE(unidentifiedDevicePlatform, "%C9%00%")
+    OR LIKE(unidentifiedDevicePlatform, "%C68%")
+    OR LIKE(unidentifiedDevicePlatform, "%DS-C%") 
+| fields - groupName uirNceComments uirFilter timestamp 
+| search unidentifiedDevicePlatform!=*AIR* AND unidentifiedDevicePlatform!=*9130* AND unidentifiedDevicePlatform!=*9117*</query>
+          <earliest>$TimeSelectionToken.earliest$</earliest>
+          <latest>$TimeSelectionToken.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <unset token="showAddDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

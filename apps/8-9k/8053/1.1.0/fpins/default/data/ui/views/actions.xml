@@ -1,0 +1,211 @@
+<form theme="dark"
+      version="1.1">
+  <label>Action Analysis</label>
+  <!-- First row of a single comment -->
+  <!-- Second row of 2 panels -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="selectedsourcetype" searchWhenChanged="true">
+      <label>Log Type</label>
+      <choice value="*">Any</choice>
+      <choice value="SWG">SWG</choice>
+      <choice value="Admin">Admin</choice>
+      <choice value="CASBAPI">CASBAPI</choice>
+      <choice value="CASBInline">CASBInline</choice>
+      <choice value="DLP">DLP</choice>
+      <choice value="Health">Health</choice>
+      <choice value="ZTNA">ZTNA</choice>
+      <default>Any</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="time" token="selectedtime" searchWhenChanged="true">
+      <label>Time selector</label>
+      <default>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="selectedaction" searchWhenChanged="true">
+      <label>Action</label>
+      <choice value="*">Any</choice>
+      <default>*</default>
+      <initialValue>*</initialValue>
+      <fieldForLabel>action</fieldForLabel>
+      <fieldForValue>action</fieldForValue>
+      <search>
+        <query>source=fpins ppcode=SSE action =* | stats count by action | table action</query>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Days since last file event</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type != stats type=$selectedsourcetype$ action="$selectedaction$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| head 1
+| eval DAYS=floor((now()-_time)/86400)
+| table DAYS</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeValues">[2,4,6,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total action events of type $selectedsourcetype$</title>
+      <single>
+        <search>
+          <!--<query>source=fpins ppcode=SSE type=access OR type=admin OR type=cloudaudit OR type=cloudsummary action="$selectedaction$"| stats count</query>-->
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action="$selectedaction$"| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| stats count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total action events of type $selectedsourcetype$ over time</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action="$selectedaction$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| timechart span=1d count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Newly detected actions today - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| search action="$selectedaction$"
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@d"), "DISAPPEARED","NEW")
+| dedup action,MARKER
+| eventstats count AS FOUND by action
+| table action, MARKER, FOUND
+| search MARKER=NEW AND FOUND=1
+| stats count by action
+| fields action</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Newly detected actions this month - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| search action="$selectedaction$"
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@mon"), "DISAPPEARED","NEW")
+| dedup action,MARKER
+| eventstats count AS FOUND by action
+| table action, MARKER, FOUND
+| search MARKER=NEW AND FOUND=1
+| stats count by action
+| fields action</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Action events over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| search action="$selectedaction$"
+| timechart count by action span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Number of unique actions per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| bin _time span=1d
+| stats count by action ,_time
+| timechart count span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Apps over selected actions - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| stats count by applicationname</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Apps over selected emails - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| search action="$selectedaction$"
+| stats count by username</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

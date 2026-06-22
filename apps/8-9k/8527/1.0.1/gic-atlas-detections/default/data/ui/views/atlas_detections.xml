@@ -1,0 +1,106 @@
+<dashboard version="1.1" theme="dark">
+  <label>MITRE ATLAS Detections</label>
+  <description>AI/LLM threat detections mapped to MITRE ATLAS techniques</description>
+
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Detection Summary</title>
+      <chart>
+        <search>
+          <query>index=summary source="ATLAS - *"
+| stats count BY atlas_technique_name
+| sort - count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.axisTitleX.text">Technique</option>
+        <option name="charting.axisTitleY.text">Count</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Detections by Severity</title>
+      <chart>
+        <search>
+          <query>index=summary source="ATLAS - *"
+| stats count BY severity
+| sort - count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent ATLAS Detections</title>
+      <table>
+        <search>
+          <query>index=summary source="ATLAS - *"
+| table _time, atlas_technique, atlas_technique_name, atlas_tactic, severity, user, src_ip, host, model
+| sort - _time
+| head 100</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="wrap">true</option>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"critical":#DC4E41,"high":#F1813F,"medium":#F8BE34,"low":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Users Generating Detections</title>
+      <table>
+        <search>
+          <query>index=summary source="ATLAS - *"
+| stats count AS detection_count, dc(atlas_technique) AS unique_techniques, values(atlas_technique_name) AS techniques BY user
+| sort - detection_count
+| head 20</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top Source IPs</title>
+      <table>
+        <search>
+          <query>index=summary source="ATLAS - *"
+| stats count AS detection_count, dc(atlas_technique) AS unique_techniques, values(severity) AS severities BY src_ip
+| sort - detection_count
+| head 20</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+  </row>
+
+
+</dashboard>

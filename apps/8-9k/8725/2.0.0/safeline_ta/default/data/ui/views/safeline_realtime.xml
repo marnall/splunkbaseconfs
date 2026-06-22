@@ -1,0 +1,200 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Real-Time Monitor</label>
+  <description>Live view of WAF activity — auto-refreshes every 30 seconds.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="window_tok">
+      <label>Window</label>
+      <choice value="-5m">Last 5 min</choice>
+      <choice value="-15m">Last 15 min</choice>
+      <choice value="-30m">Last 30 min</choice>
+      <choice value="-60m">Last 1 hour</choice>
+      <default>-15m</default>
+    </input>
+    <input type="dropdown" token="site_tok" searchWhenChanged="true">
+      <label>Site (vhost)</label>
+      <choice value="*">All sites</choice>
+      <default>*</default>
+      <prefix>site_url=</prefix>
+      <fieldForLabel>site_name</fieldForLabel>
+      <fieldForValue>site_url</fieldForValue>
+      <search>
+        <query>`safeline_waf` site_url=* | stats count by site_url site_name | sort - count</query>
+        <earliest>-24h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <!-- Live KPIs -->
+  <row>
+    <panel>
+      <single>
+        <title>Requests (live)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | stats count</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Attacks (live)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ is_attack=1 | stats count</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[1,10]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Critical (live)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ severity=critical | stats count</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="rangeColors">["0x55c98f","0x9c1f1f"]</option>
+        <option name="rangeValues">[1]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Blocked (live)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ blocked=1 | stats count</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Active attackers</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ is_attack=1 | stats dc(src_ip)</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Sites under attack</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ is_attack=1 | stats dc(site_url)</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Live time chart -->
+  <row>
+    <panel>
+      <chart>
+        <title>Live request stream (per-second)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | timechart span=10s count by action_cim</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"allowed":0x55c98f,"blocked":0xdc4e41}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Live tables -->
+  <row>
+    <panel>
+      <table>
+        <title>Currently active attackers</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ is_attack=1
+| stats count AS attacks
+        count(eval(severity=="critical")) AS critical
+        count(eval(severity=="high")) AS high
+        count(eval(blocked=1)) AS blocked
+        dc(attack_type) AS types
+        values(attack_type) AS attack_types
+        values(severity) AS severities
+        values(site_name) AS sites
+        latest(_time) AS last_seen
+        by src_ip src_country src_city
+| eval last_seen = strftime(last_seen, "%H:%M:%S")
+| sort - critical - high - attacks
+| head 25</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <format type="color" field="critical">
+          <colorPalette type="list">[#55c98f,#9c1f1f]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+        <format type="color" field="high">
+          <colorPalette type="list">[#55c98f,#dc4e41]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link><![CDATA[/app/safeline_ta/safeline_ip_reputation?form.ip_tok=$row.src_ip$]]></link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Live event stream (most recent first)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$
+| sort - _time
+| head 100
+| eval ts = strftime(_time, "%H:%M:%S")
+| eval target = site_name . urlpath
+| table ts src_ip src_country method status_code target attack_type severity action rule_id user_agent</query>
+          <earliest>$window_tok$</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <format type="color" field="severity">
+          <colorPalette type="map">{"critical":#9c1f1f,"high":#dc4e41,"medium":#f1813f,"low":#f8be34,"informational":#6db7c6}</colorPalette>
+        </format>
+        <format type="color" field="action">
+          <colorPalette type="map">{"deny":#dc4e41,"block":#dc4e41,"drop":#dc4e41,"allow":#55c98f}</colorPalette>
+        </format>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

@@ -1,0 +1,243 @@
+<dashboard version="1.1" theme="light" script="js/incidents_page.js">
+  <label>ThreatMon Incidents</label>
+  <description>Real-time threat intelligence dashboard powered by ThreatMon</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="severity_filter" searchWhenChanged="true">
+      <label>Severity</label>
+      <choice value="*">All</choice>
+      <choice value="Critical">Critical</choice>
+      <choice value="High">High</choice>
+      <choice value="Medium">Medium</choice>
+      <choice value="Low">Low</choice>
+      <choice value="Information">Information</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="status_filter" searchWhenChanged="true">
+      <label>Status</label>
+      <choice value="*">All</choice>
+      <choice value="Open">Open</choice>
+      <choice value="In Progress">In Progress</choice>
+      <choice value="False Positive">False Positive</choice>
+      <choice value="Ignore">Ignore</choice>
+      <choice value="Resolved">Resolved</choice>
+      <default>*</default>
+    </input>
+    <input type="text" token="alert_code_filter" searchWhenChanged="true">
+      <label>Alert Code</label>
+      <default></default>
+    </input>
+    <input type="text" token="title_filter" searchWhenChanged="true">
+      <label>Title Search</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <!-- KPI Row -->
+  <row>
+    <panel>
+      <single>
+        <title>Total Incidents</title>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| stats count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="useColors">false</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Open</title>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="Open"
+| stats count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x17a2b8","0x17a2b8","0x17a2b8"]</option>
+        <option name="rangeValues">[0,9999]</option>
+        <option name="useColors">true</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Critical / High</title>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" (severity="Critical" OR severity="High")
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| stats count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x28a745","0xfd7e14","0xdc3545"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">true</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>In Progress</title>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="In Progress"
+| stats count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="useColors">false</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Resolved</title>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="Resolved"
+| stats count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="useColors">false</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Charts Row -->
+  <row>
+    <panel>
+      <title>Severity Distribution</title>
+      <chart>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| stats count by severity
+| sort -count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"Critical": 0xdc3545, "High": 0xfd7e14, "Medium": 0xffc107, "Low": 0x28a745, "Information": 0x17a2b8}</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Status Distribution</title>
+      <chart>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| stats count by status
+| sort -count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"Open": 0x17a2b8, "In Progress": 0x3f78e0, "False Positive": 0xe74c3c, "Ignore": 0xf39c12, "Resolved": 0x27ae60}</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Incidents Over Time (by Severity)</title>
+      <chart>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| timechart count by severity span=1d</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"Critical": 0xdc3545, "High": 0xfd7e14, "Medium": 0xffc107, "Low": 0x28a745, "Information": 0x17a2b8}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Incident Table -->
+  <row>
+    <panel>
+      <title>Incident List</title>
+      <table>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" severity="$severity_filter$"
+| search alarmCode="*$alert_code_filter$*" title="*$title_filter$*"
+| dedup alarmCode
+| lookup status_overrides alarmCode OUTPUT status AS _ov_status
+| eval status=if(isnotnull(_ov_status) AND _ov_status!="", _ov_status, status)
+| search status="$status_filter$"
+| eval Date=strftime(_time, "%Y-%m-%d %H:%M:%S")
+| sort -_time
+| table alarmCode, title, severity, status, Date, description
+| rename alarmCode AS "Alert Code", title AS "Title", severity AS "Severity", status AS "Status", description AS "Description"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <option name="count">25</option>
+        <option name="dataOverlayMode">none</option>
+        <drilldown>
+          <condition field="Title" match="^Phishing Domain Detected$">
+            <link target="_self">/app/incident_threatmon/threatmon_actions?form.action_alarm_id=$row.Alert Code$&amp;form.action_title=$row.Title$&amp;form.action_finding_id=$row.Finding ID$&amp;form.takedown_eligible=1</link>
+          </condition>
+          <condition field="Title" match="^Rogue Mobile App Detected$">
+            <link target="_self">/app/incident_threatmon/threatmon_actions?form.action_alarm_id=$row.Alert Code$&amp;form.action_title=$row.Title$&amp;form.action_finding_id=$row.Finding ID$&amp;form.takedown_eligible=1</link>
+          </condition>
+          <condition field="Title" match="^Company Data Disclosure Detected$">
+            <link target="_self">/app/incident_threatmon/threatmon_actions?form.action_alarm_id=$row.Alert Code$&amp;form.action_title=$row.Title$&amp;form.action_finding_id=$row.Finding ID$&amp;form.takedown_eligible=1</link>
+          </condition>
+          <condition>
+            <link target="_self">/app/incident_threatmon/threatmon_actions?form.action_alarm_id=$row.Alert Code$&amp;form.action_title=$row.Title$&amp;form.action_finding_id=$row.Finding ID$</link>
+          </condition>
+        </drilldown>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"Critical": "#dc3545", "High": "#fd7e14", "Medium": "#ffc107", "Low": "#28a745", "Information": "#17a2b8"}</colorPalette>
+        </format>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"Open": "#17a2b8", "In Progress": "#3f78e0", "Resolved": "#27ae60", "False Positive": "#e74c3c", "Ignore": "#f39c12"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

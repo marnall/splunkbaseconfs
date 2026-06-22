@@ -1,0 +1,265 @@
+<form version="1.1" script="get_latest_info_btn.js, censys_soc_expandable_table.js">
+  <label>Censys SOC Dashboard</label>
+  <init>
+    <set token="tkn_refresh_host">init</set>
+    <set token="tkn_refresh_web_property">init</set>
+    <set token="tkn_refresh_certificate">init</set>
+  </init>
+  <fieldset submitButton="false" autoRun="false">
+    <input type="dropdown" token="tkn_account_name">
+      <label>Censys Account*</label>
+      <fieldForLabel>title</fieldForLabel>
+      <fieldForValue>title</fieldForValue>
+      <search>
+        <query>| rest /services/properties/censys-splunk-platform_account splunk_server=local | dedup title | table title</query>
+        <done>
+          <set token="tkn_account_name">$result.title$</set>
+          <set token="form.tkn_account_name">$result.title$</set>
+        </done>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <div style="margin-top: 5px; font-size: 12px;">
+          Select the correct Censys Account to use for the enrichment process.
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row depends="$tkn_error_msg$">
+    <panel>
+      <html>
+        <p id="error_msg" style="color:red"/>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title># of events or alerts enriched manually</title>
+      <single>
+        <search>
+          <query>| inputlookup censys_host_enrichment_lookup
+            | append [ | inputlookup censys_web_property_enrichment_lookup ]
+            | append [ | inputlookup censys_certificate_enrichment_lookup ]
+            | where scan_type="manual"
+            | stats count by scan_type
+            | table count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title># of events or alerts enriched automatically</title>
+      <single>
+        <search>
+          <query>| inputlookup censys_host_enrichment_lookup
+            | append [ | inputlookup censys_web_property_enrichment_lookup ]
+            | append [ | inputlookup censys_certificate_enrichment_lookup ]
+            | where scan_type="automatic"
+            | stats count by scan_type
+            | table count</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Enriched Hosts</title>
+      <input type="text" token="tkn_host_filter" searchWhenChanged="true">
+        <label>Filter Host/IP</label>
+        <default>*</default>
+      </input>
+      <table id="host_table">
+        <search>
+          <query>
+            | inputlookup censys_host_enrichment_lookup where ip="*$tkn_host_filter$*"
+            | eval Action = "Get latest info"
+            | eval _refresh="$tkn_refresh_host$"
+            | rename last_enriched AS "Last Enriched", ip AS IP, labels AS Labels, service_count AS "Service Count", services_ports AS "Service Ports", services_protocols AS "Service Protocols", services_transport_protocols AS "Service Transport Protocols", services_labels AS "Service Labels", services_vulns AS "Service Vulns", services_threats AS "Service Threats", services_scan_times AS "Service Scan Times", dns_names AS "DNS Names", forward_dns_names AS "Forward DNS Names", reverse_dns_names AS "Reverse DNS Names", network_name AS "Network Name", cidrs AS cidrs, autonomous_system_name AS "Autonomous System Name", autonomous_system_asn AS "Autonomous System asn", city AS City, province AS Province, postal_code AS "Postal Code", country AS Country, country_code AS "Country Code", continent AS Continent, latitude AS Latitude, longitude AS Longitude, raw_event AS Event
+            | table "Last Enriched", Event, IP, Labels, "Service Count", "Service Ports", "Service Protocols", "Service Transport Protocols", "Service Labels", "Service Vulns", "Service Threats", "Service Scan Times", "DNS Names", "Forward DNS Names", "Reverse DNS Names", "Network Name", cidrs, "Autonomous System Name", "Autonomous System asn", City, Province, "Postal Code", Country, "Country Code", Continent, Latitude, Longitude, index, sourcetype, timestamp, Action
+            | sort - "Last Enriched"
+          </query>
+        </search>
+        <fields>"Last Enriched", Event, IP, Labels, "Service Count", "Service Ports", "Service Protocols", "Service Transport Protocols", "Service Labels", "Service Vulns", "Service Threats", "Service Scan Times", "DNS Names", "Forward DNS Names", "Reverse DNS Names", "Network Name", cidrs, "Autonomous System Name", "Autonomous System asn", City, Province, "Postal Code", Country, "Country Code", Continent, Latitude, Longitude, index, sourcetype, timestamp, Action</fields>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <condition field="Action">
+            <set token="tkn_host_ip">$row.IP$</set>
+          </condition>
+          <condition></condition>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$tkn_host_ip$">
+    <panel>
+      <title>Getting latest info for $tkn_host_ip$</title>
+      <table>
+        <search>
+          <query>
+            | censysalertenrichmenttriage account_name="$tkn_account_name$" indicator_type="host" indicator_value="$tkn_host_ip$"
+            | kv limit=0
+            | table key
+          </query>
+          <done>
+            <set token="tkn_refresh_host">$result.key$</set>
+            <unset token="tkn_host_ip"></unset>
+          </done>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Enriched Web Properties</title>
+      <input type="text" token="tkn_web_property_filter" searchWhenChanged="true">
+        <label>Filter Hostname</label>
+        <default>*</default>
+      </input>
+      <table id="web_property_table">
+        <search>
+          <query>
+            | inputlookup censys_web_property_enrichment_lookup where hostname="*$tkn_web_property_filter$*"
+            | eval Action = "Get latest info"
+            | eval _refresh="$tkn_refresh_web_property$"
+            | rename last_enriched AS "Last Enriched", hostname AS Hostname, port AS Port, scan_time AS "Scan Time", endpoint_types AS "Endpoint Types", endpoint_paths AS "Endpoint Paths", labels AS Labels, threats_names AS "Threat Names", vulns_names AS "Vulns Names" vendors AS Vendors, products AS Products, versions AS Versions, fingerprint_sha256 AS sha256, self_signed AS "Self Signed", subject_dn AS Subject_dn, issuer_dn AS Issuer_dn, common_names AS "Common Names", not_before AS "Not Before", not_after AS "Not After", raw_event AS Event
+            | table "Last Enriched", Event, Hostname, Port, "Scan Time", "Endpoint Types", "Endpoint Paths", Labels, "Threat Names", "Vulns Names", Vendors, Products, Versions, sha256, "Self Signed", Subject_dn, Issuer_dn, "Common Names", "Not Before", "Not After", index, sourcetype, timestamp, Action
+            | sort - "Last Enriched"
+          </query>
+        </search>
+        <fields>"Last Enriched", Event, Hostname, Port, "Scan Time", "Endpoint Types", "Endpoint Paths", Labels, "Threat Names", "Vulns Names", Vendors, Products, Versions, sha256, "Self Signed", Subject_dn, Issuer_dn, "Common Names", "Not Before", "Not After", index, sourcetype, timestamp, Action</fields>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <condition field="Action">
+            <set token="tkn_web_property_hostname">$row.Hostname$</set>
+            <set token="tkn_web_property_port">$row.Port$</set>
+          </condition>
+          <condition></condition>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$tkn_web_property_hostname$, $tkn_web_property_port$">
+    <panel>
+      <title>Getting latest info for $tkn_web_property_hostname$:$tkn_web_property_port$</title>
+      <table>
+        <search>
+          <query>
+            | censysalertenrichmenttriage account_name="$tkn_account_name$" indicator_type="web_property" indicator_value="$tkn_web_property_hostname$" indicator_port="$tkn_web_property_port$"
+            | kv limit=0
+            | table key
+          </query>
+          <done>
+            <set token="tkn_refresh_web_property">$result.key$</set>
+            <unset token="tkn_web_property_hostname"></unset>
+            <unset token="tkn_web_property_port"></unset>
+          </done>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Enriched Certificates</title>
+      <input type="text" token="tkn_certificate_filter" searchWhenChanged="true">
+        <label>Filter Fingerprint sha256</label>
+        <default>*</default>
+      </input>
+      <table id="certificate_table">
+        <search>
+          <query>
+            | inputlookup censys_certificate_enrichment_lookup where fingerprint_sha256="*$tkn_certificate_filter$*"
+            | eval Action = "Get latest info"
+            | eval _refresh="$tkn_refresh_certificate$"
+            | rename last_enriched AS "Last Enriched", self_signed_signature AS "Self Signed Signature", valid_to AS "Valid To", self_signed AS "Self Signed", subject_dn AS Subject_dn, issuer_dn AS Issuer_dn, common_names AS "Common Names", valid_not_before AS "Not Valid Before", valid_not_after AS "Not Valid After", raw_event AS Event
+            | table "Last Enriched", Event, fingerprint_sha256, "Self Signed Signature", "Valid To", "Self Signed", Subject_dn, Issuer_dn, "Common Names", "Not Valid Before", "Not Valid After", index, sourcetype, timestamp, Action
+            | sort - "Last Enriched"
+          </query>
+        </search>
+        <fields>"Last Enriched", Event, fingerprint_sha256, "Self Signed Signature", "Valid To", "Self Signed", Subject_dn, Issuer_dn, "Common Names", "Not Valid Before", "Not Valid After", index, sourcetype, timestamp, Action</fields>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <condition field="Action">
+            <set token="tkn_certificate_sha256">$row.fingerprint_sha256$</set>
+          </condition>
+          <condition></condition>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$tkn_certificate_sha256$">
+    <panel>
+      <title>Getting latest info for $tkn_certificate_sha256$</title>
+      <table>
+        <search>
+          <query>
+            | censysalertenrichmenttriage account_name="$tkn_account_name$" indicator_type="certificate" indicator_value="$tkn_certificate_sha256$"
+            | kv limit=0
+            | table key
+          </query>
+          <done>
+            <set token="tkn_refresh_certificate">$result.key$</set>
+            <unset token="tkn_certificate_sha256"></unset>
+          </done>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$alwaysHideCSSPanel$">
+      <html>
+        <style>
+          /* Style for expandable rows */
+          #host_table th:nth-child(3),
+          #host_table td:nth-child(3){
+              max-width: 75ch !important;
+              min-width: 25% !important;
+              overflow: hidden;
+              white-space: nowrap !important;
+              text-overflow: ellipsis !important;
+          }
+          #web_property_table th:nth-child(3),
+          #web_property_table td:nth-child(3){
+              max-width: 75ch !important;
+              min-width: 25% !important;
+              overflow: hidden;
+              white-space: nowrap !important;
+              text-overflow: ellipsis !important;
+          }
+          #certificate_table th:nth-child(3),
+          #certificate_table td:nth-child(3){
+              max-width: 75ch !important;
+              min-width: 25% !important;
+              overflow: hidden;
+              white-space: nowrap !important;
+              text-overflow: ellipsis !important;
+          }
+        </style>
+      </html>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,162 @@
+<form version="1.1" theme="light">
+  <label>UCs Dashboard</label>
+  <search id="mybase_search">
+    <query>
+      <![CDATA[| inputlookup approval_stage_trackuc | eval firstsource="approval" | inputlookup append=true initial_stage_tk | eval secondsource="initial" | eval source=coalesce(firstsource,secondsource)  |eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | sort 0 convertTime  | rex field=id "_(?<creationDate>[0-9]+?)$" | eval creationDate= tonumber(creationDate)/1000| eval theTimer=if($the_time_option$== 500,true,false) |  where ( creationDate > relative_time(now(),"-$the_time_option$d")) or theTimer == true ]]> </query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="the_time_option" searchWhenChanged="true">
+      <label>Time</label>
+      <choice value="1">Last Day</choice>
+      <choice value="2">Last 2 Days</choice>
+      <choice value="7">Last 7 Days</choice>
+      <choice value="14">Last 14 Days</choice>
+      <choice value="30">Last 30 Days</choice>
+      <choice value="90">Last 90 Days</choice>
+      <choice value="500">All Time</choice>
+      <default>7</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <title>Total</title>
+        <search base="mybase_search">
+          <query>| eval isapproved= if(source=="initial","",isapproved) | eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | eventstats max(convertTime) as maxTime by id source | where maxTime == convertTime | fields - maxTime | sort 0  convertTime | eventstats count as duplicate by id | eventstats last(comment) as l_comment last(assigned_to) as l_assigned_to  last(stage) as l_stage last(updatedby) as l_updatedby last(isapproved) as l_isapproved  by id | eventstats max(convertTime) as maxTime by id   | where maxTime == convertTime
+| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <chart>
+        <title>Types</title>
+        <search base="mybase_search">
+          <query>| eval isapproved= if(source=="initial","",isapproved) | eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | eventstats max(convertTime) as maxTime by id source | where maxTime == convertTime | fields - maxTime | sort 0  convertTime | eventstats count as duplicate by id | eventstats last(comment) as l_comment last(assigned_to) as l_assigned_to  last(stage) as l_stage last(updatedby) as l_updatedby last(isapproved) as l_isapproved  by id | eventstats max(convertTime) as maxTime by id   | where maxTime == convertTime
+| stats count by request_type</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Stage</title>
+        <search base="mybase_search">
+          <query>| eval isapproved= if(source=="initial","",isapproved) | eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | eventstats max(convertTime) as maxTime by id source | where maxTime == convertTime | fields - maxTime | sort 0  convertTime | eventstats count as duplicate by id | eventstats last(comment) as l_comment last(assigned_to) as l_assigned_to  last(stage) as l_stage last(updatedby) as l_updatedby last(isapproved) as l_isapproved  by id | eventstats max(convertTime) as maxTime by id   | where maxTime == convertTime
+| stats count by stage</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Solutions</title>
+        <search base="mybase_search">
+          <query>| eval isapproved= if(source=="initial","",isapproved) | eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | eventstats max(convertTime) as maxTime by id source | where maxTime == convertTime | fields - maxTime | sort 0  convertTime | eventstats count as duplicate by id | eventstats last(comment) as l_comment last(assigned_to) as l_assigned_to  last(stage) as l_stage last(updatedby) as l_updatedby last(isapproved) as l_isapproved  by id | eventstats max(convertTime) as maxTime by id   | where maxTime == convertTime
+| stats count by detection_solution</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>Creation to Closed (or Discarded ) SLA</title>
+        <search base="mybase_search">
+          <query>| eventstats last(stage) as last_stage  max(convertTime) as max_convertTime by id
+| search last_stage="closed" OR last_stage="discarded"
+| eval calculatedTime = (max_convertTime-creationDate)/(60*60)
+| stats avg(calculatedTime) as avg_calculatedTime</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="unit">hour(s)</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Approval SLA</title>
+        <search base="mybase_search">
+          <query>| streamstats window=2 current=f  last(convertTime) as priv_convertTime last(stage) as priv_stage 
+| search priv_stage="approval_review"
+| eval calculatedTime = (convertTime-priv_convertTime)/(60*60)
+| stats avg(calculatedTime) as calculatedTime</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="unit">hour(s)</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Implementation SLA</title>
+        <search base="mybase_search">
+          <query>| streamstats window=2 current=f  last(convertTime) as priv_convertTime last(stage) as priv_stage 
+| search priv_stage="implementation" 
+| eval calculatedTime = (convertTime-priv_convertTime)/(60*60)
+| stats avg(calculatedTime) as calculatedTime</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="unit">hour(s)</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Senior Review SLA</title>
+        <search base="mybase_search">
+          <query>| streamstats window=2 current=f  last(convertTime) as priv_convertTime last(stage) as priv_stage 
+| search priv_stage="senior_review" 
+| eval calculatedTime = (convertTime-priv_convertTime)/(60*60)
+| stats avg(calculatedTime) as calculatedTime</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="unit">hour(s)</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Top Detections</title>
+        <search base="mybase_search">
+          <query>| eval isapproved= if(source=="initial","",isapproved) | eval convertTime= strptime(updatetime,"%d/%m/%Y, %H:%M:%S") | eventstats max(convertTime) as maxTime by id source | where maxTime == convertTime | fields - maxTime | sort 0  convertTime | eventstats count as duplicate by id | eventstats last(comment) as l_comment last(assigned_to) as l_assigned_to  last(stage) as l_stage last(updatedby) as l_updatedby last(isapproved) as l_isapproved  by id | eventstats max(convertTime) as maxTime by id   | where maxTime == convertTime
+| stats count by detection_name request_type
+| eventstats sum(count) as total by detection_name
+| stats list(request_type) as request_type list(count) as count by detection_name total
+| table detection_name request_type count total
+| sort 0 - total</query>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>approval management by users</title>
+        <search base="mybase_search">
+          <query>| search source="approval"
+| stats  dc(id) as tickets by updatedby</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

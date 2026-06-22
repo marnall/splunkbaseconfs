@@ -1,0 +1,180 @@
+<form version="1.1">
+  <label>Client Monitoring</label>
+  <description>Monitor DNS activity by client device</description>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="client_filter" searchWhenChanged="true">
+      <label>Client IP Filter (optional)</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Active Clients</title>
+      <single>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| stats dc(client_ip) as unique_clients</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Unique Clients</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Client Queries</title>
+      <single>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Total Queries</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Client Activity Over Time</title>
+      <chart>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| timechart span=30m dc(client_ip) as "Active Clients"</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Number of Active Clients</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top Clients by Query Volume</title>
+      <table>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| eval is_blocked=if(match(_raw, "gravity blocked|exactly denied|special domain|Apple iCloud Private Relay|Designated Resolver|is 0\.0\.0\.0"), 1, 0)
+| eval is_cached=if(match(_raw, "cached"), 1, 0)
+| stats count as "Total Queries",
+        sum(is_blocked) as "Blocked Queries",
+        sum(is_cached) as "Cached Queries",
+        dc(domain) as "Unique Domains"
+        by client_ip
+| eval "Block Rate %" = round((('Blocked Queries'/'Total Queries')*100), 2)
+| eval "Cache Rate %" = round((('Cached Queries'/'Total Queries')*100), 2)
+| sort -"Total Queries"
+| head 20</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Client Query Distribution</title>
+      <chart>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| stats count by client_ip
+| sort -count
+| head 10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Client Activity Heatmap</title>
+      <chart>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| eval hour=strftime(_time, "%H")
+| stats count by client_ip, hour
+| sort client_ip, hour</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Hour of Day</option>
+        <option name="charting.axisTitleY.text">Query Count</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Most Active Clients by Hour</title>
+      <table>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| eval hour=strftime(_time, "%H")
+| stats count by client_ip, hour
+| sort -count
+| head 50</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Per-Client Action Breakdown</title>
+      <chart>
+        <search>
+          <query>`pihole_base` client_ip=$client_filter$ client_ip=*
+| eval action=case(
+    match(_raw, "gravity blocked|exactly denied|Apple iCloud Private Relay|Designated Resolver|special domain|is 0\.0\.0\.0|is ::$"), "blocked",
+    match(_raw, "Rate-limiting"), "rate_limited",
+    match(_raw, "forwarded"), "forwarded",
+    match(_raw, "cached-stale"), "cached_stale",
+    match(_raw, "cached"), "cached",
+    match(_raw, "reply"), "reply",
+    match(_raw, "/etc/hosts"), "local_lookup",
+    match(_raw, "query\["), "query",
+    1=1, "other"
+)
+| stats count by client_ip, action
+| sort client_ip, -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Client IP</option>
+        <option name="charting.axisTitleY.text">Query Count</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

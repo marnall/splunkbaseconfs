@@ -1,0 +1,366 @@
+<dashboard version="2">
+  <label>Whisper - ES Risk Overview</label>
+  <description>Risk score distribution, top risky indicators, risk trends, and risk factor frequency for ES Risk-Based Alerting integration.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - ES Risk Overview",
+  "description": "Risk score distribution, top risky indicators, risk trends, and risk factor frequency for ES Risk-Based Alerting integration.",
+  "dataSources": {
+    "ds_risk_distribution": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_score=* | dedup domain sortby -_time | eval risk_bucket=case(whisper_risk_score>=80, \"Critical (80-100)\", whisper_risk_score>=60, \"High (60-79)\", whisper_risk_score>=40, \"Medium (40-59)\", whisper_risk_score>=20, \"Low (20-39)\", 1=1, \"Informational (0-19)\") | stats count BY risk_bucket | sort -count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_top_risky_indicators": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_score=* | stats latest(whisper_risk_score) AS risk_score, latest(whisper_risk_level) AS risk_level, latest(whisper_risk_factors_list) AS risk_factors, latest(whisper_asn) AS asn, latest(whisper_country) AS country BY whisper_type, whisper_ip, whisper_cname_target | eval indicator=coalesce(whisper_ip, whisper_cname_target) | where isnotnull(indicator) AND risk_score>0 | sort -risk_score | head 20 | table indicator, whisper_type, risk_score, risk_level, risk_factors, asn, country",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_risk_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_score=* | dedup domain sortby -_time | bin _time span=1h | stats avg(whisper_risk_score) AS avg_risk, max(whisper_risk_score) AS max_risk BY _time | fillnull value=0 avg_risk max_risk | sort _time | fields _time, avg_risk, max_risk",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_risk_factor_frequency": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_factors_list=* | dedup domain sortby -_time | makemv delim=\", \" whisper_risk_factors_list | mvexpand whisper_risk_factors_list | stats count BY whisper_risk_factors_list | sort -count | head 15 | rename whisper_risk_factors_list AS risk_factor",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_risk_score_avg": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_score=* | dedup domain sortby -_time | stats avg(whisper_risk_score) AS avg_risk, count AS _event_count | eval display=if(_event_count=0 OR isnull(avg_risk), \"0\", round(avg_risk, 1)) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_critical_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_level=\"critical\" | stats dc(whisper_ip) AS count | eval display=count | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_high_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_level=\"high\" | stats dc(whisper_ip) AS count | eval display=count | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_scored": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_risk_score=* | stats dc(whisper_ip) AS count | eval display=count | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_intel_risk_scores": {
+      "type": "ds.search",
+      "options": {
+        "query": "| inputlookup whisper_ip_intel | append [| inputlookup whisper_domain_intel] | where isnotnull(whisper_risk_score) AND whisper_risk_score>0 | eval indicator=coalesce(ip, domain) | sort -whisper_risk_score | head 20 | table indicator, whisper_risk_score, whisper_risk_level, whisper_threat_score, whisper_threat_level, threat_group",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "inputs": {
+    "time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      }
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 960
+    },
+    "structure": [
+      {
+        "item": "single_avg_risk",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 360,
+          "h": 120
+        }
+      },
+      {
+        "item": "single_critical",
+        "type": "block",
+        "position": {
+          "x": 360,
+          "y": 0,
+          "w": 360,
+          "h": 120
+        }
+      },
+      {
+        "item": "single_high",
+        "type": "block",
+        "position": {
+          "x": 720,
+          "y": 0,
+          "w": 360,
+          "h": 120
+        }
+      },
+      {
+        "item": "single_total",
+        "type": "block",
+        "position": {
+          "x": 1080,
+          "y": 0,
+          "w": 360,
+          "h": 120
+        }
+      },
+      {
+        "item": "chart_distribution",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 120,
+          "w": 720,
+          "h": 300
+        }
+      },
+      {
+        "item": "chart_trend",
+        "type": "block",
+        "position": {
+          "x": 720,
+          "y": 120,
+          "w": 720,
+          "h": 300
+        }
+      },
+      {
+        "item": "chart_factor_frequency",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 420,
+          "w": 720,
+          "h": 300
+        }
+      },
+      {
+        "item": "table_top_risky",
+        "type": "block",
+        "position": {
+          "x": 720,
+          "y": 420,
+          "w": 720,
+          "h": 300
+        }
+      },
+      {
+        "item": "table_intel_risk",
+        "type": "block",
+        "position": {
+          "x": 0,
+          "y": 720,
+          "w": 1440,
+          "h": 240
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "single_avg_risk": {
+      "type": "viz.singlevalue",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f8be34",
+        "nullValueDisplay": "N/A"
+      },
+      "title": "Average Risk Score",
+      "dataSources": {
+        "primary": "ds_risk_score_avg"
+      }
+    },
+    "single_critical": {
+      "type": "viz.singlevalue",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#d41f1c",
+        "nullValueDisplay": "0"
+      },
+      "title": "Critical Risk Indicators",
+      "dataSources": {
+        "primary": "ds_critical_count"
+      }
+    },
+    "single_high": {
+      "type": "viz.singlevalue",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f1813f",
+        "nullValueDisplay": "0"
+      },
+      "title": "High Risk Indicators",
+      "dataSources": {
+        "primary": "ds_high_count"
+      }
+    },
+    "single_total": {
+      "type": "viz.singlevalue",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "0"
+      },
+      "title": "Total Scored Indicators",
+      "dataSources": {
+        "primary": "ds_total_scored"
+      }
+    },
+    "chart_distribution": {
+      "type": "viz.bar",
+      "options": {
+        "xField": "risk_bucket",
+        "yFields": [
+          "count"
+        ],
+        "seriesColors": [
+          "#006d9c"
+        ]
+      },
+      "title": "Risk Score Distribution",
+      "dataSources": {
+        "primary": "ds_risk_distribution"
+      }
+    },
+    "chart_trend": {
+      "type": "viz.line",
+      "options": {
+        "xField": "_time",
+        "yFields": [
+          "avg_risk",
+          "max_risk"
+        ],
+        "seriesColors": [
+          "#f8be34",
+          "#d41f1c"
+        ]
+      },
+      "title": "Risk Score Trend Over Time",
+      "dataSources": {
+        "primary": "ds_risk_trend"
+      }
+    },
+    "chart_factor_frequency": {
+      "type": "viz.bar",
+      "options": {
+        "xField": "risk_factor",
+        "yFields": [
+          "count"
+        ],
+        "seriesColors": [
+          "#f1813f"
+        ],
+        "orientation": "horizontal"
+      },
+      "title": "Top Risk Factors",
+      "dataSources": {
+        "primary": "ds_risk_factor_frequency"
+      }
+    },
+    "table_top_risky": {
+      "type": "viz.table",
+      "options": {},
+      "title": "Top Risky Indicators (Enrichment)",
+      "dataSources": {
+        "primary": "ds_top_risky_indicators"
+      },
+      "eventHandlers": [
+        {
+          "type": "drilldown.setToken",
+          "event": "table.cellClick",
+          "actions": [
+            {
+              "type": "eval",
+              "token": "drilldown_indicator",
+              "value": "$row.indicator$"
+            }
+          ]
+        },
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" (whisper_ip=\"$row.indicator$\" OR whisper_cname_target=\"$row.indicator$\")",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "table_intel_risk": {
+      "type": "viz.table",
+      "options": {},
+      "title": "Threat Intel Collection Risk Scores",
+      "dataSources": {
+        "primary": "ds_intel_risk_scores"
+      },
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "| inputlookup whisper_ip_intel | append [| inputlookup whisper_domain_intel] | search (ip=\"$row.indicator$\" OR domain=\"$row.indicator$\")",
+            "openInNewTab": true
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

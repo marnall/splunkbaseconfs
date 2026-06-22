@@ -1,0 +1,180 @@
+<!-- Copyright (C) 2010-2025 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" template="dashboard.html" stylesheet="custom.css,call_detail.css">
+  <label>View call details (Expressway)</label>
+  <module name="TopNav" layoutPanel="appHeader" />
+  <module name="AppNav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="mainSearchControls">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Link" layoutPanel="viewHeader">
+      <param name="label">Investigate Calls</param>
+      <module name="Redirector">
+        <param name="url">calls</param>
+        <param name="arg.earliest">$bc_earliest$</param>
+        <param name="arg.latest">$bc_latest$</param>
+        <param name="arg.type">$bc_type$</param>
+        <param name="arg.number">$bc_number$</param>
+        <param name="arg.numberType">$bc_numberType$</param>
+        <param name="arg.searchterms">$bc_searchterms$</param>
+        <param name="arg.advancedSearchLanguage">$bc_advancedSearchLanguage$</param>
+        <param name="arg.optionalHeadCommand">$bc_optionalHeadCommand$</param>
+      </module>
+    </module>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+        <h1>&gt; Call Detail (Expressway)</h1>
+      ]]></param>
+    </module>
+
+    <module name="TextField">
+      <param name="name">call_id</param>
+      <param name="label">Call Id</param>
+      <param name="template">$name$="$value$"</param>
+      <param name="cssClass">callIdTextField</param>
+      <param name="width">600px</param>
+
+      <module name="Search">
+        <param name="earliest">$search.timeRange.earliest$</param>
+        <param name="latest">$search.timeRange.latest$</param>
+        <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco_expressway_cdr_csv" OR sourcetype=cisco_expressway_cdr_json) $call_id$ | fieldsummary | fields field count | search count>0
+        ]]></param>
+
+        <module name="CustomBehavior" layoutPanel="panel_row1_col1">
+          <param name="customBehavior">onlySubmitIfFieldsAreSet</param>
+          <param name="arg.requiredKey">call_id.rawValue</param>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <div id="viewerPageInstructions" style="display:none;clear:both;">
+              <br>
+              <br>
+              <b>This view is normally reached by clicking a row from the <a href="calls">Investigate Calls</a> page.  <br>
+              <br>
+              However you can also use this view manually by simply entering a Webex Call Id in the field above and hitting Enter.</b>
+              <br>
+              <br>
+              <br>
+              <br>
+              </div>
+            ]]></param>
+          </module>
+        </module>
+      </module>
+
+
+      <module name="Search" layoutPanel="panel_row1_col1">
+        <param name="earliest">$search.timeRange.earliest$</param>
+        <param name="latest">$search.timeRange.latest$</param>
+        <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco_expressway_cdr_csv" OR sourcetype=cisco_expressway_cdr_json) $call_id$
+| eval duration=tostring(duration,"duration")
+| table _time duration sourceAlias destinationAlias origIpAddr destIpAddr
+
+        ]]></param>
+
+        <module name="Table" />
+
+      </module>
+
+      <module name="Search" layoutPanel="panel_row1_col1">
+        <param name="earliest">$search.timeRange.earliest$</param>
+        <param name="latest">$search.timeRange.latest$</param>
+        <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco_expressway_cdr_csv" OR sourcetype=cisco_expressway_cdr_json) $call_id$
+| eval duration=tostring(duration,"duration")
+| fields - timestartpos timeendpos linecount punct date_* splunk_server splunk_server_group
+| fieldsummary | fields field
+
+        ]]></param>
+
+
+
+
+        <module name="Fields" layoutPanel="panel_row2_col1">
+          <param name="fields">duration callingPartyNumber calledPartyNumber cause_description origDeviceName destDeviceName origIpAddr destIpAddr Audio active box_call_serial_number </param>
+          <param name="hiddenFields">_time</param>
+
+          <module name="Search">
+            <param name="earliest">$search.timeRange.earliest$</param>
+            <param name="latest">$search.timeRange.latest$</param>
+            <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco_expressway_cdr_csv" OR sourcetype=cisco_expressway_cdr_json) $call_id$
+| table _time $results.fields$
+| eval duration=tostring(duration,"duration")
+            ]]></param>
+
+            <pattern name="see_raw_search_syntax" />
+
+            <module name="ValueSetter">
+              <param name="name">legNoun</param>
+              <param name="if.$results.count$=1">leg</param>
+              <param name="default">legs</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <h2>Showing $results.count$ $legNoun$ for call id $call_id.rawValue$</h2>
+                ]]></param>
+              </module>
+            </module>
+
+
+            <module name="ProgressIndicator" />
+
+            <module name="Pager">
+              <module name="Table" />
+            </module>
+          </module>
+        </module>
+
+
+
+
+
+        <!-- this is just for the ALL POSSIBLE FIELDS panel -->
+        <module name="Search" layoutPanel="panel_row3_col1">
+          <param name="earliest">$search.timeRange.earliest$</param>
+          <param name="latest">$search.timeRange.latest$</param>
+          <param name="search"><![CDATA[
+`custom_index`  (sourcetype="cisco_expressway_cdr_csv" OR sourcetype=cisco_expressway_cdr_json) $call_id$
+| table *
+| fields - _*
+| transpose 500
+| rename column as field
+| foreach row* [eval value=if(length('<<FIELD>>')>0, mvappend(value,'<<FIELD>>'),value)]
+| eval value=mvjoin(mvdedup(value),", ")
+          ]]></param>
+
+          <module name="ProgressIndicator"></module>
+
+          <module name="SearchControls">
+            <param name="sections">export</param>
+          </module>
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <h2>All $results.count$ fields and values</h2>
+            ]]></param>
+          </module>
+
+
+          <module name="Pager">
+            <param name="count">20</param>
+
+            <module name="Multiplexer">
+              <param name="fields">field,value</param>
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                <b>$field$</b>: $value$
+                ]]></param>
+              </module>
+            </module>
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

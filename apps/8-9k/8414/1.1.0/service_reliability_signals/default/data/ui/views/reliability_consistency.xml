@@ -1,0 +1,114 @@
+<form theme="dark" version="1.1">
+  <label>Reliability Consistency &amp; Predictability</label>
+  <description>Evaluates how consistent and predictable service reliability is over time.
+Highlights noisy services, behavioural variance, and reliability volatility
+using log-derived failure signals only.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>service_reliability_test</default>
+    </input>
+    <input type="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Most Unpredictable Services</title>
+      <table>
+        <title>Services with the highest variance in failure behavior. These services generate operational noise and increase incident risk.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h sum(is_failure) AS failures BY service
+            | untable _time service failures
+            | stats stdev(failures) AS failure_variance avg(failures) AS avg_failures BY service
+            | eval predictability = case(
+                failure_variance &gt;= 5, "LOW",
+                failure_variance &gt;= 2, "MEDIUM",
+                true(), "HIGH"
+              )
+            | sort - failure_variance</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Failure Variance Distribution</title>
+      <chart>
+        <title>Distribution of failure variability across services. Long tails indicate services with highly erratic behavior.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h sum(is_failure) AS failures BY service
+            | untable _time service failures
+            | stats stdev(failures) AS failure_variance BY service</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Reliability Volatility Trend</title>
+      <chart>
+        <title>Tracks changes in failure variability over time. Rising volatility indicates worsening predictability and higher incident risk.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=1h stdev(is_failure) AS volatility</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">266</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Understanding Reliability Consistency &amp; Predictability</title>
+      <html>
+      <div>
+        <h3>What This Dashboard Measures</h3>
+        <p>
+          This dashboard evaluates how predictable and consistent service reliability behavior is over time.
+          It complements availability and SLA views by highlighting operational noise and volatility.
+        </p>
+
+        <h3>Key Concepts Explained</h3>
+        <ul>
+          <li>
+              <b>Consistency Score</b> – Higher scores indicate stable, predictable failure behavior.</li>
+          <li>
+              <b>Failure Variance</b> – Measures how much failure counts fluctuate over time.</li>
+          <li>
+              <b>Volatility Trend</b> – Rising trends indicate increasing unpredictability.</li>
+        </ul>
+
+        <h3>How to Interpret Results</h3>
+        <ul>
+          <li>High availability with low consistency indicates hidden operational risk.</li>
+          <li>Low consistency services should be reviewed before major releases.</li>
+          <li>Improving consistency over time indicates successful stabilization efforts.</li>
+        </ul>
+
+        <h3>Recommended Actions</h3>
+        <ul>
+          <li>Investigate services with high variance and low predictability.</li>
+          <li>Review retry logic, dependency behavior, and error handling.</li>
+        </ul>
+      </div>
+    </html>
+    </panel>
+  </row>
+</form>

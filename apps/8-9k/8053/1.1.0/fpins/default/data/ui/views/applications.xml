@@ -1,0 +1,235 @@
+<form theme="dark"
+      version="1.1">
+  <label>Application Analysis</label>
+  <!-- First row of a single comment -->
+  <!-- Second row of 2 panels -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="selectedsourcetype" searchWhenChanged="true">
+      <label>Log Type</label>
+      <choice value="*">Any</choice>
+      <choice value="SWG">SWG</choice>
+      <choice value="Admin">Admin</choice>
+      <choice value="CASBAPI">CASBAPI</choice>
+      <choice value="CASBInline">CASBInline</choice>
+      <choice value="DLP">DLP</choice>
+      <choice value="Health">Health</choice>
+      <choice value="ZTNA">ZTNA</choice>
+      <default>Any</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="time" token="selectedtime" searchWhenChanged="true">
+      <label>Time selector</label>
+      <default>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="selectedapp" searchWhenChanged="true">
+      <label>Application</label>
+      <choice value="*">Any</choice>
+      <default>*</default>
+      <initialValue>*</initialValue>
+      <fieldForLabel>applicationname</fieldForLabel>
+      <fieldForValue>applicationname</fieldForValue>
+      <search>
+        <query>source=fpins ppcode=SSE applicationname =* | stats count by applicationname | table applicationname</query>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Days since last application event</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| head 1
+| eval DAYS=floor((now()-_time)/86400)
+| table DAYS</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeValues">[2,4,6,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Top 10 apps</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE applicationname=* 
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| stats count by applicationname | sort - count | head 10</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Total application events of type $selectedsourcetype$</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$"| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| stats count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total application events of type $selectedsourcetype$ over time</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| timechart span=1d count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Newly detected applications today - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@d"), "DISAPPEARED","NEW")
+| dedup applicationname,MARKER
+| eventstats count AS FOUND by applicationname
+| table applicationname, MARKER, FOUND
+| search MARKER=NEW AND FOUND=1
+| fields applicationname</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Newly detected applications this month - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@mon"), "DISAPPEARED","NEW")
+| dedup applicationname,MARKER
+| eventstats count AS FOUND by applicationname
+| table applicationname, MARKER, FOUND
+| search MARKER=NEW AND FOUND=1
+| fields applicationname</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Application events over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND applicationname="$selectedapp$"
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| timechart count by applicationname span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Number of unique apps per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| stats count by applicationname ,_time
+| timechart count span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+
+    <panel>
+      <title>Shared items by app</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname="$selectedapp$" applicationname!=s3
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| eval select=case(status="Internal","Internal", status="External","External",status="Public", "Public")
+| stats count by applicationname
+| sort - count | head 10</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Uploads/Downloads - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$  | search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand activity | search (activity=Uploaded OR activity=Downloaded)
+| timechart count by activity</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Actions over selected apps - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ applicationname=* action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand action
+| stats count by action</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,239 @@
+<dashboard version="2">
+  <label>Whisper - Geographic Threat Map</label>
+  <description>Geographic visualization of threat origins using GeoIP enrichment data, including country-level distribution and impossible-travel detection.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - Geographic Threat Map",
+  "description": "Geographic visualization of threat origins using GeoIP enrichment data, including country-level distribution and impossible-travel detection.",
+  "dataSources": {
+    "ds_threat_by_country": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_country=* | dedup domain sortby -_time | stats count AS events, avg(whisper_threat_score) AS avg_threat_score, dc(whisper_ip) AS unique_ips BY whisper_geo_country | eval avg_threat_score=round(avg_threat_score, 1) | sort - events | head 50",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_threat_by_city": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_latitude=* whisper_geo_longitude=* | dedup domain sortby -_time | stats count AS events, avg(whisper_threat_score) AS avg_threat_score BY whisper_geo_city, whisper_geo_country, whisper_geo_latitude, whisper_geo_longitude | eval avg_threat_score=round(avg_threat_score, 1) | sort - events | head 100",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_top_threat_countries": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_country=* whisper_threat_score>0 | dedup domain sortby -_time | stats count AS threat_events, avg(whisper_threat_score) AS avg_score, dc(whisper_ip) AS threat_ips BY whisper_geo_country | eval avg_score=round(avg_score, 1) | sort - threat_events | head 20 | rename whisper_geo_country AS \"Country\", threat_events AS \"Threat Events\", avg_score AS \"Avg Threat Score\", threat_ips AS \"Unique Threat IPs\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_threat_score_dist": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_country=* whisper_threat_score>0 | dedup domain sortby -_time | eval score_range=case(whisper_threat_score<=25, \"Low (1-25)\", whisper_threat_score<=50, \"Medium (26-50)\", whisper_threat_score<=75, \"High (51-75)\", 1=1, \"Critical (76-100)\") | stats count BY score_range",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_impossible_travel": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_latitude=* whisper_geo_longitude=* | stats values(whisper_geo_city) AS cities, values(whisper_geo_latitude) AS lats, values(whisper_geo_longitude) AS lons, dc(whisper_geo_city) AS city_count BY domain | where city_count > 1 | eval details=mvjoin(cities, \", \") | table domain, city_count, details | sort - city_count | head 20 | rename domain AS \"Domain\", city_count AS \"Distinct Cities\", details AS \"Geographic Locations\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_geoip_events": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_country=* | dedup domain sortby -_time | stats count AS total, dc(whisper_geo_country) AS countries, dc(whisper_geo_city) AS cities | eval display=tostring(total, \"commas\") | fields display, countries, cities",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_total_geoip",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 1200,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_threat_by_country",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 600,
+          "h": 350
+        }
+      },
+      {
+        "item": "viz_threat_score_dist",
+        "position": {
+          "x": 600,
+          "y": 150,
+          "w": 600,
+          "h": 350
+        }
+      },
+      {
+        "item": "viz_top_threat_countries",
+        "position": {
+          "x": 0,
+          "y": 500,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_threat_by_city",
+        "position": {
+          "x": 0,
+          "y": 800,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_impossible_travel",
+        "position": {
+          "x": 0,
+          "y": 1100,
+          "w": 1200,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_total_geoip": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_total_geoip_events"
+      },
+      "title": "GeoIP Coverage Summary"
+    },
+    "viz_threat_by_country": {
+      "type": "viz.bar",
+      "dataSources": {
+        "primary": "ds_threat_by_country"
+      },
+      "title": "Events by Country",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637"],
+        "xAxisTitleText": "Country",
+        "yAxisTitleText": "Events"
+      }
+    },
+    "viz_threat_score_dist": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_threat_score_dist"
+      },
+      "title": "Threat Score Distribution by Geography",
+      "options": {
+        "seriesColors": ["#65a637", "#f8be34", "#f1813f", "#d41f1c"]
+      }
+    },
+    "viz_top_threat_countries": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_top_threat_countries"
+      },
+      "title": "Top Threat Countries",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_country=\"$row.Country$\" whisper_threat_score>0",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_threat_by_city": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_threat_by_city"
+      },
+      "title": "Threats by City (with Coordinates)",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_geo_city=\"$row.whisper_geo_city$\" whisper_geo_country=\"$row.whisper_geo_country$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_impossible_travel": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_impossible_travel"
+      },
+      "title": "Impossible Travel - Domains Resolving to Multiple Cities",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" domain=\"$row.Domain$\" whisper_geo_city=*",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

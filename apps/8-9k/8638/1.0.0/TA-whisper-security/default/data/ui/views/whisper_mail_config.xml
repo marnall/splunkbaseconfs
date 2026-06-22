@@ -1,0 +1,249 @@
+<dashboard version="2">
+  <label>Whisper - Mail Server Configuration</label>
+  <description>Mail server (MX record) configuration monitoring and change detection for organizational domains.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - Mail Server Configuration",
+  "description": "Mail server (MX record) configuration monitoring and change detection for organizational domains.",
+  "dataSources": {
+    "ds_domain_list": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"MX\" | dedup domain | sort domain | eval label=domain | table label, domain",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_domains_with_mx": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"MX\" domain=$domain_filter$ | stats dc(domain) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_mail_servers": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"MX\" domain=$domain_filter$ | stats dc(record_value) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_recent_mx_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" record_type=\"MX\" | stats count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_mx_table": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"MX\" domain=$domain_filter$ | dedup domain, record_value sortby -_time | stats values(record_value) AS mail_servers, count AS mx_count BY domain | sort domain",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_mx_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" record_type=\"MX\" | table _time, domain, change_type, old_value, new_value, detected_at | sort -_time",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_mx_detail": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"MX\" domain=$selected_domain$ | dedup record_value sortby -_time | table record_value, collected_at, collection_id",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    },
+    "input_domain_filter": {
+      "type": "input.text",
+      "options": {
+        "token": "domain_filter",
+        "defaultValue": "*"
+      },
+      "title": "Domain Filter"
+    },
+    "input_selected_domain": {
+      "type": "input.dropdown",
+      "options": {
+        "items": [],
+        "token": "selected_domain",
+        "defaultValue": "*"
+      },
+      "dataSources": {
+        "primary": "ds_domain_list"
+      },
+      "title": "Domain Detail"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range",
+      "input_domain_filter",
+      "input_selected_domain"
+    ],
+    "structure": [
+      {
+        "item": "viz_domains_with_mx",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_total_mail_servers",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_recent_mx_changes",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 200
+        }
+      },
+      {
+        "item": "viz_mx_table",
+        "position": {
+          "x": 0,
+          "y": 200,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_mx_changes",
+        "position": {
+          "x": 0,
+          "y": 500,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_mx_detail",
+        "position": {
+          "x": 0,
+          "y": 800,
+          "w": 1200,
+          "h": 250
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_domains_with_mx": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_domains_with_mx"
+      },
+      "title": "Domains with MX Records",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_total_mail_servers": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_mail_servers"
+      },
+      "title": "Total Mail Servers",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_recent_mx_changes": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_recent_mx_changes"
+      },
+      "title": "Recent MX Changes",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_mx_table": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_mx_table"
+      },
+      "title": "Mail Server Configuration by Domain",
+      "eventHandlers": [
+        {
+          "type": "drilldown.setToken",
+          "event": "table.cellClick",
+          "actions": [
+            {
+              "type": "eval",
+              "token": "selected_domain",
+              "value": "$row.domain$"
+            }
+          ]
+        }
+      ]
+    },
+    "viz_mx_changes": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_mx_changes"
+      },
+      "title": "Mail Server Changes"
+    },
+    "viz_mx_detail": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_mx_detail"
+      },
+      "title": "Mail Server Details"
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

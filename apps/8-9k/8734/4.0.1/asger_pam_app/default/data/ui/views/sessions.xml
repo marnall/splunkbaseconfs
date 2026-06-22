@@ -1,0 +1,45 @@
+<dashboard version="1.1" theme="dark">
+  <label>Sessions</label>
+  <description>Privileged Session Monitoring — Connect, Duration, Data Transfer, Disconnect</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true"><label>Time Range</label><default><earliest>-24h@h</earliest><latest>now</latest></default></input>
+    <input type="dropdown" token="protocol_filter" searchWhenChanged="true"><label>Protocol</label><default>*</default><choice value="*">All</choice><choice value="ssh">SSH</choice><choice value="rdp">RDP</choice><choice value="vnc">VNC</choice><choice value="telnet">Telnet</choice><choice value="datanex">DataNex</choice><choice value="prism">Prism</choice><choice value="hubspace">HubSpace</choice></input>
+    <input type="dropdown" token="origin_filter" searchWhenChanged="true"><label>Session Origin</label><default>*</default><choice value="*">All</choice><choice value="web">Web</choice><choice value="connector">Connector</choice><choice value="native">Native</choice></input>
+  </fieldset>
+
+  <!-- ── KPI ROW ── -->
+  <row>
+    <panel><single><title>Total Sessions</title><search><query>`asger_sessions` event_type="*connected*" outcome="success" protocol=$protocol_filter$ session_origin=$origin_filter$ | stats dc(session_id)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Unique Users</title><search><query>`asger_sessions` event_type="*connected*" protocol=$protocol_filter$ session_origin=$origin_filter$ | stats dc(user)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Unique Targets</title><search><query>`asger_sessions` event_type="*connected*" protocol=$protocol_filter$ session_origin=$origin_filter$ | stats dc(target_host)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Avg Duration (min)</title><search><query>`asger_sessions` event_type="*disconnect*" session_duration>0 protocol=$protocol_filter$ session_origin=$origin_filter$ | eval dur_min=round(session_duration/60,1) | stats avg(dur_min) as avg | eval avg=round(avg,1)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="unit">min</option></single></panel>
+  </row>
+
+  <!-- ── TIMELINE + ORIGIN PIE ── -->
+  <row>
+    <panel><chart><title>Sessions Over Time by Protocol</title><search><query>`asger_sessions` event_type="*connected*" protocol=$protocol_filter$ session_origin=$origin_filter$ | timechart span=1h count by protocol</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">column</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><chart><title>Session Origin Distribution</title><search><query>`asger_sessions` event_type="*connected*" outcome="success" session_origin=* | stats count by session_origin</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">pie</option></chart></panel>
+  </row>
+
+  <!-- ── SESSION DURATION ANALYSIS ── -->
+  <row>
+    <panel><chart><title>Session Duration Distribution (minutes)</title><search><query>`asger_sessions` event_type="*disconnect*" session_duration>0 protocol=$protocol_filter$ session_origin=$origin_filter$ | eval dur_bucket=case(session_duration&lt;60,"&lt;1 min",session_duration&lt;300,"1-5 min",session_duration&lt;900,"5-15 min",session_duration&lt;1800,"15-30 min",session_duration&lt;3600,"30-60 min",1==1,"60+ min") | stats count by dur_bucket</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">pie</option></chart></panel>
+    <panel><chart><title>Top 10 Users by Total Session Time</title><search><query>`asger_sessions` event_type="*disconnect*" session_duration>0 protocol=$protocol_filter$ session_origin=$origin_filter$ | eval dur_hr=round(session_duration/3600,2) | stats sum(dur_hr) as total_hr, count as sessions by user | sort -total_hr | head 10</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">bar</option><option name="charting.chart.showDataLabels">all</option></chart></panel>
+  </row>
+
+  <!-- ── DATA TRANSFER ── -->
+  <row>
+    <panel><chart><title>Data Transfer per User (MB)</title><search><query>`asger_sessions` event_type="*disconnect*" (bytes_in>0 OR bytes_out>0) protocol=$protocol_filter$ | eval mb_in=round(bytes_in/1048576,2), mb_out=round(bytes_out/1048576,2) | stats sum(mb_in) as Upload_MB, sum(mb_out) as Download_MB by user | sort -(Upload_MB+Download_MB) | head 10</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><chart><title>User → Target Map (Top 20)</title><search><query>`asger_sessions` event_type="*connected*" outcome="success" protocol=$protocol_filter$ | stats count by user, target_host | sort -count | head 20</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">bar</option></chart></panel>
+  </row>
+
+  <!-- ── DISCONNECT DETAILS TABLE ── -->
+  <row>
+    <panel><table><title>Session Disconnect Details (Duration + Metrics)</title><search><query>`asger_sessions` event_type="*disconnect*" protocol=$protocol_filter$ session_origin=$origin_filter$ | eval duration_display=if(duration>3600, tostring(round(session_duration/3600,1))." hr", if(duration>60, tostring(round(session_duration/60,1))." min", tostring(round(duration,0))." sec")), data_transfer=tostring(round((bytes_in+bytes_out)/1048576,2))." MB" | table _time, user, target_host, protocol, session_origin, duration_display, data_transfer, messages_in, messages_out, viewer_count, reason | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="drilldown">row</option><option name="count">25</option></table></panel>
+  </row>
+
+  <!-- ── FULL SESSION LOG ── -->
+  <row>
+    <panel><table><title>Session Activity Log</title><search><query>`asger_sessions` protocol=$protocol_filter$ session_origin=$origin_filter$ | table _time, user, privileged_account, target_host, target_hostname, protocol, session_origin, event_type, outcome, device_action, session_id, auth_method | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="drilldown">row</option><option name="count">25</option></table></panel>
+  </row>
+</dashboard>

@@ -1,0 +1,84 @@
+<dashboard theme="dark" version="1.1">
+  <label>IT Ops &amp; Security Health</label>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=splunkd log_level=ERROR earliest=-24h
+| stats count AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">135</option>
+        <option name="rangeColors">["0x53a051","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[50,100]</option>
+        <option name="underLabel">System Errors (24h)</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=_audit action=login_failure earliest=-24h
+| stats count AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,20]</option>
+        <option name="underLabel">Failed Logins (24h)</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=splunkd log_level=WARN earliest=-24h
+| stats count AS value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[50,200]</option>
+        <option name="underLabel">System Warnings (24h)</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=_internal sourcetype=splunkd log_level=ERROR earliest=-24h
+| stats count AS errors
+| eval key="metrics"
+| append [
+    search index=_audit action=login_failure earliest=-24h
+    | stats count AS failures
+    | eval key="metrics"
+]
+| append [
+    search index=_internal sourcetype=splunkd log_level=WARN earliest=-24h
+    | stats count AS warnings
+    | eval key="metrics"
+]
+| stats sum(errors) AS errors sum(failures) AS failures sum(warnings) AS warnings
+| eval health_score = 100 - (errors*3 + failures*4 + warnings*0.2)
+| eval value = if(health_score &lt; 0, 0, round(health_score, 0))
+| table value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xdc4e41","0xf1813f","0x118832"]</option>
+        <option name="rangeValues">[70,89]</option>
+        <option name="underLabel">Overall Health Score</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,123 @@
+<dashboard version="1.1">
+  <label>Target Risk Scoring</label>
+  <description>Calculate risk scores for targeted hosts based on alert severity and frequency.</description>
+
+  <search>
+    <query>
+      | inputlookup suricata_settings.csv
+      | stats latest(eval(if(setting="search_scope", value, null()))) as search_scope latest(eval(if(setting="time_choice", value, null()))) as time_choice
+      | eval search_scope=coalesce(search_scope, "index=suricata")
+      | eval time_choice=coalesce(time_choice, "24h")
+      | eval earliest_tok=case(time_choice=="7d", "-7d@d", time_choice=="30d", "-30d@d", time_choice=="all", "0", true(), "-24h@h")
+      | eval latest_tok="now"
+    </query>
+    <done>
+      <set token="search_scope">$result.search_scope$</set>
+      <set token="form.search_scope">$result.search_scope$</set>
+      <set token="time_choice">$result.time_choice$</set>
+      <set token="form.time_choice">$result.time_choice$</set>
+      <set token="earliest_tok">$result.earliest_tok$</set>
+      <set token="latest_tok">$result.latest_tok$</set>
+    </done>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="time_choice">
+      <label>Time Range</label>
+      <choice value="24h">Last 24 hours</choice>
+      <choice value="7d">Last 7 days</choice>
+      <choice value="30d">Last 30 days</choice>
+      <choice value="all">All time</choice>
+      <default>24h</default>
+      <initialValue>24h</initialValue>
+      <change>
+        <condition value="24h">
+          <set token="earliest_tok">-24h@h</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="7d">
+          <set token="earliest_tok">-7d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="30d">
+          <set token="earliest_tok">-30d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="all">
+          <set token="earliest_tok">0</set>
+          <set token="latest_tok">now</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="search_scope">
+      <label>Search Scope</label>
+      <default>index=suricata</default>
+      <initialValue>index=suricata</initialValue>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Top Risky Targets</title>
+      <table>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval severity = coalesce('alert.severity', alert.severity, severity)
+            | eval risk_score = if(severity=="1", 10, if(severity=="2", 7, if(severity=="3", 4, 1)))
+            | stats count as alert_count sum(risk_score) as total_risk avg(risk_score) as avg_risk by dest_ip
+            | eval avg_risk = round(avg_risk, 2)
+            | eval threat_level = if(avg_risk >= 8, "Critical", if(avg_risk >= 5, "High", if(avg_risk >= 3, "Medium", "Low")))
+            | sort - total_risk
+            | head 10
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link>
+            /app/suricata-soc-investigation/suricata_investigation?form.dest=$row.dest_ip$&amp;form.search_scope=$search_scope|u$
+          </link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Risk Distribution</title>
+      <chart>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval severity = coalesce('alert.severity', alert.severity, severity)
+            | eval risk_score = if(severity=="1", 10, if(severity=="2", 7, if(severity=="3", 4, 1)))
+            | eval threat_level = if(risk_score >= 8, "Critical", if(risk_score >= 5, "High", if(risk_score >= 3, "Medium", "Low")))
+            | stats count by threat_level
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Risk Score Trends</title>
+      <chart>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval severity = coalesce('alert.severity', alert.severity, severity)
+            | eval risk_score = if(severity=="1", 10, if(severity=="2", 7, if(severity=="3", 4, 1)))
+            | timechart span=1h sum(risk_score) as total_risk
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

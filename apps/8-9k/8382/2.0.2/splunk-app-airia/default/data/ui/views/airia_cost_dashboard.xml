@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form version="1.1">
+  <label>Airia Platform - AI Cost Monitoring</label>
+  <description>Monitor AI model costs, token usage, and spending trends</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_picker">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Total Cost (Selected Period)</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| stats sum(cost_numeric) as total_cost
+| eval total_cost="$".round(total_cost, 4)</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Total AI Spend</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Total Tokens Consumed</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where tokens_numeric > 0
+| stats sum(tokens_numeric) as total_tokens
+| eval total_tokens=tostring(total_tokens,"commas")</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Total Tokens</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>API Calls</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| stats count as api_calls</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Model API Calls</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Cost Trend Over Time</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| timechart span=1h sum(cost_numeric) as "Cost (USD)"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Cost (USD)</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.lineWidth">2</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Cost by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| stats sum(cost_numeric) as total_cost by model_display
+| eval total_cost=round(total_cost, 4)
+| sort -total_cost</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Cost by Provider</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| stats sum(cost_numeric) as total_cost by provider
+| eval total_cost=round(total_cost, 4)
+| sort -total_cost</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Token Usage by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where tokens_numeric > 0
+| stats sum(tokens_numeric) as total_tokens by model_display
+| sort -total_tokens</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Total Tokens</option>
+        <option name="charting.axisTitleY.text">Model</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Model Performance and Cost Breakdown</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0 AND tokens_numeric > 0
+| stats
+    count as "API Calls"
+    sum(tokens_numeric) as "Total Tokens"
+    avg(tokens_numeric) as "Avg Tokens per Call"
+    sum(cost_numeric) as "Total Cost"
+    avg(cost_numeric) as "Avg Cost per Call"
+    by model_display
+| eval "Total Cost"="$".round('Total Cost', 4)
+| eval "Avg Cost per Call"="$".round('Avg Cost per Call', 6)
+| eval "Avg Tokens per Call"=round('Avg Tokens per Call', 0)
+| rename model_display as "Model"
+| sort -"Total Cost"
+| head 20</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <format type="color" field="Total Cost">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Cost by Prompt</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where prompt_name!="null" AND cost_numeric > 0
+| stats
+    count as "Usage Count"
+    sum(cost_numeric) as "Total Cost"
+    avg(cost_numeric) as "Avg Cost per Use"
+    by prompt_name
+| eval "Total Cost"="$".round('Total Cost', 4)
+| eval "Avg Cost per Use"="$".round('Avg Cost per Use', 6)
+| rename prompt_name as "Prompt Name"
+| sort -"Total Cost"
+| head 20</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Daily Cost Summary</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| bucket _time span=1d
+| stats
+    count as "API Calls"
+    sum(cost_numeric) as "Total Cost"
+    sum(tokens_numeric) as "Total Tokens"
+    by _time
+| eval "Total Cost"="$".round('Total Cost', 4)
+| eval "Total Tokens"=tostring('Total Tokens',"commas")
+| eval Date=strftime(_time, "%Y-%m-%d")
+| table Date "API Calls" "Total Tokens" "Total Cost"
+| sort -Date
+| head 20</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

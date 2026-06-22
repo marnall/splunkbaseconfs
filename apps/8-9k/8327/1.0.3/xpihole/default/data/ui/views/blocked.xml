@@ -1,0 +1,211 @@
+<form version="1.1">
+  <label>Blocked Domains</label>
+  <description>Analysis of blocked domains and ad blocking effectiveness</description>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="domain_filter" searchWhenChanged="true">
+      <label>Domain Filter (optional)</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Blocking Summary</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::") domain=$domain_filter$
+| stats count as "Total Blocked",
+        dc(domain) as "Unique Blocked Domains"</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Block Rate Trend</title>
+      <single>
+        <search>
+          <query>`pihole_base` ("query[" OR "gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::")
+| eval is_blocked=if(match(_raw, "gravity blocked|exactly denied|special domain|Apple iCloud Private Relay|Designated Resolver|Rate-limiting|is 0\.0\.0\.0|is ::"), 1, 0)
+| stats sum(is_blocked) as blocked, count as total 
+| eval block_rate=round((blocked/total)*100, 2)
+| fields block_rate</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">%</option>
+        <option name="underLabel">Overall Block Rate</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,10,15,20]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocked Queries Over Time</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::") domain=$domain_filter$
+| timechart span=30m count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Blocked Queries</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.areaFillOpacity">0.5</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Block Source Breakdown</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::") domain=$domain_filter$
+| eval block_source=case(
+    match(_raw, "gravity blocked"), "Gravity",
+    match(_raw, "exactly denied"), "Exact Match",
+    match(_raw, "Apple iCloud Private Relay"), "Apple Private Relay",
+    match(_raw, "Designated Resolver"), "Designated Resolver",
+    match(_raw, "special domain"), "Special Domain",
+    match(_raw, "Rate-limiting"), "Rate Limited",
+    match(_raw, "is 0\.0\.0\.0"), "Null IPv4 Response",
+    match(_raw, "is ::"), "Null IPv6 Response",
+    1=1, "Other"
+)
+| stats count by block_source
+| sort -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 20 Blocked Domains</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting") domain=$domain_filter$ domain=*
+| stats count as "Block Count" by domain
+| sort -"Block Count"
+| head 20</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top Blocked Domain Categories</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting") domain=$domain_filter$ domain=*
+| rex field=domain "\.(?&lt;tld&gt;[^\.]+)$"
+| stats count by tld
+| sort -count
+| head 15</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocking Effectiveness by Hour</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("query[" OR "gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::")
+| eval hour=strftime(_time, "%H")
+| eval is_blocked=if(match(_raw, "gravity blocked|exactly denied|special domain|Apple iCloud Private Relay|Designated Resolver|Rate-limiting|is 0\.0\.0\.0|is ::"), 1, 0)
+| stats sum(is_blocked) as blocked, count as total by hour
+| eval block_percentage=round((blocked/total)*100, 2)
+| sort hour
+| fields hour, block_percentage</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Hour of Day</option>
+        <option name="charting.axisTitleY.text">Block Percentage (%)</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Blocked Queries</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting" OR "is 0.0.0.0" OR "is ::") domain=$domain_filter$
+| eval block_source=case(
+    match(_raw, "gravity blocked"), "Gravity",
+    match(_raw, "exactly denied"), "Exact Match",
+    match(_raw, "Apple iCloud Private Relay"), "Apple Private Relay",
+    match(_raw, "Designated Resolver"), "Designated Resolver",
+    match(_raw, "special domain"), "Special Domain",
+    match(_raw, "Rate-limiting"), "Rate Limited",
+    match(_raw, "is 0\.0\.0\.0"), "Null IPv4",
+    match(_raw, "is ::"), "Null IPv6",
+    1=1, "Other"
+)
+| table _time, domain, query_type, block_source
+| sort -_time
+| head 100</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocked Domain Keywords</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "Rate-limiting") domain=$domain_filter$ domain=*
+| rex field=domain "(?&lt;domain_keyword&gt;\w+)\."
+| stats count by domain_keyword
+| sort -count
+| head 50</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

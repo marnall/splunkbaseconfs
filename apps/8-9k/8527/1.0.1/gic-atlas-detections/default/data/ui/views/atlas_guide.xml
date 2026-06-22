@@ -1,0 +1,246 @@
+<dashboard version="1.1" theme="dark">
+  <label>Configuration Guide</label>
+  <description>Platform-specific instructions for getting AI/LLM data into Splunk</description>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding: 20px; max-width: 900px; color: #cccccc;">
+
+          <h1 style="color: #ffffff;">Getting AI/LLM Data into Splunk</h1>
+          <p>The ATLAS detection rules require AI/LLM telemetry in your Splunk indexes. This guide covers how to configure each major platform to send the right data.</p>
+
+          <p><strong style="color: #53A051;">Tier 1 rules</strong> (volumetric and operational) work with standard telemetry — token counts, API call metadata, and storage access logs. Most platforms emit this by default.</p>
+          <p><strong style="color: #F8BE34;">Tier 2 rules</strong> (content inspection) require the actual prompt text in the log events. This requires explicit opt-in on every platform listed below.</p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- LiteLLM -->
+          <h2 style="color: #4DB6AC;">LiteLLM (Open-Source LLM Gateway)</h2>
+          <p>LiteLLM is the most widely adopted open-source LLM proxy. It standardizes output to the OpenAI format across 100+ providers.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <p>LiteLLM logs to PostgreSQL by default. To get data into Splunk, use one of these approaches:</p>
+          <ul>
+            <li><strong>Custom callback → HEC:</strong> Write a LiteLLM <code>success_callback</code> that POSTs JSON events to a Splunk HTTP Event Collector (HEC) endpoint. This is the most direct path.</li>
+            <li><strong>JSON file logging → Universal Forwarder:</strong> Enable <code>json_logs: true</code> in your LiteLLM config. Monitor the log file with a Splunk Universal Forwarder.</li>
+            <li><strong>DB Connect:</strong> Use Splunk DB Connect to query the <code>LiteLLM_SpendLogs</code> table on a schedule.</li>
+            <li><strong>OpenTelemetry:</strong> LiteLLM supports OpenTelemetry. Export to the Splunk OTel Collector. Note: Splunk Observability Cloud has native LiteLLM support.</li>
+          </ul>
+
+          <p><strong>Enable Prompt Logging (required for Tier 2 rules):</strong></p>
+          <p>Add to your <code>proxy_config.yaml</code>:</p>
+          <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; color: #e0e0e0;">general_settings:
+  store_prompts_in_spend_logs: true</pre>
+          <p>Without this setting, <code>messages</code> and <code>response</code> fields are empty in LiteLLM logs.</p>
+
+          <p><strong>Key Fields:</strong> <code>model</code>, <code>user</code>, <code>api_key</code>, <code>spend</code>, <code>total_tokens</code>, <code>prompt_tokens</code>, <code>completion_tokens</code>, <code>call_type</code>, <code>startTime</code>, <code>endTime</code>, <code>messages</code> (opt-in), <code>response</code> (opt-in)</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>litellm_proxy</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Azure OpenAI -->
+          <h2 style="color: #4DB6AC;">Azure OpenAI</h2>
+          <p>Azure OpenAI emits three log categories via Azure Diagnostic Settings: audit logs, request/response logs, and trace logs.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Enable Diagnostic Settings on your Azure OpenAI resource</li>
+            <li>Stream to Azure Event Hub</li>
+            <li>Use the <a href="https://github.com/splunk/splunk-azure-monitor-logs-function" style="color: #5BA0D0;">Splunk Azure Monitor Logs Function</a> or Splunk Cloud Data Manager to route Event Hub events to Splunk HEC</li>
+          </ul>
+
+          <p><strong>Important limitation:</strong> Azure OpenAI diagnostic logs do <strong>not</strong> include prompt or response text. Fields available: <code>OperationName</code>, <code>CallerIPAddress</code> (partially masked), <code>statusCode</code>, <code>DurationMs</code>. This data supports Tier 1 rules only.</p>
+
+          <p><strong>For Tier 2 rules:</strong> Place Azure API Management (APIM) in front of your Azure OpenAI instance. Configure APIM request/response logging to capture the full prompt and response body, then route APIM logs to Splunk.</p>
+
+          <p><strong>Sourcetype (via Event Hub):</strong> <code>azure:monitor:resource</code></p>
+          <p><strong>Sourcetype (via APIM):</strong> Configure as <code>azure_openai</code> or match your naming convention</p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- AWS Bedrock -->
+          <h2 style="color: #4DB6AC;">AWS Bedrock</h2>
+          <p>AWS Bedrock provides CloudWatch metrics by default. For detailed logging, enable model invocation logging.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li><strong>CloudWatch Metrics (Tier 1):</strong> Use the Splunk Add-on for AWS to pull CloudWatch metrics (invocation count, latency, error rates, token usage)</li>
+            <li><strong>Model Invocation Logging (Tier 2):</strong> Enable in Bedrock console → Settings → Model invocation logging. Select S3 or CloudWatch as destination. Route to Splunk via Splunk Add-on for AWS (S3 input or CloudWatch Logs input)</li>
+          </ul>
+
+          <p><strong>Enable Prompt Logging (required for Tier 2 rules):</strong></p>
+          <p>In the Bedrock console, enable model invocation logging with "Log request body" and "Log response body" checked. Logs are written to S3 or CloudWatch in JSON format.</p>
+
+          <p><strong>Key Fields:</strong> <code>modelId</code>, <code>inputTokenCount</code>, <code>outputTokenCount</code>, <code>inputBodyJson</code> (opt-in), <code>outputBodyJson</code> (opt-in), <code>status</code>, <code>region</code></p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>bedrock_logs</code> or <code>aws:cloudwatch:logs</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- OpenAI Direct API -->
+          <h2 style="color: #4DB6AC;">OpenAI Direct API</h2>
+          <p>The OpenAI API does not emit server-side logs to customers. All logging must happen at the application layer.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li><strong>Application-level logging:</strong> Instrument your code to log each API call (request, response, tokens, user, timestamp) and send to Splunk via HEC or a local log file monitored by Universal Forwarder</li>
+            <li><strong>OpenTelemetry:</strong> Use the OpenTelemetry OpenAI instrumentation (<code>opentelemetry-instrumentation-openai</code> Python package) to auto-capture API calls as spans. Export to Splunk OTel Collector</li>
+            <li><strong>Use a gateway instead:</strong> Place LiteLLM, Portkey, or Helicone in front of your OpenAI calls — they handle logging centrally</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> Your application logging must include the actual prompt text. OpenTelemetry instrumentation can capture this if message content capture is enabled.</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>openai_logs</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- GCP Vertex AI -->
+          <h2 style="color: #4DB6AC;">GCP Vertex AI</h2>
+          <p>Vertex AI provides Cloud Audit Logs and Cloud Monitoring metrics by default.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Enable Data Access Audit Logs for the Vertex AI API in the GCP IAM console</li>
+            <li>Create a Pub/Sub topic and a log sink that routes Vertex AI logs to Pub/Sub</li>
+            <li>Use the Splunk Add-on for Google Cloud Platform to ingest from Pub/Sub</li>
+          </ul>
+
+          <p><strong>Important limitation:</strong> Vertex AI audit logs record API call metadata (caller identity, method, resource name, status) but do <strong>not</strong> include prompt or response content by default. For Tier 2 rules, implement application-level logging or use an LLM gateway in front of Vertex AI.</p>
+
+          <p><strong>Key Fields:</strong> <code>protoPayload.methodName</code>, <code>protoPayload.authenticationInfo.principalEmail</code>, <code>protoPayload.status</code>, <code>resource.labels.model_id</code></p>
+
+          <p><strong>Sourcetype:</strong> <code>google:gcp:pubsub:message</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Kong AI Gateway -->
+          <h2 style="color: #4DB6AC;">Kong AI Gateway</h2>
+          <p>Kong AI Gateway extends Kong's API management platform for LLM traffic, with built-in logging plugins.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Enable the Kong <code>http-log</code> plugin pointed at a Splunk HEC endpoint</li>
+            <li>Alternatively, use the <code>file-log</code> plugin and monitor with a Universal Forwarder</li>
+            <li>Kong also supports OpenTelemetry export via the <code>opentelemetry</code> plugin</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> The <code>http-log</code> plugin can be configured to include request and response bodies. Enable the <code>ai-request-transformer</code> and <code>ai-response-transformer</code> plugins to capture prompt content.</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>kong:ai</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Portkey -->
+          <h2 style="color: #4DB6AC;">Portkey</h2>
+          <p>Portkey is an AI gateway with built-in observability, guardrails, and detailed request logging.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Use Portkey's webhook integration to forward request logs to a Splunk HEC endpoint</li>
+            <li>Alternatively, use Portkey's API (<code>/logs</code> endpoint) to pull logs on a schedule via a scripted input</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> Portkey logs request and response content by default in its platform. Ensure your webhook or API export includes the <code>request.messages</code> and <code>response.choices</code> fields.</p>
+
+          <p><strong>Key Fields:</strong> <code>model</code>, <code>provider</code>, <code>request.messages</code>, <code>response.choices</code>, <code>tokens.prompt</code>, <code>tokens.completion</code>, <code>cost</code>, <code>latency</code>, <code>status</code></p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>portkey</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Helicone -->
+          <h2 style="color: #4DB6AC;">Helicone</h2>
+          <p>Helicone is a drop-in proxy for OpenAI-compatible APIs with built-in monitoring and observability.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Use Helicone's webhook feature to forward request events to a Splunk HEC endpoint</li>
+            <li>Alternatively, use the Helicone API to export request logs to Splunk via scripted input</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> Helicone captures full request and response content by default. Ensure your export includes prompt and completion text fields.</p>
+
+          <p><strong>Key Fields:</strong> <code>model</code>, <code>user_id</code>, <code>request_body</code>, <code>response_body</code>, <code>prompt_tokens</code>, <code>completion_tokens</code>, <code>total_tokens</code>, <code>latency</code>, <code>status</code></p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>helicone</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Cloudflare AI Gateway -->
+          <h2 style="color: #4DB6AC;">Cloudflare AI Gateway</h2>
+          <p>Cloudflare AI Gateway provides caching, rate limiting, and analytics for LLM API calls.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Use Cloudflare Logpush to forward AI Gateway logs to a Splunk HEC endpoint or S3 bucket monitored by Splunk</li>
+            <li>Alternatively, use the Cloudflare API to pull gateway analytics on a schedule</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> Cloudflare AI Gateway supports logging request/response content. Enable logging in your gateway configuration and ensure Logpush includes the content fields.</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>cloudflare:ai_gateway</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Anthropic Direct API -->
+          <h2 style="color: #4DB6AC;">Anthropic (Claude API) Direct</h2>
+          <p>Like OpenAI, the Anthropic API does not emit server-side logs to customers. Logging must happen at the application layer or via a gateway.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Instrument your application code to log each API request/response to Splunk via HEC</li>
+            <li>Use OpenTelemetry with the Anthropic instrumentation package</li>
+            <li>Place LiteLLM or another gateway in front for centralized logging</li>
+          </ul>
+
+          <p><strong>Recommended sourcetype:</strong> <code>anthropic_logs</code> or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Self-Hosted Models -->
+          <h2 style="color: #4DB6AC;">Self-Hosted Models (Ollama, vLLM, TGI, llama.cpp)</h2>
+          <p>Self-hosted inference servers typically log to stdout/stderr or local files.</p>
+
+          <p><strong>Logging to Splunk:</strong></p>
+          <ul>
+            <li>Monitor the inference server's log output with a Splunk Universal Forwarder</li>
+            <li>For structured logging, place LiteLLM in front as a unified gateway — it supports Ollama, vLLM, and TGI as backends</li>
+            <li>For Kubernetes deployments, use the Splunk OTel Collector to capture container logs</li>
+          </ul>
+
+          <p><strong>For Tier 2 rules:</strong> Ollama and vLLM log request content at debug log level. Enable debug logging and ensure the forwarder captures the full log entry. For production use, a gateway is recommended over debug-level logging.</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>ollama</code>, <code>vllm</code>, or <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <!-- Custom / API Gateway Pattern -->
+          <h2 style="color: #4DB6AC;">Custom API Gateway or Reverse Proxy</h2>
+          <p>Many organizations route LLM traffic through an existing API gateway (NGINX, Envoy, AWS API Gateway, Azure APIM, FastAPI) where they can add logging.</p>
+
+          <p><strong>Minimum fields for Tier 1 rules:</strong></p>
+          <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; color: #e0e0e0;">_time, src_ip, user, model, total_tokens,
+prompt_tokens, completion_tokens, status,
+session_id, event_type</pre>
+
+          <p><strong>Additional fields for Tier 2 rules:</strong></p>
+          <pre style="background: #1a1a1a; padding: 10px; border-radius: 4px; color: #e0e0e0;">user_input OR prompt OR request_text OR message
+response OR completion
+safety_flagged, finish_reason</pre>
+
+          <p>Log events as JSON and send to Splunk via HEC with <code>KV_MODE=json</code> for automatic field extraction.</p>
+
+          <p><strong>Recommended sourcetype:</strong> <code>llm_gateway</code></p>
+
+          <hr style="border-color: #333333; margin: 25px 0;" />
+
+          <h2 style="color: #ffffff;">Need Help?</h2>
+          <p>Questions or issues with data configuration: <a href="mailto:contact@gicengineeringconsultants.com" style="color: #5BA0D0;">contact@gicengineeringconsultants.com</a></p>
+
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

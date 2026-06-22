@@ -1,0 +1,949 @@
+<dashboard version="2" theme="dark">
+    <label>The Glass Pane</label>
+    <description>Cisco Unified Operations — POC: Single pane of glass across campus, data center, security, wireless, and WAN</description>
+    <definition><![CDATA[
+{
+	"title": "The Glass Pane",
+	"description": "Cisco Unified Operations — Your entire Cisco estate at a glance",
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "0",
+						"latest": ""
+					}
+				}
+			}
+		}
+	},
+	"dataSources": {
+		"ds_total_devices": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" event_type=\"inventory\" | stats first(metric_value) as total_devices | eval total_devices=total_devices",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Total Managed Devices"
+		},
+		"ds_critical_issues": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search severity<=3 | stats count as critical_issues",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Critical Issues"
+		},
+		"ds_overall_health": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" event_type=\"health\" | stats avg(metric_value) as avg_health | eval avg_health=round(avg_health,0)",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Overall Network Health"
+		},
+		"ds_total_users": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"users\" | stats sum(metric_value) as total_users",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Total Connected Users"
+		},
+		"ds_users_by_site": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"users\" | chart sum(metric_value) as users by site metric_name | eval wired=wired_users, wireless=wireless_users | fields site wired wireless | eval total=wired+wireless | sort - total",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Users by Site"
+		},
+		"ds_users_by_type": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"users\" | stats sum(metric_value) as count by metric_name | eval type=case(metric_name=\"wired_users\",\"Wired\",metric_name=\"wireless_users\",\"Wireless\",1=1,metric_name)",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Users by Connection Type"
+		},
+		"ds_bandwidth_circuits": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"bandwidth\" | table site device circuit_id bandwidth_mbps bandwidth_util_pct status description | rename bandwidth_mbps as \"Circuit (Mbps)\" bandwidth_util_pct as \"Utilization %\" circuit_id as \"Circuit ID\" | sort - \"Utilization %\"",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Bandwidth by Circuit"
+		},
+		"ds_bandwidth_bar": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"bandwidth\" | eval label=site.\" — \".circuit_id | table label bandwidth_util_pct | sort - bandwidth_util_pct | rename bandwidth_util_pct as \"Utilization %\"",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Bandwidth Utilization Bar"
+		},
+		"ds_site_health": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" event_type=\"health\" | table site metric_value status | rename metric_value as \"Health Score\" | sort - \"Health Score\"",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Site Health Scores"
+		},
+		"ds_email_summary": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"email\" | eval category=case(metric_name=\"messages_processed\",\"Processed\",metric_name=\"spam_blocked\",\"Spam Blocked\",metric_name=\"malware_detected\",\"Malware\",metric_name=\"phishing_attempts\",\"Phishing\",metric_name=\"dlp_violations\",\"DLP Violations\") | table category metric_value severity status | rename metric_value as count | sort - count",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Email Security Summary"
+		},
+		"ds_email_pie": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"email\" metric_name!=\"messages_processed\" | eval category=case(metric_name=\"spam_blocked\",\"Spam\",metric_name=\"malware_detected\",\"Malware\",metric_name=\"phishing_attempts\",\"Phishing\",metric_name=\"dlp_violations\",\"DLP Violations\") | table category metric_value",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Email Threats Breakdown"
+		},
+		"ds_emails_processed": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"email\" metric_name=\"messages_processed\" | stats first(metric_value) as total",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Emails Processed Today"
+		},
+		"ds_security_incidents": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"security\" severity<=3 | table device device_type event_type metric_name metric_value description status | rename metric_value as count | sort severity",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Security Incidents"
+		},
+		"ds_xdr_incidents": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"xdr\" | stats first(metric_value) as incidents | eval incidents=incidents",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Active XDR Incidents"
+		},
+		"ds_firewall_blocked": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"firewall\" metric_name=\"blocked_connections\" | stats first(metric_value) as blocked",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Firewall Blocked Connections"
+		},
+		"ds_ise_failed": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"identity\" metric_name=\"failed_auths\" | stats first(metric_value) as failed_auths",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "ISE Failed Authentications"
+		},
+		"ds_wireless_health": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"wireless\" | eval label=device.\" (\".site.\")\" | table label metric_name metric_value health_score users_connected ssid status description | rename metric_value as value health_score as \"Health\" users_connected as \"Clients\" | sort - Clients",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Wireless Health"
+		},
+		"ds_wireless_clients": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"wireless\" metric_name=\"clients_connected\" | stats sum(metric_value) as total_clients",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Total Wireless Clients"
+		},
+		"ds_dc_health": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"datacenter\" | table device device_model event_type metric_name metric_value health_score status description | rename metric_value as value health_score as \"Health\" | sort severity",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Data Center Health"
+		},
+		"ds_compliance": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" event_type=\"compliance\" | eval category=case(metric_name=\"compliant\",\"Compliant\",metric_name=\"non_compliant\",\"Non-Compliant\",metric_name=\"critical_advisory\",\"Critical PSIRT\") | table category metric_value status description | rename metric_value as count",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Compliance Status"
+		},
+		"ds_compliance_pie": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" event_type=\"compliance\" | eval category=case(metric_name=\"compliant\",\"Compliant\",metric_name=\"non_compliant\",\"Non-Compliant\",metric_name=\"critical_advisory\",\"Critical PSIRT\") | table category metric_value",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Compliance Breakdown"
+		},
+		"ds_thousandeyes": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"monitoring\" | table event_type metric_name metric_value status description | rename metric_value as value",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "ThousandEyes Alerts"
+		},
+		"ds_te_alerts": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"monitoring\" event_type=\"alert\" | stats first(metric_value) as active_alerts",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Active TE Alerts"
+		},
+		"ds_collab_quality": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"collaboration\" metric_name=\"audio_mos\" OR metric_name=\"video_mos\" | eval metric=if(metric_name=\"audio_mos\",\"Audio MOS\",\"Video MOS\") | table metric metric_value status description | rename metric_value as score",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Collaboration Quality"
+		},
+		"ds_all_critical": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search severity<=3 | table domain site device device_model severity event_type description status | sort severity | head 20",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "All Critical Events"
+		},
+		"ds_ise_posture": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"identity\" event_type=\"auth\" metric_name=\"auth_by_user\" | table user src_ip status description | sort status",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "ISE Posture Results"
+		},
+		"ds_non_compliant_count": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search domain=\"catcenter\" metric_name=\"non_compliant\" | stats first(metric_value) as non_compliant",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "Non-Compliant Devices"
+		},
+		"ds_sna_anomalies": {
+			"type": "ds.search",
+			"options": {
+				"query": "| inputlookup cisco_glasspane_demo.csv | search device_type=\"analytics\" | stats first(metric_value) as anomalies first(src_ip) as src_ip | eval label=anomalies.\" from \".src_ip",
+				"queryParameters": { "earliest": "0", "latest": "" }
+			},
+			"name": "SNA Behavioral Anomalies"
+		}
+	},
+	"inputs": {},
+	"layout": {
+		"type": "absolute",
+		"options": {
+			"width": 1440,
+			"height": 3200,
+			"backgroundColor": "#0b0c10",
+			"display": "auto-scale"
+		},
+		"structure": [
+			{
+				"item": "viz_title_main",
+				"type": "block",
+				"position": { "x": 20, "y": 10, "w": 1400, "h": 50 }
+			},
+
+			{
+				"item": "viz_total_devices",
+				"type": "block",
+				"position": { "x": 20, "y": 70, "w": 220, "h": 110 }
+			},
+			{
+				"item": "viz_critical_issues",
+				"type": "block",
+				"position": { "x": 260, "y": 70, "w": 220, "h": 110 }
+			},
+			{
+				"item": "viz_overall_health",
+				"type": "block",
+				"position": { "x": 500, "y": 70, "w": 220, "h": 110 }
+			},
+			{
+				"item": "viz_total_users",
+				"type": "block",
+				"position": { "x": 740, "y": 70, "w": 220, "h": 110 }
+			},
+			{
+				"item": "viz_wireless_clients",
+				"type": "block",
+				"position": { "x": 980, "y": 70, "w": 220, "h": 110 }
+			},
+			{
+				"item": "viz_emails_processed",
+				"type": "block",
+				"position": { "x": 1220, "y": 70, "w": 200, "h": 110 }
+			},
+
+			{
+				"item": "viz_title_users",
+				"type": "block",
+				"position": { "x": 20, "y": 200, "w": 700, "h": 30 }
+			},
+			{
+				"item": "viz_users_by_site",
+				"type": "block",
+				"position": { "x": 20, "y": 240, "w": 700, "h": 300 }
+			},
+			{
+				"item": "viz_title_bandwidth",
+				"type": "block",
+				"position": { "x": 740, "y": 200, "w": 680, "h": 30 }
+			},
+			{
+				"item": "viz_bandwidth_bar",
+				"type": "block",
+				"position": { "x": 740, "y": 240, "w": 680, "h": 300 }
+			},
+
+			{
+				"item": "viz_title_security",
+				"type": "block",
+				"position": { "x": 20, "y": 570, "w": 1400, "h": 30 }
+			},
+			{
+				"item": "viz_xdr_incidents",
+				"type": "block",
+				"position": { "x": 20, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_firewall_blocked",
+				"type": "block",
+				"position": { "x": 210, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_ise_failed",
+				"type": "block",
+				"position": { "x": 400, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_sna_anomalies",
+				"type": "block",
+				"position": { "x": 590, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_te_alerts",
+				"type": "block",
+				"position": { "x": 780, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_non_compliant",
+				"type": "block",
+				"position": { "x": 970, "y": 610, "w": 180, "h": 110 }
+			},
+			{
+				"item": "viz_email_threats_title",
+				"type": "block",
+				"position": { "x": 1160, "y": 610, "w": 260, "h": 30 }
+			},
+			{
+				"item": "viz_email_pie",
+				"type": "block",
+				"position": { "x": 1160, "y": 645, "w": 260, "h": 220 }
+			},
+
+			{
+				"item": "viz_security_table",
+				"type": "block",
+				"position": { "x": 20, "y": 740, "w": 700, "h": 280 }
+			},
+			{
+				"item": "viz_email_table",
+				"type": "block",
+				"position": { "x": 740, "y": 880, "w": 400, "h": 140 }
+			},
+
+			{
+				"item": "viz_title_network",
+				"type": "block",
+				"position": { "x": 20, "y": 1050, "w": 1400, "h": 30 }
+			},
+			{
+				"item": "viz_site_health",
+				"type": "block",
+				"position": { "x": 20, "y": 1090, "w": 460, "h": 250 }
+			},
+			{
+				"item": "viz_wireless_table",
+				"type": "block",
+				"position": { "x": 500, "y": 1090, "w": 920, "h": 250 }
+			},
+
+			{
+				"item": "viz_title_dc",
+				"type": "block",
+				"position": { "x": 20, "y": 1370, "w": 700, "h": 30 }
+			},
+			{
+				"item": "viz_dc_table",
+				"type": "block",
+				"position": { "x": 20, "y": 1410, "w": 700, "h": 250 }
+			},
+			{
+				"item": "viz_title_compliance",
+				"type": "block",
+				"position": { "x": 740, "y": 1370, "w": 680, "h": 30 }
+			},
+			{
+				"item": "viz_compliance_pie",
+				"type": "block",
+				"position": { "x": 740, "y": 1410, "w": 340, "h": 250 }
+			},
+			{
+				"item": "viz_compliance_table",
+				"type": "block",
+				"position": { "x": 1090, "y": 1410, "w": 330, "h": 250 }
+			},
+
+			{
+				"item": "viz_title_te",
+				"type": "block",
+				"position": { "x": 20, "y": 1690, "w": 700, "h": 30 }
+			},
+			{
+				"item": "viz_te_table",
+				"type": "block",
+				"position": { "x": 20, "y": 1730, "w": 700, "h": 200 }
+			},
+			{
+				"item": "viz_title_collab",
+				"type": "block",
+				"position": { "x": 740, "y": 1690, "w": 680, "h": 30 }
+			},
+			{
+				"item": "viz_collab_table",
+				"type": "block",
+				"position": { "x": 740, "y": 1730, "w": 680, "h": 200 }
+			},
+
+			{
+				"item": "viz_title_posture",
+				"type": "block",
+				"position": { "x": 20, "y": 1960, "w": 700, "h": 30 }
+			},
+			{
+				"item": "viz_ise_posture",
+				"type": "block",
+				"position": { "x": 20, "y": 2000, "w": 700, "h": 220 }
+			},
+			{
+				"item": "viz_title_bandwidth_table",
+				"type": "block",
+				"position": { "x": 740, "y": 1960, "w": 680, "h": 30 }
+			},
+			{
+				"item": "viz_bandwidth_table",
+				"type": "block",
+				"position": { "x": 740, "y": 2000, "w": 680, "h": 220 }
+			},
+
+			{
+				"item": "viz_title_critical",
+				"type": "block",
+				"position": { "x": 20, "y": 2250, "w": 1400, "h": 30 }
+			},
+			{
+				"item": "viz_all_critical",
+				"type": "block",
+				"position": { "x": 20, "y": 2290, "w": 1400, "h": 350 }
+			},
+
+			{
+				"item": "viz_title_story",
+				"type": "block",
+				"position": { "x": 20, "y": 2670, "w": 1400, "h": 30 }
+			},
+			{
+				"item": "viz_story",
+				"type": "block",
+				"position": { "x": 20, "y": 2710, "w": 1400, "h": 400 }
+			}
+		]
+	},
+	"visualizations": {
+		"viz_title_main": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "# 🛡️ Cisco Unified Operations — The Glass Pane\nReal-time visibility across your entire Cisco infrastructure: **Campus · Data Center · Security · Wireless · WAN · Collaboration**",
+				"fontColor": "#ffffff",
+				"backgroundColor": "transparent"
+			}
+		},
+
+		"viz_total_devices": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"deltaFontSize": 14,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#53a051",
+				"sparklineDisplay": "off",
+				"unit": "devices",
+				"unitPosition": "after"
+			},
+			"dataSources": { "primary": "ds_total_devices" },
+			"title": "Managed Devices"
+		},
+		"viz_critical_issues": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#dc4e41",
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_critical_issues" },
+			"title": "⚠️ Critical Issues"
+		},
+		"viz_overall_health": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#f8be34",
+				"sparklineDisplay": "off",
+				"unit": "/ 100",
+				"unitPosition": "after"
+			},
+			"dataSources": { "primary": "ds_overall_health" },
+			"title": "Network Health"
+		},
+		"viz_total_users": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#00bfff",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_total_users" },
+			"title": "👥 Connected Users"
+		},
+		"viz_wireless_clients": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#a870ef",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_wireless_clients" },
+			"title": "📶 Wireless Clients"
+		},
+		"viz_emails_processed": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 42,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#53a051",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_emails_processed" },
+			"title": "📧 Emails Today"
+		},
+
+		"viz_title_users": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 👥 Users on Network — By Site",
+				"fontColor": "#00bfff",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_users_by_site": {
+			"type": "splunk.column",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"seriesColors": ["#00bfff", "#a870ef"],
+				"xAxisTitleText": "Site",
+				"yAxisTitleText": "Users",
+				"legendDisplay": "bottom",
+				"stackMode": "stacked",
+				"dataValuesDisplay": "all",
+				"xAxisLabelRotation": 0
+			},
+			"dataSources": { "primary": "ds_users_by_site" },
+			"title": ""
+		},
+
+		"viz_title_bandwidth": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 📊 Bandwidth Utilization — All Circuits",
+				"fontColor": "#f8be34",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_bandwidth_bar": {
+			"type": "splunk.bar",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"seriesColors": ["#dc4e41", "#f8be34", "#53a051"],
+				"seriesColorsByValue": {
+					">80": "#dc4e41",
+					">60": "#f8be34",
+					"<=60": "#53a051"
+				},
+				"xAxisTitleText": "Utilization %",
+				"yAxisTitleText": "",
+				"legendDisplay": "off",
+				"dataValuesDisplay": "all",
+				"orientation": "horizontal"
+			},
+			"dataSources": { "primary": "ds_bandwidth_bar" },
+			"title": ""
+		},
+
+		"viz_title_security": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🛡️ Security Operations — Firewall · ISE · XDR · SNA · Email",
+				"fontColor": "#dc4e41",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_xdr_incidents": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#2d1515",
+				"majorColor": "#dc4e41",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_xdr_incidents" },
+			"title": "🚨 XDR Incidents"
+		},
+		"viz_firewall_blocked": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 42,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#f8be34",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_firewall_blocked" },
+			"title": "🔥 FW Blocked"
+		},
+		"viz_ise_failed": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 42,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#f8be34",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_ise_failed" },
+			"title": "🔐 ISE Failures"
+		},
+		"viz_sna_anomalies": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#2d1515",
+				"majorColor": "#dc4e41",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_sna_anomalies" },
+			"title": "🔍 SNA Anomalies"
+		},
+		"viz_te_alerts": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#2d1515",
+				"majorColor": "#dc4e41",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_te_alerts" },
+			"title": "👁️ TE Alerts"
+		},
+		"viz_non_compliant": {
+			"type": "splunk.singlevalue",
+			"options": {
+				"majorFontSize": 48,
+				"backgroundColor": "#1a1c23",
+				"majorColor": "#f8be34",
+				"sparklineDisplay": "off"
+			},
+			"dataSources": { "primary": "ds_non_compliant_count" },
+			"title": "⚙️ Non-Compliant"
+		},
+		"viz_email_threats_title": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Email Threat Breakdown**",
+				"fontColor": "#f8be34",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_email_pie": {
+			"type": "splunk.pie",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"seriesColors": ["#f8be34", "#dc4e41", "#f5792f", "#a870ef"]
+			},
+			"dataSources": { "primary": "ds_email_pie" },
+			"title": ""
+		},
+		"viz_security_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rgba(220,78,65,0.15))",
+					"rowColors": "> table | seriesByIndex(0) | pick(#cccccc)",
+					"headerBackgroundColor": "#2d1515",
+					"headerColor": "#dc4e41"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_security_incidents" },
+			"title": "🚨 Critical Security Events"
+		},
+		"viz_email_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#1a2d1a",
+					"headerColor": "#53a051"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_email_summary" },
+			"title": "📧 Email Security Summary"
+		},
+
+		"viz_title_network": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🌐 Network Health — Catalyst Center · Wireless · Campus",
+				"fontColor": "#00bfff",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_site_health": {
+			"type": "splunk.bar",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"xAxisTitleText": "Health Score",
+				"yAxisTitleText": "",
+				"legendDisplay": "off",
+				"orientation": "horizontal",
+				"dataValuesDisplay": "all",
+				"seriesColors": ["#00bfff"]
+			},
+			"dataSources": { "primary": "ds_site_health" },
+			"title": "📍 Site Health Scores (Catalyst Center)"
+		},
+		"viz_wireless_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#1a1a2d",
+					"headerColor": "#a870ef"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_wireless_health" },
+			"title": "📶 Wireless AP & WLC Health"
+		},
+
+		"viz_title_dc": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🏢 Data Center — Nexus · UCS · Nexus Dashboard",
+				"fontColor": "#53a051",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_dc_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#1a2d1a",
+					"headerColor": "#53a051"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_dc_health" },
+			"title": "Data Center Infrastructure Status"
+		},
+		"viz_title_compliance": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## ⚙️ Compliance & Inventory",
+				"fontColor": "#f8be34",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_compliance_pie": {
+			"type": "splunk.pie",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"seriesColors": ["#53a051", "#f8be34", "#dc4e41"]
+			},
+			"dataSources": { "primary": "ds_compliance_pie" },
+			"title": "Device Compliance"
+		},
+		"viz_compliance_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#2d2d1a",
+					"headerColor": "#f8be34"
+				},
+				"count": 5
+			},
+			"dataSources": { "primary": "ds_compliance" },
+			"title": "Compliance Details"
+		},
+
+		"viz_title_te": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 👁️ ThousandEyes — Internet & SaaS Path Intelligence",
+				"fontColor": "#f5792f",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_te_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#2d1a0f",
+					"headerColor": "#f5792f"
+				},
+				"count": 5
+			},
+			"dataSources": { "primary": "ds_thousandeyes" },
+			"title": "Path Intelligence & Alerts"
+		},
+		"viz_title_collab": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🎥 Collaboration — Webex Quality & Endpoints",
+				"fontColor": "#a870ef",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_collab_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#1a1a2d",
+					"headerColor": "#a870ef"
+				},
+				"count": 5
+			},
+			"dataSources": { "primary": "ds_collab_quality" },
+			"title": "Meeting Quality & Endpoints"
+		},
+
+		"viz_title_posture": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🔐 ISE Posture & Identity — Endpoint Compliance",
+				"fontColor": "#f8be34",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_ise_posture": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#2d2d1a",
+					"headerColor": "#f8be34"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_ise_posture" },
+			"title": "Recent Authentication & Posture Events"
+		},
+		"viz_title_bandwidth_table": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 📊 Circuit Detail — Bandwidth Report",
+				"fontColor": "#f8be34",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_bandwidth_table": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"headerBackgroundColor": "#2d2d1a",
+					"headerColor": "#f8be34"
+				},
+				"count": 10
+			},
+			"dataSources": { "primary": "ds_bandwidth_circuits" },
+			"title": "All Circuits — Capacity & Utilization"
+		},
+
+		"viz_title_critical": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 🚨 All Critical & High-Severity Events — Cross-Domain Correlation",
+				"fontColor": "#dc4e41",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_all_critical": {
+			"type": "splunk.table",
+			"options": {
+				"backgroundColor": "#1a1c23",
+				"tableFormat": {
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rgba(220,78,65,0.1))",
+					"headerBackgroundColor": "#2d1515",
+					"headerColor": "#dc4e41"
+				},
+				"count": 20
+			},
+			"dataSources": { "primary": "ds_all_critical" },
+			"title": "Top 20 Critical Events Across All Domains"
+		},
+
+		"viz_title_story": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## 📋 Executive Intelligence Brief",
+				"fontColor": "#ffffff",
+				"backgroundColor": "transparent"
+			}
+		},
+		"viz_story": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "### What Splunk Found — Across Your Cisco Estate\n\n---\n\n#### 🚨 Correlated Threat: Compromised Endpoint 10.1.50.22\nSplunk correlated signals from **XDR** (3 active incidents), **Secure Network Analytics** (7 behavioral anomalies — data exfiltration pattern), **Firewall** (847 blocked C2 connections), and **ISE** (posture failure — missing AnyConnect patch). **This is a single compromised host being tracked across 4 different Cisco security products in one view.** Traditional tools would require checking each console individually.\n\n#### 📊 Bandwidth Alert: Dallas MPLS at 96%\nThe Dallas branch MPLS circuit is at **96% utilization** — driven by video conferencing traffic. The internet DIA is at 71%. **Recommendation:** Enable SD-WAN policy to offload WebEx/Teams traffic to the direct internet circuit. This also explains degraded Catalyst Center health score (52/100) for Dallas.\n\n#### 👥 Daily User Report: 1,775 Connected Users\n- **HQ**: 1,259 users (412 wired + 847 wireless)\n- **Dallas**: 223 users — highest wireless density per AP\n- **Chicago**: 165 users — cleanest site\n- **Atlanta**: 128 users\n\nFloor 2 APs in HQ are experiencing **94% channel utilization** — co-channel interference is impacting 203 wireless users. RRM tuning recommended.\n\n#### 📧 Email Security: 17 Malware + 89 Phishing Blocked\nOut of 24,891 emails processed today: 3,421 spam blocked (13.7%), 89 phishing attempts caught, 17 malware attachments quarantined, and **6 DLP violations** detected — Social Security Numbers found in outbound email. **Immediate HR/Legal notification recommended.**\n\n#### 🏢 Data Center: BGP Peer Down + Fabric Congestion\nNexus 93180YC-02 has a **BGP neighbor DOWN** (hold timer expired). Nexus 9332D spine is showing fabric congestion at 82% from bursty compute rack traffic. UCS memory at 91% from Nutanix CVM pressure. **Combined, these represent a risk to east-west data center traffic.**\n\n#### ⚙️ Compliance Gap: 23 Non-Compliant + 8 Critical PSIRT\n23 devices are running outdated IOS-XE and 8 devices have a **critical PSIRT advisory (CVE-2024-20359)**. 34 endpoints failed ISE posture — missing latest AnyConnect. **Patch window recommended within 48 hours.**\n\n#### 👁️ ThousandEyes: ISP Issue Detected\n5 active alerts — **AT&T Chicago peering point congestion** causing SAP ERP path latency to spike from 45ms to 187ms with 4.2% packet loss. Microsoft 365 path is unaffected (22ms). **This is an ISP problem, not your network.**\n\n---\n\n*This intelligence brief was generated by correlating data from 14 Cisco product families in a single Splunk deployment. No other platform can do this.*",
+				"fontColor": "#cccccc",
+				"backgroundColor": "#1a1c23"
+			}
+		}
+	}
+}
+    ]]></definition>
+</dashboard>

@@ -1,0 +1,200 @@
+<form version="1.1" theme="dark">
+  <label>Send Search Results - Delivery Audit</label>
+  <description>Audit dashboard for Send Search Results as Excel alert action: executions, generated files, SMTP errors, recipients and recent activity.</description>
+  <search id="base_sendxls_logs">
+    <query>
+      <![CDATA[
+index=_internal source="*sendxlsresults.log" earliest=$time_tok.earliest$ latest=$time_tok.latest$
+| rex field=_raw "^(?<log_timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+(?<level>[A-Z]+)\s+(?<message>.*)"
+| rex field=_raw "invocation_id=(?<invocation_id>[^\s]+)"
+| rex field=_raw "invocation_type=\"(?<invocation_type>[^\"]+)\""
+| rex field=_raw "msg=\"(?<msg>[^\"]+)\""
+| rex field=_raw "rcpt=\"(?<recipient>[^\"]+)\""
+| rex field=_raw "attachment=\"(?<attachment>[^\"]+)\""
+| rex field=_raw "error=\"(?<smtp_error>[^\"]+)\""
+| rex field=_raw "outputfile (?<outputfile>\S+)"
+| rex field=_raw "\((?<smtp_code>\d{3}),\s*b'(?<smtp_text>[^']+)"
+| eval level=coalesce(level,"UNKNOWN")
+| eval recipient=coalesce(recipient,"-")
+| eval msg=coalesce(msg,message)
+| eval outputfile=coalesce(outputfile,"-")
+| eval action_status=case(
+    match(_raw,"Email sent successfully"),"sent",
+    match(_raw,"Could not send email"),"failed",
+    match(_raw,"parameters used: outputfile"),"generated",
+    level="ERROR","error",
+    true(),"other"
+  )
+| eval smtp_reason=case(
+    match(_raw,"Recipient address rejected"),"Recipient rejected / relay denied",
+    match(_raw,"Sender address rejected"),"Sender rejected / not logged in",
+    match(_raw,"Access denied"),"SMTP access denied",
+    match(_raw,"Connection refused"),"SMTP connection refused",
+    match(_raw,"timed out|TIMEOUT|timeout"),"SMTP timeout",
+    isnotnull(smtp_text),smtp_text,
+    true(),msg
+  )
+| where "$level_tok$"="*" OR level="$level_tok$"
+| where "$status_tok$"="*" OR action_status="$status_tok$"
+| where "$recipient_tok$"="" OR like(recipient,"%$recipient_tok$%")
+    ]]>
+    </query>
+  </search>
+  <fieldset submitButton="false">
+    <input type="time" token="time_tok" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="level_tok" searchWhenChanged="true">
+      <label>Log Level</label>
+      <choice value="*">All</choice>
+      <choice value="INFO">INFO</choice>
+      <choice value="ERROR">ERROR</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="status_tok" searchWhenChanged="true">
+      <label>Status</label>
+      <choice value="*">All</choice>
+      <choice value="generated">Generated</choice>
+      <choice value="sent">Sent</choice>
+      <choice value="failed">Failed</choice>
+      <choice value="error">Error</choice>
+      <choice value="other">Other</choice>
+      <default>*</default>
+    </input>
+    <input type="text" token="recipient_tok" searchWhenChanged="true">
+      <label>Recipient contains</label>
+      <default></default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total App Log Events</title>
+      <single>
+        <search base="base_sendxls_logs">
+          <query>| stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Generated Attachments</title>
+      <single>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="generated" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Send Failures</title>
+      <single>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="failed" OR action_status="error" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Last Execution</title>
+      <single>
+        <search base="base_sendxls_logs">
+          <query>| stats latest(_time) as last_execution | eval last_execution=strftime(last_execution,"%d.%m.%Y %H:%M:%S")</query>
+        </search>
+        <option name="field">last_execution</option>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Activity Over Time</title>
+      <chart>
+        <search base="base_sendxls_logs">
+          <query>| timechart span=15m count by action_status</query>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Log Levels Over Time</title>
+      <chart>
+        <search base="base_sendxls_logs">
+          <query>| timechart span=15m count by level</query>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top SMTP Error Reasons</title>
+      <chart>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="failed" OR action_status="error" | stats count by smtp_reason | sort - count | head 10</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Failed Recipients</title>
+      <chart>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="failed" AND recipient!="-" | stats count by recipient | sort - count | head 10</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SMTP Codes</title>
+      <table>
+        <search base="base_sendxls_logs">
+          <query>| where isnotnull(smtp_code) | stats count values(smtp_text) as smtp_text by smtp_code | sort - count</query>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Generated Files</title>
+      <table>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="generated" | table _time invocation_id outputfile | sort - _time | head 20</query>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Failures</title>
+      <table>
+        <search base="base_sendxls_logs">
+          <query>| where action_status="failed" OR action_status="error" | table _time level invocation_id recipient smtp_code smtp_reason smtp_error | sort - _time | head 30</query>
+        </search>
+        <option name="count">10</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent App Activity</title>
+      <table>
+        <search base="base_sendxls_logs">
+          <query>| table _time level action_status invocation_id recipient msg outputfile smtp_reason | sort - _time | head 50</query>
+        </search>
+        <option name="count">10</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

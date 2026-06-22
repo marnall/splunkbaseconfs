@@ -1,0 +1,88 @@
+<dashboard version="1.1">
+  <label>LLM Gateway Monitor</label>
+
+  <row>
+    <panel>
+      <title>Requests This Month</title>
+      <single>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_request | stats count</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Tokens This Month</title>
+      <single>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_response | stats sum(total_tokens) as t | eval t=coalesce(t,0)</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Response Time This Month</title>
+      <single>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_response elapsed_seconds>0 | stats avg(elapsed_seconds) as a | eval a=round(a,2)." s"</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <title>Unique Models This Month</title>
+      <single>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_request model!=unknown | stats dc(model)</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Requests by Model</title>
+      <chart>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_request model!=unknown | stats count by model | sort - count | head 10</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Model Usage Breakdown</title>
+      <table>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_response | stats count as Requests, sum(total_tokens) as Tokens, avg(elapsed_seconds) as "Avg Latency (s)" by model | eval "Avg Latency (s)"=round('Avg Latency (s)',3) | sort - Tokens | rename model as Model</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Daily Requests This Month</title>
+      <chart>
+        <search>
+          <query>index=llmmon_logs sourcetype="llmmon:gateway" event_type=llm_request | timechart span=1d count as Requests</query>
+          <earliest>@mon</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+      </chart>
+    </panel>
+  </row>
+
+</dashboard>

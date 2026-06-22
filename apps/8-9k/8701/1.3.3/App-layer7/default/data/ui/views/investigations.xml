@@ -1,0 +1,190 @@
+<form version="1.1" theme="dark" script="layer7_refresh_now_v133.js">
+  <label>Alerts Investigation</label>
+  <description>Drill into systems, alert types, and raw events.</description>
+  <init><set token="refresh_interval">900</set><set token="form.refresh_interval">900</set></init>
+  <fieldset submitButton="false">
+    <input type="time" token="t1">
+      <label>Time range</label>
+      <default><earliest>-7d@d</earliest><latest>now</latest></default>
+    </input>
+    <input type="dropdown" token="refresh_interval" searchWhenChanged="true">
+      <label>Data Refresh</label>
+      <choice value="300">5 mins</choice>
+      <choice value="600">10 mins</choice>
+      <choice value="900">15 mins</choice>
+      <default>900</default>
+      <initialValue>900</initialValue>
+    </input>
+
+    <input type="dropdown" token="tok_env" searchWhenChanged="true">
+      <label>Environment</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <search>
+        <query><![CDATA[`l7_alerts` | stats count by Environment | sort Environment]]></query>
+        <earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>Environment</fieldForLabel>
+      <fieldForValue>Environment</fieldForValue>
+    </input>
+    <input type="multiselect" token="tok_system" searchWhenChanged="true">
+      <label>System</label>
+      <choice value=".*">All</choice>
+      <default>.*</default>
+      <delimiter>|</delimiter>
+      <search>
+        <query><![CDATA[`l7_alerts` | `l7_env_filter($tok_env$)` | stats count by System | sort System]]></query>
+        <earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>System</fieldForLabel><fieldForValue>System</fieldForValue>
+    </input>
+    <input type="dropdown" token="tok_alert_type" searchWhenChanged="true">
+      <label>Alert Type</label>
+      <choice value="*">All</choice>
+      <choice value="EXCEPTION">EXCEPTION</choice>
+      <choice value="CONFIGURE">CONFIGURE</choice>
+      <choice value="INFO">INFO</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="tok_severity" searchWhenChanged="true">
+      <label>Severity</label>
+      <choice value="*">All</choice>
+      <choice value="Critical">Critical</choice>
+      <choice value="High">High</choice>
+      <choice value="Medium">Medium</choice>
+      <choice value="Low">Low</choice>
+      <default>*</default>
+    </input>
+    <input type="multiselect" token="tok_alert_name" searchWhenChanged="true">
+      <label>Alert Name</label>
+      <choice value=".*">All</choice>
+      <default>.*</default>
+      <delimiter>|</delimiter>
+      <search>
+        <query><![CDATA[`l7_alerts` | `l7_env_filter($tok_env$)` | where ("$tok_alert_type$"="*" OR Alert_Type="$tok_alert_type$") | where ("$tok_severity$"="*" OR Severity="$tok_severity$") | where match(System, "^(" . if("$tok_system$"="", ".*", "$tok_system$") . ")$") | eval Alert_Name=coalesce(Alert_Name, Event_Name) | stats count by Alert_Name | sort Alert_Name]]></query>
+        <earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fieldForLabel>Alert_Name</fieldForLabel><fieldForValue>Alert_Name</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Alerts by System</title>
+      <table>
+        <search>
+          <query><![CDATA[`l7_alerts` | `l7_env_filter($tok_env$)` | where ("$tok_alert_type$"="*" OR Alert_Type="$tok_alert_type$") | where ("$tok_severity$"="*" OR Severity="$tok_severity$") | where match(System, "^(" . if("$tok_system$"="", ".*", "$tok_system$") . ")$") | eval Alert_Name=coalesce(Alert_Name, Event_Name) | where match(Alert_Name, "^(" . if("$tok_alert_name$"="", ".*", "$tok_alert_name$") . ")$") | stats count by System System_Type | sort - count]]></query>
+          <earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown target="tokens"><set token="tok_system">$row.System$</set></drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Alerts by Alert Name</title>
+      <table>
+        <search>
+          <query><![CDATA[`l7_alerts` | `l7_env_filter($tok_env$)` | where ("$tok_alert_type$"="*" OR Alert_Type="$tok_alert_type$") | where ("$tok_severity$"="*" OR Severity="$tok_severity$") | where match(System, "^(" . if("$tok_system$"="", ".*", "$tok_system$") . ")$") | eval Alert_Name=coalesce(Alert_Name, Event_Name) | where match(Alert_Name, "^(" . if("$tok_alert_name$"="", ".*", "$tok_alert_name$") . ")$") | stats count by Alert_Name Alert_Type PriorityNum | sort - count | rename PriorityNum as Priority]]></query>
+          <earliest>$t1.earliest$</earliest><latest>$t1.latest$</latest>
+        
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+        <drilldown target="tokens"><set token="tok_alert_name">$row.Alert_Name$</set></drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+  <panel>
+    <title>Security Alerts</title>
+    <table drilldown="row">
+      <search>
+        <query><![CDATA[
+          `l7_alerts`
+          | `l7_env_filter($tok_env$)`
+          | where ("$tok_alert_type$"="*" OR Alert_Type="$tok_alert_type$")
+          | where ("$tok_severity$"="*" OR Severity="$tok_severity$")
+          | where match(System, "^(" . if("$tok_system$"="", ".*", "$tok_system$") . ")$")
+          | eval Alert_Name=coalesce(Alert_Name, Event_Name)
+          | where match(Alert_Name, "^(" . if("$tok_alert_name$"="", ".*", "$tok_alert_name$") . ")$")
+          | eval TIME=strftime(_time,"%Y-%m-%d %H:%M:%S")
+          | eval ENVIRONMENT=Environment
+          | eval Client=coalesce(Client, mvindex(split(mvindex(split(_raw,"CLIENT:"),1),"/"),0), "-")
+          | eval Source_IP=coalesce(Source_IP, mvindex(split(mvindex(split(_raw,"SOURCE_IP:"),1),"/"),0), "-")
+          | eval Target_IP=coalesce(Target_IP, mvindex(split(mvindex(split(_raw,"TARGET_IP:"),1),"/"),0), "-")
+          | eval Alert_Description=coalesce(Alert_Description, replace(Alert_Details,"\s+(Source:|Event:).*$",""))
+          | eval Alert_Description=trim(Alert_Description)
+          | sort - _time
+          | table TIME ENVIRONMENT System Client System_Type Alert_Type Severity PriorityNum Alert_Name Source_IP Target_IP Alert_Description
+          | rename PriorityNum as Priority
+        ]]></query>
+        <earliest>$t1.earliest$</earliest>
+        <latest>$t1.latest$</latest>
+      
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+      <fields>TIME,ENVIRONMENT,System,Client,System_Type,Alert_Type,Severity,Priority,Alert_Name,Source_IP,Target_IP,Alert_Description</fields>
+      <drilldown>
+        <set token="selected_system">$row.System$</set>
+        <set token="selected_severity">$row.Severity$</set>
+        <set token="selected_alert_type">$row.Alert_Type$</set>
+        <set token="selected_priority">$row.Priority$</set>
+        <set token="selected_alert_name">$row.Alert_Name$</set>
+              </drilldown>
+    </table>
+  </panel>
+</row>
+
+<row>
+  <panel depends="$selected_alert_name$">
+    <title>Alert details for $selected_alert_name$ (Priority $selected_priority$, $selected_system$)</title>
+    <search>
+      <query><![CDATA[
+        `l7_alerts`
+        | `l7_env_filter($tok_env$)`
+        | where System="$selected_system$"
+        | where Alert_Type="$selected_alert_type$"
+        | where Alert_Name="$selected_alert_name$"
+        | eval PriorityNum=tonumber(Priority)
+        | where PriorityNum=tonumber("$selected_priority$")
+        | sort - _time
+        | head 1
+        | eval DETAIL_RAW=coalesce(_raw, Alert_Details)
+        | table DETAIL_RAW
+      ]]></query>
+      <earliest>$t1.earliest$</earliest>
+      <latest>$t1.latest$</latest>
+      <done>
+        <set token="selected_metric_value">$result.DETAIL_RAW$</set>
+      </done>
+    
+        <refresh>$refresh_interval$s</refresh>
+        <refreshType>delay</refreshType>
+      </search>
+    <html>
+      <div style="font-family: inherit;">
+        <div style="margin-bottom:10px; font-size:13px; color:#cfcfcf;">
+          <strong>System:</strong> $selected_system$
+          <span style="margin:0 12px;">|</span>
+          <strong>Severity:</strong> $selected_severity$
+          <span style="margin:0 12px;">|</span>
+          <strong>Alert Type:</strong> $selected_alert_type$
+        </div>
+        <pre style="background-color:#ffffff;color:#111111;border:1px solid #d9d9d9;border-radius:6px;padding:12px 14px;font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-word;">$selected_metric_value$</pre>
+      </div>
+    </html>
+  </panel>
+</row>
+
+</form>

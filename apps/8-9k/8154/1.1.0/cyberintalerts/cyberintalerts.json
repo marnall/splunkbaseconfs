@@ -1,0 +1,793 @@
+{
+    "appid": "e8c7f864-cba7-47b7-a375-08abf243ff82",
+    "name": "Cyberint Alerts",
+    "description": "Check Point Exposure Management and Splunk SOAR integration is here to simplify and streamline alerts for Splunk SOAR, bring enriched threat intelligence from the Argos Edge\u2122 Digital Risk Protection Platform into Splunk SOAR and automatically implement playbooks and incident processes.",
+    "type": "endpoint",
+    "product_vendor": "Check Point",
+    "logo": "logo_cyberintalerts.svg",
+    "logo_dark": "logo_cyberintalerts_dark.svg",
+    "product_name": "Cyberint Alerts",
+    "python_version": "3.13",
+    "product_version_regex": ".*",
+    "publisher": "Check Point",
+    "license": "Copyright (c) Check Point, 2026",
+    "app_version": "1.1.0",
+    "utctime_updated": "2026-03-23T05:23:54.539060Z",
+    "package_name": "phantom_cyberintalerts",
+    "main_module": "cyberintalerts_connector.py",
+    "min_phantom_version": "7.0.0",
+    "app_wizard_version": "1.0.0",
+    "configuration": {
+        "base_url": {
+            "description": "Cyberint API URL on which the services run (e.g. https://your-company.cyberint.io)",
+            "data_type": "string",
+            "required": true,
+            "order": 0,
+            "name": "Cyberint API URL"
+        },
+        "access_token": {
+            "description": "Cyberint API access token",
+            "data_type": "password",
+            "required": true,
+            "order": 1,
+            "name": "Cyberint Access Token"
+        },
+        "customer_name": {
+            "description": "Company name associated with Cyberint instance",
+            "data_type": "string",
+            "required": true,
+            "order": 2,
+            "name": "Company Name"
+        },
+        "fetch_severity": {
+            "description": "Comma-separated list of severities to fetch. Supported values: low, medium, high, very_high. If empty, all severity levels will be returned",
+            "data_type": "string",
+            "required": false,
+            "order": 3,
+            "name": "Fetch Severity"
+        },
+        "fetch_status": {
+            "description": "Comma-separated list of statuses to fetch. Supported values: open, acknowledged, closed. If empty, all statuses will be returned",
+            "data_type": "string",
+            "required": false,
+            "order": 4,
+            "name": "Fetch Status"
+        },
+        "fetch_environment": {
+            "description": "Environments to fetch (comma separated). If empty, all available environments will be returned",
+            "data_type": "string",
+            "required": false,
+            "order": 5,
+            "name": "Fetch Environment"
+        },
+        "fetch_type": {
+            "description": "Comma-separated alert types to fetch. See API docs for supported types. If empty, all types will be returned",
+            "data_type": "string",
+            "required": false,
+            "order": 6,
+            "name": "Fetch Type"
+        },
+        "start_time": {
+            "description": "Starting time frame for initial data retrieval. If not set, alerts from the last 24 hours will be fetched",
+            "data_type": "string",
+            "required": false,
+            "order": 7,
+            "name": "Start Time",
+            "value_list": [
+                "Last 1 Hour",
+                "Last 24 Hours",
+                "Last 7 Days",
+                "Last 30 Days",
+                "Last 90 Days"
+            ],
+            "default": "Last 24 Hours"
+        },
+        "max_fetch": {
+            "description": "Max number of alerts per fetch. Default is 10, max is 100",
+            "data_type": "numeric",
+            "required": false,
+            "order": 8,
+            "name": "Fetch Limit",
+            "default": 10
+        },
+        "include_csv": {
+            "description": "Include CSV attachments as JSON content in alert data",
+            "data_type": "boolean",
+            "required": false,
+            "order": 9,
+            "name": "Include CSV Attachments",
+            "default": false
+        }
+    },
+    "actions": [
+        {
+            "action": "test connectivity",
+            "identifier": "test_connectivity",
+            "description": "Validate the asset configuration for connectivity using supplied configuration",
+            "verbose": "",
+            "type": "test",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get enriched alerts",
+            "identifier": "get_enriched_alerts",
+            "description": "Get alerts and enrich them with indicator details",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {},
+            "output": [
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "type": "custom",
+                "view": "cyberintalerts_view.get_enriched_alerts_view",
+                "title": "Enriched Alerts"
+            }
+        },
+        {
+            "action": "alerts - update alert status",
+            "identifier": "update_alert_status",
+            "description": "Update the status of one or more alerts",
+            "type": "generic",
+            "read_only": false,
+            "parameters": {
+                "Alert_Ref_IDs": {
+                    "description": "Comma-separated list of alert reference IDs to update",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                },
+                "Status": {
+                    "description": "The new status for the alerts",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 1,
+                    "value_list": [
+                        "open",
+                        "acknowledged",
+                        "closed"
+                    ]
+                },
+                "Closure_Reason": {
+                    "description": "The reason for closing the alert",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 2,
+                    "value_list": [
+                        "resolved",
+                        "irrelevant",
+                        "false_positive",
+                        "irrelevant_alert_subtype",
+                        "no_longer_a_threat",
+                        "asset_should_not_be_monitored",
+                        "asset_belongs_to_my_organization",
+                        "asm_no_longer_detected",
+                        "asm_manually_closed",
+                        "other"
+                    ]
+                },
+                "Reason_Description": {
+                    "description": "A description for the closure reason",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 3
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Alert_Ref_IDs",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Status",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Closure_Reason",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Reason_Description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "type": "custom",
+                "view": "cyberintalerts_view.update_alert_status_view",
+                "title": "Update Alert Status"
+            }
+        },
+        {
+            "action": "alerts - submit takedown",
+            "identifier": "submit_takedown",
+            "description": "Submit a takedown request",
+            "type": "generic",
+            "read_only": false,
+            "parameters": {
+                "Customer_ID": {
+                    "description": "Your Cyberint Customer ID",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                },
+                "Reason": {
+                    "description": "Reason for the takedown",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 1,
+                    "value_list": [
+                        "phishing",
+                        "brand_abuse",
+                        "impersonating_application",
+                        "unofficial_application_distribution",
+                        "malicious_content",
+                        "social_media_impersonation",
+                        "social_media_employee_impersonation",
+                        "fake_job_post",
+                        "sensitive_file_on_antivirus_repository",
+                        "instant_messaging_impersonation",
+                        "other"
+                    ]
+                },
+                "URL": {
+                    "description": "URL to take down",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 2
+                },
+                "Brand": {
+                    "description": "The brand being impersonated",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 3
+                },
+                "Original_URL": {
+                    "description": "The original/legitimate URL",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 4
+                },
+                "Alert_ID": {
+                    "description": "The ID of the related alert",
+                    "data_type": "numeric",
+                    "required": false,
+                    "order": 5
+                },
+                "Note": {
+                    "description": "Additional notes for the takedown request",
+                    "data_type": "string",
+                    "required": false,
+                    "order": 6
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Customer_ID",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Reason",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.URL",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Brand",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Original_URL",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Alert_ID",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.Note",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "type": "custom",
+                "view": "cyberintalerts_view.submit_takedown_view",
+                "title": "Submit Takedown"
+            }
+        },
+        {
+            "action": "alerts - retrieve takedowns",
+            "identifier": "retrieve_takedowns",
+            "description": "Retrieve takedown requests",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "Customer_ID": {
+                    "description": "Your Cyberint Customer ID",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Customer_ID",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "type": "custom",
+                "view": "cyberintalerts_view.takedown_view",
+                "title": "Takedown Requests"
+            }
+        },
+        {
+            "action": "on poll",
+            "identifier": "on_poll",
+            "description": "Ingest Cyberint alerts and create cases",
+            "type": "ingest",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "ioc - get file reputation",
+            "identifier": "get_file_reputation",
+            "description": "Get the reputation of a file by its SHA256 hash",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "SHA256": {
+                    "description": "SHA256 hash of the file",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.SHA256",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.entity",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.risk",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.enrichment",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.benign",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "ioc - get domain reputation",
+            "identifier": "get_domain_reputation",
+            "description": "Get the reputation of a domain",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "Domain": {
+                    "description": "Domain name to look up",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Domain",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.entity",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.risk",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.enrichment",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.benign",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "ioc - get ip reputation",
+            "identifier": "get_ip_reputation",
+            "description": "Get the reputation of an IPv4 address",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "IP": {
+                    "description": "IPv4 address to look up",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.IP",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.entity",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.risk",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.enrichment",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.benign",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "ioc - get url reputation",
+            "identifier": "get_url_reputation",
+            "description": "Get the reputation of a URL",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "URL": {
+                    "description": "URL to look up",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.URL",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.entity",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.risk",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.enrichment",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.benign",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "credentials - lookup by domain",
+            "identifier": "lookup_credentials_by_domain",
+            "description": "Look up exposed credentials by domain",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "Domain": {
+                    "description": "Domain to search for exposed credentials",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Domain",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.employee",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.customer",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "credentials - lookup by email",
+            "identifier": "lookup_credentials_by_email",
+            "description": "Look up exposed credentials by email address",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "Email": {
+                    "description": "Comma-separated list of email addresses to search (max 50)",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                },
+                "Mask_Password": {
+                    "description": "Mask passwords in results",
+                    "data_type": "boolean",
+                    "required": false,
+                    "order": 1,
+                    "default": true
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.Email",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.Mask_Password",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.raw_data",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get cve intelligence",
+            "identifier": "get_cve_intelligence",
+            "description": "Get enriched CVE intelligence by CVE ID",
+            "type": "investigate",
+            "read_only": true,
+            "parameters": {
+                "CVE_ID": {
+                    "description": "CVE identifier (e.g. CVE-2024-1234)",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.parameter.CVE_ID",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.cve",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.cyberint_score",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.epss",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.known_exploited_vulnerability",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threats",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.tags",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string"
+                }
+            ],
+            "versions": "EQ(*)"
+        }
+    ],
+    "pip313_dependencies": {
+        "wheel": []
+    },
+    "pip39_dependencies": {
+        "wheel": []
+    }
+}

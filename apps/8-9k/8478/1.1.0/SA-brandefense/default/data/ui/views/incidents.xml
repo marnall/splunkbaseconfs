@@ -1,0 +1,111 @@
+<form version="1.1">
+  <label>Incidents</label>
+  <description>Brandefense Incident Analysis</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="severity_filter" searchWhenChanged="true">
+      <label>Severity</label>
+      <choice value="*">All</choice>
+      <choice value="CRITICAL">Critical</choice>
+      <choice value="HIGH">High</choice>
+      <choice value="MEDIUM">Medium</choice>
+      <choice value="LOW">Low</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="category_filter" searchWhenChanged="true">
+      <label>Category</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <search>
+        <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" | dedup category | sort category | table category</query>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>category</fieldForLabel>
+      <fieldForValue>category</fieldForValue>
+    </input>
+    <input type="dropdown" token="org_filter" searchWhenChanged="true">
+      <label>Organization</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <search>
+        <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" | dedup organization_name | sort organization_name | table organization_name</query>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>organization_name</fieldForLabel>
+      <fieldForValue>organization_name</fieldForValue>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Incidents Over Time by Severity</title>
+      <chart>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" severity=$severity_filter$ category=$category_filter$ organization_name=$org_filter$ | dedup code | timechart count by severity</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"CRITICAL": 0xdc4e41, "HIGH": 0xf1813f, "MEDIUM": 0xf8be34, "LOW": 0x53a051}</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 10 Organizations by Incident Count</title>
+      <chart>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" severity=$severity_filter$ category=$category_filter$ organization_name=$org_filter$ | dedup code | stats count by organization_name | sort - count | head 10</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Categories</title>
+      <chart>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" severity=$severity_filter$ category=$category_filter$ organization_name=$org_filter$ | dedup code | stats count by category | sort - count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Incidents</title>
+      <table>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:incidents" event_type="incident" severity=$severity_filter$ category=$category_filter$ organization_name=$org_filter$ | dedup code | sort - _time | table _time code title severity category organization_name asset_name url | rename code as "Code", title as "Title", severity as "Severity", category as "Category", organization_name as "Organization", asset_name as "Asset", url as "URL"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <drilldown>
+          <link target="_blank">$row.URL$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,104 @@
+<dashboard theme="dark" version="1.1">
+  <label>Data Coverage &amp; Quality</label>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>index=* earliest=-24h
+| timechart span=1h count
+| stats avg(count) AS value
+| eval value=round(value,0)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="underLabel">Avg Events / Hour</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=* earliest=-24h
+| timechart span=1h count AS events
+| eventstats avg(events) AS avg_events
+| eval deviation_pct = round(((events-avg_events)/avg_events)*100,2)
+| tail 1
+| table deviation_pct</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,30]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Volume Deviation (%)</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>index=* earliest=-24h
+| timechart span=1h count AS events
+| eventstats avg(events) AS avg_events
+| eval deviation=abs(events-avg_events)/avg_events
+| tail 1
+| eval value=case(
+    deviation &lt; 0.1, "Healthy",
+    deviation &lt; 0.3, "Degraded",
+    true(), "Critical"
+)
+| table value</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Data Health Status</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Event Volume vs Baseline</title>
+        <search>
+          <query>index=* earliest=-48h
+| timechart span=1h count AS events
+| eventstats avg(events) AS baseline</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Ingestion Gaps</title>
+        <search>
+          <query>index=* earliest=-24h
+| timechart span=10m count AS events
+| eval gap = if(events=0, "Gap", "OK")</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

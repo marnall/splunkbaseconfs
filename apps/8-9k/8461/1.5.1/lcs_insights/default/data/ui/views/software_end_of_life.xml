@@ -1,0 +1,308 @@
+<form version="1.1" theme="light">
+  <label>Software End of Life</label>
+  <description>Optimized with base search in hidden panel</description>
+  <!-- ############################################### -->
+  <!-- Hidden Panels: Promoted Base Searches           -->
+  <!-- ############################################### -->
+  <!-- Hidden panel: pull_data_Tracked_Elements -->
+  <!-- Hidden panel: pull_data_SWLDOS -->
+  <!-- Hidden panel: pull_data_SWVSS -->
+  <!-- ############################################### -->
+  <!-- CSS Panel (hidden)                              -->
+  <!-- ############################################### -->
+  <!-- ############################################### -->
+  <!-- Visible Panels                                  -->
+  <!-- ############################################### -->
+  <!-- Hidden row to extract kvDevices token from Tracked Elements base search -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Key Tracks CSV search</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvLookupFound">$result.lookupFound$</set>
+            </condition>
+          </finalized>
+          <query>| rest/servicesNS/-/-/data/lookup-table-files 
+| search eai:appName=custom_insights title="Key_Tracks-$cpyKey$.csv" 
+| table title</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: Tracked Elements</title>
+        <search id="pull_data_Tracked_Elements">
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretrackmember 
+| stats values(softwareTrackId) as softWareTrackId
+        values(softwareTrackName) as softwareTrackName
+        values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant
+        by deviceId
+| $singleLineGroupSelector$
+| eventstats dc(deviceId) as totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: SW LDoS</title>
+        <search id="pull_data_SWLDOS">
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone=LDoS
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        by deviceId
+| $singleLineGroupSelector$
+| table deviceId, currentEndOfLifeMilestone, groupName
+| dedup deviceId
+| stats count as "LDoS_Software"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: SW VSS</title>
+        <search id="pull_data_SWVSS">
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone=EoVSS
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        by deviceId
+| $singleLineGroupSelector$
+| table deviceId, currentEndOfLifeMilestone, groupName
+| dedup deviceId
+| stats count as "EoVSS_Software"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software End of Life"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$HideMe$">
+    <panel>
+      <title>Selected Group: Tracked Elements</title>
+      <single>
+        <search base="pull_data_Tracked_Elements">
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvDevices">$result.totalSum$</set>
+            </condition>
+          </finalized>
+          <query>| table totalSum</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="height">125</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SW LDoS Count</title>
+      <single>
+        <title>Goal: Get this near 0</title>
+        <search base="pull_data_SWLDOS">
+          <query/>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW LDoS</title>
+      <single>
+        <title>Percentage</title>
+        <search base="pull_data_SWLDOS">
+          <query>| eval PercentSwLDoS=(round(100*LDoS_Software/$kvDevices$)) 
+| table PercentSwLDoS</query>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,20]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Green &lt; Yellow: 10%-20% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW VSS Count</title>
+      <single>
+        <title>Goal: Get this near 0</title>
+        <search base="pull_data_SWVSS">
+          <query/>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW VSS</title>
+      <single>
+        <title>Percentage</title>
+        <search base="pull_data_SWVSS">
+          <query>| eval PercentSwVSS=(round(100*EoVSS_Software/$kvDevices$)) 
+| table PercentSwVSS</query>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,20]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Green &lt; Yellow: 10%-20% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Current Software End of Life Milestone by Devices</title>
+      <chart>
+        <search>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone=* 
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        by deviceId
+| $singleLineGroupSelector$
+| stats count as Devices by currentEndOfLifeMilestone</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">preview</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Current Software End of Life Milestone by Percentage</title>
+      <chart>
+        <search>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone=* 
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        by deviceId
+| $singleLineGroupSelector$
+| stats dc(deviceId) as Devices by currentEndOfLifeMilestone
+| eval PercentEox=(round(100*Devices/$kvDevices$))
+| table currentEndOfLifeMilestone, PercentEox</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Sotware End of Life Details</title>
+      <table>
+        <search>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone=* 
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        latest(deviceName) as deviceName
+        latest(currentEndOfLifeMilestoneDate) as currentEndOfLifeMilestoneDate
+        latest(nextEndOfLifeMilestoneDate) as nextEndOfLifeMilestoneDate
+        latest(nextEndOfLifeMilestone) as nextEndofLifeMilestone
+        by deviceId
+| join type=left deviceId 
+    [ search `cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$" 
+    | fields deviceId, groupName ] 
+
+| rex field=currentEoxMilestoneDate mode=sed "s/T.*$//g" 
+| rex field=nextEoxMilestoneDate mode=sed "s/T.*$//g" 
+| table deviceName, swVersion, swType, currentEndOfLifeMilestone, currentEndOfLifeMilestoneDate, nextEndofLifeMilestone, nextEndOfLifeMilestoneDate</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

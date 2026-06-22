@@ -1,0 +1,267 @@
+<dashboard version="2">
+  <label>Whisper - Executive Risk Summary</label>
+  <description>Executive risk scorecards with A-F risk grades across DNS, email, and infrastructure security categories.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - Executive Risk Summary",
+  "description": "Executive risk scorecards with A-F risk grades across DNS, email, and infrastructure security categories.",
+  "dataSources": {
+    "ds_overall_risk": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score=* | stats avg(risk_score) AS avg_risk, max(risk_score) AS max_risk, count AS total_changes | eval grade=case(isnull(avg_risk), \"N/A\", avg_risk<=20, \"A\", avg_risk<=40, \"B\", avg_risk<=60, \"C\", avg_risk<=80, \"D\", 1=1, \"F\") | eval display=grade | fields display, avg_risk, max_risk, total_changes",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_dns_risk": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" (record_type=\"A\" OR record_type=\"CNAME\" OR record_type=\"NS\") risk_score=* | stats avg(risk_score) AS avg_risk, count AS _event_count | eval grade=case(_event_count=0 OR isnull(avg_risk), \"N/A\", avg_risk<=20, \"A\", avg_risk<=40, \"B\", avg_risk<=60, \"C\", avg_risk<=80, \"D\", 1=1, \"F\") | eval display=if(grade=\"N/A\", \"N/A\", grade.\": \".round(avg_risk, 1)) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_email_risk": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` (sourcetype=\"whisper:spf_compliance\" OR sourcetype=\"whisper:attack_surface_change\" record_type=\"MX\") | eval has_spf=if(sourcetype=\"whisper:spf_compliance\" AND spf_exists=\"true\" AND exceeds_limit=\"false\", 1, 0) | stats avg(has_spf) AS spf_rate, count AS _event_count | eval risk=round((1-spf_rate)*100, 1) | eval grade=case(_event_count=0 OR isnull(spf_rate), \"N/A\", risk<=20, \"A\", risk<=40, \"B\", risk<=60, \"C\", risk<=80, \"D\", 1=1, \"F\") | eval display=if(grade=\"N/A\", \"N/A\", grade.\": \".risk) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_infra_risk": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score=* | stats avg(risk_score) AS avg_threat, count AS _event_count | eval grade=case(_event_count=0 OR isnull(avg_threat), \"N/A\", avg_threat<=20, \"A\", avg_threat<=40, \"B\", avg_threat<=60, \"C\", avg_threat<=80, \"D\", 1=1, \"F\") | eval display=if(grade=\"N/A\", \"N/A\", grade.\": \".round(avg_threat, 1)) | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_risk_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score=* | timechart span=1d avg(risk_score) AS \"Avg Risk Score\" max(risk_score) AS \"Max Risk Score\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_high_risk_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score>=70 | table _time, domain, record_type, change_type, old_value, new_value, risk_score | sort - risk_score | head 20 | rename _time AS \"Time\", domain AS \"Domain\", record_type AS \"Record Type\", change_type AS \"Change\", old_value AS \"Old Value\", new_value AS \"New Value\", risk_score AS \"Risk Score\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_mitre_summary": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=technique_id path={}.technique_id | mvexpand technique_id | stats count BY technique_id | sort - count | head 10 | rename technique_id AS \"MITRE Technique\", count AS \"Detections\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-7d@d,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_overall_risk",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_dns_risk",
+        "position": {
+          "x": 300,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_email_risk",
+        "position": {
+          "x": 600,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_infra_risk",
+        "position": {
+          "x": 900,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_risk_trend",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_high_risk_changes",
+        "position": {
+          "x": 0,
+          "y": 400,
+          "w": 700,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_mitre_summary",
+        "position": {
+          "x": 700,
+          "y": 400,
+          "w": 500,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_overall_risk": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_overall_risk"
+      },
+      "title": "Overall Risk Grade",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f8be34",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_dns_risk": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_dns_risk"
+      },
+      "title": "DNS Security Grade",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_email_risk": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_email_risk"
+      },
+      "title": "Email Security Grade",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_infra_risk": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_infra_risk"
+      },
+      "title": "Infrastructure Grade",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_risk_trend": {
+      "type": "viz.line",
+      "dataSources": {
+        "primary": "ds_risk_trend"
+      },
+      "title": "Risk Score Trend",
+      "options": {
+        "seriesColors": ["#d41f1c", "#f1813f"],
+        "yAxisTitleText": "Risk Score"
+      }
+    },
+    "viz_high_risk_changes": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_high_risk_changes"
+      },
+      "title": "High-Risk Infrastructure Changes (Score >= 70)",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" domain=\"$row.Domain$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_mitre_summary": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_mitre_summary"
+      },
+      "title": "Top MITRE ATT&CK Techniques Detected",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToUrl",
+          "event": "table.cellClick",
+          "options": {
+            "url": "/app/TA-whisper-security/whisper_mitre_coverage",
+            "openInNewTab": false
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

@@ -1,0 +1,731 @@
+<form version="1.1" theme="light">
+  <label>Software Summary</label>
+  <description>Part of Sprint 3 with base search optimization using loadjob</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$HideThis$">
+      <table>
+        <title>Key Tracks CSV search</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvLookupFound">$result.lookupFound$</set>
+            </condition>
+          </finalized>
+          <query>| rest/servicesNS/-/-/data/lookup-table-files 
+| search eai:appName=custom_insights title="Key_Tracks-$cpyKey$.csv" 
+| table title</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$alwaysHide$">
+    <panel>
+      <title>Base: Deferral</title>
+      <table>
+        <search>
+          <done>
+            <set token="sid_base_deferral">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareadvisoryalert softwareAlertType=DF 
+| dedup deviceId softwareVersion 
+| $singleLineGroupSelector$ 
+| table deviceId softwareAlertType softwareVersion</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: Conformance</title>
+      <table>
+        <search>
+          <done>
+            <set token="sid_base_conformance">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretrackmember 
+| stats values(softwareTrackId) as softwareTrackId
+        values(softwareTrackName) as softwareTrackName
+        values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant
+        values(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant
+        by deviceId
+| dedup deviceId
+| $singleLineGroupSelector$
+| eventstats dc(deviceId) as totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: SW End of Life</title>
+      <table>
+        <search>
+          <done>
+            <set token="sid_base_sw_eol">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareendoflife currentEndOfLifeMilestone IN ("LDoS","EoVSS")
+| stats latest(currentEndOfLifeMilestone) as currentEndOfLifeMilestone 
+        by deviceId
+| $singleLineGroupSelector$
+| table deviceId, currentEndOfLifeMilestone, groupName</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: Diversity</title>
+      <table>
+        <search>
+          <done>
+            <set token="sid_base_diversity">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:device 
+| stats values(deviceName) as deviceName
+    by deviceId productFamily softwareVersion productId 
+| search productId!=null 
+| fields deviceId, deviceName, productId, productFamily, softwareVersion 
+| $singleLineGroupSelector$</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Strategy Summary"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Deferred Software"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW Deferral Count</title>
+      <single>
+        <title>Goal: Get this to 0</title>
+        <search>
+          <query>| loadjob $sid_base_deferral$
+| stats dc(deviceId) as Deferred_Software
+| table Deferred_Software</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW Deferral</title>
+      <single>
+        <title>Percentage</title>
+        <search>
+          <query>| loadjob $sid_base_deferral$
+| stats dc(deviceId) as Deferred_Software
+| append 
+    [ search `cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:device 
+    | fields deviceId 
+    | stats dc(deviceId) as Devices ] 
+| stats max(Deferred_Software) as Deferred_Software, max(Devices) as Devices
+| eval percDeferred=round(100*Deferred_Software/Devices)
+| table percDeferred</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 1%-5% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW Versions Deferred</title>
+      <single>
+        <title>Count</title>
+        <search>
+          <query>| loadjob $sid_base_deferral$
+| stats dc(softwareVersion) as DeferredVersions</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[55,80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Versions</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Top Version Deferred</title>
+      <single>
+        <title>Most Prevalent</title>
+        <search>
+          <query>| loadjob $sid_base_deferral$
+| stats count as Devices by softwareVersion
+| sort -Devices
+| head 1
+| table softwareVersion
+| appendpipe 
+    [ | stats count 
+    | where count=0 ]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[55,80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+  </row>
+  <row rejects="$kvLookupFound$">
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Conformance"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel depends="$HideMe$">
+      <title>Selected Group: Tracked Elements</title>
+      <single>
+        <title></title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvDevices">$result.totalSum$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $sid_base_conformance$
+| table totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Conformant Devices (N)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackCompliant=true
+| stats count as total
+| table total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Conformance (%, N)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackCompliant=true
+| stats count as total, last(totalSum) as totalSum
+| eval percConformant=round(100*total/totalSum)
+| table percConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 60%-80% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Flexibly Conformant (N-1) Devices</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| search isSoftwareTrackFlexibleCompliant=true
+| stats count as total
+| table total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Flexible Conformance (%, N-1)</title>
+      <single>
+        <title>Tracked Elements: $kvDevices$</title>
+        <search>
+          <query>| loadjob $sid_base_conformance$
+| eventstats dc(deviceId) as Devices 
+| search isSoftwareTrackFlexibleCompliant=true
+| eventstats count as Flex
+| table Flex, Devices
+| head 1
+| eval percFlexConformant=100*Flex/Devices
+| table percFlexConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 70%-90% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$kvLookupFound$">
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Priority 2: Conformance - Key Tracks"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$kvLookupFound$">
+    <panel>
+      <title>(Not Group-Aware)</title>
+      <chart>
+        <title>Key Tracks: Conformance Progress</title>
+        <search>
+          <query>| tstats  values(trackDescription) as trackDescription values(trackPercentCompliant) as trackPercentCompliant where index::$cpyKey$-np 
+    [| `last_np_sourcetype( "index=$cpyKey$-np", "track_summary")` ] by trackId
+| lookup Key_Tracks-$cpyKey$.csv local=true trackId 
+| search initConf=* 
+| dedup trackId, initConf, trackPercentCompliant
+| table trackDescription, initConf, trackPercentCompliant
+| eval Conf=round(trackPercentCompliant)
+| fields - trackPercentCompliant
+| rename initConf as "InitialConformance", Conf as "CurrentConformance"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Strict Conformance %</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Strict Conformance %</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$kvLookupFound$">
+    <panel>
+      <single>
+        <title>Tracked Elements</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| stats dc(deviceId) as Total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Tracks</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| stats dc(trackId) as Total</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Conformant</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| search trackCompliant=true
+| stats dc(deviceId) as Conformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Not Conformant</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| search trackCompliant!=true
+| stats dc(deviceId) as NotConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Percent Conformant</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| eventstats dc(deviceId) as TotalDevices
+| search trackCompliant=true
+| stats dc(deviceId) as Conformant, last(TotalDevices) as TotalDevices
+| eval percConformant=round(100*Conformant/TotalDevices)
+| table percConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[80,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 80%-90% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Flexibly Conformant</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| search trackCompliant=true OR trackFlexibleCompliant=true
+| stats dc(deviceId) as FlexConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Percent Flexibly Conformant</title>
+        <search>
+          <query>| loadjob $sid_base_key_tracks$
+| eventstats dc(deviceId) as TotalDevices
+| search trackCompliant=true OR trackFlexibleCompliant=true
+| stats dc(deviceId) as FlexConformant, last(TotalDevices) as TotalDevices
+| eval percFlexConformant=round(100*FlexConformant/TotalDevices)
+| table percFlexConformant</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[80,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Red &lt; Yellow: 80%-90% &lt; Green</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software End of Life"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW LDoS Count</title>
+      <single>
+        <title>Goal: Get this near 0</title>
+        <search>
+          <query>| loadjob $sid_base_sw_eol$
+| search currentEndOfLifeMilestone="LDoS"
+| stats count as "LDoS_Software"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW LDoS</title>
+      <single>
+        <title>Percentage</title>
+        <search>
+          <query>| loadjob $sid_base_sw_eol$
+| search currentEndOfLifeMilestone="LDoS"
+| stats count as LDoS_Software
+| eval PercentSwLDoS=(round(100*LDoS_Software/$kvDevices$)) 
+| table PercentSwLDoS</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,20]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Green &lt; Yellow: 10%-20% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW VSS Count</title>
+      <single>
+        <title>Goal: Get this near 0</title>
+        <search>
+          <query>| loadjob $sid_base_sw_eol$
+| search currentEndOfLifeMilestone="EoVSS"
+| stats count as "EoVSS_Software"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW VSS</title>
+      <single>
+        <title>Percentage</title>
+        <search>
+          <query>| loadjob $sid_base_sw_eol$
+| search currentEndOfLifeMilestone="EoVSS"
+| stats count as EoVSS_Software
+| eval PercentSwVSS=(round(100*EoVSS_Software/$kvDevices$)) 
+| table PercentSwVSS</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,20]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Green &lt; Yellow: 10%-20% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Diversity"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Number of Software Versions</title>
+      <single>
+        <title>Enterprise</title>
+        <search>
+          <query>| loadjob $sid_base_diversity$
+| stats dc(softwareVersion) as "SW Versions"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[30,60]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 30-60 &lt; Red</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Universions</title>
+      <single>
+        <title>Versions of code running on a single device</title>
+        <search>
+          <query>| loadjob $sid_base_diversity$
+| stats count as Devices by softwareVersion
+| search Devices=1
+| stats count as Universions</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 25-50 &lt; Red</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Top 2 Diverse Family Devices</title>
+      <single>
+        <title>Sum of devices in Top 2 Families by # versions</title>
+        <search>
+          <query>| loadjob $sid_base_diversity$
+| eventstats dc(softwareVersion) as VersionsInFamily by productFamily 
+| eventstats count as DevicesRunningVersion by productFamily, softwareVersion, VersionsInFamily 
+| search VersionsInFamily&gt;=2 AND softwareVersion!="Not Found" 
+| fields productFamily, softwareVersion, DevicesRunningVersion, VersionsInFamily 
+| dedup productFamily, softwareVersion, DevicesRunningVersion, VersionsInFamily 
+| sort -VersionsInFamily, productFamily 
+| stats sum(DevicesRunningVersion) as Devices by productFamily, VersionsInFamily 
+| sort -VersionsInFamily 
+| head 2 
+| stats sum(Devices) as Top2devices</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Diversity Reduction Goal: Top 2 Diverse Families</title>
+      <single>
+        <title># Versions to Eliminate</title>
+        <search>
+          <query>| loadjob $sid_base_diversity$
+| eventstats dc(softwareVersion) as VersionsInFamily by productFamily 
+| eventstats max(VersionsInFamily) as maxVersions 
+| eventstats count as DevicesRunningVersion by productFamily, softwareVersion, VersionsInFamily 
+| search softwareVersion!="Not Found" 
+| table productFamily, DevicesRunningVersion, VersionsInFamily, maxVersions 
+| dedup productFamily, VersionsInFamily 
+| sort -VersionsInFamily, productFamily
+| head 2
+| stats sum(VersionsInFamily) as Top2familyVersions
+| eval versionsSaved=Top2familyVersions-8
+| eval fixedVersionsSaved = if(Top2familyVersions&lt;8, 0, versionsSaved)
+| table fixedVersionsSaved</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+</form>

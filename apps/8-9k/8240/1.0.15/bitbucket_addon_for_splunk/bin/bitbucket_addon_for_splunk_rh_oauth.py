@@ -1,0 +1,203 @@
+"""
+This module will be used to get oauth token from auth code
+"""
+import import_declare_test
+import urllib
+try:
+    from urllib import urlencode
+except:
+    from urllib.parse import urlencode
+from httplib2 import Http, ProxyInfo, socks
+import splunk.admin as admin
+from solnlib import log
+from solnlib import conf_manager
+from solnlib.conf_manager import InvalidHostnameError, InvalidPortError
+from solnlib.utils import is_true
+import json
+import requests
+from requests.auth import HTTPBasicAuth
+
+
+
+log.Logs.set_context()
+logger = log.Logs().get_logger('bitbucket_addon_for_splunk_rh_oauth2_token')
+
+# Map for available proxy type
+_PROXY_TYPE_MAP = {
+    'http': socks.PROXY_TYPE_HTTP,
+    # comment the below line if your add-on is not compatible with 'http_no_tunnel' protocol
+    #'http_no_tunnel': socks.PROXY_TYPE_HTTP_NO_TUNNEL,
+    'socks4': socks.PROXY_TYPE_SOCKS4,
+    'socks5': socks.PROXY_TYPE_SOCKS5,
+}
+
+"""
+REST Endpoint of getting token by OAuth2 in Splunk Add-on UI Framework. T
+"""
+
+
+class bitbucket_addon_for_splunk_rh_oauth2_token(admin.MConfigHandler):
+
+    """
+    This method checks which action is getting called and what parameters are required for the request.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        session_key = self.getSessionKey()
+        log_level = conf_manager.get_log_level(
+            logger=logger,
+            session_key=session_key,
+            app_name="bitbucket_addon_for_splunk",
+            conf_name="bitbucket_addon_for_splunk_settings",
+            log_stanza="logging",
+            log_level_field="loglevel"
+        )
+        log.Logs().set_level(log_level)
+
+    def setup(self):
+        if self.requestedAction == admin.ACTION_EDIT:
+            for arg in ('url', 'method',
+                        'grant_type', 'code',
+                        'client_id', 'client_secret',
+                        'redirect_uri'):
+                self.supportedArgs.addReqArg(arg)
+        return
+
+    """
+    This handler is to get access token from the auth code received
+    It takes 'url', 'method', 'grant_type', 'code', 'client_id', 'client_secret', 'redirect_uri' as caller args and
+    Returns the confInfo dict object in response.
+    """
+
+    def handleEdit(self, confInfo):
+
+        try:
+            logger.debug("In OAuth rest handler to get access token")
+            # Get args parameters from the request
+            url = self.callerArgs.data['url'][0]
+            logger.debug("oAUth url %s", url)
+            #proxy_info = self.getProxyDetails()
+
+            #http = Http(proxy_info=proxy_info)
+            method = self.callerArgs.data['method'][0]
+            logger.debug("method %s", url)
+            # Create payload from the arguments received
+            payload = {
+                'grant_type': self.callerArgs.data['grant_type'][0],
+                'code': self.callerArgs.data['code'][0],
+                # 'client_id': self.callerArgs.data['client_id'][0],
+                # 'client_secret': self.callerArgs.data['client_secret'][0],
+                'redirect_uri': self.callerArgs.data['redirect_uri'][0],
+            }
+            client_id= self.callerArgs.data['client_id'][0]
+            client_secret= self.callerArgs.data['client_secret'][0]
+            logger.debug("client_id: %s, type: %s", client_id, type(client_id))
+            logger.debug("client_id %s", client_id)
+            logger.debug("client_secret %s", client_secret)
+            logger.debug("Payload %s", payload)
+            logger.debug("method %s", url)
+            # headers = {"Content-Type": "application/x-www-form-urlencoded", }
+            # Send http request to get the accesstoken
+            # resp = requests.request("POST",url,headers=headers,data=urlencode(payload))
+            # resp = requests.request("POST", url, headers=headers, data=payload)
+            resp = requests.post(url,
+               data=payload,
+               auth=HTTPBasicAuth(client_id, client_secret)
+            )
+            logger.debug("response %s", resp)
+            logger.error("Request failed, status code: %s", resp.status_code)
+            logger.error("Response content: %s", resp.text)
+            logger.error("Failed request details: URL=%s, Payload=%s", url, payload)
+            # headers = {"Content-Type": "application/x-www-form-urlencoded", }
+            # # Send http request to get the accesstoken
+            # resp, content = http.request(url,
+            #                              method=method,
+            #                              headers=headers,
+            #                              body=urlencode(payload))
+            content = resp.json()
+            logger.info("Oauth is working")
+            logger.error("Oauth is working")
+            logger.info(resp)
+            logger.error(resp)
+            # Check for any errors in response. If no error then add the content values in confInfo
+            if resp.status_code == 200:
+                for key, val in content.items():
+                    confInfo['refresh_token'][key] = val
+            else:
+                # Else add the error message in the confinfo
+                confInfo['token']['error'] = content['error_description']
+            logger.info(
+                "Exiting OAuth rest handler after getting access token with response %s", resp.status_code)
+        except Exception as exc:
+            logger.exception(
+                "Error occurred while getting accesstoken using auth code")
+            raise exc()
+
+    """
+    This method is to get proxy details stored in settings conf file
+    """
+
+    def getProxyDetails(self):
+        try: 
+            proxy_config = conf_manager.get_proxy_dict(logger=logger,
+            session_key=self.getSessionKey(),
+            app_name="bitbucket_addon_for_splunk",
+            conf_name="bitbucket_addon_for_splunk_settings",
+            proxy_port="proxy_port",  # Field name of port
+            proxy_host="proxy_url"  # Field name of hostname
+            )
+
+        # Handle invalid port case
+        except InvalidPortError as e:
+            logger.error(f"Proxy configuration error: {e}")
+
+        # Handle invalid hostname case
+        except InvalidHostnameError as e:
+            logger.error(f"Proxy configuration error: {e}")
+
+
+        if not proxy_config or not is_true(proxy_config.get('proxy_enabled')):
+            logger.info('Proxy is not enabled')
+            return None
+
+        url = proxy_config.get('proxy_url')
+        port = proxy_config.get('proxy_port')
+
+        user = proxy_config.get('proxy_username')
+        password = proxy_config.get('proxy_password')
+
+        if not all((user, password)):
+            logger.info('Proxy has no credentials found')
+            user, password = None, None
+
+        proxy_type = proxy_config.get('proxy_type')
+        proxy_type = proxy_type.lower() if proxy_type else 'http'
+
+        if proxy_type in _PROXY_TYPE_MAP:
+            ptv = _PROXY_TYPE_MAP[proxy_type]
+        elif proxy_type in _PROXY_TYPE_MAP.values():
+            ptv = proxy_type
+        else:
+            ptv = socks.PROXY_TYPE_HTTP
+            logger.info('Proxy type not found, set to "HTTP"')
+
+        rdns = is_true(proxy_config.get('proxy_rdns'))
+
+        proxy_info = ProxyInfo(
+            proxy_host=url,
+            proxy_port=int(port),
+            proxy_type=ptv,
+            proxy_user=user,
+            proxy_pass=password,
+            proxy_rdns=rdns
+        )
+        return proxy_info
+
+    """
+    Method to check if the given port is valid or not
+    :param port: port number to be validated
+    :type port: ``int``
+    """
+
+if __name__ == "__main__":
+    admin.init(bitbucket_addon_for_splunk_rh_oauth2_token, admin.CONTEXT_APP_AND_USER)

@@ -1,0 +1,275 @@
+[]
+access = read : [ * ], write : [ admin, sc_admin, power ]
+export = system
+
+[views]
+export = system
+
+[views/AiWorkbench]
+access = read : [ * ], write : [ admin, sc_admin, power ]
+export = system
+
+[nav/default]
+access = read : [ * ], write : [ admin, sc_admin, power ]
+export = system
+
+# Templates: every authenticated user must be able to list them so the
+# Ask tab can show the templates they're allowed to see. The handler
+# server-side filters by Org/BU/role.
+[collections/itmip_ai_use_cases]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# v0.9.6 — Skills layer. Reusable "do-it-correctly" prose blocks
+# referenced from templates' includes_skills field. Read open so the
+# dispatcher can resolve skill bodies on behalf of any authenticated
+# user; write admin-only (skills shape what the LLM sees, so author
+# privilege matches template authoring).
+[collections/itmip_ai_skills]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# v0.9.7 — Authoring audit log. Read admin-only (records who tried
+# what at LLM-authoring time, including attempted_override_fields —
+# this is investigative data). Writes go through the user-templates
+# REST handler which uses the system token, so end users never write
+# to it directly.
+[collections/itmip_authoring_changes]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# Kept for legacy migration only — read by the setup handler so v0.1/v0.2
+# data lands in itmip_ai_use_cases on first run.
+[collections/itmip_claude_use_cases]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# LLM configurations carry tenant-specific endpoints, AWS access key ids,
+# extra HTTP-header values that may be customer-internal gateway tokens,
+# and a PEM bundle that may include sensitive CA material. Limit read to
+# admin-equivalent roles. The Ask-tab dropdown for non-admin users falls
+# back to the bootstrap config + any LlmConfig explicitly granted via
+# extra_role_patterns / extra_user_names — those grants are enforced
+# server-side by the proxy / dispatcher.
+[collections/itmip_llm_configs]
+access = read : [ admin, sc_admin, power ], write : [ admin, sc_admin ]
+export = none
+
+# Tenant structure (which Splunk apps map to which Org / BU, which
+# users get extra roles) is admin-only.
+[collections/itmip_organisations]
+access = read : [ admin, sc_admin, power ], write : [ admin, sc_admin ]
+export = none
+
+[collections/itmip_business_units]
+access = read : [ admin, sc_admin, power ], write : [ admin, sc_admin ]
+export = none
+
+# Tool-availability rules — admin recon if exposed.
+[collections/itmip_tool_assignments]
+access = read : [ admin, sc_admin, power ], write : [ admin, sc_admin ]
+export = none
+
+# License metadata. Only admins/sc_admins can read the tier info
+# directly (the front-end loads it via the REST handler, which
+# enforces the same ACL). The full Cryptolens response lives encrypted
+# in storage/passwords, gated separately.
+[collections/itmip_llm_license]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# v1.5.0 — generated config-package staging. Handler-only (system token);
+# end users never read it directly — the conf_package handler owner-checks +
+# serves the row. read restricted; export none.
+[collections/itmip_ai_artifact_packages]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# Audit registry for MLTK models created via AI Assistent templates.
+# Read by admins for auditing; write goes via the privileged
+# /services/itmip_llm/mltk_share handler (system token), never by
+# end-users directly. Read is open so end users can see "yes, my model
+# was promoted globally" without needing admin role.
+[collections/itmip_llm_mltk_models]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[transforms]
+export = none
+
+[macros/ai_assistant_metrics_index]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[macros/ai_assistant_license_index]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_api_key]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_usage_log]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_use_cases]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+# v0.9.6 — Skills layer. Read open so the dispatcher can resolve
+# includes_skills for any authenticated user; the writes (mutating
+# skills) live on the standard KVStore endpoint which is admin-only.
+[restmap/script:itmip_llm_skills]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+# v0.9.7 — End-user template authoring REST handler. Read open so
+# the LLM dispatcher (running as any authenticated user) can POST
+# to it. Write enforcement happens inside the handler — sharing is
+# forced to 'private', owner_user is forced to the caller's name,
+# and a forbidden-content + reference validation chain runs before
+# anything lands in itmip_ai_use_cases.
+[restmap/script:itmip_llm_user_templates]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_secret]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_proxy]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_history]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[restmap/script:itmip_llm_setup]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+[collections/itmip_user_history]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Custom LLM tool definitions. Read is open so any authenticated user
+# whose Org/BU is in the tool's sharing scope can list the tools at
+# session start (the dispatcher needs the {name, description, parameters}
+# subset to advertise to the LLM). Write is admin-only — authoring a
+# tool can expose any HTTP endpoint the LLM might call.
+[collections/itmip_llm_custom_tools]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Audit log of custom-tool invocations. Read is admin-only because the
+# log records exactly which external systems were probed by which user.
+[collections/itmip_llm_custom_tool_calls]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+[restmap/script:itmip_llm_custom_tools]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+# v0.8.0 — KVStore backup admin REST handler. Admin-only at the
+# handler layer; the export here makes the REST endpoint reachable
+# system-wide so the App's React shell (running as the calling user)
+# can hit it.
+[restmap/script:itmip_llm_kvstore_admin]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = system
+
+# v0.11.0 — Session bootstrap REST handler. Read open so the React shell
+# (running as the calling user) can hit it; the handler resolves tenant +
+# filters per-caller server-side and strips secrets from configs.
+[restmap/script:itmip_llm_bootstrap]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system
+
+# ============================================================================
+# v1.3.2 — explicit ACLs for collections that previously had no stanza and so
+# inherited the global default ([] = read:[*], write:[admin,sc_admin,power],
+# export=system). These pin the app's uniform convention instead: writes are
+# admin-only (authoring / configuration is an admin act) and export=none
+# (app-scoped, like EVERY other collection in this app).
+#
+# IMPORTANT — export=none does NOT block normal (user / power) roles. The
+# React shell reaches collections through an explicit
+# /servicesNS/nobody/itmip_ai_splunk_assistent_app/ nsPath, and `export`
+# governs cross-app *visibility* (namespace resolution from OTHER apps), not
+# *role* access — the role gate is the read/write lists. Proof in-tree:
+# itmip_ai_use_cases and itmip_user_history are both export=none and are read
+# by every user on every Ask. The collections below are additionally reached
+# by normal users only through system-token REST handlers (knowledge / mcp /
+# kvstore_restore), so even their read scope can't block end-user flows.
+# ============================================================================
+
+# Knowledge layer (1.0.0+). Read open: the LLM-facing route/search/fetch path
+# goes through the itmip_llm_knowledge handler (system token), so normal users
+# never read these directly; the curated content is non-secret LLM context
+# (same trust level as templates / skills, which are also read:[*]). Write is
+# admin-only — authoring knowledge shapes what the LLM is told.
+[collections/itmip_ai_knowledge_entries]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[collections/itmip_knowledge_connectors]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[collections/itmip_knowledge_static_rules]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# v1.4.0 — search-command + visualization knowledge Tier B/Tier 1 overlays.
+# Read MUST stay open: the conf-searchbnf / conf-visualizations connectors read
+# these as the calling user during the Ask flow (federated fetch). GLOBAL
+# platform knowledge — seeded DFLT/DFLT, shared with every Org/BU. Write is
+# admin-only (curated content shapes what the LLM is told).
+[collections/itmip_command_notes]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[collections/itmip_viz_knowledge]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Per-tool metadata overrides (tags / category / short_description). Read MUST
+# stay open: the Ask flow reads this collection DIRECTLY (nsPath) for EVERY
+# user to apply overrides when advertising tools to the LLM (ask.ts,
+# tools.ts). Write is admin-only — edited from the Tools admin page.
+[collections/itmip_tool_overrides]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# MCP server registrations carry endpoint URLs + auth references (recon-
+# sensitive, like llm_configs — hence the same admin/sc_admin/power read).
+# Normal users invoke MCP tools via the itmip_llm_mcp handler (system token)
+# and never read this directly, so the read scope can't block them. Write
+# admin-only.
+[collections/itmip_mcp_servers]
+access = read : [ admin, sc_admin, power ], write : [ admin, sc_admin ]
+export = none
+
+# Imported MCP tool definitions. Read open — tool defs are non-secret (they're
+# advertised to the LLM), and the frontend obtains them via the handler
+# regardless. Write admin-only.
+[collections/itmip_mcp_tools]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Internal restore mutex — touched only by the kvstore_restore handler
+# (system token, admin operation). Admin-only both ways.
+[collections/itmip_kvstore_restore_lock]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# v1.0.0 — Knowledge layer REST handler. Read open so the React shell + the
+# dispatcher (running as the calling user, in the calling app's namespace) can
+# invoke route / search / fetch; export=system makes the endpoint reachable
+# cross-app. The handler resolves tenant + filters per-caller server-side.
+[restmap/script:itmip_llm_knowledge]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = system

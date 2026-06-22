@@ -1,0 +1,264 @@
+<form version="1.1" theme="light">
+  <label>Software Deferrals</label>
+  <description>Optimizing with base search promoted to hidden panels using loadjob</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: Tracked Elements</title>
+        <search>
+          <done>
+            <set token="sid_tracked_elements">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwaretrackmember 
+| stats values(softwareTrackId) as softWareTrackId
+        values(softwareTrackName) as softwareTrackName
+        values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant
+        by deviceId
+| $singleLineGroupSelector$
+| eventstats dc(deviceId) as totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: Deferral Summary</title>
+        <search>
+          <done>
+            <set token="sid_deferral_summary">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareadvisoryalert softwareAlertType=DF 
+| dedup deviceId softwareVersion 
+| $singleLineGroupSelector$
+| table deviceId softwareAlertType softwareVersion</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <table>
+        <title>Base: Deferral Device Details</title>
+        <search>
+          <done>
+            <set token="sid_deferral_device_details">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:softwareadvisoryalert softwareAlertType=DF 
+| fields deviceId, deviceName, imageName, softwareAlertType, softwareAlertUrl, softwareType, softwareVersion 
+| $singleLineGroupSelector$
+| where deviceName!="" 
+| dedup deviceId 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT productId, productFamily
+| table deviceId, deviceName, imageName, softwareAlertUrl, softwareVersion, productId, productFamily</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Advisories - Deferrals"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$HideMe$">
+    <panel>
+      <title>Selected Group: Tracked Elements</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvDevices">$result.totalSum$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $sid_tracked_elements$ 
+| table totalSum</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SW Deferral Count</title>
+      <single>
+        <title>Goal: Get this to 0</title>
+        <search>
+          <query>| loadjob $sid_deferral_summary$ 
+| stats dc(deviceId) as DeferredDevices</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Devices</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW Deferral</title>
+      <single>
+        <search>
+          <query>| loadjob $sid_deferral_summary$ 
+| stats dc(deviceId) as DeferredDevices 
+| eval percDeferred = round(100*DeferredDevices/$kvDevices$) 
+| table percDeferred</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 1%-5% &lt; Red</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>SW Versions Deferred</title>
+      <single>
+        <title>Count</title>
+        <search>
+          <query>| loadjob $sid_deferral_summary$ 
+| stats dc(softwareVersion) as DeferredVersions</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[55,80]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Versions</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Deferred Devices by Product Family</title>
+        <search>
+          <query>| loadjob $sid_deferral_device_details$ 
+| stats count as Devices by productFamily 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Deferred Devices by PID</title>
+        <search>
+          <query>| loadjob $sid_deferral_device_details$ 
+| stats count as Devices by productId 
+| sort -Devices 
+| head 10 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Software Deferral Details</title>
+      <table>
+        <search>
+          <query>| loadjob $sid_deferral_device_details$ 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

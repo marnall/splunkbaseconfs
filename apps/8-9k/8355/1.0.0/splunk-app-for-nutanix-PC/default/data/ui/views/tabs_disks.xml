@@ -1,0 +1,160 @@
+<dashboard version="1.1" hideSplunkBar="False" hideTitle="True" hideEdit="True" stylesheet="nutanix.css" script="nutanix.js">
+    <label>Disks</label>
+
+    <search id="clusters_request" ref="Clusters"/>
+    <search id="disks_info_table" ref="Disks Info Table"/>
+    <search id="disks_performance_base" ref="Disks Performance Base"/>
+
+    <row id="disk_pc_cluster_table">
+        <panel id="pc_panel_short">
+            <table id="PC">
+                <title>Prism Centrals</title>
+                <search ref="Prism Centrals">
+                    <done>
+                        <set token="pc_ip">$result.pc_ip$</set>
+                    </done>
+                </search>
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">10</option>
+                <option name="drilldown">cell</option>
+                <fields>Name</fields>
+                <drilldown>
+                    <set token="pc_ip">$row.pc_ip$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel id="cluster_panel_short">
+            <table id="Clusters">
+                <title>Clusters</title>
+                <search base="clusters_request">
+                    <query>search pc_ip="$pc_ip$"</query>
+                    <done>
+                        <set token="cluster_name">$result.extId$</set>
+                    </done>
+                </search>
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">10</option>
+                <option name="drilldown">cell</option>
+                <fields>Name</fields>
+                <drilldown>
+                    <set token="cluster_name">$row.extId$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel id="disks_table">
+            <title>Disks Info</title>
+            <table id="disks_table_data">
+                <search base="disks_info_table">
+                    <query>
+                        | search clusterUUID="$cluster_name$"
+                        | sort "Host name"
+                    </query>
+                    <done>
+                        <set token="disk_extId">$result.extId$</set>
+                    </done>
+                </search>
+                <option name="wrap">false</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <fields>"Serial number", "Host name", "Hypervisor IP", "Tier", "Status", Usage</fields>
+                <option name="drilldown">cell</option>
+                <drilldown>
+                    <set token="disk_extId">$row.extId$</set>
+                </drilldown>
+            </table>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Disk Storage Usage</title>
+            <chart>
+                <search base="disks_performance_base">
+                    <query>
+                        | search extId="$disk_extId$"
+                        | eval diskUsage = diskUsagePpm
+                        | where diskUsage &gt; 0 
+                        | stats latest(diskUsage) as value by extId
+                        | fields value
+                    </query>
+                </search>
+
+                <option name="charting.chart">markerGauge</option>
+                <option name="charting.chart.orientation">x</option>
+
+                <option name="charting.chart.showLabels">true</option>
+                <option name="charting.chart.showMajorTicks">true</option>
+                <option name="charting.chart.showMinorTicks">true</option>
+                <option name="charting.chart.showValue">true</option>
+                <option name="charting.chart.showRangeBand">true</option>
+
+                <option name="charting.chart.style">minimal</option>
+                <option name="charting.chart.majorUnit">10</option>
+
+                <option name="charting.chart.rangeValues">[0,70,90,100]</option>
+                <option name="charting.gaugeColors">[0x76EA73,0xF5B53F,0xDF564D]</option>
+
+                <option name="charting.chart.usePercentageValue">true</option>
+                <option name="charting.chart.usePercentageRange">true</option>
+
+            </chart>
+        </panel>
+        <panel>
+            <title>IOPS</title>
+            <chart>
+                <search base="disks_performance_base">
+                    <query> 
+                        | search extId="$disk_extId$"
+                        | timechart eval(round(avg(diskNumIops),2)) AS diskNumIops by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IOPS</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>IO Bandwidth</title>
+            <chart>
+                <search base="disks_performance_base">
+                    <query> 
+                        | search extId="$disk_extId$"
+                        | timechart eval(round(avg(diskIoBandwidthkbps),2)) AS diskIoBandwidthkbps by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Bandwidth (Kbps)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>IO Latency</title>
+            <chart>
+                <search base="disks_performance_base">
+                    <query> 
+                        | search extId="$disk_extId$"
+                        | timechart eval(round(avg(io_latency),2)) AS io_latency by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Latency (ms)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+</dashboard>

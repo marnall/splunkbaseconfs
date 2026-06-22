@@ -1,0 +1,111 @@
+<dashboard version="1.1">
+  <label>Configuration</label>
+  <description>Configure default settings for Webex Alert Action</description>
+  <row>
+    <panel>
+<html>
+  <div style="padding: 20px; background: #0078D4; color: white; border-radius: 5px; margin: 10px;">
+    <h2 style="color: white;">⚙️ Configuration Instructions</h2>
+    <p style="font-size: 14px; color: white;">
+    To set default values for your Webex alert action, use the manual configuration method below:</p>
+    
+    <h3 style="color: white;">Manual Configuration (CLI)</h3>
+    <p style="color: white;">This is the recommended method to configure default values for all Webex alerts.</p>
+    
+          <pre style="background: white; color: black; padding: 15px; margin: 10px 0; border-radius: 5px; font-family: monospace;">
+# 1. Create local directory if it doesn't exist
+mkdir -p /opt/splunk/etc/apps/webex_alert/local
+
+# 2. Create or edit the config file
+cat &gt; /opt/splunk/etc/apps/webex_alert/local/alert_actions.conf &lt;&lt;EOF
+[webex_alert]
+param.bot_token = YOUR_BOT_TOKEN_HERE
+param.room_id = YOUR_ROOM_NAME_OR_ID
+param.message_type = text
+EOF
+
+# 3. Fix permissions
+chown -R splunk:splunk /opt/splunk/etc/apps/webex_alert/local/
+
+# 4. Restart Splunk
+/opt/splunk/bin/splunk restart
+          </pre>
+          
+<div style="background: rgba(255,255,255,0.15); padding: 12px; margin-top: 15px; border-radius: 3px; color: white;">
+  <strong>Important:</strong>
+  <ul style="margin: 5px 0; padding-left: 20px;">
+    <li>With defaults configured: All new alerts automatically use these values</li>
+    <li>Without defaults: You must configure bot token and room ID for each alert</li>
+  </ul>
+</div>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Current Configuration Status</title>
+      <table>
+        <search>
+          <query>
+| rest /servicesNS/nobody/webex_alert/configs/conf-alert_actions/webex_alert splunk_server=local
+| eval bot_token_val = 'param.bot_token'
+| eval room_id_val = 'param.room_id'
+| eval message_type_val = 'param.message_type'
+| eval bot_token_status = if(isnotnull(bot_token_val) AND len(bot_token_val)&gt;10, "✅ Configured (***" . substr(bot_token_val, -4, 4) . ")", "❌ Not Configured")
+| eval room_id_status = if(isnotnull(room_id_val) AND len(room_id_val)&gt;0, "✅ " . room_id_val, "❌ Not Configured")
+| eval message_type_status = if(isnotnull(message_type_val) AND message_type_val!="", "✅ " . message_type_val, "⚠️ Default (text)")
+| table bot_token_status, room_id_status, message_type_status
+| rename bot_token_status AS "Bot Token", room_id_status AS "Room Name/ID", message_type_status AS "Message Type"
+          </query>
+          <earliest>-5m</earliest>
+          <latest>now</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="padding: 15px;">
+          <h3>💡 How Configuration Works</h3>
+          <ul style="line-height: 1.8;">
+            <li>
+              <strong>Configuration File:</strong> Settings are saved to <code>/opt/splunk/etc/apps/webex_alert/local/alert_actions.conf</code>
+            </li>
+            <li>
+              <strong>Auto-Fill:</strong> When you create a new alert, these default values will automatically appear in the Webex Message action form</li>
+            <li>
+              <strong>Per-Alert Override:</strong> You can change the bot token or room for any specific alert</li>
+            <li>
+              <strong>Security:</strong> Bot tokens are stored in Splunk's configuration files with restricted access</li>
+          </ul>
+          
+          <h3>🔧 Verification Steps</h3>
+          <p>After setting defaults:</p>
+          <ol style="line-height: 1.8;">
+            <li>Check the <strong>"Current Configuration Status"</strong> panel above - it should show ✅ for all fields</li>
+            <li>Create a test alert: <code>Settings → Searches, reports, and alerts → New Alert</code>
+            </li>
+            <li>Add trigger action → <strong>Webex Message</strong>
+            </li>
+            <li>Check if bot token and room fields are pre-filled</li>
+          </ol>
+          <h3>🔗 Useful Links</h3>
+          <ul>
+            <li>
+              <a href="https://developer.webex.com/my-apps" target="_blank">Get Webex Bot Token →</a>
+            </li>
+            <li>
+              <a href="/manager/search/saved/searches" target="_blank">Manage Alerts →</a>
+            </li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

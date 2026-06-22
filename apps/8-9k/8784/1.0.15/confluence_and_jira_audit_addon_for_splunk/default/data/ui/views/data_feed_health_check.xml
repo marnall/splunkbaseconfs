@@ -1,0 +1,276 @@
+<form version="1.1" theme="dark">
+  <label>Data Feed Health Check</label>
+  <search id="base_search">
+    <query>
+   index="_internal" sourcetype="confluence_and_jira_audit_addon_for_splunk" | fields *
+    </query>
+    <earliest>$field1.earliest$</earliest>
+    <latest>$field1.latest$</latest>
+  </search>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="field1">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$panel_show$">
+      <title>Activation Key Status Message</title>
+      <single>
+        <search base="base_search">
+          <progress>
+            <condition match="'job.resultCount' &gt; 0">
+              <set token="panel_show"></set>
+            </condition>
+            <condition>
+              <unset token="panel_show"></unset>
+            </condition>
+          </progress>
+          <query>
+| stats latest(message) as message latest(activation_key_status) as status
+| search status="Inactive" AND message!=""</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Activation Key Status</title>
+      <single>
+        <search base="base_search">
+          <done>
+            <set token="status">"$result.activation_key_status$"</set>
+          </done>
+          <query>| rex field=_raw "\"activation_key_generated_on\": \"(?&lt;date&gt;\d{2}-\d{2}-\d{4}|NA).*"
+| eval date_in_seconds = strptime(date, "%d-%m-%Y")
+| eval expiry_in_seconds = relative_time(date_in_seconds , "+15d")
+| eval current_time = now()
+| eval expiry_in = (expiry_in_seconds - current_time)/86400
+| eval expiry_in = ceil(expiry_in)
+| eval stat = if( date="NA","Lifetime",stat)
+| eval stat = if(isnull(date),"Expired", stat)
+| eval stat = if(expiry_in &gt;0, tostring(expiry_in)+" days",stat )
+| eval stat = if(isnull(stat), "Expired",stat)
+| eval status = if(stat != "Expired",  "✅", "❌")
+| stats latest(status)</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">97</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x118832","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Activation Key Expires in</title>
+      <single>
+        <search base="base_search">
+          <query>| fields * | fields * 
+| rex field=_raw "\"activation_key_generated_on\": \"(?&lt;date&gt;\d{2}-\d{2}-\d{4}|NA).*\((?&lt;type&gt;.*)\).*"
+| eval date_in_seconds = strptime(date, "%d-%m-%Y")
+| eval expiry_in_seconds = if(type == "Annual License", relative_time(date_in_seconds, "+365d"), 
+                             if(type == "Trial License", relative_time(date_in_seconds, "+15d"), null()))
+| eval current_time = now()
+| eval expiry_in = (expiry_in_seconds - current_time)/86400
+| eval expiry_in = floor(expiry_in) 
+| eval stat = if( date="NA","Lifetime",stat)
+| eval stat = if(isnull(date),"Expired", stat)
+| eval stat = if(expiry_in &gt;-1, tostring(expiry_in)+" days",stat )
+| eval stat = if(isnull(stat), "Expired",stat)
+| stats latest(stat)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Inputs</title>
+      <single>
+        <search base="base_search">
+          <query>| rex field=source "(?&lt;Input&gt;\w*).py"  
+| stats c by Input  | stats c</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051", "0x0877a6", "0xf8be34", "0xf1813f", "0xdc4e41"]</option>
+        <option name="rangeValues">[0,30,70,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>API Response Code Details</title>
+      <table>
+        <search base="base_search">
+          <query>| rex field=source "(?&lt;Input&gt;\w*).py"  
+| stats count(response_code) as ResponseCode latest(_time) as time by Input response_code 
+| convert ctime(time) as "Latest Occurence Time" 
+| rename response_code as Code ResponseCode as "Code Count" 
+| fields "Latest Occurence Time" Code Input "Code Count"</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="response_code">
+          <colorPalette type="map">{"200":#118832,"404":#D41F1F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Event Collection by Inputs</title>
+      <chart>
+        <search base="base_search">
+          <query>| rex field=source "(?&lt;Input&gt;\w*).py"  
+| stats sum(number_of_events) as EventCount by Input</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Api Hits</title>
+      <chart>
+        <search base="base_search">
+          <query>| rex field=source "(?&lt;Input&gt;\w*).py"  
+| timechart count(response_code) as API_HITs by Input | fields - NULL</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Daily Data Ingestion</title>
+      <chart>
+        <search base="base_search">
+          <query>| rex field=source "(?&lt;Input&gt;\w*).py"  
+| timechart sum(number_of_events) as DataIngestion by Input | fields - NULL</query>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisNone</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisX.abbreviation">none</option>
+        <option name="charting.axisX.scale">linear</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.abbreviation">none</option>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.bubbleMaximumSize">50</option>
+        <option name="charting.chart.bubbleMinimumSize">10</option>
+        <option name="charting.chart.bubbleSizeBy">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.sliceCollapsingThreshold">0.01</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.chart.style">shiny</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.layout.splitSeries.allowIndependentYRanges">0</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.legend.mode">standard</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </chart>
+    </panel>
+  </row>
+</form>

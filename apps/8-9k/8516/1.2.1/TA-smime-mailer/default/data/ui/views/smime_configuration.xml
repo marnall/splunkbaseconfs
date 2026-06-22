@@ -1,0 +1,241 @@
+<dashboard version="1.1" script="smime_configuration.js" stylesheet="smime_configuration.css">
+  <label>S/MIME Certificate Management</label>
+  <description>Manage recipient and sender S/MIME certificates for encrypted email.</description>
+
+  <row>
+    <panel>
+      <html>
+        <div id="smime-config-app">
+
+          <!-- Mail Delivery Settings Summary -->
+          <div class="smime-section">
+            <h2 id="delivery-heading">📧 Mail Delivery Configuration</h2>
+            <div id="smtp-summary" class="smime-card">
+              <p>Loading mail delivery settings...</p>
+            </div>
+            <a href="smime_setup" id="btn-configure-delivery" class="btn btn-primary">Configure Mail Delivery</a>
+          </div>
+
+          <hr />
+
+          <!-- Recipient Certificates -->
+          <div class="smime-section">
+            <h2>🔐 Recipient Certificates (Public Keys)</h2>
+            <p class="smime-help">
+              Upload the public X.509 certificate (PEM format) for each email recipient. 
+              These certificates are used to encrypt outgoing emails so only the intended 
+              recipient can read them.
+            </p>
+
+            <!-- Add Certificate Form -->
+            <div class="smime-card" id="add-recipient-form">
+              <h3>Add / Update Recipient Certificate</h3>
+              <div class="smime-form-row">
+                <label for="rcpt-email">Recipient Email:</label>
+                <input type="text" id="rcpt-email" placeholder="user@example.com" class="smime-input" />
+              </div>
+              <div class="smime-form-row">
+                <label for="rcpt-cert">Certificate (PEM):</label>
+                <textarea id="rcpt-cert" rows="8" class="smime-textarea"
+                          placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+              </div>
+              <div class="smime-form-row">
+                <label>Or upload .pem / .crt / .cer file:</label>
+                <input type="file" id="rcpt-cert-file" accept=".pem,.crt,.cer" class="smime-file-input" />
+              </div>
+              <div class="smime-form-row">
+                <label>
+                  <input type="checkbox" id="rcpt-notify" />
+                  Notify on Expiry
+                </label>
+                <span class="smime-help">When checked, this recipient will also receive expiry notifications for their certificate.</span>
+              </div>
+              <div class="smime-form-actions">
+                <button id="btn-add-recipient" class="btn btn-primary">Add Certificate</button>
+                <span id="rcpt-status" class="smime-status"></span>
+              </div>
+            </div>
+
+            <!-- Recipient Certificates Table -->
+            <div class="smime-card">
+              <h3>Configured Recipients</h3>
+              <div id="rcpt-loading" class="smime-loading">Loading certificates...</div>
+              <table id="rcpt-table" class="smime-table" style="display:none;">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Common Name</th>
+                    <th>Issuer</th>
+                    <th>Valid Until</th>
+                    <th>Fingerprint (SHA-256)</th>
+                    <th>Status</th>                    <th>CRL</th>                    <th>Notify</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="rcpt-table-body">
+                </tbody>
+              </table>
+              <div id="rcpt-empty" style="display:none;" class="smime-empty">
+                No recipient certificates configured yet.
+              </div>
+            </div>
+          </div>
+
+          <hr />
+
+          <!-- Sender Certificates -->
+          <div class="smime-section">
+            <h2>✍️ Sender Certificates (Signing Keys)</h2>
+            <p class="smime-help">
+              Upload the sender's X.509 certificate and private key for S/MIME signing.
+              You can use PEM files (cert + key separately) or a single PFX/PKCS#12 file.
+              The private key is stored securely in Splunk's encrypted credential store.
+            </p>
+
+            <!-- Add Sender Certificate Form -->
+            <div class="smime-card" id="add-sender-form">
+              <h3>Add / Update Sender Certificate</h3>
+              <div class="smime-form-row">
+                <label for="sender-email">Sender Email:</label>
+                <input type="text" id="sender-email" placeholder="sender@example.com" class="smime-input" />
+              </div>
+
+              <!-- Format toggle -->
+              <div class="smime-form-row">
+                <label>Upload Format:</label>
+                <label style="margin-right:15px;"><input type="radio" name="sender-format" value="pem" checked="checked" /> PEM (cert + key)</label>
+                <label><input type="radio" name="sender-format" value="pfx" /> PFX / PKCS#12</label>
+              </div>
+
+              <!-- PEM fields -->
+              <div id="sender-pem-fields">
+                <div class="smime-form-row">
+                  <label for="sender-cert">Certificate (PEM):</label>
+                  <textarea id="sender-cert" rows="6" class="smime-textarea"
+                            placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"></textarea>
+                </div>
+                <div class="smime-form-row">
+                  <label for="sender-key">Private Key (PEM):</label>
+                  <textarea id="sender-key" rows="6" class="smime-textarea"
+                            placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+                </div>
+                <div class="smime-form-row">
+                  <label>Or upload files:</label>
+                  <span>Certificate: <input type="file" id="sender-cert-file" accept=".pem,.crt,.cer" class="smime-file-input" /></span>
+                  <span>Private Key: <input type="file" id="sender-key-file" accept=".pem,.key" class="smime-file-input" /></span>
+                </div>
+              </div>
+
+              <!-- PFX fields -->
+              <div id="sender-pfx-fields" style="display:none;">
+                <div class="smime-form-row">
+                  <label for="sender-pfx-file">PFX / PKCS#12 File:</label>
+                  <input type="file" id="sender-pfx-file" accept=".pfx,.p12" class="smime-file-input" />
+                </div>
+                <div class="smime-form-row">
+                  <label for="sender-pfx-password">PFX Password:</label>
+                  <input type="password" id="sender-pfx-password" placeholder="(leave empty if none)" class="smime-input" />
+                </div>
+              </div>
+              <div class="smime-form-row">
+                <label>
+                  <input type="checkbox" id="sender-notify" />
+                  Notify on Expiry
+                </label>
+                <span class="smime-help">When checked, this sender will also receive expiry notifications for their certificate.</span>
+              </div>
+              <div class="smime-form-actions">
+                <button id="btn-add-sender" class="btn btn-primary">Add Sender Certificate</button>
+                <span id="sender-status" class="smime-status"></span>
+              </div>
+            </div>
+
+            <!-- Sender Certificates Table -->
+            <div class="smime-card">
+              <h3>Configured Senders</h3>
+              <div id="sender-loading" class="smime-loading">Loading certificates...</div>
+              <table id="sender-table" class="smime-table" style="display:none;">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Common Name</th>
+                    <th>Valid Until</th>
+                    <th>Fingerprint (SHA-256)</th>
+                    <th>Status</th>                    <th>CRL</th>                    <th>Notify</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="sender-table-body">
+                </tbody>
+              </table>
+              <div id="sender-empty" style="display:none;" class="smime-empty">
+                No sender certificates configured yet.
+              </div>
+            </div>
+          </div>
+
+          <hr />
+
+          <!-- Validate Recipients Tool -->
+          <div class="smime-section">
+            <h2>✅ Validate Recipients</h2>
+            <p class="smime-help">
+              Enter a comma-separated list of email addresses to check if all have valid certificates.
+            </p>
+            <div class="smime-card">
+              <div class="smime-form-row">
+                <label for="validate-emails">Email Addresses:</label>
+                <input type="text" id="validate-emails" class="smime-input"
+                       placeholder="user1@example.com, user2@example.com" />
+              </div>
+              <div class="smime-form-actions">
+                <button id="btn-validate" class="btn btn-primary">Validate</button>
+              </div>
+              <div id="validate-results" class="smime-validate-results" style="display:none;"></div>
+            </div>
+          </div>
+
+          <hr />
+
+          <!-- Expiry Notifications -->
+          <div class="smime-section">
+            <h2>🔔 Expiry Notifications</h2>
+            <p class="smime-help">
+              Send S/MIME encrypted email notifications when certificates, tokens, or secrets
+              are approaching expiry or have expired. Notifications are sent 21 days, 14 days,
+              7 days, and 24 hours before expiry, then every 2 days after expiry.
+            </p>
+            <div class="smime-card">
+              <div class="smime-form-row">
+                <label>
+                  <input type="checkbox" id="expiry-notifications-enabled" />
+                  Enable Expiry Notifications
+                </label>
+                <span class="smime-help">When enabled, the scheduled search will send expiry notifications for certificates, tokens, and secrets.</span>
+              </div>
+
+              <div id="expiry-notify-fields" style="display:none;">
+                <div class="smime-form-row">
+                  <label for="expiry-notification-emails">Admin Notification Emails:</label>
+                  <input type="text" id="expiry-notification-emails" class="smime-input"
+                         placeholder="admin1@example.com, admin2@example.com" />
+                  <span class="smime-help" style="display:inline; margin-left:10px;">
+                    Comma-separated list of admin email addresses that will receive all
+                    expiry notifications. These addresses must have recipient certificates
+                    configured above for S/MIME encryption.
+                  </span>
+                </div>
+              </div>
+
+              <div class="smime-form-actions">
+                <button id="btn-save-notify" class="btn btn-primary">Save Notification Settings</button>
+                <span id="notify-status" class="smime-status"></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

@@ -1,0 +1,132 @@
+<dashboard version="1.1">
+  <label>ANY.RUN TI Feeds</label>
+
+  <row>
+    <panel>
+      <title>IOC Feed Browser</title>
+      <description>Browse and filter IOCs by type</description>
+
+      <input type="multiselect" token="ioc_types" searchWhenChanged="true">
+        <label>IOC Types</label>
+        <choice value="ip">IP</choice>
+        <choice value="domain">Domain</choice>
+        <choice value="url">URL</choice>
+        <delimiter>|</delimiter>
+      </input>
+
+      <input type="time" token="ioc_time" searchWhenChanged="true">
+        <label>Time Range</label>
+        <default>
+          <earliest>-14d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <input type="dropdown" token="page_size" searchWhenChanged="true">
+        <label>Items per page</label>
+        <choice value="10">10</choice>
+        <choice value="25">25</choice>
+        <choice value="50">50</choice>
+        <choice value="100">100</choice>
+        <default>10</default>
+      </input>
+
+      <input type="text" token="ioc_search" searchWhenChanged="true">
+        <label>Search IOC</label>
+        <default></default>
+      </input>
+
+      <table>
+        <search>
+          <query>
+            <![CDATA[
+            | inputlookup anyrun_feed_ioc_domain  | eval ioc_type="domain"
+            | append [| inputlookup anyrun_feed_ioc_url  | eval ioc_type="url"]
+            | append [| inputlookup anyrun_feed_ioc_ip   | eval ioc_type="ip"]
+
+            | eval selected_types="$ioc_types$"
+            | eval selected_types_mv=split(selected_types, "|")
+            | eval show_record = if("$ioc_types$" != "" AND mvfind(selected_types_mv, ioc_type) >= 0, 1, 0)
+            | where show_record == 1
+
+            | eval search_match = if(
+                  "$ioc_search$"=="" OR 
+                  match(ioc_value, ".*" + "$ioc_search$" + ".*") OR 
+                  match(indicator_id, ".*" + "$ioc_search$" + ".*") OR 
+                  match(tags, ".*" + "$ioc_search$" + ".*") OR 
+                  match(anyrun_task_url, ".*" + "$ioc_search$" + ".*"),
+                  1, 0)
+            | where search_match == 1
+
+            | table ioc_value, ioc_type, created, modified, confidence, tags, anyrun_task_url, indicator_id
+            | sort -modified
+
+            | rename ioc_value as "IOC Value"
+            | rename ioc_type as "IOC Type"
+            | rename created as "Created"
+            | rename modified as "Modified"
+            | rename confidence as "Confidence"
+            | rename tags as "Tags"
+            | rename anyrun_task_url as "Task URL"
+            | rename indicator_id as "Indicator ID"
+            ]]>
+          </query>
+          <earliest>$ioc_time.earliest$</earliest>
+          <latest>$ioc_time.latest$</latest>
+        </search>
+        <option name="count">$page_size$</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+
+    </panel>
+
+  </row>
+
+  <row>
+    <panel>
+      <title>IOC types distribution</title>
+      <description>Distribution of IOC types over time</description>
+
+      <input type="time" token="time_ioc_pie">
+        <label>Time Range</label>
+        <default>
+          <earliest>-14d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <chart>
+        <search>
+          <query>
+            <![CDATA[
+            | inputlookup anyrun_feed_ioc_domain  | eval ioc_type="domain"
+            | append [| inputlookup anyrun_feed_ioc_url  | eval ioc_type="url"]
+            | append [| inputlookup anyrun_feed_ioc_ip   | eval ioc_type="ip"]
+            | stats count by ioc_type
+            ]]>
+          </query>
+          <earliest>$time_ioc_pie.earliest$</earliest>
+          <latest>$time_ioc_pie.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+
+      <table>
+        <search>
+          <query>
+            <![CDATA[
+            | inputlookup anyrun_feed_ioc_domain  | eval ioc_type="domain"
+            | append [| inputlookup anyrun_feed_ioc_url  | eval ioc_type="url"]
+            | append [| inputlookup anyrun_feed_ioc_ip   | eval ioc_type="ip"]
+            | stats count by ioc_type
+            ]]>
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  
+
+</dashboard>

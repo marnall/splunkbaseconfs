@@ -1,0 +1,63 @@
+DAY_IN_SECONDS = 86400
+INTERVAL_SECONDS = 300
+
+WELL_BORE_CODES = [
+    "NO 15/9-F-1 C",
+    "NO 15/9-F-4 AH",
+    "NO 15/9-F-5 AH",
+    "NO 15/9-F-11 H",
+    "NO 15/9-F-12 H",
+    "NO 15/9-F-14 H",
+    "NO 15/9-F-15 D",
+]
+
+WELL_FILE_MAP = {
+    "NO 15/9-F-1 C": "9-F-1",
+    "NO 15/9-F-4 AH": "9-F-4",
+    "NO 15/9-F-5 AH": "9-F-5",
+    "NO 15/9-F-11 H": "9-F-11",
+    "NO 15/9-F-12 H": "9-F-12",
+    "NO 15/9-F-14 H": "9-F-14",
+    "NO 15/9-F-15 D": "9-F-15",
+}
+
+WELL_NUMERIC_FIELDS = [
+    "AVG_DOWNHOLE_PRESSURE",
+    "AVG_DOWNHOLE_TEMPERATURE",
+    "AVG_DP_TUBING",
+    "AVG_ANNULUS_PRESS",
+    "AVG_CHOKE_SIZE_P",
+    "AVG_WHP_P",
+    "AVG_WHT_P",
+    "DP_CHOKE_SIZE",
+    "BORE_OIL_VOL",
+    "BORE_GAS_VOL",
+    "BORE_WAT_VOL",
+    "BORE_WI_VOL",
+]
+
+TIME_DEPENDENT_FIELDS = [
+    "ON_STREAM_HRS",
+    "BORE_OIL_VOL",
+    "BORE_GAS_VOL",
+    "BORE_WAT_VOL",
+    "BORE_WI_VOL",
+]
+
+ESP_NORMAL_THRESHOLDS = {
+    "INPUT_VOLTAGE_UNBALANCE": [0.4, 0.7],
+    "OUTPUT_POWER": [75, 110],
+    "MOTOR_LOAD": [50, 90],
+    "MOTOR_CURRENT": [16, 25],
+    "CURRENT_UNBALANCE": [0, 5],
+    "X_VIBRATION": [0.6, 0.8]
+}
+
+ESP_ALERT_THRESHOLDS = {
+    "INPUT_VOLTAGE_UNBALANCE": [0.7, 0.8],
+    "OUTPUT_POWER": [110, 115],
+    "MOTOR_LOAD": [[45, 50], [90, 95]],
+    "MOTOR_CURRENT": [[15, 16], [25, 27]],
+    "CURRENT_UNBALANCE": [5, 6],
+    "X_VIBRATION": [0.8, 0.9]
+}

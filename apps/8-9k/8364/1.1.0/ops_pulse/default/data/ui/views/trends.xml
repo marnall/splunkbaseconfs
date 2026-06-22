@@ -1,0 +1,82 @@
+<form theme="dark" version="1.1">
+  <label>Degradation &amp; Trends</label>
+  <description>Monitor slow degradation patterns and long-term trends that may not trigger immediate anomalies but indicate emerging operational risk.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Select the index containing log data.</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label>Trend Analysis Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Rolling Error Rate Trend</title>
+      <chart>
+        <title>Highlights gradual increases in error activity using a rolling average window to reveal slow-developing failures.</title>
+        <search>
+          <query>`ops_pulse_rolling_error_trend($index$)`</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.legend.mode">seriesCompare</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Event Volume Drift Over Time</title>
+      <chart>
+        <title>Displays gradual divergence between actual event volume and historical baseline, indicating sustained workload changes.</title>
+        <search>
+          <query>`ops_pulse_volume_baseline($index$)`
+    | eval drift=round(events-baseline,2)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Early Degradation Warning Indicator</title>
+      <single>
+        <title>Provides a simple warning signal when error activity begins trending above normal operating levels.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=1h sum(is_error) AS errors
+| streamstats window=6 avg(errors) AS rolling_error
+| eventstats avg(rolling_error) AS baseline_error
+| eval warning = if(rolling_error &gt; baseline_error * 1.3 AND rolling_error &gt; 1, "YES", "NO")</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">313</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">large</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">0</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+</form>

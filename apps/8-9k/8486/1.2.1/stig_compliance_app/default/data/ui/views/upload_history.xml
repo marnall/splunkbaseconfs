@@ -1,0 +1,163 @@
+<dashboard version="1.1" theme="dark">
+  <label>Upload History</label>
+  <description>Historical record of all checklist uploads — track compliance progress over time</description>
+
+  <!-- BASE SEARCH: all events (not deduped) — panels do their own aggregation -->
+  <search id="base_all">
+    <query>`stig_base` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <!-- Row 1: Upload Activity Metrics -->
+  <row>
+    <panel>
+      <title>Total Uploads</title>
+      <single>
+        <search base="base_all">
+          <query>| stats dc(upload_batch_id)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Last Upload</title>
+      <single>
+        <search base="base_all">
+          <query>| stats max(upload_time) AS last_upload | eval last_upload=strftime(strptime(last_upload, "%Y-%m-%dT%H:%M:%S.%6NZ"), "%Y-%m-%d %H:%M")</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Hosts Tracked</title>
+      <single>
+        <search base="base_all">
+          <query>| stats dc(asset_host_name)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Format Breakdown</title>
+      <single>
+        <search base="base_all">
+          <query>| dedup upload_batch_id | stats count(eval(source_format="ckl")) AS CKL, count(eval(source_format="cklb")) AS CKLB | eval display=CKL." CKL / ".CKLB." CKLB" | table display</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Compliance Trend Over Time -->
+  <row>
+    <panel>
+      <title>Open Findings Trend by Assessment Date</title>
+      <chart>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_host_name, stig_title, vuln_vuln_num
+| eval assessment_date=strftime(strptime(assessment_time, "%Y-%m-%dT%H:%M:%S.%6NZ"), "%Y-%m-%d")
+| stats count(eval(vuln_status="Open")) AS open_findings,
+        count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS compliant,
+        count AS total
+  by assessment_date
+| eval compliance_pct=round((compliant/total)*100, 1)
+| sort assessment_date</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.axisTitleX.text">Assessment Date</option>
+        <option name="charting.axisTitleY.text">Count</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 3: Compliance Progress by Host -->
+  <row>
+    <panel>
+      <title>Compliance Progress by Host</title>
+      <chart>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_host_name, stig_title, vuln_vuln_num
+| eval assessment_date=strftime(strptime(assessment_time, "%Y-%m-%dT%H:%M:%S.%6NZ"), "%Y-%m-%d")
+| stats count(eval(vuln_status="Open")) AS open_findings,
+        count AS total
+  by assessment_date, asset_host_name
+| eval compliance_pct=round(((total-open_findings)/total)*100, 1)
+| chart values(compliance_pct) over assessment_date by asset_host_name</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.axisTitleX.text">Assessment Date</option>
+        <option name="charting.axisTitleY.text">Compliance %</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 4: Upload Log -->
+  <row>
+    <panel>
+      <title>Upload Log</title>
+      <table>
+        <search base="base_all">
+          <query>| dedup upload_batch_id
+| eval upload_date=strftime(strptime(upload_time, "%Y-%m-%dT%H:%M:%S.%6NZ"), "%Y-%m-%d %H:%M:%S")
+| eval format=upper(source_format)
+| table upload_date, asset_host_name, stig_title, source_file, format, upload_batch_id
+| rename upload_date AS "Upload Date", asset_host_name AS "Host", stig_title AS "STIG", source_file AS "File", format AS "Format", upload_batch_id AS "Batch ID"
+| sort - "Upload Date"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 5: Finding Status Changes Between Uploads -->
+  <row>
+    <panel>
+      <title>Finding Status Snapshot per Assessment (by Host)</title>
+      <table>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_host_name, stig_title, vuln_vuln_num
+| eval assessment_date=strftime(strptime(assessment_time, "%Y-%m-%dT%H:%M:%S.%6NZ"), "%Y-%m-%d %H:%M")
+| stats count(eval(vuln_status="Open")) AS "Open",
+        count(eval(vuln_status="Open" AND category="CAT I")) AS "CAT I Open",
+        count(eval(vuln_status="Open" AND category="CAT II")) AS "CAT II Open",
+        count(eval(vuln_status="Open" AND category="CAT III")) AS "CAT III Open",
+        count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS "Compliant",
+        count AS "Total"
+  by assessment_date, asset_host_name, stig_title
+| eval "Compliance %"=round((Compliant/Total)*100, 1)
+| eval "Risk Score"=('CAT I Open'*10)+('CAT II Open'*5)+('CAT III Open'*1)
+| rename assessment_date AS "Assessment Date", asset_host_name AS "Host", stig_title AS "STIG"
+| sort - "Assessment Date"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="CAT I Open">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="1" maxValue="5"></scale>
+        </format>
+        <format type="color" field="Compliance %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="70" midValue="85" maxValue="100"></scale>
+        </format>
+        <format type="color" field="Risk Score">
+          <colorPalette type="minMidMax" minColor="#65A637" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="50" maxValue="100"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

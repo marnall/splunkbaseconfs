@@ -1,0 +1,23 @@
+<dashboard version="1.1" theme="dark">
+  <label>Compliance</label>
+  <description>Regulatory Compliance Metrics, Integrity Verification, Audit Trail</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true"><label>Time Range</label><default><earliest>-30d@d</earliest><latest>now</latest></default></input>
+  </fieldset>
+  <row>
+    <panel><single><title>Total Audit Events</title><search><query>`asger_events` | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Unique Privileged Users</title><search><query>`asger_events` user=* | stats dc(user)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Unique Targets Accessed</title><search><query>`asger_sessions` target_host=* | stats dc(target_host)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Hash Integrity Gaps</title><search><query>`asger_events` (NOT hash=* OR hash="") | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="colorMode">block</option><option name="rangeColors">["#53a051","#dc4e41"]</option><option name="rangeValues">[0]</option><option name="useColors">true</option></single></panel>
+  </row>
+  <row>
+    <panel><chart><title>Daily Event Volume</title><search><query>`asger_events` | timechart span=1d count by audit_type</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">area</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+  </row>
+  <row>
+    <panel><table><title>Compliance Summary by Audit Type</title><search><query>`asger_events` | stats count as total_events, dc(user) as unique_users, dc(src_ip) as unique_sources, sum(eval(if(outcome="failure",1,0))) as failures by audit_type | eval failure_rate=round(failures/total_events*100,1)."%" | sort -total_events</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">15</option></table></panel>
+    <panel><table><title>Session Protocol Coverage</title><search><query>`asger_sessions` protocol=* | stats count as sessions, dc(user) as users, dc(target_host) as targets by protocol | sort -sessions</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></table></panel>
+  </row>
+  <row>
+    <panel><table><title>User Activity Matrix (Sessions + Vault + Admin)</title><search><query>`asger_events` | stats count(eval(audit_type="workspace" OR audit_type="connector")) as sessions, count(eval(audit_type="vault")) as vault_access, count(eval(audit_type="administration" OR audit_type="policy")) as admin_changes, count(eval(audit_type="login")) as logins by user | sort -sessions</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">20</option></table></panel>
+  </row>
+</dashboard>

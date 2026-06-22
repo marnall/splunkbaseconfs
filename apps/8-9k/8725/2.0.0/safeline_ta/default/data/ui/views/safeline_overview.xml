@@ -1,0 +1,265 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Overview</label>
+  <description>High-level WAF activity, attacks and traffic across all sites.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="site_tok" searchWhenChanged="true">
+      <label>Site (vhost)</label>
+      <choice value="*">All sites</choice>
+      <default>*</default>
+      <prefix>site_url=</prefix>
+      <fieldForLabel>site_name</fieldForLabel>
+      <fieldForValue>site_url</fieldForValue>
+      <search>
+        <query>`safeline_waf` site_url=* | stats count by site_url site_name | sort - count | head 50</query>
+        <earliest>$tr.earliest$</earliest>
+        <latest>$tr.latest$</latest>
+      </search>
+    </input>
+    <input type="text" token="src_tok" searchWhenChanged="true">
+      <label>Source IP</label>
+      <default>*</default>
+      <prefix>src_ip=</prefix>
+    </input>
+  </fieldset>
+
+  <!-- KPI row -->
+  <row>
+    <panel>
+      <single>
+        <title>Total Requests</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Attacks Detected</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ is_attack=1 | stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[1,100]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Blocked</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ blocked=1 | stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xdc4e41"]</option>
+        <option name="rangeValues">[1]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Block Rate</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | stats count(eval(blocked=1)) AS b count | eval rate=round(b/count*100,1) | fields rate</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="unit">%</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Sources</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | stats dc(src_ip)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Sites (vhosts)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | stats dc(site_url)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Time-series row -->
+  <row>
+    <panel>
+      <chart>
+        <title>Requests over time, by action</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | timechart count by action_cim</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"allowed":0x55c98f,"blocked":0xdc4e41}</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attacks by severity</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ is_attack=1 | timechart count by severity</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"critical":0x9c1f1f,"high":0xdc4e41,"medium":0xf1813f,"low":0xf8be34,"informational":0x6db7c6}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Sites row -->
+  <row>
+    <panel>
+      <chart>
+        <title>Requests by site (vhost)</title>
+        <search>
+          <query>`safeline_waf` $src_tok$ site_url=*
+| chart count by site_name action_cim
+| sort - allowed</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"allowed":0x55c98f,"blocked":0xdc4e41}</option>
+        <drilldown>
+          <link><![CDATA[search?q=`safeline_waf` site_name="$row.site_name$"&earliest=$tr.earliest$&latest=$tr.latest$]]></link>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Site (vhost) summary</title>
+        <search>
+          <query>`safeline_waf` $src_tok$ site_url=*
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        dc(src_ip) AS sources
+        values(attack_type) AS attack_types
+        by site_name site_url site_uuid
+| eval block_rate=round(blocked/requests*100,1)
+| sort - requests
+| fields site_name site_uuid requests attacks blocked block_rate sources attack_types site_url</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link><![CDATA[search?q=`safeline_waf` site_name="$row.site_name$"&earliest=$tr.earliest$&latest=$tr.latest$]]></link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Top-N row -->
+  <row>
+    <panel>
+      <chart>
+        <title>Top 10 source IPs</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | top limit=10 src_ip</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <drilldown>
+          <link><![CDATA[search?q=`safeline_waf` src_ip="$row.src_ip$"&earliest=$tr.earliest$&latest=$tr.latest$]]></link>
+        </drilldown>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attack types</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ is_attack=1 | top limit=10 attack_type</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top countries</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ src_country=* | top limit=10 src_country</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Detail row -->
+  <row>
+    <panel>
+      <chart>
+        <title>Status code distribution</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | eval status_class = case(status_code&lt;200,"1xx",status_code&lt;300,"2xx",status_code&lt;400,"3xx",status_code&lt;500,"4xx",status_code&gt;=500,"5xx") | timechart count by status_class</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>HTTP method breakdown</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$ | top limit=10 method</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top targeted endpoints (site + path)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ $src_tok$
+| eval endpoint = site_name . urlpath
+| top limit=10 endpoint</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+</form>

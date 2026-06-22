@@ -1,0 +1,133 @@
+<dashboard theme="light" version="1.1">
+  <label>Example Form</label>
+
+  <search id="example_form_config">
+    <query><![CDATA[
+| makeresults count=12
+| streamstats count AS row
+| eval order=row-1
+| eval type=case(
+    row=1, "markdown",
+    row=2, "description",
+    row=3, "freetext",
+    row=4, "dropdown",
+    row=5, "radio",
+    row=6, "checkbox",
+    row=7, "date",
+    row=8, "number",
+    row=9, "description",
+    row=10, "spl",
+    row=11, "dropdown",
+    row=12, "freetext"
+  )
+| eval question=case(
+    row=1, "# Incident Triage Form\n**Complete all fields** to ensure accurate tracking.\n\n- Use the most specific answer available\n- Add context in Notes when unsure\n- Review the [Splunk docs](https://docs.splunk.com/) if you need field guidance",
+    row=2, "How this example works",
+    row=3, "Affected hostname?",
+    row=4, "Severity level",
+    row=5, "Confirmed malicious?",
+    row=6, "Attack techniques observed",
+    row=7, "Date first observed",
+    row=8, "Number of affected systems",
+    row=9, "Reference detection SPL",
+    row=10, "Containment SPL run",
+    row=11, "Assigned analyst",
+    row=12, "Notes"
+  )
+| eval options=case(
+    row=2, "This standalone description row uses the **question** column as the heading and the **options** column as the body. It supports inline *italic*, **bold**, and [links](https://www.splunk.com/).",
+    row=4, "low,medium,high,critical",
+    row=5, "yes,no,unknown",
+    row=6, "phishing,malware,lateral movement,data exfil,ransomware,other",
+    row=9, "index=security sourcetype=wineventlog EventCode=4625 | stats count by src_ip user | where count > 5 | sort - count",
+    row=11, "analyst1,analyst2,analyst3,unassigned",
+    true(), ""
+  )
+| eval description=case(
+    row=3, "Use the hostname exactly as it appears in your SIEM.\n\nExamples:\n- `WIN-DC01`\n- `linux-web-02`",
+    row=4, "Select the highest applicable severity based on **business impact**.",
+    row=5, "Choose `unknown` when the evidence is still inconclusive.",
+    row=6, "Select all that apply. Checkbox answers are saved as a comma-separated list.",
+    row=7, "Use the first timestamp where suspicious activity was seen.",
+    row=8, "Approximate count is fine if exact impact is unknown.",
+    row=9, "Read-only description-style SPL reference. The options column holds the SPL; Form Viz renders it as formatted Splunk code.",
+    row=10, "Multi-line SPL input. Paste the SPL you ran to investigate or contain this incident, then use **Format SPL** if you want to tidy it before submitting.",
+    row=11, "Pick the current owner for follow-up.",
+    row=12, "Add extra context, assumptions, or links to supporting evidence.",
+    true(), ""
+  )
+| table options order question type description
+| append [
+    | makeresults
+    | eval options="triage_form", order="", question="Form Name", type="form_name", description=""
+    | table options order question type description
+  ]
+| append [
+    | makeresults
+    | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description=""
+    | table options order question type description
+  ]
+    ]]></query>
+  </search>
+
+  <row>
+    <panel>
+      <html>
+        <h2>Example: Incident Triage Form</h2>
+        <p>This dashboard generates its example rows inline so every supported field type is visible even if a local <b>form_config</b> lookup has been customised or cached. The shipped <b>form_config</b> lookup contains the same examples for reuse.</p>
+        <p>The example lookup demonstrates every supported input type. The SPL reference uses a <code>description</code> row formatted as Splunk code, and the SPL answer uses <code>type=spl</code> for a multiline input.</p>
+        <p>Use the <code>description</code> column for markdown helper text under a question label and above the input. Optional <code>order</code> controls render order (ascending). Without it, SPL row order is used.</p>
+        <p>On submit, responses are written to the <b>form_responses</b> KV Store with <b>user</b>, <b>form_name</b>, and <b>order</b> fields for filtering and analysis.</p>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Form Config (form_config.csv)</title>
+      <table>
+        <search base="example_form_config">
+          <query>| search type!="form_name" type!="form_kv_output" | table options order question type description</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Incident Triage Form (from lookup)</title>
+      <viz type="form_viz.form_viz">
+        <search base="example_form_config">
+          <query>| table options order question type description</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">1200</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">triage_form</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Submitted Responses (KV Store: form_responses)</title>
+      <table>
+        <search>
+          <query>| inputlookup form_responses | search form_name="triage_form" | sort -_time +order | table timestamp, submission_id, user, form_name, order, question, answer</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <refresh>10s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

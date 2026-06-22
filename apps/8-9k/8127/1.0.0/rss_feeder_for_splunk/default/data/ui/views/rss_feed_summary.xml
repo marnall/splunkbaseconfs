@@ -1,0 +1,188 @@
+<form version="1.1" theme="dark">
+  <label>RSS Feed Summary</label>
+  <description>Overview of RSS/Atom ingestion: activity, latest items, top sources/authors/tags, and errors.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_range">
+      <label>Time range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="index_tok">
+      <label>Index</label>
+      <default>main</default>
+      <choice value="main">main</choice>
+    </input>
+    <input type="text" token="feed_filter">
+      <label>Feed URL contains</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="author_filter">
+      <label>Author contains</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total Feed Sources</title>
+      <single>
+        <search>
+          <query>index=main sourcetype=rss:feed |dedup source| stats count</query>
+           <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x1182f3","0x1182f3"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="showSparkline">1</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+        <option name="trendColorInterpretation">standard</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unitPosition">after</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Events over time</title>
+      <chart>
+        <search>
+          <query>index=$index_tok$ sourcetype=rss:feed
+            | search source_url="*$feed_filter$*" author="*$author_filter$*" | spath output=tags path=tags{}
+            
+            | timechart span=1h count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Feed status (last event age)</title>
+      <table>
+        <search>
+          <query>
+            index=$index_tok$ sourcetype=rss:feed
+            | search source_url="*$feed_filter$*"
+            | stats latest(_time) as last_time, count as events by source_url
+            | eval age_sec = now() - last_time
+            | eval age_h = round(age_sec/3600,2)
+            | eval status = case(age_sec &lt;= 3600, "OK (&lt;1h)", age_sec &lt;= 21600, "Warn (&lt;6h)", true(), "Stale (&gt;6h)")
+            | rename source_url as "Feed URL", events as "Events", age_h as "Age (h)", status as "Status"
+            | sort + "Feed URL"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top feeds by volume</title>
+      <table>
+        <search>
+          <query>
+            index=$index_tok$ sourcetype=rss:feed
+            | search source_url="*$feed_filter$*"
+            | stats count by source_url
+            | sort - count
+            | head 15
+            | rename source_url as "Feed URL", count as "Events"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">15</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top authors</title>
+      <table>
+        <search>
+          <query>
+            index=$index_tok$ sourcetype=rss:feed
+            | search author="*$author_filter$*"
+            | stats count by author
+            | where author != ""
+            | sort - count
+            | head 15
+            | rename author as "Author", count as "Events"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">15</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top tags</title>
+      <table>
+        <search>
+          <query>index=$index_tok$ sourcetype=rss:feed | spath output=tags path=tags{}
+            | eval tags=if(isnull(tags), "NO_TAG", tags)
+            
+            | stats count by tags
+            | where tags!="NO_TAG" AND tags!=""
+            | sort - count
+            | head 15
+            | rename tags as "Tag", count as "Events"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">15</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Latest items</title>
+      <table>
+        <search>
+          <query>index=$index_tok$ sourcetype=rss:feed
+            | search source_url="*$feed_filter$*" author="*$author_filter$*" | spath output=tags path=tags{}
+            
+            | eval published_display=coalesce(published, strftime(_time, "%Y-%m-%d %H:%M:%S"))
+            | table _time title author tags source_url link published_display summary
+            | rename title as "Title", author as "Author", tags as "Tags", source_url as "Feed URL", link as "Link", published_display as "Published", summary as "Summary"
+            | sort - _time | head 5</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="wrap">true</option>
+        <drilldown>
+          <link target="_blank">$row.Link$</link>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Feed activity by hour</title>
+      <chart>
+        <search>
+          <query>
+            index=$index_tok$ sourcetype=rss:feed
+            | timechart span=1h count by source_url limit=10
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+</form>

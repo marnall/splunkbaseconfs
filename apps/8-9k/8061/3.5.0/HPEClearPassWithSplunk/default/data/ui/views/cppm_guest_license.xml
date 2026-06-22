@@ -1,0 +1,76 @@
+<form version="1.1">
+  <label>Guest License Indicator</label>
+  <description>Indication of Guest License Usage</description>
+
+  <fieldset autoRun="True" submitButton="true">
+
+    <input type="checkbox" token="servers">
+      <label>ClearPass Servers</label>
+      <delimiter> OR </delimiter>
+      <valuePrefix>cphost=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+  </fieldset>
+
+  <row>
+    <single>
+      <search><query> 
+		eventtype=cppm-posture auth_type=Guest $servers$ earliest=@d latest=now  | stats count 
+      </query></search>
+      <option name="underLabel">Guest Sessions Today</option>
+    </single>
+    <single>
+      <search><query> 
+		eventtype=cppm-posture auth_type=Guest $servers$ earliest=@d latest=now  | join session_id [search eventtype=cppm-pass-authentication earliest=@d latest=now ] | fields mac_address|dedup mac_address| stats count
+      </query></search>
+      <option name="underLabel">Unique Guest MAC Count Today</option>
+    </single>
+    <single>
+      <search><query>
+       eventtype=cppm-pass-authentication $servers$ earliest=-30d@d latest=@d [search eventtype=cppm-guest $servers$  earliest=-30d@d latest=@d |fields session_id ] | append [| search index=_internal earliest=-30d | head 1000 | fields - * | fields - _* | streamstats count | bucket _time span=1d | eval count=0] | timechart count as mac_count, dc(mac_address) as unique_mac_count span=1d |streamstats avg(mac_count) as avg_mac_count sum(mac_count) as tot_mac_count avg(unique_mac_count) as avg_u_mac_count sum(unique_mac_count) as tot_u_count |eval avg_mac_count=round(avg_mac_count)|eval avg_u_mac_count =round(avg_u_mac_count )|fields avg_u_mac_count|sort -_time|head 1
+      </query></search>
+      <option name="underLabel">Unique Guest MAC Count 30 Day Avg.</option>
+    </single>
+  </row>
+
+  <row>
+    <chart>
+      <title>Unique Guest MACs TODAY - Chart</title>
+      <search><query> 
+		eventtype=cppm-posture auth_type=Guest $servers$ earliest=@d latest=now |fields _time, session_id| join session_id [search eventtype=cppm-pass-authentication earliest=@d latest=now | fields session_id, mac_address] | fields _time, mac_address|dedup mac_address| timechart count |streamstats sum(count) as tot_count|fields _time, tot_count
+      </query></search>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+  <row>
+    <chart>
+      <title>30 DAY AVG/TOT Unique Guest MAC Count - Chart</title>
+      <search><query>
+       eventtype=cppm-pass-authentication $servers$ earliest=-30d@d latest=@d [search eventtype=cppm-guest $servers$  earliest=-30d@d latest=@d |fields session_id ] | append [| search index=_internal earliest=-30d | head 1000 | fields - * | fields - _* | streamstats count | bucket _time span=1d | eval count=0] | timechart count as mac_count, dc(mac_address) as unique_mac_count span=1d | streamstats avg(mac_count) as avg_mac_count sum(mac_count) as tot_mac_count avg(unique_mac_count) as avg_u_mac_count sum(unique_mac_count) as tot_u_count |eval avg_mac_count=round(avg_mac_count)|eval avg_u_mac_count=round(avg_u_mac_count ) | 
+        table _time, avg_u_mac_count tot_u_count |
+ 	rename tot_mac_count as "Total Guest MACs"| rename tot_u_count as "Total Unique Guest MACs"|
+ 	rename avg_mac_count as "Average Guest MACs"| rename mac_count as "Day's Guest MACs"|
+ 	rename avg_u_mac_count as "Average Unique Guest MACs"| rename unique_mac_count as "Day's Unique Guest MACs"
+      </query></search>
+      <option name="charting.chart">line</option>
+    </chart>
+    <table>
+      <title>30 DAY Guest MAC Details - Table</title>
+      <search><query>
+       eventtype=cppm-pass-authentication $servers$ earliest=-30d@d latest=@d [search eventtype=cppm-guest $servers$  earliest=-30d@d latest=@d |fields session_id ] | append [| search index=_internal earliest=-30d | head 1000 | fields - * | fields - _* | streamstats count | bucket _time span=1d | eval count=0] | timechart count as mac_count, dc(mac_address) as unique_mac_count span=1d | streamstats avg(mac_count) as avg_mac_count sum(mac_count) as tot_mac_count avg(unique_mac_count) as avg_u_mac_count sum(unique_mac_count) as tot_u_count |eval avg_mac_count=round(avg_mac_count)|eval avg_u_mac_count=round(avg_u_mac_count ) | 
+        fields avg_u_mac_count unique_mac_count avg_mac_count mac_count tot_u_count tot_mac_count |
+ 	rename tot_mac_count as "Total Guest MACs"| rename tot_u_count as "Total Unique Guest MACs"|
+ 	rename avg_mac_count as "Average Guest MACs"| rename mac_count as "Day's Guest MACs"|
+ 	rename avg_u_mac_count as "Average Unique Guest MACs"| rename unique_mac_count as "Day's Unique Guest MACs"
+      </query></search>
+    </table>
+  </row>
+
+</form>

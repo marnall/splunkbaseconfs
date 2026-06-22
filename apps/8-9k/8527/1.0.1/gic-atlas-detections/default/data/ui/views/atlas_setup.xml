@@ -1,0 +1,272 @@
+<dashboard version="1.1" theme="dark">
+  <label>Setup</label>
+  <description>Configure MITRE ATLAS AI Threat Detection for your environment</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="text" token="scan_index" searchWhenChanged="false">
+      <label>Index to scan (e.g. main, ai_logs, or * for all)</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- Step 1: Current Configuration -->
+  <row>
+    <panel>
+      <title>Step 1: Current Configuration</title>
+      <html>
+        <div style="padding: 10px; color: #cccccc;">
+          <p>The <code>atlas_index</code> macro controls which index all 10 detection rules query. Update it to match your environment.</p>
+          <p><strong>How to update:</strong> Settings → Advanced Search → Search Macros → atlas_index</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Current atlas_index Macro Value</title>
+      <table>
+        <search>
+          <query>| rest /servicesNS/nobody/gic-atlas-detections/configs/conf-macros/atlas_index
+| table title, definition
+| rename title AS "Macro Name", definition AS "Current Definition"</query>
+          <earliest>-1m</earliest>
+          <latest>now</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Step 2: Data Discovery -->
+  <row>
+    <panel>
+      <title>Step 2: Discover AI/LLM Data in Your Environment</title>
+      <html>
+        <div style="padding: 10px; color: #cccccc;">
+          <p>Click <strong>Submit</strong> above to scan your indexes for known AI/LLM sourcetypes. If you see results below, you have data the detection rules can use.</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Discovered AI/LLM Sourcetypes</title>
+      <table>
+        <search>
+          <query>| tstats count where index=$scan_index$ sourcetype IN (
+  "llm_gateway", "openai_logs", "azure_openai", "bedrock_logs",
+  "rag_logs", "agent_logs", "api_gateway",
+  "aws:s3:access", "azure:storage:blob", "gcp:storage",
+  "mlflow_logs", "dvc_logs", "dataset_registry",
+  "content_safety", "moderations_api",
+  "okta", "azure:aad",
+  "web:access", "nginx:access", "apache:access", "cloudflare:access",
+  "litellm_proxy", "litellm:proxy", "litellm",
+  "azure:monitor:resource", "aws:cloudwatch:logs",
+  "kong:ai", "portkey", "helicone"
+) by index, sourcetype
+| rename count AS "Event Count", index AS "Index", sourcetype AS "Sourcetype"
+| sort - "Event Count"</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Step 3: Field Validation -->
+  <row>
+    <panel>
+      <title>Step 3: Validate Required Fields</title>
+      <html>
+        <div style="padding: 10px; color: #cccccc;">
+          <p>This checks whether your data contains the fields the detection rules need. Rules are grouped into two tiers:</p>
+          <p><strong style="color: #53A051;">Tier 1 — Operational (works with standard telemetry):</strong> Token counts, API call volumes, storage access logs. Rules: Exfiltration (T0024), Bulk Abuse (T0047), Artifact Discovery (T0007), Training Data Poisoning (T0020), Valid Account Abuse (T0012), Safety Flag (T0048).</p>
+          <p><strong style="color: #F8BE34;">Tier 2 — Content Inspection (requires prompt logging):</strong> Prompt text and LLM responses. Rules: Direct Prompt Injection (T0051.000), Indirect Prompt Injection (T0051.001), Jailbreak (T0054), Model Reconnaissance (T0014).</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Tier 1 Fields — Operational Telemetry</title>
+      <table>
+        <search>
+          <query>index=$scan_index$ sourcetype IN (
+  "llm_gateway", "openai_logs", "azure_openai", "bedrock_logs",
+  "api_gateway", "aws:s3:access", "azure:storage:blob", "gcp:storage",
+  "litellm_proxy", "litellm:proxy", "litellm",
+  "azure:monitor:resource", "aws:cloudwatch:logs",
+  "okta", "azure:aad", "rag_logs", "agent_logs",
+  "content_safety", "moderations_api"
+)
+| head 1000
+| fieldsummary
+| where field IN ("user", "src_ip", "total_tokens", "prompt_tokens", "completion_tokens", "model", "session_id", "event_type", "action", "object_key", "uri_path", "http_status", "safety_flagged", "finish_reason")
+| eval status=if(count>0, "Found (".count." events)", "Not Found")
+| table field, count, distinct_count, status
+| rename field AS "Field Name", count AS "Events with Field", distinct_count AS "Unique Values", status AS "Status"</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"Not Found":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Tier 2 Fields — Content Inspection</title>
+      <table>
+        <search>
+          <query>index=$scan_index$ sourcetype IN (
+  "llm_gateway", "openai_logs", "azure_openai", "bedrock_logs",
+  "rag_logs", "agent_logs",
+  "litellm_proxy", "litellm:proxy", "litellm",
+  "content_safety", "moderations_api"
+)
+| head 1000
+| fieldsummary
+| where field IN ("user_input", "prompt", "request_text", "message", "messages", "retrieved_content", "document_text", "tool_output", "fetched_text", "response", "completion")
+| eval status=if(count>0, "Found (".count." events)", "Not Found")
+| table field, count, distinct_count, status
+| rename field AS "Field Name", count AS "Events with Field", distinct_count AS "Unique Values", status AS "Status"</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"Not Found":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Step 4: Rule Readiness (static HTML - always visible regardless of Submit) -->
+  <row>
+    <panel>
+      <title>Step 4: Rule Readiness Summary</title>
+      <html>
+        <div style="padding: 10px;">
+          <table style="width: 100%; border-collapse: collapse; color: #cccccc;">
+            <tr style="border-bottom: 2px solid #555;">
+              <th style="text-align: left; padding: 8px; color: #ffffff;">ATLAS ID</th>
+              <th style="text-align: left; padding: 8px; color: #ffffff;">Detection Rule</th>
+              <th style="text-align: left; padding: 8px; color: #ffffff;">Tier</th>
+              <th style="text-align: left; padding: 8px; color: #ffffff;">Data Requirement</th>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0024</td>
+              <td style="padding: 8px;">Exfiltration via ML Inference API</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs token counts and user fields</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0047</td>
+              <td style="padding: 8px;">AI-Enabled Bulk Content Generation</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs token counts and event_type</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0007</td>
+              <td style="padding: 8px;">AI Artifact Discovery</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs storage access logs (S3/Azure Blob/GCS)</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0020</td>
+              <td style="padding: 8px;">Training Data Poisoning</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs storage upload logs with object paths</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0012</td>
+              <td style="padding: 8px;">Valid Account Abuse</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs user and IP geolocation data</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0048</td>
+              <td style="padding: 8px;">External Harms Safety Flag</td>
+              <td style="padding: 8px;"><span style="background-color: #53A051; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 1</span></td>
+              <td style="padding: 8px;">Operational — needs safety_flagged or finish_reason fields</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0051.000</td>
+              <td style="padding: 8px;">Direct Prompt Injection</td>
+              <td style="padding: 8px;"><span style="background-color: #F8BE34; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 2</span></td>
+              <td style="padding: 8px;">Content — needs user_input or prompt text</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0051.001</td>
+              <td style="padding: 8px;">Indirect Prompt Injection</td>
+              <td style="padding: 8px;"><span style="background-color: #F8BE34; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 2</span></td>
+              <td style="padding: 8px;">Content — needs retrieved_content or document_text</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0054</td>
+              <td style="padding: 8px;">LLM Jailbreak</td>
+              <td style="padding: 8px;"><span style="background-color: #F8BE34; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 2</span></td>
+              <td style="padding: 8px;">Content — needs user_input or prompt text</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #333;">
+              <td style="padding: 8px;">AML.T0014</td>
+              <td style="padding: 8px;">AI Model Reconnaissance</td>
+              <td style="padding: 8px;"><span style="background-color: #F8BE34; color: #000; padding: 2px 8px; border-radius: 3px;">Tier 2</span></td>
+              <td style="padding: 8px;">Content — needs user_input or prompt text</td>
+            </tr>
+          </table>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Step 5: Enable Rules -->
+  <row>
+    <panel>
+      <title>Step 5: Enable Detection Rules</title>
+      <html>
+        <div style="padding: 10px; color: #cccccc;">
+          <p><strong>After</strong> you have confirmed your data and updated the <code>atlas_index</code> macro:</p>
+          <ol>
+            <li>Go to <strong>Settings → Searches, Reports, and Alerts</strong></li>
+            <li>Set <strong>App</strong> filter to <em>MITRE ATLAS AI Threat Detection for Splunk</em></li>
+            <li>Set <strong>Owner</strong> to <em>All</em></li>
+            <li>Enable the rules that match your available data tier</li>
+          </ol>
+          <p>All rules ship <strong>disabled</strong> by default. Enabled rules run on their configured schedule (every 15–30 minutes) and write detection results to the <code>summary</code> index. The Detections dashboard reads from the summary index.</p>
+          <p>For platform-specific setup instructions to get AI/LLM data into Splunk, see the <strong>Configuration Guide</strong> tab.</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Current Detection Rules Status -->
+  <row>
+    <panel>
+      <title>Current Rule Status</title>
+      <table>
+        <search>
+          <query>| rest /servicesNS/nobody/gic-atlas-detections/saved/searches
+| where match(title, "^ATLAS")
+| eval status=if(disabled=0, "Enabled", "Disabled")
+| eval schedule=if(disabled=0, cron_schedule, "N/A — disabled")
+| table title, status, schedule
+| rename title AS "Rule", status AS "Status", schedule AS "Schedule"
+| sort Rule</query>
+          <earliest>-1m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"Enabled":#53A051,"Disabled":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

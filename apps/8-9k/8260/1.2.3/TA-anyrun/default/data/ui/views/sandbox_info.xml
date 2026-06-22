@@ -1,0 +1,223 @@
+<dashboard version="1.1">
+  <label>ANY.RUN Sandbox</label>
+
+  <row>
+    <panel>
+      <title>Verdicts distribution</title>
+      <description>Distribution of verdicts over time</description>
+
+      <input type="time" token="time_ioc_pie">
+        <label>Time Range</label>
+        <default>
+          <earliest>-14d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <chart>
+        <search>
+          <query>
+            <![CDATA[
+            index="anyrun" source="ANY.RUN Sandbox" sourcetype="ANY.RUN"
+            | table verdict_threat_level_text 
+            | rename verdict_threat_level_text as verdict 
+            | where verdict != ""
+            | stats count by verdict
+            ]]>
+          </query>
+          <earliest>$time_ioc_pie.earliest$</earliest>
+          <latest>$time_ioc_pie.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+      </panel>
+  
+
+      <panel>
+      <title>Daily Submissions by Verdict</title>
+      <description>Daily submissions by verdict</description>
+      <input type="time" token="verdict_time">
+        <label>Time Range</label>
+        <default>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <chart>
+        <search>
+          <query><![CDATA[
+            index="anyrun" source="ANY.RUN Sandbox" sourcetype="ANY.RUN"
+            | where verdict_threat_level_text != ""
+            | timechart span=1d count BY verdict_threat_level_text
+          ]]></query>
+          <earliest>$verdict_time.earliest$</earliest>
+          <latest>$verdict_time.latest$</latest>
+        </search>
+
+        <option name="charting.chart">line</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 5 MITRE IDs</title>
+      <description>Top 5 MITRE IDs</description>
+      <input type="time" token="time_ioc_types">
+        <label>Time Range</label>
+        <default>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <chart>
+        <search>
+          <query>
+            <![CDATA[
+            index="anyrun" source="ANY.RUN Sandbox" sourcetype="ANY.RUN"
+            | spath path=mitre{} output=mitre_entry
+            | mvexpand mitre_entry
+            | spath input=mitre_entry path=id output=mitre_id
+            | where mitre_id != ""
+            | stats count by mitre_id
+            | sort -count
+            | head 5
+            | rename count as "Count"
+            | rename mitre_id as "MITRE ID"
+            ]]>
+          </query>
+          <earliest>$time_ioc_types.earliest$</earliest>
+          <latest>$time_ioc_types.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+
+    </panel>
+    <panel>
+      <title>Top 5 Tags</title>
+      <description>Top 5 tags</description>
+      <input type="time" token="time_ioc_types">
+        <label>Time Range</label>
+        <default>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </default>
+      </input>
+
+      <chart>
+        <search>
+          <query>
+            <![CDATA[
+            index="anyrun" source="ANY.RUN Sandbox" sourcetype="ANY.RUN"
+            | spath path=tags{} output=tag
+            | mvexpand tag
+            | where tag != ""
+            | stats count by tag
+            | sort -count
+            | head 5
+            | rename count as "Count"
+            | rename tag as "Tag"
+            ]]>
+          </query>
+          <earliest>$time_ioc_types.earliest$</earliest>
+          <latest>$time_ioc_types.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+
+    </panel>
+  </row>
+  
+  <row>
+    <panel>
+      <title>Latest 10 Submissions</title>
+      <description>Latest 10 submissions</description>
+      <table>
+        <search>
+          <query>
+            <![CDATA[
+            index="anyrun" source="ANY.RUN Sandbox" sourcetype="ANY.RUN"
+            | table main_object, verdict_threat_level_text, permanent_url, _time
+            | sort -_time
+            | head 10
+            | convert timeformat="%Y-%m-%d %H:%M:%S" ctime(_time) AS date 
+            | table main_object, verdict_threat_level_text, permanent_url, date
+            | where main_object != ""
+            | rename main_object as "Main Object"
+            | rename verdict_threat_level_text as "Verdict"
+            | rename permanent_url as "Permanent URL"
+            ]]>
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+
+<row>
+    <panel>
+      <title>Latest High Confidence IOCs</title>
+      <description>Latest high confidence IOCs</description>
+      <table>
+        <search>
+          <query>
+            <![CDATA[
+            | inputlookup anyrun_sandbox_ioc_domain  | eval ioc_type="domain"
+            | append [| inputlookup anyrun_sandbox_ioc_url  | eval ioc_type="url"]
+            | append [| inputlookup anyrun_sandbox_ioc_ip   | eval ioc_type="ip"]
+            | append [| inputlookup anyrun_sandbox_ioc_hash | eval ioc_type="hash"]
+            | where confidence == "High"
+            | eventstats max(created) AS task_created BY anyrun_task_url
+            | sort 0 - task_created anyrun_task_url
+            | streamstats count AS row_in_task BY anyrun_task_url
+            | eval first_of_task = if(row_in_task=1, 1, 0)
+            | streamstats sum(first_of_task) AS task_rank
+            | where task_rank <= 10 and confidence == "High"
+            | sort -task_created -created
+            | stats count AS tasks_count, values(ioc_type) AS ioc_type by ioc_value
+            | table ioc_value, ioc_type, tasks_count
+            | sort -tasks_count
+            | rename tasks_count as "Analysis Count"
+            | rename ioc_type as "IOC Type"
+            | rename ioc_value as "IOC Value"
+            ]]>
+          </query>
+        </search>
+      </table>
+    </panel>
+    
+  <panel>
+      <title>Latest Medium Confidence IOCs</title>
+      <table>
+        <search>
+          <query>
+            <![CDATA[
+            | inputlookup anyrun_sandbox_ioc_domain  | eval ioc_type="domain"
+            | append [| inputlookup anyrun_sandbox_ioc_url  | eval ioc_type="url"]
+            | append [| inputlookup anyrun_sandbox_ioc_ip   | eval ioc_type="ip"]
+            | append [| inputlookup anyrun_sandbox_ioc_hash | eval ioc_type="hash"]
+            | where confidence == "Medium"
+            | eventstats max(created) AS task_created BY anyrun_task_url
+            | sort 0 - task_created anyrun_task_url
+            | streamstats count AS row_in_task BY anyrun_task_url
+            | eval first_of_task = if(row_in_task=1, 1, 0)
+            | streamstats sum(first_of_task) AS task_rank
+            | where task_rank <= 10 and confidence == "Medium"
+            | sort -task_created -created
+            | stats count AS tasks_count, values(ioc_type) AS ioc_type by ioc_value
+            | table ioc_value, ioc_type, tasks_count
+            | sort -tasks_count
+            | rename tasks_count as "Analysis Count"
+            | rename ioc_type as "IOC Type"
+            | rename ioc_value as "IOC Value"
+            ]]>
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

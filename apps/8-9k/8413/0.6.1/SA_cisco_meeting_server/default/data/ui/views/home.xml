@@ -1,0 +1,163 @@
+<!-- Copyright (C) 2018-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Home</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="Search" layoutPanel="viewHeader">
+    <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-app splunk_server=local
+| rename eai:acl.app as app
+| search app="$sideview.currentApp$"
+| stats last(build) as build last(version) as version last(description) as description
+    ]]></param>
+
+    <module name="HTML" layoutPanel="viewHeader">
+      <param name="html"><![CDATA[
+      <h2>Welcome to Sideview's Supporting App for Cisco Meeting Server $results[0].version$</h2>
+
+      <p>
+        Documentation can be found <a href="https://sideviewapps.com/documentation/cisco-meeting-server" target="_blank">on our website here</a>.
+      </p>
+
+      <p>
+        NOTE that while it is possible and even reasonable to use this app standalone, it is really designed to be used as an extension/adapter app for our main <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation" target="_blank">Cisco CDR Reporting and Analytics app</a>.  If you aren't familiar with that app yet, definitely reach out to us.  You can get a free trial of it going easily and if you are installing an app for CMS.... you will like what you'll see in the trial.
+      </p>
+      <p>
+        That said, this app is in a relatively early stage and no matter your situation hopefully you are talking to us and you can always reach us at <a href="mailto:info@sideviewapps.com">info@sideviewapps.com</a>.
+      </p>
+      ]]></param>
+    </module>
+  </module>
+ <!--
+  <module name="Search" layoutPanel="panel_row1_col1">
+    <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-checklist splunk_server=local
+| rename eai:appName as app search as searchToRun
+| search app="$sideview.currentApp$"
+| fields app title searchToRun drilldown
+| search title="critical_*"
+| eval drilldownLabel=if(isnull(drilldown),"see health check results","run troubleshooting search")
+| eval drilldown=if(isnull(drilldown),searchToRun,drilldown)
+    ]]></param>
+
+
+
+    <module name="HTML">
+      <param name="html"><![CDATA[
+        <strong>One or more critical health checks have failed and should be addressed as soon as possible:</strong>
+      ]]></param>
+    </module>
+
+    <module name="Pager">
+
+      <module name="Multiplexer">
+        <param name="fields">app,searchToRun,drilldown,drilldownLabel</param>
+
+        <module name="Search">
+          <param name="search">$searchToRun.rawValue$ | sort - severity_level |  table severity_level metric</param>
+
+          <module name="ProgressIndicator" />
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+             <p class="checklistConfSeverity$results[0].severity_level$" style="margin-bottom:0px;">
+                $results[0].metric$
+              </p>
+            ]]></param>
+            <param name="customBehavior">setPageStateIfCriticalHealthCheckFailed</param>
+          </module>
+        </module>
+      </module>
+    </module>
+
+  -->
+    <!--
+    <module name="HTML">
+      <param name="html">
+        If you need help fixing these issues, contact us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>
+      </param>
+    </module>
+
+  </module>
+  -->
+
+
+  <module name="TimePicker" layoutPanel="mainSearchControls">
+    <param name="default">Last 24 hours</param>
+
+    <module name="Search" layoutPanel="panel_row3_col1">
+      <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cms_cdr")
+| `streaming_cms_extractions`
+
+| eval combined_cause_description = reason + " - " + cause_description
+| table call_id recordType deviceType encryptedMedia combined_cause_description ipAddress localAddress remoteAddress callingPartyNumber
+| eval encrypted_call_id=if(encryptedMedia=="true",call_id,null())
+| stats dc(call_id) as calls dc(encrypted_call_id) as encrypted_calls dc(deviceType) as deviceTypes dc(callingPartyNumber) as partyNumbers
+
+      ]]></param>
+
+      <module name="Pager">
+        <module name="Table"/>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row4_col1">
+      <param name="search"><![CDATA[
+`custom_index` sourcetype="cms_cdr"
+
+| `streaming_cms_extractions`
+
+| eval duration=if(recordType=="callEnd",duration,null())
+| stats min(_time) as _time max(duration) as duration by call_id
+``` inline version of the Cisco CDR apps get_concurrency macro, the simpler version with no split-by ```
+| eval increment = if(duration>0,mvappend("1","-1"),"0")
+| mvexpand increment
+| eval _time = if(increment==1, _time, _time + duration)
+| sort 0 + _time | streamstats sum(increment) as post_concurrency
+| eval concurrency = if(increment==-1, post_concurrency+1, post_concurrency)
+``` inline version of the Cisco CDR apps timechart_for_concurrency macro, the simpler version with no split-by```
+| timechart fixedrange=false bins=400 max(concurrency) as max_concurrency last(post_concurrency) as last_concurrency
+| filldown last_concurrency*
+| eval concurrency=coalesce(max_concurrency,last_concurrency)
+| fields - last_concurrency max_concurrency
+
+      ]]></param>
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Max Concurrent CMS calls</h3>
+        ]]></param>
+      </module>
+
+      <module name="ValueSetter">
+        <param name="arg.charting.chart">line</param>
+        <module name="Chart"/>
+      </module>
+    </module>
+
+
+    <module name="Search" layoutPanel="panel_row4_col2">
+      <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cms_cdr")
+
+| `streaming_cms_extractions`
+
+| chart dc(call_id) as calls over callingPartyName
+| sort 0 calls desc
+
+      ]]></param>
+      <module name="HTML">
+        <param name="html"><![CDATA[
+          <h3>Top Calling Parties</h3>
+        ]]></param>
+      </module>
+
+      <module name="ValueSetter">
+        <param name="arg.charting.chart">bar</param>
+        <module name="Chart"/>
+      </module>
+    </module>
+  </module>
+</view>

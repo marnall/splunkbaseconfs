@@ -1,0 +1,142 @@
+<dashboard version="1.1" script="setup.js" stylesheet="setup.css">
+    <label>Setup</label>
+    <description>Configure the USOM threat-intelligence fetch interval, filters, proxy, and Enterprise Security push.</description>
+    <row>
+        <panel>
+            <html>
+                <div id="usom-setup-root">
+                    <h2>USOM Threat Intelligence — Setup</h2>
+                    <p>
+                        Changes are saved to the [usom_ti://default] input stanza
+                        via the add-on's REST handler. The input ships disabled; enable it here
+                        once you've reviewed the parameters.
+                    </p>
+
+                    <div id="usom-setup-form" class="usom-form">
+                        <fieldset class="usom-section">
+                            <legend>What to fetch</legend>
+
+                            <div class="usom-field">
+                                <label>
+                                    <input type="checkbox" id="enabled" />
+                                    Enable the modular input
+                                </label>
+                                <small>When unchecked, the fetch is paused even if the rest of the form is configured.</small>
+                            </div>
+
+                            <div class="usom-field">
+                                <label>IOC types</label>
+                                <div class="usom-checkboxes" id="types-group">
+                                    <label><input type="checkbox" class="usom-type" value="ip" /> ip</label>
+                                    <label><input type="checkbox" class="usom-type" value="ip6" /> ip6</label>
+                                    <label><input type="checkbox" class="usom-type" value="ip6net" /> ip6net</label>
+                                    <label><input type="checkbox" class="usom-type" value="domain" /> domain</label>
+                                    <label><input type="checkbox" class="usom-type" value="url" /> url</label>
+                                </div>
+                                <small>Tick the IOC types to pull from USOM. Saved as comma-separated values.</small>
+                            </div>
+
+                            <div class="usom-field">
+                                <label for="criticality_threshold">Maximum criticality level to include</label>
+                                <select id="criticality_threshold">
+                                    <option value="1">1 — Strictest (only level 1, the single most-critical bucket)</option>
+                                    <option value="2">2 — Top two levels (1–2)</option>
+                                    <option value="3">3 — Top three levels (1–3) — high-severity only</option>
+                                    <option value="4">4 — Top four levels (1–4)</option>
+                                    <option value="5">5 — Top half (1–5)</option>
+                                    <option value="6">6 — Levels 1–6</option>
+                                    <option value="7">7 — Levels 1–7 (default; drops the three least-critical)</option>
+                                    <option value="8">8 — Levels 1–8</option>
+                                    <option value="9">9 — Levels 1–9 (drops only the least-critical level)</option>
+                                    <option value="10">10 — All levels (no filter)</option>
+                                </select>
+                                <small>USOM uses an inverted scale: 1 = most critical, 10 = least. The selected value is the largest criticality_level kept; anything numerically greater is dropped.</small>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="usom-section">
+                            <legend>Schedule</legend>
+
+                            <div class="usom-field">
+                                <label for="interval">Poll interval (seconds)</label>
+                                <input type="number" id="interval" min="60" step="60" />
+                                <small>Time between fetch cycles. Default 14400 (4 hours). The same value is mirrored to every enabled Enterprise Security threatlist so the KV-store ingest stays in lockstep.</small>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="usom-section">
+                            <legend>Upstream connection</legend>
+
+                            <div class="usom-field">
+                                <label for="api_base_url">API base URL</label>
+                                <input type="text" id="api_base_url" />
+                                <small>Override only for testing against a mirror or mock; the production endpoint at siberguvenlik.gov.tr is the default.</small>
+                            </div>
+
+                            <div class="usom-field">
+                                <label for="request_delay_seconds">Delay between paginated requests (seconds)</label>
+                                <input type="number" id="request_delay_seconds" min="0" step="1" />
+                                <small>A small pause between page requests against the USOM API. Increase if you want to be gentler on the upstream.</small>
+                            </div>
+
+                            <div class="usom-field">
+                                <label for="http_proxy">HTTP proxy URL (optional)</label>
+                                <input type="text" id="http_proxy" placeholder="http://proxy.example.com:8080" />
+                                <small>Set if outbound traffic must traverse a corporate proxy.</small>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="usom-section">
+                            <legend>Operational telemetry</legend>
+
+                            <div class="usom-field">
+                                <label for="stats_index">Stats index</label>
+                                <input type="text" id="stats_index" />
+                                <small>Destination for the per-cycle stats event (sourcetype usom_ti:stats). Default _internal.</small>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="usom-section">
+                            <legend>Enterprise Security integration</legend>
+
+                            <div class="usom-field">
+                                <label>Push lookups to ES threat intel</label>
+                                <div class="usom-checkboxes" id="es-push-group">
+                                    <label><input type="checkbox" class="usom-es-push" data-name="usom_ip_intel" /> IPv4 → ip_intel</label>
+                                    <label><input type="checkbox" class="usom-es-push" data-name="usom_ip6_intel" /> IPv6 → ip_intel</label>
+                                    <label><input type="checkbox" class="usom-es-push" data-name="usom_ip6net_intel" /> IPv6 nets → ip_intel</label>
+                                    <label><input type="checkbox" class="usom-es-push" data-name="usom_domain_intel" /> Domain → domain_intel</label>
+                                    <label><input type="checkbox" class="usom-es-push" data-name="usom_url_intel" /> URL → http_intel</label>
+                                </div>
+                                <small>Requires Splunk Enterprise Security. Each box toggles the matching threatlist:// stanza on/off; ES then ingests the lookup CSV into its KV store. All ship off.</small>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="usom-section">
+                            <legend>Advanced</legend>
+
+                            <div class="usom-field">
+                                <label>
+                                    <input type="checkbox" id="setup_debug" />
+                                    Verbose setup logging
+                                </label>
+                                <small>Raises the setup REST handler to DEBUG and writes per-request HTTP traces to ta_usom_cti.log. Leave off for normal operation.</small>
+                            </div>
+                        </fieldset>
+
+                        <div class="usom-field usom-buttons">
+                            <button type="button" id="usom-save">Save</button>
+                            <span id="usom-status"></span>
+                        </div>
+
+                        <div class="usom-credit">
+                            © 2026 DataVira Teknoloji A.Ş. · Apache License 2.0 ·
+                            <a href="https://datavira.com" target="_blank" rel="noopener">datavira.com</a> ·
+                            <a href="mailto:support+usom-cti@datavira.com">support+usom-cti@datavira.com</a>
+                        </div>
+                    </div>
+                </div>
+            </html>
+        </panel>
+    </row>
+</dashboard>

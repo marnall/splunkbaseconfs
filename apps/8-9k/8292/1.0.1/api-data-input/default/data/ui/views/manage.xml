@@ -1,0 +1,116 @@
+<form hideEdit="true" version="1.1" script="client/index.js" stylesheet="dashboard.css">
+  <label>Manage</label>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label></label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <div data-dashboard="home">loading...</div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Number of Data Inputs</title>
+      <single>
+        <search>
+          <query>| inputlookup api-data-input_config | stats count as total</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Total Inputs</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Enabled Inputs</title>
+      <single>
+        <search>
+          <query>| inputlookup api-data-input_config | search enabled=true OR enabled=1 | stats count as enabled</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65a637","0x65a637"]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Success Rate (24h)</title>
+      <single>
+        <search>
+          <query>index=_internal sourcetype="api_connect" | stats count(eval(log_level="INFO")) as success, count as total | eval success_rate=round((success/total)*100,2) | fields success_rate</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">%</option>
+        <option name="rangeColors">["0xd93f3c","0xf58f39","0x65a637"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Events Ingested (24h)</title>
+      <single>
+        <search>
+          <query>index=_internal sourcetype="api_connect" "events ingested" | rex field=_raw "(?&lt;events_count&gt;\d+) events ingested" | stats sum(events_count) as total | appendpipe [stats count | where count=0 | eval total=0] | fields total</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x006d9c","0x006d9c"]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>App Runner Status</title>
+      <chart>
+        <search>
+          <query>index=_internal sourcetype="api_connect" | stats count by log_level</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Data Destination Distribution</title>
+      <chart>
+        <search>
+          <query>| inputlookup api-data-input_config | stats count by selected_output_location</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Failed Requests</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype="api_connect" (ERROR OR WARNING) | rex field=_raw "(?&lt;log_level&gt;ERROR|WARNING)" | sort -_time | table _raw | head 20 | rename _raw as message</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">10</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form >

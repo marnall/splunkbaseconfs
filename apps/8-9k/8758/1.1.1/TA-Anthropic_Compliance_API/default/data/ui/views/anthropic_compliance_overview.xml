@@ -1,0 +1,167 @@
+<form version="1.1" theme="dark">
+  <label>Anthropic Compliance Overview</label>
+  <description>Security analyst view of Anthropic Compliance API data</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="user_filter" searchWhenChanged="true">
+      <label>User Filter (email or ID, * for all)</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ================================================================
+       ROW 1: Authentication Activity
+       ================================================================ -->
+  <row>
+    <panel>
+      <title>Authentication Activity (User Actor Events)</title>
+      <chart>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:activity"
+            actor.type=user_actor
+            | eval user=coalesce('actor.email_address','actor.user_id')
+            | where like(user, replace("$user_filter$", "\*", "%"))
+            | timechart count by type span=1h limit=10
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Top Active Users (Last Period)</title>
+      <table>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:activity"
+            actor.type=user_actor
+            | eval user=coalesce('actor.email_address','actor.user_id')
+            | where like(user, replace("$user_filter$", "\*", "%"))
+            | stats count as events dc(type) as distinct_actions latest(_time) as last_seen by user
+            | sort -events
+            | head 20
+            | eval last_seen=strftime(last_seen, "%Y-%m-%d %H:%M:%S")
+            | rename user as "User", events as "Events", distinct_actions as "Action Types", last_seen as "Last Seen"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ================================================================
+       ROW 2: Admin / Change Activity
+       ================================================================ -->
+  <row>
+    <panel>
+      <title>Admin Change Events Over Time</title>
+      <chart>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:activity"
+            (match(type, "created") OR match(type, "updated") OR match(type, "deleted") OR match(type, "removed") OR match(type, "added") OR match(type, "invited"))
+            | eval user=coalesce('actor.email_address','actor.unauthenticated_email_address','actor.user_id','actor.api_key_id','actor.admin_api_key_id')
+            | where like(user, replace("$user_filter$", "\*", "%"))
+            | timechart count by type span=1h limit=10
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Admin Events by Actor Type</title>
+      <chart>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:activity"
+            | stats count by actor.type
+            | sort -count
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ================================================================
+       ROW 3: User Lifecycle
+       ================================================================ -->
+  <row>
+    <panel>
+      <title>User Lifecycle — Current Org Members</title>
+      <table>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:org_user"
+            | eval user=coalesce(email, id)
+            | where like(user, replace("$user_filter$", "\*", "%"))
+            | dedup user sortby -_time
+            | table user role _org_name created_at
+            | sort user
+            | rename user as "User", role as "Role", _org_name as "Org", created_at as "Member Since"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+
+    <panel>
+      <title>Group Membership</title>
+      <table>
+        <search>
+          <query>
+            `anthropic_compliance_index`
+            sourcetype="anthropic:compliance:group_member"
+            | eval user=coalesce(email, user_id)
+            | where like(user, replace("$user_filter$", "\*", "%"))
+            | dedup user _group_id sortby -_time
+            | stats values(_group_name) as groups count as memberships by user
+            | sort -memberships
+            | rename user as "User", groups as "Groups", memberships as "Memberships"
+          </query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

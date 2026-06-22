@@ -1,0 +1,595 @@
+<form version="1.1">
+  <label>Qwock&apos;s CryptView &#8212; CBOM &amp; PQC Readiness Command Center</label>
+  <description>Splunk-native crypto asset visibility, certificate lifecycle risk, and post-quantum readiness evidence.</description>
+
+  <search id="base_assets">
+    <query><![CDATA[
+$index_scope$ sourcetype=cryptview:cbom:asset
+| stats latest(*) as * by asset_id
+| eval asset_search_field=lower(coalesce(asset_display_name, asset_id, asset_host, ""))
+| eval asset_host_display=case(isnull(asset_host) OR asset_host="" OR asset_host="null","-",1=1,asset_host)
+| eval asset_port_display=case(isnull(asset_port) OR asset_port="" OR asset_port="null","-",1=1,tostring(asset_port))
+| eval owner_display=case(isnull(owner) OR owner="" OR owner="null","-",1=1,owner)
+| eval system_display=case(isnull(system) OR system="" OR system="null","-",1=1,system)
+| eval business_unit_display=case(isnull(business_unit) OR business_unit="" OR business_unit="null","-",1=1,business_unit)
+| eval environment_display=case(isnull(environment) OR environment="" OR environment="null","-",1=1,environment)
+| eval pqc_transport_bucket=case(
+    pqc_probe_status="hybrid_observed","Hybrid/PQC observed",
+    pqc_probe_status="not_tested","Not tested",
+    match(coalesce(pqc_probe_status, ""), "no_hybrid"),"Probe ran: no hybrid",
+    match(coalesce(pqc_key_exchange_status, ""), "^No hybrid/PQC key exchange negotiated"),"Probe ran: no hybrid",
+    1=1,"Unknown"
+  )
+| eval pqc_transport_order=case(
+    pqc_transport_bucket="Hybrid/PQC observed",1,
+    pqc_transport_bucket="Not tested",2,
+    pqc_transport_bucket="Probe ran: no hybrid",3,
+    1=1,4
+  )
+| eval certificate_identity_bucket=case(
+    like(coalesce(pqc_certificate_identity, ""), "Classical RSA%"),"Classical RSA",
+    like(coalesce(pqc_certificate_identity, ""), "Classical ECDSA%"),"Classical ECDSA",
+    pqc_certificate_in_use="Yes","PQC certificate/signature",
+    pqc_certificate_in_use="No","Classical other",
+    1=1,"Unknown"
+  )
+| eval certificate_identity_order=case(
+    certificate_identity_bucket="PQC certificate/signature",1,
+    certificate_identity_bucket="Classical RSA",2,
+    certificate_identity_bucket="Classical ECDSA",3,
+    certificate_identity_bucket="Classical other",4,
+    1=1,5
+  )
+| eval evidence_confidence_bucket=case(
+    pqc_confidence="High","High",
+    pqc_confidence="Medium","Medium",
+    pqc_confidence="Low","Low",
+    1=1,"Unknown"
+  )
+| eval evidence_confidence_order=case(
+    evidence_confidence_bucket="High",1,
+    evidence_confidence_bucket="Medium",2,
+    evidence_confidence_bucket="Low",3,
+    1=1,4
+  )
+| eval legacy_pqc_posture_bucket=case(
+    pqc_posture="pqc_ready","PQC ready",
+    pqc_posture="hybrid_ready","Hybrid ready",
+    pqc_posture="classical_only","Classical-only",
+    1=1,"Unknown"
+  )
+| eval legacy_pqc_posture_order=case(
+    legacy_pqc_posture_bucket="PQC ready",1,
+    legacy_pqc_posture_bucket="Hybrid ready",2,
+    legacy_pqc_posture_bucket="Classical-only",3,
+    1=1,4
+  )
+| eval issuer_bucket=coalesce(issuer, "Unknown issuer")
+| eval risk_score_bucket=case(
+    isnull(risk_score),"Unknown",
+    risk_score>=80,"80-100",
+    risk_score>=60,"60-79",
+    risk_score>=40,"40-59",
+    risk_score>=20,"20-39",
+    1=1,"0-19"
+  )
+| eval risk_score_order=case(
+    risk_score_bucket="80-100",1,
+    risk_score_bucket="60-79",2,
+    risk_score_bucket="40-59",3,
+    risk_score_bucket="20-39",4,
+    risk_score_bucket="0-19",5,
+    1=1,6
+  )
+| eval renewal_window=case(
+    expiry_days<=30,"<= 30 days",
+    expiry_days<=60,"31-60 days",
+    expiry_days<=90,"61-90 days",
+    expiry_days>90,"91+ days",
+    1=1,"Unknown"
+  )
+| eval renewal_window_order=case(
+    renewal_window="<= 30 days",1,
+    renewal_window="31-60 days",2,
+    renewal_window="61-90 days",3,
+    renewal_window="91+ days",4,
+    1=1,5
+  )
+| eval key_size_bucket=case(
+    key_type="RSA" AND key_size<2048,"Weak RSA < 2048",
+    key_type="RSA" AND key_size=2048,"RSA 2048",
+    key_type="RSA" AND key_size>=3072,"RSA 3072+",
+    key_type="ECDSA" AND key_size<256,"Weak ECDSA < 256",
+    key_type="ECDSA" AND key_size>=256,"ECDSA 256+",
+    key_type="ED25519","Ed25519",
+    isnull(key_size),"Unknown",
+    1=1,coalesce(key_type, "Unknown") . " " . tostring(key_size)
+  )
+| eval key_size_order=case(
+    key_size_bucket="Weak RSA < 2048",1,
+    key_size_bucket="RSA 2048",2,
+    key_size_bucket="RSA 3072+",3,
+    key_size_bucket="Weak ECDSA < 256",4,
+    key_size_bucket="ECDSA 256+",5,
+    key_size_bucket="Ed25519",6,
+    1=1,7
+  )
+| eval classical_certificate_flag=if(match(certificate_identity_bucket, "^Classical"), "Yes", "No")
+| eval asset_host_port=case(
+    asset_host_display="-" AND asset_port_display="-", "-",
+    asset_port_display="-", asset_host_display,
+    1=1, asset_host_display . ":" . asset_port_display
+  )
+| eval key_label=case(
+    isnull(key_size) OR key_size="", coalesce(key_type, "Unknown"),
+    1=1, coalesce(key_type, "Unknown") . " " . tostring(key_size)
+  )
+| eval expiry_label=case(
+    isnull(expiry_days), coalesce(expiry_status, "Unknown"),
+    1=1, coalesce(expiry_status, "Unknown") . " / " . tostring(expiry_days) . "d"
+  )
+| where ("$asset_search$"="*" OR like(asset_search_field, "%" . lower("$asset_search$") . "%"))
+    AND ("$priority_filter$"="*" OR priority="$priority_filter$")
+    AND ("$pqc_cert_filter$"="*" OR pqc_certificate_in_use="$pqc_cert_filter$")
+    AND ("$pqc_kex_filter$"="*" OR pqc_transport_bucket="$pqc_kex_filter$")
+    AND ("$cert_identity_filter$"="*" OR certificate_identity_bucket="$cert_identity_filter$")
+    ]]></query>
+    <earliest>$time_window.earliest$</earliest>
+    <latest>$time_window.latest$</latest>
+  </search>
+
+  <search id="base_events">
+    <query><![CDATA[
+$index_scope$ sourcetype=cryptview:cbom:event
+| eval event_search_field=lower(coalesce(display_name, asset_id, ""))
+| where ("$asset_search$"="*" OR like(event_search_field, "%" . lower("$asset_search$") . "%"))
+    AND ("$priority_filter$"="*" OR priority="$priority_filter$")
+    ]]></query>
+    <earliest>$time_window.earliest$</earliest>
+    <latest>$time_window.latest$</latest>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="time" token="time_window">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="index_scope">
+      <label>Index / Search Scope</label>
+      <default>`cryptview_index`</default>
+    </input>
+    <input type="text" token="asset_search">
+      <label>Host or Asset Search</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="priority_filter">
+      <label>Priority</label>
+      <choice value="*">All priorities</choice>
+      <choice value="P0">P0</choice>
+      <choice value="P1">P1</choice>
+      <choice value="P2">P2</choice>
+      <choice value="P3">P3</choice>
+      <choice value="Unknown">Unknown</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="pqc_cert_filter">
+      <label>PQC Certificate In Use</label>
+      <choice value="*">All certificate states</choice>
+      <choice value="Yes">Yes</choice>
+      <choice value="No">No</choice>
+      <choice value="Unknown">Unknown</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="pqc_kex_filter">
+      <label>Hybrid/PQC Key Exchange</label>
+      <choice value="*">All key exchange states</choice>
+      <choice value="Not tested">Not tested</choice>
+      <choice value="Hybrid/PQC observed">Hybrid/PQC observed</choice>
+      <choice value="Probe ran: no hybrid">Probe ran: no hybrid</choice>
+      <choice value="Unknown">Unknown</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="cert_identity_filter">
+      <label>Certificate Identity</label>
+      <choice value="*">All certificate identities</choice>
+      <choice value="Classical RSA">Classical RSA</choice>
+      <choice value="Classical ECDSA">Classical ECDSA</choice>
+      <choice value="PQC certificate/signature">PQC certificate/signature</choice>
+      <choice value="Classical other">Classical other</choice>
+      <choice value="Unknown">Unknown</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:18px 20px; border-radius:10px; background:linear-gradient(135deg, #0f172a 0%, #16243f 52%, #0b1220 100%); border-left:5px solid #22d3ee; color:#e2f3ff;">
+          <div style="font-size:26px; font-weight:800; letter-spacing:-0.02em; margin-bottom:6px;">Qwock&apos;s CryptView &#8212; CBOM &amp; PQC Readiness Command Center</div>
+          <div style="font-size:14px; line-height:1.55; color:#cbd5e1;">Splunk-native crypto asset visibility, certificate lifecycle risk, and post-quantum readiness evidence.</div>
+          <div style="margin-top:10px; font-size:12px; color:#93c5fd;">Splunk visualizes CryptView output. It does not run scans, PQC probes, or change the CryptView source of truth.</div>
+          <div style="margin-top:6px; font-size:12px; color:#93c5fd;">Asset host and port come from CryptView fields <code>asset_host</code> and <code>asset_port</code>; Splunk&apos;s raw <code>host</code> metadata is the input host.</div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Total Crypto Assets</title>
+      <single>
+        <search base="base_assets">
+          <query>| stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#0f172a","#0ea5e9","#22d3ee"]</option>
+        <option name="rangeValues">[1,50]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Latest unique assets after deduplicating by asset_id</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Expiring &lt;= 90 Days</title>
+      <single>
+        <search base="base_assets">
+          <query>| search expiry_status=expiring_30d OR expiry_status=expiring_90d | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#22c55e","#facc15","#f97316"]</option>
+        <option name="rangeValues">[1,10]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Certificates currently inside the 90-day renewal window</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Expired</title>
+      <single>
+        <search base="base_assets">
+          <query>| search expiry_status=expired | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#22c55e","#f97316","#ef4444"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Certificates already beyond their validity period</option>
+      </single>
+    </panel>
+    <panel>
+      <title>P0 / P1 Priority</title>
+      <single>
+        <search base="base_assets">
+          <query>| search priority=P0 OR priority=P1 | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#22c55e","#f97316","#ef4444"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Assets currently demanding the fastest review or remediation</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>PQC Transport Not Tested</title>
+      <single>
+        <search base="base_assets">
+          <query>| search pqc_transport_bucket="Not tested" | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#22c55e","#facc15","#f97316"]</option>
+        <option name="rangeValues">[1,20]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Standard TLS evidence exists, but no active PQC probe confirmed transport readiness</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Classical Certificate Identity</title>
+      <single>
+        <search base="base_assets">
+          <query>| search classical_certificate_flag=Yes | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#22c55e","#f97316","#ef4444"]</option>
+        <option name="rangeValues">[1,20]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Certificate or signature layer remains classical</option>
+      </single>
+    </panel>
+    <panel>
+      <title>PQC Certificate In Use</title>
+      <single>
+        <search base="base_assets">
+          <query>| search pqc_certificate_in_use=Yes | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#334155","#0ea5e9","#22c55e"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Certificate or signature evidence already indicates PQC capability</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Hybrid/PQC Transport Observed</title>
+      <single>
+        <search base="base_assets">
+          <query>| search pqc_transport_bucket="Hybrid/PQC observed" | stats count as value</query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="rangeColors">["#334155","#0ea5e9","#22c55e"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Assets where CryptView observed transport-layer hybrid/PQC evidence</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">PQC Readiness Matrix</div>
+        <div style="font-size:12px; color:#6b7280;">Short display buckets keep the readiness story readable: transport evidence, certificate identity, and confidence are all charted separately.</div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:14px 16px; background:#f8fafc; border:1px solid #cbd5e1; border-left:4px solid #22d3ee; border-radius:8px; color:#334155;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:6px;">PQC evidence note</div>
+          <div style="font-size:12px; line-height:1.55;">CryptView separates certificate identity, transport/key-exchange evidence, and evidence confidence. Standard TLS scans show PQC transport as &quot;Not tested&quot; unless an active PQC probe ran.</div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Hybrid/PQC Key Exchange</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by pqc_transport_order pqc_transport_bucket | sort pqc_transport_order | fields - pqc_transport_order</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.seriesColors">["#22c55e","#facc15","#ef4444","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Certificate Identity</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by certificate_identity_order certificate_identity_bucket | sort certificate_identity_order | fields - certificate_identity_order</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.seriesColors">["#22c55e","#f97316","#facc15","#fb7185","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Evidence Confidence</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by evidence_confidence_order evidence_confidence_bucket | sort evidence_confidence_order | fields - evidence_confidence_order</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.seriesColors">["#22c55e","#facc15","#0ea5e9","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Legacy PQC Posture</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by legacy_pqc_posture_order legacy_pqc_posture_bucket | sort legacy_pqc_posture_order | fields - legacy_pqc_posture_order</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.seriesColors">["#22c55e","#14b8a6","#f97316","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">Certificate Lifecycle</div>
+        <div style="font-size:12px; color:#6b7280;">Track expiry pressure, issuer concentration, and key-size signals alongside the PQC migration story.</div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Expiry Status Distribution</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by expiry_status | sort - count</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.seriesColors">["#ef4444","#f97316","#facc15","#22c55e","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Renewal Windows (30 / 60 / 90 Days)</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by renewal_window_order renewal_window | sort renewal_window_order | fields - renewal_window_order</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#ef4444","#f97316","#facc15","#22c55e","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Issuers</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by issuer_bucket | sort - count | head 10</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#0ea5e9"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Weak Key / Key Size Distribution</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by key_size_order key_size_bucket | sort key_size_order | fields - key_size_order</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#0ea5e9","#38bdf8","#14b8a6","#f97316","#facc15","#22c55e","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">Risk &amp; Migration Priorities</div>
+        <div style="font-size:12px; color:#6b7280;">Use priority, risk reasons, and layered PQC evidence together to focus remediation and migration work.</div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Priority Distribution</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by priority | sort priority</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#ef4444","#f97316","#facc15","#22c55e","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Risk Score Buckets</title>
+      <chart>
+        <search base="base_assets">
+          <query>| stats count by risk_score_order risk_score_bucket | sort risk_score_order | fields - risk_score_order</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#ef4444","#f97316","#f59e0b","#facc15","#22c55e","#6366f1"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top Risk Reasons</title>
+      <chart>
+        <search base="base_assets">
+          <query>| eval risk_reason=case(mvcount(risk_reasons)&gt;1, mvjoin(risk_reasons, "; "), isnull(risk_reasons) OR risk_reasons="", "None recorded", 1=1, tostring(risk_reasons)) | makemv delim="; " risk_reason | mvexpand risk_reason | stats count by risk_reason | sort - count | head 10</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#f97316"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 20 Migration / Remediation Priorities</title>
+      <table>
+        <search base="base_assets">
+          <query>| sort 0 priority - risk_score expiry_days | eval Asset=coalesce(asset_display_name, asset_id), Host=asset_host_display, Port=asset_port_display, Owner=owner_display, Priority=priority, Risk=risk_score, PQC_Transport=pqc_key_exchange_status, Certificate_Identity=pqc_certificate_identity, PQC_Cert=pqc_certificate_in_use, Recommended_Action=pqc_recommended_next_action, Expiry=expiry_label | rename PQC_Transport AS "PQC Transport" Certificate_Identity AS "Certificate Identity" PQC_Cert AS "PQC Cert" Recommended_Action AS "Recommended Action" | table Asset Host Port Owner Priority Risk risk_reasons "PQC Transport" "Certificate Identity" "PQC Cert" Expiry "Recommended Action" | head 20</query>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">CBOM Inventory Explorer</div>
+        <div style="font-size:12px; color:#6b7280;">Cleaner display labels keep the inventory readable while the layered PQC fields remain available additively.</div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Latest Asset Inventory</title>
+      <table>
+        <search base="base_assets">
+          <query>| eval Asset=coalesce(asset_display_name, asset_id), Host=asset_host_display, Port=asset_port_display, Owner=owner_display, System=system_display, Business_Unit=business_unit_display, Environment=environment_display, TLS=tls_version, Key=key_label, Expiry=expiry_label, Priority=priority, Risk=risk_score, PQC_Transport=pqc_key_exchange_status, Certificate_Identity=pqc_certificate_identity, PQC_Cert=pqc_certificate_in_use, Evidence=pqc_evidence_level, Confidence=pqc_confidence, Recommended_Action=pqc_recommended_next_action | rename Business_Unit AS "Business Unit" PQC_Transport AS "PQC Transport" Certificate_Identity AS "Certificate Identity" PQC_Cert AS "PQC Cert" Recommended_Action AS "Recommended Action" | table Asset Host Port Owner System "Business Unit" Environment TLS Key Expiry Priority Risk "PQC Transport" "Certificate Identity" "PQC Cert" Evidence Confidence "Recommended Action"</query>
+        </search>
+        <option name="count">25</option>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">Recent Changes &amp; Events</div>
+        <div style="font-size:12px; color:#6b7280;">Supporting event context from the existing `cryptview:cbom:event` sourcetype stays lower in the dashboard so posture and readiness lead the story.</div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent Change Types</title>
+      <chart>
+        <search base="base_events">
+          <query>| stats count by event_type | sort - count</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.seriesColors">["#0ea5e9"]</option>
+        <option name="drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Latest Event Stream</title>
+      <table>
+        <search base="base_events">
+          <query>| sort 0 - changed_at | eval Asset=coalesce(display_name, asset_id), Current_Priority=current_priority, Previous_Priority=previous_priority, Current_PQC=current_pqc_posture, Previous_PQC=previous_pqc_posture, Expiry=coalesce(expiry_status, "Unknown") . " / " . tostring(expiry_days) . "d", Risk=risk_score | rename Current_Priority AS "Current Priority" Previous_Priority AS "Previous Priority" Current_PQC AS "Current PQC" Previous_PQC AS "Previous PQC" | table changed_at event_type Asset "Current Priority" "Previous Priority" "Current PQC" "Previous PQC" Expiry Risk | head 20</query>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0 2px 0; font-size:18px; font-weight:800; color:#111827;">Audit Trail</div>
+        <div style="padding:14px 16px; background:#f8fafc; border:1px dashed #94a3b8; border-radius:8px; color:#334155;">
+          <div style="font-size:14px; font-weight:700; margin-bottom:6px;">Audit placeholder</div>
+          <div style="font-size:12px; line-height:1.55;">Once `cryptview:audit` is ingested, this section can surface login failures, scan-job activity, CSV import events, retention operations, and anonymous quick-scan oversight. The current TA already supports monitoring `reports/workspaces/&lt;workspace_id&gt;/audit.log`, `reports/public_ephemeral/audit.log`, or scheduled exports from `/api/audit/export.ndjson`.</div>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

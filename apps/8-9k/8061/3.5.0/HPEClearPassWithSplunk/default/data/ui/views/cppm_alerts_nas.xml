@@ -1,0 +1,71 @@
+<form version="1.1">
+  <label>ClearPass Alerts</label>
+  <description>ClearPass Alerts</description>
+
+  <fieldset autoRun="true" submitButton="false">
+    <input type="time" searchWhenChanged="true">
+      <default>
+        <earliest>-15m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="checkbox" token="servers">
+      <label>ClearPass Servers</label>
+      <delimiter> OR </delimiter>
+      <valuePrefix>cphost=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+    <input type="checkbox" token="nas_ips">
+      <label>NAS Device</label>
+      <delimiter> OR </delimiter>
+      <valuePrefix>nas_ip=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>nas_ip</fieldForValue>
+      <fieldForLabel>nas_ip</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by nas_ip]]></query>
+      </search>
+    </input>
+  </fieldset>
+
+  <search id="baseSearch">
+    <query>eventtype=cppm-authentication $servers$ $nas_ips$</query>
+  </search>
+
+  <row>
+    <single>
+      <search base="baseSearch">
+        <query>stats count</query>
+      </search>
+      <option name="underLabel">Total Authentication Requests</option>
+    </single>
+    <single>
+      <search base="baseSearch"><query>login_status=REJECT |dedup user_name | stats count</query></search>
+      <option name="underLabel">Authentication Failures</option>
+    </single>
+    <single>
+      <search base="baseSearch"><query>login_status=ACCEPT |dedup user_name | stats count</query></search>
+      <option name="underLabel">Authentication Success</option>
+    </single>
+  </row>
+
+  <row>
+    <chart>
+      <title>Incoming Successful vs Failed Requests</title>
+      <search><query>eventtype=cppm-authentication $servers$ $nas_ips$ login_status=ACCEPT |eval authres="successes" |timechart span=1h count by authres | eval hour=strftime(_time,"%H:00")| append [search eventtype=cppm-authentication $servers$ $nas_ips$ login_status=REJECT |eval authres="fails" | timechart span=1h count by authres | eval hour=strftime(_time,"%H:00")]|chart sum(successes) as "Successful Logins" , sum(fails) as "Failed Logins" by hour</query></search>
+      <option name="charting.axisTitleX.text"> Hour of Day </option>
+      <option name="charting.axisTitleY.text"> Logins </option>
+      <option name="charting.axisX.minimumNumber">0</option>
+      <option name="charting.axisX.maximumNumber">24</option>
+      <option name="charting.chart">area</option>
+    </chart>
+  </row>
+
+</form>

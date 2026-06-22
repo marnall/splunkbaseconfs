@@ -1,0 +1,128 @@
+# Splunk App for Kubernetes
+
+A **search-head-only** Splunk application that provides live visibility into Kubernetes clusters directly inside Splunk. It ships a collection of Dashboard Studio dashboards covering cluster health, node status, workload monitoring, cost efficiency, and distributed trace analysis — all powered by telemetry collected through the **Splunk OpenTelemetry Collector**.
+
+## What's Included
+
+| Dashboard | Description |
+|-----------|-------------|
+| **User Guide** | In-app guide covering setup, best practices, alert creation, and OTel Collector configuration |
+| **Cluster Overview** | KPI tiles, resource timelines, top namespaces, node status, recent events, top pods |
+| **Nodes** | Per-node CPU/memory trends, disk usage, pod distribution, network I/O, node conditions |
+| **Workload Overview** | Cross-workload snapshot — deployments, statefulsets, daemonsets, jobs in one view |
+| **Deployments** | Health score, replica status, CPU/memory per pod, requests vs actual usage, events |
+| **DaemonSets** | Per-node pod status, restart counts, resource allocation, network I/O, pod age |
+| **StatefulSets** | Identity-aware pod monitoring with the same depth as deployments |
+| **Jobs / CronJobs** | Completion tracking, failure rates, resource usage during execution |
+| **HPAs** | Autoscaler health, replica trends, scaling decision latency, scaling activity history |
+| **Cost Efficiency** | Resource waste analysis, over/under-provisioned pods, idle workloads, missing limits |
+| **Trace Analysis** | Trace/span volume, error rates, P95/P99 latency, per-service comparisons, slow operations |
+
+## Developed and Tested Against
+
+- **Splunk Enterprise** 10.0 (standalone deployment)
+- **Splunk Dashboard Studio** (Dashboard Framework v2, dark theme)
+- **Splunk OpenTelemetry Collector** deployed via Helm on **Amazon EKS** (Kubernetes 1.33)
+- **Telemetry pipeline**: Splunk OTel Collector → HEC → Splunk Enterprise
+- **Cloud provider tested**: AWS (EKS with managed node groups)
+
+> The app relies on standard OpenTelemetry Kubernetes metrics, logs, and traces. While developed and tested on AWS EKS, it should work with any Kubernetes distribution as long as telemetry is collected by the Splunk OpenTelemetry Collector and sent to Splunk via HEC.
+
+## Prerequisites
+
+1. **Splunk Enterprise** (or Splunk Cloud) with HEC enabled
+2. **Splunk OpenTelemetry Collector** running in your Kubernetes cluster, configured to send logs, metrics, and traces to Splunk via HEC
+3. Dedicated Splunk indexes for Kubernetes telemetry (default: `k8s_metrics`, `k8s_logs`, `k8s_traces`)
+
+### Splunk OTel Collector Configuration
+
+An example `values.yaml` for the Splunk OpenTelemetry Collector Helm chart is provided in the [`examples/`](examples/) folder:
+
+- **[`examples/example_splunk_otel_collector_values.yaml`](examples/example_splunk_otel_collector_values.yaml)** — Shows every configuration section required for the dashboards to be fully populated, including cluster receiver workload metadata enrichment, node condition reporting, HPA attributes, kubeletstats metric groups, and container log collection. Replace the `<PLACEHOLDER>` values with your environment details and merge into your chart deployment. NOTE that these settings can change the OTEL receivers mature.
+
+## Installation
+
+### From the .spl Package
+
+1. In Splunk Web, go to **Apps → Manage Apps → Install app from file**
+2. Upload the `splunk_app_for_kubernetes.spl` package
+3. Restart Splunk if prompted
+
+### From This Repository
+
+1. Copy (or symlink) the repository contents into your Splunk apps directory:
+   ```
+   # Linux/Mac
+   cp -r . /opt/splunk/etc/apps/splunk_app_for_kubernetes
+
+   # Or clone directly
+   cd /opt/splunk/etc/apps
+   git clone https://github.com/slsvh-dev/splunk-app-for-kubernetes.git splunk_app_for_kubernetes
+   ```
+2. Restart Splunk:
+   ```
+   /opt/splunk/bin/splunk restart
+   ```
+
+## First-Time Setup — Refer to the User Guide
+
+After installing the app, **open the User Guide dashboard** (the first item in the app navigation bar). It contains detailed guidance on:
+
+- Which lookup files to update with your index names
+- Required changes to the Splunk OTel Collector `values.yaml` for full dashboard coverage
+- Best practices for time ranges, filters, and alert creation
+- Dashboard-by-dashboard walkthrough of every panel and input
+- How to create operational alerts directly from dashboard panels
+
+> **The User Guide is the definitive reference for getting the most out of this app. Start there.**
+
+## Index Configuration
+
+The app reads from indexes defined in two bundled lookup files:
+
+| Lookup File | Purpose |
+|-------------|---------|
+| `k8s_metrics_indexes_dropdown_lookup.csv` | Metrics indexes (e.g. `k8s_metrics`) |
+| `k8s_logs_events_indexes_dropdown_lookup.csv` | Logs, Kubernetes events, and traces indexes (e.g. `k8s_logs`, `k8s_traces`) |
+
+Update these lookups with the indexes that receive telemetry from your OTel Collector. You can use the **Splunk App for Lookup File Editing** to manage them. Multiple indexes can be included in a single row — see the default examples in the files for the expected format.
+
+Once the lookups are updated, the index dropdowns across all dashboards will reflect your environment automatically.
+
+## App Structure
+
+```
+splunk_app_for_kubernetes/
+├── default/
+│   ├── app.conf                          # App metadata (label, version, author)
+│   ├── data/ui/nav/default.xml           # Navigation menu
+│   └── data/ui/views/                    # Dashboard Studio XML definitions
+│       ├── user_guide.xml
+│       ├── overview.xml
+│       ├── nodes.xml
+│       ├── kuberenetes_-_workload_monitoring.xml
+│       ├── kubernetes_-_deployment_details.xml
+│       ├── kuberenetes_-_daemonset_monitoring.xml
+│       ├── kubernetes_-_hpa_monitoring.xml
+│       ├── kubernetes_-_job_monitoring.xml
+│       ├── kubernetes_-_stateful_set_monitoring.xml
+│       ├── cost_efficiency.xml
+│       └── trace_analysis.xml
+├── lookups/
+│   ├── k8s_metrics_indexes_dropdown_lookup.csv
+│   └── k8s_logs_events_indexes_dropdown_lookup.csv
+├── metadata/
+│   └── default.meta                      # Permission defaults
+├── appserver/static/                     # App icon
+└── static/                               # App icons and logos
+```
+
+## Version
+
+- **Version**: 1.0.0
+- **Author**: Venkata Hareesh Sanagavarapu
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+

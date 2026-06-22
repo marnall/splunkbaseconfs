@@ -1,0 +1,97 @@
+<form version="1.1">
+  <label>Session Details</label>
+
+  <fieldset autoRun="True" submitButton="true">
+    <input type="time" searchWhenChanged="false">
+      <default>
+        <earliest>-60m@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+   <input type="dropdown" token="server">
+      <label>ClearPass Server</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <fieldForValue>cphost</fieldForValue>
+      <fieldForLabel>cphost</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by cphost]]></query>
+      </search>
+    </input>
+   <input type="dropdown" token="user_name">
+      <label>Username</label>
+      <default>*</default>
+      <choice value="*">All</choice>
+      <fieldForValue>user_name</fieldForValue>
+      <fieldForLabel>user_name</fieldForLabel>
+      <search>
+        <query><![CDATA[eventtype=cppm | stats count by user_name]]></query>
+      </search>
+    </input>
+  </fieldset>
+  
+  <row>
+    <single>
+      <search><query>
+		eventtype=cppm CPPM_RADIUS_Session cphost=$server$ user_name=$user_name$ |stats dc(session_id)      
+      </query></search>
+      <option name="underLabel">Sessions </option>
+    </single>
+    <single>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ acct_status_type="Start"  | stats count
+      </query></search>
+      <option name="underLabel">Accounting Started</option>
+    </single>
+    <single>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ acct_status_type="Stop"  | stats count
+      </query></search>
+      <option name="underLabel">Accounting Stopped</option>
+    </single>
+    <single>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ acct_input_octets="*" | stats sum(acct_input_octets) as inpb |eval inpmb=round(inpb/(1024*1024))|fields inpmb
+      </query></search>
+      <option name="underLabel">Input Volume MB</option>
+    </single>    <single>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ acct_input_octets="*" | stats sum(acct_output_octets) as inpb |eval inpmb=round(inpb/(1024*1024))|fields inpmb
+      </query></search>
+      <option name="underLabel">Output Volume MB</option>
+    </single>
+  </row>
+  <row>
+    <table>
+      <title>Session Locations</title>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Session cphost=$server$ user_name=$user_name$ | iplocation end_host_id | table _time, session_id, user_name, City, Region, Country, end_host_id, error_code_str 
+      </query></search>
+    </table>
+  </row>
+  <row>
+    <table>
+      <title>Session Policy Details</title>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Session cphost=$server$ user_name=$user_name$ | table session_id, _time, user_name, service_name, auth_method, auth_source, end_host_id, error_code_str 
+      </query></search>
+    </table>
+  </row>
+  <row>
+    <table>
+      <title>Session Start/Stop</title>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ (acct_status_type="Start" OR acct_status_type="Stop") | sort by session_id |  table session_id, _time, user_name, ip_address, acct_status_type, nas_port_type
+      </query></search>
+    </table>
+  </row>
+  <row>
+    <table>
+      <title>Session Usage </title>
+      <search><query>
+        eventtype=cppm-radius CPPM_RADIUS_Accounting cphost=$server$ user_name=$user_name$ acct_input_octets="*" | sort by session_id | table session_id, _time, user_name, ip_address, acct_input_octets, acct_output_octets
+      </query></search>
+    </table>
+  </row>
+
+</form>

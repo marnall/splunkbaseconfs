@@ -1,0 +1,123 @@
+<dashboard version="2" theme="dark">
+    <label>Data Quality</label>
+    <description>Monitor Maze data ingestion health and latency</description>
+    <definition><![CDATA[
+{
+    "dataSources": {
+        "ds_event_count": {
+            "type": "ds.search",
+            "options": {
+                "query": "| tstats count where `maze_index` sourcetype=\"maze:investigations\" by _time span=1h",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_latest_event": {
+            "type": "ds.search",
+            "options": {
+                "query": "| tstats max(_time) as latest_event max(_indextime) as latest_indextime count where `maze_index` sourcetype=\"maze:investigations\" | eval latency=round(latest_indextime - latest_event, 0) | eval latest_event=strftime(latest_event, \"%Y-%m-%d %H:%M:%S\") | eval latest_indextime=strftime(latest_indextime, \"%Y-%m-%d %H:%M:%S\") | table latest_event latest_indextime latency count",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_sourcetype_stats": {
+            "type": "ds.search",
+            "options": {
+                "query": "| tstats count max(_time) as latest_event where `maze_index` by sourcetype host source | eval latest_event=strftime(latest_event, \"%Y-%m-%d %H:%M:%S\") | sort - count",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_total": {
+            "type": "ds.search",
+            "options": {
+                "query": "| tstats count where `maze_index` sourcetype=\"maze:investigations\" | table count",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        }
+    },
+    "defaults": {},
+    "inputs": {
+        "input_time": {
+            "type": "input.timerange",
+            "title": "Time Range",
+            "options": {
+                "token": "time_tok",
+                "defaultValue": "-30d@d,now"
+            }
+        }
+    },
+    "layout": {
+        "type": "grid",
+        "options": {
+            "width": 1440,
+            "height": 800
+        },
+        "structure": [
+            {
+                "item": "viz_total",
+                "type": "block",
+                "position": { "x": 0, "y": 0, "w": 480, "h": 200 }
+            },
+            {
+                "item": "viz_latest_stats",
+                "type": "block",
+                "position": { "x": 480, "y": 0, "w": 960, "h": 200 }
+            },
+            {
+                "item": "viz_event_volume",
+                "type": "block",
+                "position": { "x": 0, "y": 200, "w": 1440, "h": 300 }
+            },
+            {
+                "item": "viz_sourcetype_stats",
+                "type": "block",
+                "position": { "x": 0, "y": 500, "w": 1440, "h": 300 }
+            }
+        ],
+        "globalInputs": ["input_time"]
+    },
+    "visualizations": {
+        "viz_total": {
+            "type": "splunk.singlevalue",
+            "title": "Total Events",
+            "dataSources": { "primary": "ds_total" },
+            "options": {
+                "majorValue": "> primary | seriesByName('count') | lastPoint()"
+            }
+        },
+        "viz_latest_stats": {
+            "type": "splunk.table",
+            "title": "Latest Ingestion Stats",
+            "dataSources": { "primary": "ds_latest_event" },
+            "options": {}
+        },
+        "viz_event_volume": {
+            "type": "splunk.area",
+            "title": "Event Volume (Hourly)",
+            "dataSources": { "primary": "ds_event_count" },
+            "options": {}
+        },
+        "viz_sourcetype_stats": {
+            "type": "splunk.table",
+            "title": "Sourcetype Breakdown",
+            "dataSources": { "primary": "ds_sourcetype_stats" },
+            "options": {
+                "count": 10
+            }
+        }
+    },
+    "title": "Data Quality"
+}
+]]>
+    </definition>
+</dashboard>

@@ -1,0 +1,96 @@
+<dashboard version="1.1" theme="light">
+  <label>Suricata Anomaly Detection</label>
+  <description>Automated anomaly detection for Suricata events using statistical analysis and scheduled searches.</description>
+
+  <search>
+    <query>
+      | inputlookup suricata_settings.csv
+      | stats latest(eval(if(setting="search_scope", value, null()))) as search_scope latest(eval(if(setting="time_choice", value, null()))) as time_choice
+      | eval search_scope=coalesce(search_scope, "index=suricata")
+      | eval time_choice=coalesce(time_choice, "24h")
+      | eval earliest_tok=case(time_choice=="7d", "-7d@d", time_choice=="30d", "-30d@d", time_choice=="all", "0", true(), "-24h@h")
+      | eval latest_tok="now"
+    </query>
+    <done>
+      <set token="search_scope">$result.search_scope$</set>
+      <set token="form.search_scope">$result.search_scope$</set>
+      <set token="time_choice">$result.time_choice$</set>
+      <set token="form.time_choice">$result.time_choice$</set>
+      <set token="earliest_tok">$result.earliest_tok$</set>
+      <set token="latest_tok">$result.latest_tok$</set>
+      <set token="settings_loaded">1</set>
+    </done>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="time_choice">
+      <label>Time Range</label>
+      <choice value="24h">Last 24 hours</choice>
+      <choice value="7d">Last 7 days</choice>
+      <choice value="30d">Last 30 days</choice>
+      <choice value="all">All time</choice>
+      <default>24h</default>
+      <initialValue>24h</initialValue>
+      <change>
+        <condition value="24h">
+          <set token="earliest_tok">-24h@h</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="7d">
+          <set token="earliest_tok">-7d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="30d">
+          <set token="earliest_tok">-30d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="all">
+          <set token="earliest_tok">0</set>
+          <set token="latest_tok">now</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="search_scope">
+      <label>Search Scope</label>
+      <default>index=suricata</default>
+      <initialValue>index=suricata</initialValue>
+    </input>
+  </fieldset>
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Event Volume Anomalies</title>
+      <table>
+        <search>
+          <query>$search_scope$ | spath | timechart span=15m count as event_count | anomalydetection event_count</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Top Noisy Source IPs</title>
+      <table>
+        <search>
+          <query>$search_scope$ | spath | eval src=coalesce(src_ip, src, source_ip) | where isnotnull(src) | stats count as event_count by src | eventstats avg(event_count) as avg stdev(event_count) as stdev | where event_count &gt; avg + (2 * stdev) | sort - event_count</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Frequent Alert Signatures</title>
+      <table>
+        <search>
+          <query>$search_scope$ | spath | eval signature=coalesce('alert.signature', signature) | where isnotnull(signature) | stats count by signature | sort - count | head 10</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

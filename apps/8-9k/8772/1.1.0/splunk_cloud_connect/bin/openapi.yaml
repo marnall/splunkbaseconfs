@@ -1,0 +1,1088 @@
+openapi: 3.1.0
+info:
+  title: Splunk Cloud Connection API
+  description: |
+    API specification for Splunk Cloud Connection App.
+
+    This API provides endpoints for onboarding, discovering, activating, and managing
+    cloud connections for Splunk deployments.
+
+    The following APIs are not applicable for use cases outside of the Splunk Cloud
+    Connection and Splunk Enterprise Security integration.
+  version: 0.1.0-alpha1
+
+servers:
+  - url: https://{stack}:{port}/servicesNS/nobody/splunk_cloud_connect
+    description: The production API server.
+    variables:
+      stack:
+        default: blueridge.splunkcloud.com
+        description: This value is assigned by the service provider. For example, `blueridge.splunkcloud.com`.
+      port:
+        default: '8089'
+        description: This value is assigned by the service provider. For example `8089`.
+  - url: http://{stack}:{port}/servicesNS/nobody/splunk_cloud_connect
+    description: Local development or test server without TLS.
+    variables:
+      stack:
+        default: localhost
+        description: Hostname used when running the functional tests locally.
+      port:
+        default: '8089'
+        description: Splunk management port for local development.
+
+tags:
+  - name: onboarding
+    description: |
+      Onboarding endpoints to connect stack to Cloud Services.
+      Handles the initial setup and configuration of cloud connections, which
+      includes facilitating creation of tenant in the cloud, configuring access,
+      etc.
+
+paths:
+  /v1alpha1/cloud-connection/scs:
+    get:
+      tags:
+        - onboarding
+      summary: Get scs cloud connectivity
+      description: |
+        Check if the SCS connection status is available
+      operationId: getSCSConnectivity
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: SCS is reachable.
+        '503':
+          description: SCS is not reachable.
+
+  /v1alpha1/cloud-connection:
+    get:
+      tags:
+        - onboarding
+      summary: Get cloud connection status
+      description: |
+        Retrieves the current status and configuration of the cloud connection.
+
+        Returns information about the tenant, connection state, region, bootstrap license,
+        and service principal identifier.
+      operationId: getCloudConnection
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved cloud connection information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudConnectionInfo'
+              examples:
+                enabled_connection:
+                  summary: Active cloud connection
+                  value:
+                    tenantName: my-company-analytics
+                    connectionState: enabled
+                    region: us-east-1
+                    bootstrapLicenseID: 123e4567-e89b-12d3-a456-426614174000
+                    spID: sp-a1b2c3d4e5f6
+                otp_requested_connection:
+                  summary: OTP has been requested
+                  value:
+                    requestedTenantName: my-company-analytics
+                    connectionState: otp-requested
+                    region: us-east-1
+                    bootstrapLicenseID: 123e4567-e89b-12d3-a456-426614174000
+                    otpCreationTs: 1673456789
+                in_progress_connection:
+                  summary: Connection being established
+                  value:
+                    tenantName: company-dev
+                    connectionState: in-progress
+                    region: eu-west-1
+                    bootstrapLicenseID: 987fcdeb-51a2-43d1-b654-321098765432
+                    spID: sp-x9y8z7w6v5u4
+                disabled_connection:
+                  summary: Connection is not established
+                  value:
+                    connectionState: disabled
+                feature_unavailable:
+                  summary: Cloud Connection is not available (e.g. FIPS mode)
+                  value:
+                    connectionState: unavailable
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '429':
+          description: Too many requests.
+        '500':
+          description: Internal server error.
+        '503':
+          description: Cloud service unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - onboarding
+      summary: Deactivate cloud connection
+      description: |
+        Deactivates the existing cloud connection.
+
+        This operation disables the connection between the Splunk stack and Cloud Services.
+        After deactivation, the `connectionState` transitions to `disabled`.
+
+        Note: This operation does not delete tenant data or resources in the cloud.
+        It only severs the connection. To reactivate, the full onboarding process
+        (activate + verify) must be completed again.
+      operationId: deleteCloudConnection
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Successfully deactivated. No content returned.
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: No active connection exists.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-connection/activate:
+    post:
+      tags:
+        - onboarding
+      summary: Trigger cloud connection onboarding flow
+      description: |
+        Initiates the onboarding process for a new cloud connection.
+        This step validates the data, and facilitates establishment of trust,
+        between Stack and the Cloud side.
+
+        After this endpoint succeeds, the `connectionState` becomes `otp-requested`.
+
+      operationId: createCloudConnectionIntake
+      requestBody:
+        description: |
+          Configuration details required to initiate the cloud connection onboarding process.
+
+          All fields are required to begin the onboarding workflow.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardingConfig'
+            examples:
+              basic:
+                summary: Basic onboarding request
+                value:
+                  region: us-east-1
+                  otpEmail: admin@example.com
+                  requestedTenantName: my-company-prod
+      security:
+        - bearerAuth: []
+      responses:
+        '202':
+          description: Accepted. Onboarding initiated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardingInitiated'
+              examples:
+                success:
+                  summary: Onboarding initiated successfully
+                  value:
+                    hostname: api.example.splunkcloud.com
+                    deploymentId: 9A625242-6B93-44C8-A78E-DF7E332155DC
+                    requestedTenantName: test-tenant
+                    otpCreationTs: 1770159388
+                    otpExpirySeconds: 10000
+        '400':
+          description: The request isn't valid.
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: The operation isn't authorized.
+        '422':
+          description: The request is unprocessable.
+        '429':
+          description: Too many requests.
+        '500':
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Cloud service unavailable.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-connection/verify:
+    post:
+      tags:
+        - onboarding
+      summary: Establish trust with OTP verification
+      description: |
+        Completes the cloud connection activation.
+
+        This is the second step of the two-step activation process. After the initial
+        onboarding request (POST /v1alpha1/cloud-connection/activate), the user receives an OTP via email.
+        This endpoint verifies that OTP and establishes the trusted connection.
+
+        Upon success, Cloud Services begin establishing connection, creating tenant resources,
+        and configuring access. At this point `connectionState` transitions from `disabled`
+        (where it has been since the initial /activate call) to `in-progress`.
+
+        Once cloud connection becomes fully operational, which may take several minutes, the
+        `connectionState` transitions from 'in-progress' to 'enabled'. Clients should poll
+        the status endpoint (GET /v1alpha1/cloud-connection).
+
+        **Idempotency:** This operation is idempotent when using the same valid OTP.
+        Repeated verification attempts and retry behavior are managed by the Cloud service.
+      operationId: createCloudConnection
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: |
+          OTP verification payload.
+
+          The OTP (One-Time Password) is sent to the admin email address specified
+          during the initial onboarding request. It must be provided here to complete
+          the trust establishment process.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerification'
+            examples:
+              basic:
+                summary: OTP verification request
+                value:
+                  otp: "81ed58ff-c0ac-48d8-9ced-85406d077d38"
+      responses:
+        '202':
+          description: Accepted. Onboarding in progress.
+        '400':
+          description: The request isn't valid.
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: Connection not initiated. Must call /activate first.
+        '409':
+          description: Connection already verified.
+        '410':
+          description: OTP expired.
+        '429':
+          description: Too many requests.
+        '500':
+          description: Internal server error.
+        '503':
+          description: Cloud service unavailable.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-connection/otp-request:
+    post:
+      tags:
+        - onboarding
+      summary: Request a new OTP for cloud connection verification
+      description: |
+        Requests a new One-Time Password (OTP) to be sent to the admin email.
+
+        API reuses the configured parameters from /v1alpha1/cloud-connection. 
+        Makes a backend call to the Commerce API CreateCloudConnectionOTP. 
+      operationId: requestCloudConnectionOTP
+      security:
+        - bearerAuth: []
+      responses:
+        '202':
+          description: Created. OTP activation is created.
+        '400':
+          description: Missing or invalid intake configuration
+        '404':
+          description: No cloud connection intake in progress.
+        '429':
+          description: Too many requests. Wait at least 2 minutes since the last OTP before requesting another.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-connection/{cloudProductName}:
+    get:
+      tags:
+        - discovery
+      summary: Get cloud connection information for a specific product
+      description: |
+        Retrieves detailed information about a specific cloud product connection.
+
+        Returns the tenant, status, license ID, product name, and optionally
+        an access token (only when status is 'activated').
+      operationId: getCloudConnectionProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cloudProductName
+          in: path
+          required: true
+          description: |
+            The cloud product name for which to retrieve connection information.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: my-cloud-product
+      responses:
+        '200':
+          description: Successfully retrieved cloud connection information.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudConnectionDetails'
+              examples:
+                activated:
+                  summary: Activated cloud product connection
+                  value:
+                    tenantName: my-company-analytics
+                    tenantApiHostname: my-company-analytics.api.splunkcloud.com
+                    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                    spID: sp-a1b2c3d4e5f6
+                    status: activated
+                    licenseID: 123e4567-e89b-12d3-a456-426614174000
+                    name: my-cloud-product
+                    productCode: my-cloud-product
+                deactivated:
+                  summary: Deactivated cloud product connection
+                  value:
+                    tenantName: my-company-analytics
+                    spID: sp-a1b2c3d4e5f6
+                    status: deactivated
+                    licenseID: 123e4567-e89b-12d3-a456-426614174000
+                    name: my-cloud-product
+                    productCode: my-cloud-product
+                activation-failed:
+                  summary: Activation failed — only product name and status are returned
+                  value:
+                    name: my-cloud-product
+                    status: activation-failed
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: Cloud product connection not found.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+   
+  /v1alpha1/cloud-connection/{cloudProductName}/status:
+    get:
+      tags:
+        - discovery
+      summary: Get cloud connection status for a specific product
+      description: |
+        Retrieves activation status about a specific cloud product connection.
+
+        Returns product status.
+      operationId: getCloudConnectionProductStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cloudProductName
+          in: path
+          required: true
+          description: |
+            The cloud product name for which to retrieve connection information.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: my-cloud-product
+      responses:
+        '200':
+          description: Successfully retrieved cloud connection status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudConnectionStatus'
+              examples:
+                activated:
+                  summary: Activated cloud product status
+                  value:
+                    status: activated
+                deactivated:
+                  summary: Deactivated cloud product status
+                  value:
+                    status: deactivated
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: Cloud product connection status not found.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-product-connection:
+    get:
+      tags:
+        - discovery
+      summary: List products eligible for cloud activations
+      description: |
+        Retrieves list of products eligible for cloud activation.
+
+        Returns an array of cloud connection eligible products, each containing
+        license XML, add-ons, cloud product name, and activation status.
+      operationId: listCloudProductActivations
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Successfully retrieved cloud products list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CloudProductActivationDiscovery'
+              examples:
+                success:
+                  summary: Activated cloud product
+                  value:
+                    - license_xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<license>\n<signature>...</signature>\n<payload>\n<type>enterprise</type>\n<guid>A92567E1-A936-4E42-8FD6-DE125459794D</guid>\n</payload>\n</license>"
+                      add_ons:
+                        es_editions_premier:
+                          type: "app"
+                          parameters:
+                            cloud_connected: "1"
+                            code: "es_editions_premier_v1"
+                            guid: "B85C2EBC-15F0-4617-89C2-581881CB513E"
+                            tier: "premier"
+                      cloud_product_name: "es_editions_premier"
+                      status: "activated"
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags:
+        - onboarding
+      summary: Activate a cloud product connection
+      description: |
+        Activates a cloud product connection using license information.
+
+        This endpoint accepts license XML and addons information to establish
+        a connection to a specific cloud product. Upon successful activation,
+        the cloud product name is returned.
+      operationId: activateCloudProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        description: |
+          License information required to activate the cloud product connection.
+
+          The license XML contains the necessary credentials and configuration
+          to establish trust with the cloud product.
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CloudProductActivation'
+            examples:
+              basic:
+                summary: Activate cloud product
+                value:
+                  license_xml: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<license>\n<signature>...</signature>\n<payload>\n<type>enterprise</type>\n<guid>A92567E1-A936-4E42-8FD6-DE125459794D</guid>\n</payload>\n</license>"
+                  add_ons:
+                    es_editions_premier:
+                      type: "app"
+                      parameters:
+                        cloud_connected: "1"
+                        code: "es_editions_premier_v1"
+                        guid: "B85C2EBC-15F0-4617-89C2-581881CB513E"
+                        tier: "premier"
+                  cloud_product_name: "es_editions_premier"
+      responses:
+        '202':
+          description: Accepted. Cloud product activation triggered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CloudProductActivated'
+              examples:
+                success:
+                  summary: Product activation triggered
+                  value:
+                    cloud-product-name: my-cloud-product
+        '400':
+          description: The request isn't valid.
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '409':
+          description: Product is already activated.
+        '429':
+          description: Too many requests. Rate limit exceeded.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1alpha1/cloud-product-connection/{cloudProductName}:
+    delete:
+      tags:
+        - onboarding
+      summary: Deactivate a cloud product connection
+      description: |
+        Deactivates an existing cloud product connection.
+
+        This operation disables the connection to the specified cloud product.
+        The cloud product name must match an active connection.
+      operationId: deactivateCloudProduct
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cloudProductName
+          in: path
+          required: true
+          description: |
+            The cloud product name to deactivate.
+            This must match an existing active cloud product connection.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: my-cloud-product
+      responses:
+        '204':
+          description: Successfully deactivated. No content returned.
+        '401':
+          description: The user isn't authenticated.
+        '403':
+          description: The operation isn't authorized.
+        '404':
+          description: Cloud product connection not found.
+        '500':
+          description: Internal server error.
+        default:
+          description: The reason for the error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        code:
+          type: string
+          description: Cloud service error code
+          example: TENANT_EXISTS
+        message:
+          type: string
+          description: Human readable error message
+          example: The tenant name already exists
+
+    OnboardingInitiated:
+      type: object
+      required:
+        - hostname
+        - deploymentId
+        - requestedTenantName
+        - otpCreationTs
+        - otpExpirySeconds
+      properties:
+        hostname:
+          type: string
+          description: |
+            The hostname of the current splunk instance.
+          example: example.splunkcloud.com
+          minLength: 1
+          maxLength: 253
+        deploymentId:
+          type: string
+          format: uuid
+          description: |
+            Unique deployment identifier of the current splunk instance
+          example: 9A625242-6B93-44C8-A78E-DF7E332155DC
+        requestedTenantName:
+          type: string
+          description: |
+            Preferred vanity name for the tenant, chosen by the user.
+          example:
+            example: my-company-analytics
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          minLength: 2
+          maxLength: 15
+        otpCreationTs:
+          type: integer
+          format: int64
+          description: |
+            Monotonic clock value representing when the OTP was dispatched.
+            This timestamp is used to track the OTP dispatch time and can be used
+            to determine OTP expiration or time elapsed since dispatch.
+          example: 1673456789
+        otpExpirySeconds:
+          type: integer
+          format: int64
+          description: |
+            Number of seconds returned by the SCS onboarding endpoint indicating when the
+            OTP will expire from when it was first issued.
+          example: 15000
+
+
+    OnboardingConfig:
+      type: object
+      required:
+        - region
+        - otpEmail
+        - requestedTenantName
+      properties:
+        region:
+          type: string
+          description: |
+            The cloud region for deployment.
+            Must be a valid AWS region identifier.
+          example: us-east-1
+          pattern: ^[a-z]{2}-[a-z]+-[0-9]+$
+          minLength: 9
+          maxLength: 20
+        otpEmail:
+          type: string
+          description: |
+            Email address for OTP (One-Time Password) verification.
+            The admin will receive the OTP and tenant information at this address.
+          example: admin@example.com
+          minLength: 3
+          maxLength: 254
+        requestedTenantName:
+          type: string
+          description: |
+            Preferred identifier for the tenant.
+
+            **Requirements:**
+            - Length: 2-15 characters
+            - Can contain lowercase letters, numbers, and hyphens
+            - Must start and end with a letter or number
+            - Cannot contain consecutive hyphens
+            - Cannot start with "region-" prefix (reserved for SCS infrastructure; validated in application code)
+            - Does not need to be unique, commerce will modify the name to be unique
+              and return it.
+          example: my-company-analytics
+          pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+          minLength: 2
+          maxLength: 15
+
+    OTPVerification:
+      type: object
+      required:
+        - otp
+      properties:
+        otp:
+          type: string
+          format: uuid
+          description: |
+            The One-Time Password sent to the admin email during onboarding.
+            This password is used to verify ownership and establish trust with Commerce.
+            Must be a valid UUIDv4.
+          example: "123e4567-e89b-12d3-a456-426614174000"
+
+    OTPRequestResponse:
+      type: object
+      required:
+        - tenant
+        - otpCreationTs
+      properties:
+        tenant:
+          type: string
+          description: |
+            The tenant identifier for which the OTP was generated.
+          example: my-company-analytics
+          minLength: 3
+          maxLength: 63
+        otpCreationTs:
+          type: integer
+          format: int64
+          description: |
+            Monotonic clock value representing when the OTP was dispatched.
+            This timestamp is used to track the OTP dispatch time and can be used
+            to determine OTP expiration or time elapsed since dispatch.
+          example: 1673456789
+
+    CloudConnectionEstablished:
+      type: object
+      required:
+        - connectionState
+        - tenant
+        - region
+      properties:
+        connectionState:
+          type: string
+          description: |
+            The state of the cloud connection after successful establishment.
+            Will be 'established' upon successful completion.
+          example: established
+          enum:
+            - established
+        tenant:
+          type: string
+          description: |
+            The tenant identifier for the established cloud connection.
+          example: my-company-analytics
+          minLength: 3
+          maxLength: 63
+        region:
+          type: string
+          description: |
+            The cloud region where the connection is established.
+            AWS region identifier.
+          example: us-east-1
+          pattern: ^[a-z]{2}-[a-z]+-[0-9]+$
+
+    CloudProductActivation:
+      type: object
+      required:
+        - license_xml
+        - add_ons
+        - cloud_product_name
+      properties:
+        license_xml:
+          type: string
+          description: |
+            License XML containing credentials and configuration
+            required to establish trust with the cloud product.
+            This is the full XML license from /services/product-license.
+          example: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<license>...</license>"
+          minLength: 1
+        add_ons:
+          description: |
+            Dictionary of add-ons with their parameters.
+            Each add-on contains type and parameters including cloud_connected, code, guid, and tier.
+            This is treated as a generic object/dictionary.
+          example:
+            es_editions_premier:
+              type: "app"
+              parameters:
+                cloud_connected: "1"
+                code: "es_editions_premier_v1"
+                guid: "B85C2EBC-15F0-4617-89C2-581881CB513E"
+                tier: "premier"
+        cloud_product_name:
+          type: string
+          description: |
+            The name of the cloud product to activate.
+            This should match one of the keys in the add_ons dictionary.
+          example: "es_editions_premier"
+
+    CloudProductActivationDiscovery:
+      allOf:
+        - $ref: '#/components/schemas/CloudProductActivation'
+        - $ref: '#/components/schemas/CloudConnectionStatus'
+        - type: object
+          properties:
+            full_name:
+              type: string
+              nullable: true
+              description: |
+                Human-readable product name.
+              example: Splunk Enterprise Security Essentials
+            description:
+              type: string
+              nullable: true
+              description: |
+                Short marketing description of the product.
+              example: >-
+                Detect threats, triage alerts, investigate findings, and manage your response in a single
+                platform enhanced with an AI Assistant and agentic automation across the entire TDIR workflow.
+            href:
+              type: string
+              nullable: true
+              description: |
+                Shortcut identifier used to resolve the product documentation URL.
+              example: learnmore.enterprisesecurity
+
+    CloudProductActivated:
+      type: object
+      required:
+        - cloudProductName
+      properties:
+        cloudProductName:
+          type: string
+          description: |
+            The name of the cloud product that was activated.
+          example: my-cloud-product
+          minLength: 1
+          maxLength: 100
+
+    CloudConnectionStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          description: |
+            Current status of the cloud product connection.
+
+            Common values include:
+            - `activated`: Connection is active and operational
+            - `deactivated`: Connection has been deactivated
+            - `activation-in-progress`: Connection activation is in progress
+            - `activation-failed`: Connection activation has failed
+            - `unavailable`: Connection is unavailable or being removed
+          example: activated
+
+    CloudConnectionDetails:
+      type: object
+      description: |
+        Cloud product connection details. When status is `activation-failed`, only
+        `name` and `status` are returned; all other fields are absent.
+      required:
+        - status
+        - name
+      properties:
+        tenantName:
+          type: string
+          description: |
+            The tenant identifier for this cloud connection.
+            This is the unique name assigned during onboarding.
+          example: my-company-analytics
+          minLength: 3
+          maxLength: 63
+        tenantApiHostname:
+          type: string
+          description: |
+            The tenant hostname for this cloud connection.
+            Base hostname for tenant API calls.
+          example: api.my-company.splunkcloud.com
+          minLength: 1
+          maxLength: 255
+        token:
+          type: string
+          description: |
+            Access token for the cloud connection.
+            This field is only present when status is 'activated'.
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+          minLength: 1
+        spID:
+          type: string
+          description: |
+            Service Principal identifier.
+          example: sp-a1b2c3d4e5f6
+          minLength: 1
+          maxLength: 100
+        status:
+          type: string
+          description: |
+            Current status of the cloud product connection.
+
+            Common values include:
+            - `activated`: Connection is active and operational
+            - `deactivated`: Connection has been deactivated
+            - `activation-in-progress`: Connection activation is in progress
+            - `activation-failed`: Connection activation has failed
+            - `unavailable`: Connection is unavailable or being removed
+          example: activated
+        licenseID:
+          type: string
+          format: uuid
+          description: |
+            The license identifier (GUID) for this cloud product connection.
+          example: 123e4567-e89b-12d3-a456-426614174000
+        name:
+          type: string
+          description: |
+            The cloud product name.
+          example: my-cloud-product
+          minLength: 1
+          maxLength: 100
+        productCode:
+          type: string
+          description: |
+            Product code for the cloud product connection.
+          example: my-cloud-product
+          minLength: 1
+          maxLength: 100
+
+    CloudConnectionInfo:
+      type: object
+      required:
+        - connectionState
+      properties:
+        tenant:
+          type: string
+          description: |
+            The tenant identifier for this cloud connection.
+            This is the unique name assigned during onboarding.
+          example: my-company-analytics
+          minLength: 3
+          maxLength: 63
+        connectionState:
+          type: string
+          enum:
+            - enabled
+            - disabled
+            - otp-requested
+            - in-progress
+            - unavailable
+            - create-failed
+          description: |
+            Current state of the cloud connection.
+
+            - `enabled`: Connection is active and operational
+            - `disabled`: Connection has been deactivated by user
+            - `otp-requested`: An admin email with the OTP has been requested
+            - `in-progress`: Connection is being established (e.g., awaiting OTP verification)
+            - `unavailable`: The system is unable to connect to SCS
+            - `create-failed`: Connection during the establishing trust step failed to be established
+          example: enabled
+        region:
+          type: string
+          description: |
+            The cloud region where this connection is deployed.
+            AWS region identifier.
+          example: us-east-1
+          pattern: ^[a-z]{2}-[a-z]+-[0-9]+$
+        bootstrapLicenseID:
+          type: string
+          format: uuid
+          description: |
+            The bootstrap license identifier extracted from the Essentials license file.
+            This is the license ID used to establish trust with the cloud services.
+          example: 123e4567-e89b-12d3-a456-426614174000
+        spID:
+          type: string
+          description: |
+            Service Principal identifier.
+            Unique identifier for the Splunk deployment.
+          example: sp-a1b2c3d4e5f6
+          minLength: 1
+          maxLength: 100
+        otpCreationTs:
+          type: integer
+          format: int64
+          description: |
+            Monotonic clock value representing when the OTP was dispatched.
+            This timestamp is used to track the OTP dispatch time and can be used
+            to determine OTP expiration or time elapsed since dispatch.
+          example: 1673456789
+        otpEmail:
+          type: string
+          description: |
+            Email address where OTP was sent.
+            Only available when connectionState is in ['otp-requested', 'in-progress', 'unavailable', 'enabled'].
+          example: admin@example.com
+          minLength: 3
+        requestedTenantName:
+          type: string
+          description: |
+            The requested name of the tenant during the activation step.
+            Human-readable tenant identifier.
+          example: my-company-analytics
+          minLength: 2
+          maxLength: 100
+        tenantName:
+          type: string
+          description: |
+            The name of the tenant on SCS.
+            Human-readable tenant identifier.
+          example: my-company-analytics
+          minLength: 3
+          maxLength: 100
+        otpExpirySeconds:
+          type: integer
+          description: |
+            Number of seconds until OTP expires.
+            Used to determine if OTP is still valid.
+          example: 900
+        tenantApiHostname:
+          type: string
+          description: |
+            The tenant hostname for this cloud connection.
+            Base hostname for tenant API calls.
+          example: api.my-company.splunkcloud.com
+          minLength: 1
+        regionAuthHostname:
+          type: string
+          description: |
+            The region authentication hostname for this cloud connection.
+            Base hostname for region authentication calls.
+          example: region-us-east-1.auth.splunkcloud.com
+          minLength: 1
+        deploymentId:
+          type: string
+          description: |
+            The deployment identifier for this cloud connection.
+            Unique identifier for the Splunk deployment.
+          example: deployment-a1b2c3d4e5f6
+          minLength: 1
+          maxLength: 100
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearerAuth: []

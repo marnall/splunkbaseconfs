@@ -1,0 +1,165 @@
+<form version="1.1" script="license_guard.js,mcp_query.js,aiqa_i18n_dom.js" stylesheet="mcp_query.css">
+  <label>AI Query Assistant for Splunk</label>
+  <description>Natural language querying for Splunk</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="text" token="natural_language" searchWhenChanged="false">
+      <label>Natural Language Query</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <html>
+        <!-- v4: Multi-turn conversation bar. The dropdown lists this user's
+             recent threads; selecting one becomes the active thread_id sent
+             with every subsequent /mcp_query call. -->
+        <div id="conversation_bar" class="aiqa-conversation-bar">
+          <div class="aiqa-conv-left">
+            <span class="aiqa-conv-label aiqa-i18n" data-key="conv.label">Conversation:</span>
+            <span id="conv_title" class="aiqa-conv-title aiqa-i18n" data-key="conv.new">New conversation</span>
+            <span id="conv_thread_id" class="aiqa-conv-id"></span>
+          </div>
+          <div class="aiqa-conv-right">
+            <select id="conv_recent_select" class="aiqa-conv-select">
+              <!-- &lt;option&gt; can't host SVG, so the placeholder stays text-only -->
+              <option value="" class="aiqa-i18n" data-key="conv.recent.placeholder">Recent conversations…</option>
+            </select>
+            <button id="btn_new_conv" type="button" class="btn btn-sm aiqa-conv-new-btn">
+              <svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 3v10M3 8h10"/></svg>
+              <span class="aiqa-i18n" data-key="conv.new.btn">New</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="mcp_query_app">
+
+        <!-- Suggested Questions. data-query stays English so the AI prompt is
+             unchanged across locales; only the visible label is translated. -->
+        <div id="suggestions_container" style="margin-bottom:18px;">
+          <div style="font-size:13px; color:#888; margin-bottom:8px;"><svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 13.5h3M6 11.5c-2-1.2-3-2.7-3-4.7a5 5 0 0 1 10 0c0 2-1 3.5-3 4.7v.5h-4z"/></svg> <span class="aiqa-i18n" data-key="query.suggest.intro">Try these questions:</span></div>
+          <div id="suggestions_list" class="suggestions-wrap">
+            <span class="suggestion-tag aiqa-i18n" data-query="What indexes exist in the system" data-key="query.suggest.s1">What indexes exist in the system</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Show error logs in the last hour" data-key="query.suggest.s2">Show error logs in the last hour</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Failed login users in the last 24 hours" data-key="query.suggest.s3">Failed login users in the last 24 hours</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Event count by sourcetype in the last hour" data-key="query.suggest.s4">Event count by sourcetype</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Internal index data volume trend in the last 24 hours" data-key="query.suggest.s5">Internal index data volume trend</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="What sourcetypes exist in the system" data-key="query.suggest.s6">System sourcetypes</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Most frequent warnings in the last hour" data-key="query.suggest.s7">Most frequent warnings</span>
+            <span class="suggestion-tag aiqa-i18n" data-query="Disk usage by index" data-key="query.suggest.s8">Disk usage by index</span>
+          </div>
+        </div>
+
+        <!-- Progress Bar Area -->
+        <div id="progress_container" style="display:none; margin-bottom:15px;">
+          <div id="progress_bar_wrapper" style="background:#e9ecef; border-radius:6px; height:24px; overflow:hidden; position:relative;">
+            <div id="progress_bar" style="height:100%; width:0%; transition:width 0.5s ease; border-radius:6px;"></div>
+            <span id="progress_text" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); font-size:12px; font-weight:600; color:#333;"></span>
+          </div>
+          <div id="progress_steps" style="margin-top:10px; font-size:13px; color:#555;">
+            <div id="step_parse" class="progress-step"><span class="step-icon">⏳</span> <span class="aiqa-i18n" data-key="query.progress.parse">Parsing natural language query...</span></div>
+            <div id="step_generate" class="progress-step" style="display:none;"><span class="step-icon">⏳</span> <span class="aiqa-i18n" data-key="query.progress.generate">AI generating SPL statement...</span></div>
+            <div id="step_security" class="progress-step" style="display:none;"><span class="step-icon">⏳</span> <span class="aiqa-i18n" data-key="query.progress.security">Security check...</span></div>
+            <div id="step_execute" class="progress-step" style="display:none;"><span class="step-icon">⏳</span> <span class="aiqa-i18n" data-key="query.progress.execute">Executing query...</span></div>
+            <div id="step_render" class="progress-step" style="display:none;"><span class="step-icon">⏳</span> <span class="aiqa-i18n" data-key="query.progress.render">Rendering results...</span></div>
+          </div>
+        </div>
+
+        <!-- AI Reasoning Process -->
+        <div id="reasoning_container" style="display:none; margin-bottom:15px; background:#f0f7ff; border:1px solid #c2deff; border-radius:6px; padding:12px;">
+          <h4 style="margin:0 0 8px 0; color:#1a73e8;"><svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 13.5h3M6 11.5c-2-1.2-3-2.7-3-4.7a5 5 0 0 1 10 0c0 2-1 3.5-3 4.7v.5h-4z"/></svg> <span class="aiqa-i18n" data-key="query.reasoning.title">AI Reasoning Process</span></h4>
+          <p id="reasoning_text" style="margin:0; font-size:13px; color:#444; white-space:pre-wrap;"></p>
+        </div>
+
+        <!-- v4: Clarification banner. Shown when the agent's structured output
+             returns requires_clarification=true. The user's reply is sent as a
+             follow-up turn on the same thread_id. -->
+        <div id="clarification_container" class="aiqa-clarification" style="display:none;">
+          <h4 class="aiqa-clarification-title"><svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.2 6a2 2 0 1 1 2.4 2c-.8.3-1.1.8-1.1 1.6V10M8 12.5h.01M14 8a6 6 0 1 1-12 0 6 6 0 0 1 12 0z"/></svg> <span class="aiqa-i18n" data-key="conv.clarify.title">Need more details</span></h4>
+          <p id="clarification_question_text" class="aiqa-clarification-question"></p>
+          <textarea id="clarification_answer_input" class="aiqa-clarification-input" rows="2"></textarea>
+          <div class="aiqa-clarification-actions">
+            <button id="btn_clarification_submit" type="button" class="btn btn-primary btn-sm">
+              <span class="aiqa-i18n" data-key="conv.clarify.refine">Refine answer</span>
+            </button>
+            <button id="btn_clarification_cancel" type="button" class="btn btn-default btn-sm">
+              <span class="aiqa-i18n" data-key="conv.clarify.cancel">Cancel</span>
+            </button>
+          </div>
+        </div>
+
+        <h3><span class="aiqa-i18n" data-key="query.spl.title">Generated SPL</span></h3>
+        <div id="spl_container">
+          <pre id="spl_output" style="background:#f5f5f5; padding:10px; border-radius:4px;"><code id="spl_code"><span class="aiqa-i18n" data-key="query.spl.placeholder">Enter a natural language query and click Submit, or click a suggested question above</span></code></pre>
+        </div>
+        <div id="explanation_container" style="margin-top:10px;">
+          <p id="explanation_text"></p>
+        </div>
+        <div id="risk_container" style="margin-top:10px;">
+          <span id="risk_badge"></span>
+        </div>
+        <!-- v4: expected_fields chips — surfaced by the agent so users see what
+             column names the SPL is supposed to return before they execute. -->
+        <div id="expected_fields_container" class="aiqa-expected-fields" style="display:none;">
+          <span class="aiqa-expected-label aiqa-i18n" data-key="query.expectedFields.label">Expected fields:</span>
+          <span id="expected_fields_chips"></span>
+        </div>
+
+        <!-- v4 (supervisor): post-execution Explainer narration. Only rendered
+             when the response payload includes `explainer` (i.e. ai.enable_supervisor
+             AND ai.enable_explainer AND the SPL returned at least one row). -->
+        <div id="explainer_container" class="aiqa-explainer" style="display:none;">
+          <h4 class="aiqa-explainer-title">
+            <svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6.5 13.5h3M6 11.5c-2-1.2-3-2.7-3-4.7a5 5 0 0 1 10 0c0 2-1 3.5-3 4.7v.5h-4z"/></svg>
+            <span class="aiqa-i18n" data-key="query.explainer.title">Result summary</span>
+          </h4>
+          <p id="explainer_summary" class="aiqa-explainer-summary"></p>
+          <div id="explainer_findings_block" style="display:none;">
+            <div class="aiqa-explainer-section-label aiqa-i18n" data-key="query.explainer.findings">Key findings</div>
+            <ul id="explainer_findings" class="aiqa-explainer-list"></ul>
+          </div>
+          <div id="explainer_followups_block" style="display:none;">
+            <div class="aiqa-explainer-section-label aiqa-i18n" data-key="query.explainer.followups">Follow-up suggestions</div>
+            <ul id="explainer_followups" class="aiqa-explainer-list"></ul>
+          </div>
+        </div>
+
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Query Results</title>
+      <html>
+        <div id="results_controls" style="display:none; margin-bottom:10px;">
+          <button id="btn_table_view" class="btn btn-primary btn-sm active" style="margin-right:5px;"><svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2 4h12v8H2zM2 7.3h12M2 10.6h12M5.3 4v8M10.7 4v8"/></svg> <span class="aiqa-i18n" data-key="query.view.table">Table</span></button>
+          <button id="btn_chart_view" class="btn btn-default btn-sm"><svg class="aiqa-icon" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 13V8.5M7 13V4M11 13V7.5"/></svg> <span class="aiqa-i18n" data-key="query.view.chart">Chart</span></button>
+          <span id="results_summary" style="margin-left:15px; color:#666; font-size:13px;"></span>
+        </div>
+        <div id="results_table_container" style="display:none; overflow-x:auto;">
+          <table id="results_table" class="table table-striped table-bordered" style="width:100%;"></table>
+        </div>
+        <div id="results_chart_container" style="display:none; height:400px;"></div>
+        <div id="results_placeholder" style="text-align:center; color:#999; padding:20px;">
+          <p><span class="aiqa-i18n" data-key="query.result.placeholder">No results yet. Enter a natural language query above and click Submit.</span></p>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Execution Stats</title>
+      <html>
+        <div id="stats_container">
+          <p><strong><span class="aiqa-i18n" data-key="query.stats.count">Result Count:</span></strong> <span id="result_count">-</span></p>
+          <p><strong><span class="aiqa-i18n" data-key="query.stats.time">Execution Time:</span></strong> <span id="execution_time">-</span></p>
+          <p><strong><span class="aiqa-i18n" data-key="query.stats.mode">Mode:</span></strong> <span id="query_mode">-</span></p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

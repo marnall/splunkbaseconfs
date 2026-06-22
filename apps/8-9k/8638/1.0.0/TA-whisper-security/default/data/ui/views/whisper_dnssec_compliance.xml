@@ -1,0 +1,224 @@
+<dashboard version="2">
+  <label>Whisper - DNSSEC Compliance</label>
+  <description>DNSSEC deployment status and signing algorithm monitoring per NIST SP 800-81 Rev 3.</description>
+  <definition><![CDATA[
+
+
+{
+  "title": "Whisper - DNSSEC Compliance",
+  "description": "DNSSEC deployment status and signing algorithm monitoring per NIST SP 800-81 Rev 3.",
+  "dataSources": {
+    "ds_adoption_rate": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" | dedup domain sortby -_time | stats count AS total, count(eval(dnssec_enabled=\"true\")) AS enabled | eval percentage=round((enabled/total)*100, 1) | eval display=percentage.\"%\" | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_deprecated": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" dnssec_enabled=\"true\" | dedup domain sortby -_time | where match(algorithm, \"RSASHA1|DSA\") | stats dc(domain) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_no_dnssec": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" dnssec_enabled=\"false\" | dedup domain sortby -_time | stats dc(domain) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_status_table": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" domain=$domain_filter$ | dedup domain sortby -_time | eval status=case(dnssec_enabled=\"false\", \"Not Deployed\", match(algorithm, \"RSASHA1|DSA\"), \"Deprecated Algorithm\", 1=1, \"Compliant\") | eval nist_800_81=case(status=\"Compliant\", \"Meets Requirements\", status=\"Deprecated Algorithm\", \"Upgrade Needed\", status=\"Not Deployed\", \"Not Compliant\") | table domain, dnssec_enabled, algorithm, status, nist_800_81, last_checked | sort status",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_adoption_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" | timechart span=1d dc(eval(if(dnssec_enabled=\"true\", domain, null()))) AS \"DNSSEC Enabled\" dc(eval(if(dnssec_enabled=\"false\", domain, null()))) AS \"DNSSEC Not Deployed\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_algorithm_dist": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:dnssec_compliance\" dnssec_enabled=\"true\" | dedup domain sortby -_time | stats count BY algorithm",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    },
+    "input_domain_filter": {
+      "type": "input.text",
+      "options": {
+        "token": "domain_filter",
+        "defaultValue": "*"
+      },
+      "title": "Domain Filter"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range",
+      "input_domain_filter"
+    ],
+    "structure": [
+      {
+        "item": "viz_adoption_rate",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_deprecated",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_no_dnssec",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_status_table",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_adoption_trend",
+        "position": {
+          "x": 0,
+          "y": 400,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_algorithm_dist",
+        "position": {
+          "x": 600,
+          "y": 400,
+          "w": 600,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_adoption_rate": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_adoption_rate"
+      },
+      "title": "DNSSEC Adoption Rate",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#65a637",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_deprecated": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_deprecated"
+      },
+      "title": "Deprecated Algorithms",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f1813f",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_no_dnssec": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_no_dnssec"
+      },
+      "title": "Domains Without DNSSEC",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#d41f1c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_status_table": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_status_table"
+      },
+      "title": "DNSSEC Status by Domain"
+    },
+    "viz_adoption_trend": {
+      "type": "viz.area",
+      "dataSources": {
+        "primary": "ds_adoption_trend"
+      },
+      "title": "DNSSEC Adoption Over Time",
+      "options": {
+        "seriesColors": ["#65a637", "#d41f1c"],
+        "stackMode": "stacked"
+      }
+    },
+    "viz_algorithm_dist": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_algorithm_dist"
+      },
+      "title": "Signing Algorithm Distribution",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f"]
+      }
+    }
+  }
+}
+
+
+  ]]></definition>
+</dashboard>

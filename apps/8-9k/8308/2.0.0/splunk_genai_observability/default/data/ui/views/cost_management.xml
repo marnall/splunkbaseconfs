@@ -1,0 +1,248 @@
+<form version="1.1" theme="dark">
+  <label>Cost Management</label>
+  <description>Track and optimize GenAI costs - analyze spending by model, workflow, and team</description>
+  <!-- Cost KPIs -->
+  <!-- Cost Trends -->
+  <!-- Cost Breakdown -->
+  <!-- Model Cost Table -->
+  <!-- Cost Optimization Recommendations -->
+  <!-- Hourly Heatmap -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="model_filter" searchWhenChanged="true">
+      <label>Model</label>
+      <choice value="*">All Models</choice>
+      <default>*</default>
+      <search>
+        <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM by GenAI_Span.model_name | rename GenAI_Span.model_name as model_name | sort - count</query>
+        <earliest>-30d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>model_name</fieldForLabel>
+      <fieldForValue>model_name</fieldForValue>
+    </input>
+    <input type="dropdown" token="workflow_filter" searchWhenChanged="true">
+      <label>Workflow</label>
+      <choice value="*">All Workflows</choice>
+      <default>*</default>
+      <search>
+        <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM by GenAI_Span.workflow_name | rename GenAI_Span.workflow_name as workflow_name | sort - count</query>
+        <earliest>-30d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>workflow_name</fieldForLabel>
+      <fieldForValue>workflow_name</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total Cost</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | stats sum(estimated_cost) as total_cost</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[100,500,1000]</option>
+        <option name="unit">$</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Cost per Request</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok count as requests from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | stats sum(estimated_cost) as total_cost sum(requests) as requests | eval cost_per_request = total_cost / requests</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[0.001,0.01,0.1]</option>
+        <option name="unit">$</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total Tokens</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.total_tokens) as total_tokens from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ | eval total_tokens_display = case(total_tokens &gt;= 1000000000, round(total_tokens/1000000000, 2)."B", total_tokens &gt;= 1000000, round(total_tokens/1000000, 2)."M", total_tokens &gt;= 1000, round(total_tokens/1000, 2)."K", true(), total_tokens)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="field">total_tokens_display</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x006d9c","0x3c444d","0x3c444d","0x3c444d","0x3c444d"]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Daily Average</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by _time span=1d GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | timechart span=1d sum(estimated_cost) as daily_cost | stats avg(daily_cost) as avg_daily</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50,100]</option>
+        <option name="unit">$/day</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Projected Monthly</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | stats sum(estimated_cost) as weekly_cost | eval projected_monthly = (weekly_cost / 7) * 30</query>
+          <earliest>-7d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="numberPrecision">0.000</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[500,2000,5000]</option>
+        <option name="unit">$/month</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Cost by Model</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | stats sum(estimated_cost) as cost by model_name | sort - cost</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Cost by Workflow</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.workflow_name GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | stats sum(estimated_cost) as cost by workflow_name | sort - cost | head 10</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Input vs Output Token Cost</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval input_cost=(coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0), output_cost=(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0) | stats sum(input_cost) as "Input Cost", sum(output_cost) as "Output Cost"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Daily Cost Trend</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by _time span=1d GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | timechart span=1d sum(estimated_cost) as "Daily Cost" | eventstats avg("Daily Cost") as "Average"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">"Average"</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Cost ($)</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.showDataLabels">minmax</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Cumulative Cost</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by _time span=1d GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | timechart span=1d sum(estimated_cost) as daily_cost | streamstats sum(daily_cost) as "Cumulative Cost"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Cumulative Cost ($)</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Model Cost Analysis</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as requests sum(GenAI_Span.input_tokens) as total_input sum(GenAI_Span.output_tokens) as total_output avg(GenAI_Span.duration_ms) as avg_latency from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval total_cost=(coalesce(total_input,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(total_output,0)/1000)*coalesce(output_price_per_1k,0) | eval avg_cost_per_request=total_cost/requests | eval total_tokens = total_input + total_output | eval cost_per_1k_tokens = round((total_cost / total_tokens) * 1000, 4) | eval total_cost = round(total_cost, 2) | eval avg_cost_per_request = round(avg_cost_per_request, 5) | eval avg_latency = round(avg_latency, 0) | sort - total_cost | table model_name, requests, total_tokens, total_cost, avg_cost_per_request, cost_per_1k_tokens, avg_latency, input_price_per_1k, output_price_per_1k | rename model_name as "Model", requests as "Requests", total_tokens as "Total Tokens", total_cost as "Total Cost", avg_cost_per_request as "Avg Cost/Request", cost_per_1k_tokens as "Cost per 1K Tokens", avg_latency as "Avg Latency (ms)", input_price_per_1k as "Input Price/1K", output_price_per_1k as "Output Price/1K"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="number" field="Total Tokens">
+          <option name="precision">0</option>
+        </format>
+        <format type="color" field="Total Cost ($)">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Cost Optimization Opportunities</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as requests sum(GenAI_Span.input_tokens) as sum_in sum(GenAI_Span.output_tokens) as sum_out avg(GenAI_Span.input_tokens) as avg_input avg(GenAI_Span.output_tokens) as avg_output from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by GenAI_Span.workflow_name GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval cost=(coalesce(sum_in,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(sum_out,0)/1000)*coalesce(output_price_per_1k,0) | eval recommendation = case( avg_input &gt; 2000 AND match(model_name, "gpt-4"), "Consider using GPT-4-turbo or GPT-4o for lower costs", avg_output &gt; 500 AND match(model_name, "gpt-4"), "High output usage - evaluate if GPT-3.5 suffices", avg_input &gt; 5000, "Large prompts - consider summarization or chunking", requests &gt; 10000 AND cost &gt; 100, "High volume workflow - evaluate batch processing", true(), "No immediate optimizations identified" ) | eval potential_savings = case( match(model_name, "gpt-4o") AND NOT match(model_name, "mini"), round(cost * 0.3, 2), match(model_name, "gpt-4") AND NOT match(model_name, "turbo"), round(cost * 0.5, 2), true(), 0 ) | where potential_savings &gt; 0 | sort - potential_savings | table workflow_name, model_name, requests, cost, avg_input, avg_output, recommendation, potential_savings | rename workflow_name as "Workflow", model_name as "Current Model", requests as "Requests", cost as "Current Cost ($)", avg_input as "Avg Input Tokens", avg_output as "Avg Output Tokens", recommendation as "Recommendation", potential_savings as "Potential Savings"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Potential Savings ($)">
+          <colorPalette type="minMidMax" maxColor="#53A051" minColor="#FFFFFF"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Cost Heatmap by Hour</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true sum(GenAI_Span.input_tokens) as in_tok sum(GenAI_Span.output_tokens) as out_tok from datamodel=GenAI_Traces where GenAI_Span.span_type=LLM GenAI_Span.model_name=$model_filter$ GenAI_Span.workflow_name=$workflow_filter$ by _time span=1h GenAI_Span.model_name | rename GenAI_Span.* as * | lookup genai_model_pricing model_name OUTPUT input_price_per_1k output_price_per_1k | eval estimated_cost=round((coalesce(in_tok,0)/1000)*coalesce(input_price_per_1k,0)+(coalesce(out_tok,0)/1000)*coalesce(output_price_per_1k,0),6) | eval hour = strftime(_time, "%H") | eval day = strftime(_time, "%A") | stats sum(estimated_cost) as cost by day, hour | xyseries day hour cost</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.axisTitleX.text">Hour of Day</option>
+        <option name="charting.axisTitleY.text">Cost ($)</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+</form>

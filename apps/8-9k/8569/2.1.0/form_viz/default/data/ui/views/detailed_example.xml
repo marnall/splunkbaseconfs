@@ -1,0 +1,746 @@
+<form version="1.1" theme="dark">
+  <label>Saved Search Review</label>
+  <description>Multi-section review workflow for any Splunk saved search. Reads from /servicesNS/-/search/saved/searches; change the namespace to widen or narrow the search scope.</description>
+
+  <!-- Seed Reviewer ID from the Splunk environment token. Setting both form.*
+       and submitted tokens keeps the visible input and form-name tokens in sync. -->
+  <search id="reviewer_token_seed">
+    <query><![CDATA[
+| makeresults
+| eval reviewer="$env:user$"
+| eval reviewer=if(isnull(reviewer) OR reviewer="" OR reviewer="$"."env:user"."$", "unknown_reviewer", reviewer)
+| table reviewer
+    ]]></query>
+    <done>
+      <condition match="$job.resultCount$ &gt; 0">
+        <unset token="form.analyst_tok"></unset>
+        <unset token="analyst_tok"></unset>
+        <set token="form.reviewer_id_tok">$result.reviewer$</set>
+        <set token="reviewer_id_tok">$result.reviewer$</set>
+      </condition>
+    </done>
+  </search>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       BASE SEARCH — Saved Search catalog
+       Reads all saved searches in the `search` app namespace. To widen
+       to all apps, change the URL to /servicesNS/-/-/saved/searches.
+       ═══════════════════════════════════════════════════════════════ -->
+  <search id="base_saved_searches">
+    <query><![CDATA[
+| rest splunk_server=local /servicesNS/-/search/saved/searches
+| eval app='eai:acl.app'
+| eval owner='eai:acl.owner'
+| eval sharing='eai:acl.sharing'
+| eval read_perms=mvjoin('eai:acl.perms.read', ", ")
+| eval write_perms=mvjoin('eai:acl.perms.write', ", ")
+| eval modifiable='eai:acl.modifiable'
+| eval enabled_actions=mvjoin(actions, ", ")
+| eval has_email=if(match(enabled_actions, "(^|,\s*)email(,|$)"), "Yes", "No")
+| eval has_summary_index=if(match(enabled_actions, "(^|,\s*)summary_index(,|$)"), "Yes", "No")
+| eval has_lookup=if(match(enabled_actions, "(^|,\s*)lookup(,|$)"), "Yes", "No")
+| eval has_script=if(match(enabled_actions, "(^|,\s*)script(,|$)"), "Yes", "No")
+| eval has_webhook=if(match(enabled_actions, "(^|,\s*)webhook(,|$)"), "Yes", "No")
+| eval has_notable=if(match(enabled_actions, "(^|,\s*)notable(,|$)"), "Yes", "No")
+| eval has_risk=if(match(enabled_actions, "(^|,\s*)risk(,|$)"), "Yes", "No")
+| eval annotations_json=coalesce('action.correlationsearch.annotations', annotations, "")
+| rex field=annotations_json max_match=0 "(?<mitre_technique_id>T[0-9]{4}(?:\.[0-9]{3})?)"
+| eval mitre_technique_id=if(mvcount(mitre_technique_id)>0, mvdedup(mitre_technique_id), null())
+| eval search_safe_name=lower(replace(title, "[^a-zA-Z0-9]+", "-"))
+| table
+    title
+    app
+    owner
+    sharing
+    description
+    search
+    disabled
+    is_scheduled
+    cron_schedule
+    dispatch.earliest_time
+    dispatch.latest_time
+    schedule_window
+    alert_type
+    alert_condition
+    alert.suppress
+    enabled_actions
+    has_email
+    has_summary_index
+    has_lookup
+    has_script
+    has_webhook
+    has_notable
+    has_risk
+    annotations_json
+    mitre_technique_id
+    read_perms
+    write_perms
+    modifiable
+    search_safe_name
+| sort title
+]]></query>
+    <earliest>0</earliest>
+    <latest></latest>
+  </search>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       INPUTS
+       ═══════════════════════════════════════════════════════════════ -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="ss_name_tok" searchWhenChanged="true">
+      <label>Select Saved Search</label>
+      <search base="base_saved_searches">
+        <query>| eval display_title=title." [".app."]" | table title display_title | sort display_title</query>
+      </search>
+      <fieldForLabel>display_title</fieldForLabel>
+      <fieldForValue>title</fieldForValue>
+      <selectFirstChoice>true</selectFirstChoice>
+    </input>
+    <input type="text" token="reviewer_id_tok" searchWhenChanged="true">
+      <label>Reviewer ID (auto-filled from your Splunk username; editable)</label>
+      <default>$env:user$</default>
+      <initialValue>$env:user$</initialValue>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <html>
+        <div style="padding:8px 0;color:#aaa;font-size:13px;">Current reviewer: <code>$reviewer_id_tok$</code></div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Seed selected-search tokens: safe name for form_name keying, app context. -->
+  <search base="base_saved_searches" id="selected_ss_token_builder">
+    <query><![CDATA[
+| search title="$ss_name_tok$"
+| table title search_safe_name app
+    ]]></query>
+    <done>
+      <condition match="$job.resultCount$ &gt; 0">
+        <set token="ss_safe_name_tok">$result.search_safe_name$</set>
+        <set token="ss_app_tok">$result.app$</set>
+      </condition>
+      <condition>
+        <unset token="ss_safe_name_tok"></unset>
+        <unset token="ss_app_tok"></unset>
+      </condition>
+    </done>
+  </search>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 1 — SAVED SEARCH DETAILS
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">1. Saved Search Details</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Metadata for <code>$ss_name_tok$</code> in app <code>$ss_app_tok$</code>.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search Metadata</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| table title app owner description disabled is_scheduled cron_schedule dispatch.earliest_time dispatch.latest_time alert_type
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="count">5</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 2 — NAMING AND DESCRIPTION REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">2. Naming and Description Review</h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Naming Checks</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| eval title_length=len(title)
+| eval title_status=case(
+    title_length < 5, "Review required: title is very short",
+    title_length > 100, "Review required: title is very long",
+    true(), "Pass"
+  )
+| eval description_length=if(isnull(description) OR description="", 0, len(description))
+| eval description_status=case(
+    description_length=0, "Review required: description is empty",
+    description_length < 20, "Review required: description is very short",
+    true(), "Pass"
+  )
+| table title title_length title_status description description_length description_status
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Naming Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_naming_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_naming.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">500</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_naming_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 3 — INTENT REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">3. Intent Review</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Document what this search is intended to do and any known scope or limitation.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Intent Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_intent_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_intent.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_intent_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 4 — MITRE ATT&amp;CK REVIEW
+       Shows extracted technique IDs from annotations. Empty for non-security searches.
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">4. MITRE ATT&amp;CK Review</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Technique IDs extracted from the search's annotations. Empty for non-security searches.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Mapped Techniques</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| eval mitre_technique_id=if(isnull(mitre_technique_id) OR mvcount(mitre_technique_id)=0, "(no MITRE annotations found)", mitre_technique_id)
+| table title mitre_technique_id annotations_json
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>MITRE Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_mitre_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_mitre.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_mitre_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 5 — ACTIONS REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">5. Actions Review</h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Configured Actions</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| eval enabled_actions=if(isnull(enabled_actions) OR enabled_actions="", "(none)", enabled_actions)
+| table title enabled_actions has_email has_summary_index has_lookup has_script has_webhook has_notable has_risk alert_type alert_condition alert.suppress
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Actions Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_actions_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_actions.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">700</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_actions_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 6 — SEARCH LOGIC (SPL)
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">6. Search Logic</h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Selected Search SPL</title>
+      <viz type="form_viz.form_viz">
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| eval question="Selected saved search SPL"
+| eval type="spl_display"
+| eval options=search
+| eval order=2
+| eval description="Read-only reference from the saved search definition. The block below is rendered with `type=spl_display` and auto-formatted by Form Viz."
+| table options order question type description
+| appendpipe [
+    head 1
+    | eval options=""
+    | eval order=1
+    | eval question="## SPL Review References\nUse this section to inspect command order, expensive operations, filtering, lookup/macro dependencies, and time-window assumptions.\n\n- Prefer early filtering before heavy transforms\n- Validate lookup, macro, data model, and index dependencies\n- Document any proposed rewrite in the review form below"
+    | eval type="markdown"
+    | eval description=""
+    | table options order question type description
+  ]
+| sort order
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">760</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_logic_reference_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">false</option>
+      </viz>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Search Logic Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_logic_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_logic.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">950</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_logic_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 7 — SCHEDULE AND PERFORMANCE REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">7. Schedule and Performance Review</h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Schedule Configuration</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| eval is_scheduled=if(is_scheduled=1 OR is_scheduled="1" OR is_scheduled="true", "Yes", "No")
+| table title is_scheduled cron_schedule dispatch.earliest_time dispatch.latest_time schedule_window
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Recent Performance (last 7 days)</title>
+      <table>
+        <search>
+          <query><![CDATA[
+index=_internal sourcetype=scheduler savedsearch_name="$ss_name_tok$"
+| stats
+    count AS total_runs
+    sum(eval(if(status="success", 1, 0))) AS successful
+    sum(eval(if(status="skipped", 1, 0))) AS skipped
+    sum(eval(if(status="continued", 1, 0))) AS continued
+    avg(run_time) AS avg_runtime_s
+    max(run_time) AS max_runtime_s
+  BY savedsearch_name
+| eval avg_runtime_s=round(avg_runtime_s, 2)
+| eval max_runtime_s=round(max_runtime_s, 2)
+| eval skip_pct=if(total_runs>0, round(skipped*100.0/total_runs, 1), 0)
+| rename savedsearch_name AS title
+| table title total_runs successful skipped skip_pct continued avg_runtime_s max_runtime_s
+]]></query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Schedule and Performance Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_schedule_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_schedule.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">700</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_schedule_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 8 — PERMISSIONS REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">8. Permissions Review</h2>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Access Control</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| table title app owner sharing read_perms write_perms modifiable
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Permissions Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_permissions_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_permissions.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_permissions_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 9 — TEST REVIEW
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">9. Test Review</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Review the test plan and whether the search can be triggered as documented.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Test Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_test_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_test.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">800</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_test_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 10 — RECOMMENDATIONS / NEXT STEPS
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">10. Recommendations / Next Steps</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Document any recommendations for tuning, retirement, ownership change, or further work.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Next Steps Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_nextsteps_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_nextsteps.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_nextsteps_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 11 — DATA SOURCES AND DEPENDENCIES REVIEW
+       New data: indexes, data models, macros and lookups are extracted
+       directly from the selected search's SPL. New questions tie back to it.
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">11. Data Sources and Dependencies Review</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Indexes, data models, macros and lookups parsed from the search's SPL. Confirm each dependency exists in this environment.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Extracted Dependencies</title>
+      <table>
+        <search base="base_saved_searches">
+          <query><![CDATA[
+| search title="$ss_name_tok$"
+| rex field=search max_match=0 "(?i)index\s*=\s*\"?(?<idx>[\w\-*]+)"
+| rex field=search max_match=0 "`(?<macro>[^`]+)`"
+| rex field=search max_match=0 "(?i)\b(?:input)?lookup\s+(?<lk>[\w\-]+)"
+| eval indexes=if(mvcount(idx)>0, mvjoin(mvdedup(idx), ", "), "(none detected)")
+| eval index_count=if(mvcount(idx)>0, mvcount(mvdedup(idx)), 0)
+| eval uses_datamodel=if(match(search, "(?i)\|\s*tstats|datamodel"), "Yes", "No")
+| eval macros=if(mvcount(macro)>0, mvjoin(mvdedup(macro), ", "), "(none)")
+| eval lookups=if(mvcount(lk)>0, mvjoin(mvdedup(lk), ", "), "(none)")
+| table title indexes index_count uses_datamodel macros lookups
+]]></query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="count">5</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Data Sources Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_datasource_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_datasource.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">700</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_datasource_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 12 — TRIGGER ACTIVITY REVIEW
+       New data: recent scheduler trigger history (last 30 days). New
+       questions confirm the search is firing as expected.
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">12. Trigger Activity Review</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Recent scheduler firing history (last 30 days) for this search. Confirm the trigger volume matches expectations.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Recent Trigger History (last 30 days)</title>
+      <table>
+        <search>
+          <query><![CDATA[
+index=_internal sourcetype=scheduler savedsearch_name="$ss_name_tok$"
+| stats
+    count AS runs_30d
+    sum(eval(if(status="success", 1, 0))) AS successful
+    sum(eval(if(status="skipped", 1, 0))) AS skipped
+    sum(eval(if(status="continued", 1, 0))) AS continued
+    latest(_time) AS last_fired_epoch
+    sum(result_count) AS total_results
+  BY savedsearch_name
+| appendpipe [
+    stats count AS row_count
+    | where row_count=0
+    | eval savedsearch_name="$ss_name_tok$"
+    | eval runs_30d=0
+    | eval successful=0
+    | eval skipped=0
+    | eval continued=0
+    | eval total_results=0
+  ]
+| eval last_fired=if(isnull(last_fired_epoch), "(never in window)", strftime(last_fired_epoch, "%Y-%m-%d %H:%M:%S"))
+| eval avg_results_per_run=if(runs_30d>0, round(total_results/runs_30d, 1), 0)
+| rename savedsearch_name AS title
+| table title runs_30d successful skipped continued last_fired total_results avg_results_per_run
+]]></query>
+          <earliest>-30d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="count">5</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Trigger Activity Review Notes</title>
+      <viz type="form_viz.form_viz">
+        <search>
+          <query>| makeresults | eval options="$ss_safe_name_tok$_triggers_$reviewer_id_tok$", order="", question="Form Name", type="form_name", description="" | table options order question type description | append [ | makeresults | eval options="form_responses", order="", question="Output Lookup", type="form_kv_output", description="" | table options order question type description ] | append [ | inputlookup review_triggers.csv ]</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">700</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.formName">$ss_safe_name_tok$_triggers_$reviewer_id_tok$</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.outputLookup">form_responses</option>
+        <option name="display.visualizations.custom.form_viz.form_viz.captureUser">true</option>
+      </viz>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SECTION 13 — COMPLETED REVIEW SUMMARY
+       Form name pattern: <search_safe_name>_<section>_<reviewer>
+       ═══════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <html>
+        <h2 style="margin:0;padding:8px 0;border-bottom:2px solid #5a9fd4;">13. Completed Review Summary</h2>
+        <p style="color:#aaa;margin:6px 0 0;font-size:13px;">Latest response per question for each review section. Form names are keyed as <code>&lt;safe-search-name&gt;_&lt;section&gt;_&lt;reviewer&gt;</code>.</p>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>All Review Responses for $ss_name_tok$</title>
+      <table>
+        <search>
+          <query><![CDATA[
+| inputlookup form_responses
+| rex field=form_name "^(?<ss_safe_name>.+?)_(?<section>naming|intent|mitre|actions|logic|schedule|permissions|test|nextsteps|datasource|triggers)_(?<analyst>.+)$"
+| search ss_safe_name="$ss_safe_name_tok$"
+
+| eval section_order=case(
+    section="naming", 1,
+    section="intent", 2,
+    section="mitre", 3,
+    section="actions", 4,
+    section="logic", 5,
+    section="schedule", 6,
+    section="permissions", 7,
+    section="test", 8,
+    section="nextsteps", 9,
+    section="datasource", 10,
+    section="triggers", 11,
+    true(), 99
+  )
+
+| eval section_display=case(
+    section="naming", "1. Naming and Description Review",
+    section="intent", "2. Intent Review",
+    section="mitre", "3. MITRE ATT&CK Review",
+    section="actions", "4. Actions Review",
+    section="logic", "5. Search Logic Review",
+    section="schedule", "6. Schedule and Performance Review",
+    section="permissions", "7. Permissions Review",
+    section="test", "8. Test Review",
+    section="nextsteps", "9. Next Steps",
+    section="datasource", "10. Data Sources and Dependencies Review",
+    section="triggers", "11. Trigger Activity Review",
+    true(), section
+  )
+
+| where section_order < 99
+
+| eventstats max(_time) AS latest_section_response_epoch BY ss_safe_name section
+| where _time=latest_section_response_epoch
+
+| eval latest_response_time=strftime(latest_section_response_epoch, "%Y-%m-%d %H:%M:%S")
+| eval order=tonumber(order)
+
+| sort 0 section_order order question
+
+| table section_display order question answer analyst user latest_response_time submission_id form_name
+]]></query>
+          <earliest>0</earliest>
+          <latest></latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="count">100</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

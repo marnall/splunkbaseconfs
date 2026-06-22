@@ -1,0 +1,164 @@
+<dashboard version="1.1" theme="dark" hideTimeRangePicker="true">
+  <label>Upload History</label>
+  <description>Historical record of all CIS-CAT scan uploads — track compliance score progress over time</description>
+
+  <!-- BASE SEARCH: all events (not deduped) — panels do their own aggregation -->
+  <search id="base_all">
+    <query>`ciscat_base` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <!-- Row 1: Upload Activity Metrics -->
+  <row>
+    <panel>
+      <title>Total Uploads</title>
+      <single>
+        <search base="base_all">
+          <query>| stats dc(upload_batch_id)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Last Upload</title>
+      <single>
+        <search base="base_all">
+          <query>| stats max(upload_time) AS last_upload | eval last_upload=strftime(strptime(last_upload, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d %H:%M")</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Hosts Tracked</title>
+      <single>
+        <search base="base_all">
+          <query>| stats dc(asset_hostname)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Benchmarks Tracked</title>
+      <single>
+        <search base="base_all">
+          <query>| stats dc(benchmark_title)</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Compliance Score Trend Over Time -->
+  <row>
+    <panel>
+      <title>Compliance Score Trend by Assessment Date</title>
+      <chart>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_hostname, benchmark_title, profile
+| eval assessment_date=strftime(strptime(assessment_time, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+| stats avg(compliance_score) AS "Avg Score %",
+        min(compliance_score) AS "Min Score %",
+        max(compliance_score) AS "Max Score %"
+  by assessment_date
+| eval "Avg Score %"=round('Avg Score %', 1)
+| eval "Min Score %"=round('Min Score %', 1)
+| eval "Max Score %"=round('Max Score %', 1)
+| sort assessment_date</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.axisTitleX.text">Assessment Date</option>
+        <option name="charting.axisTitleY.text">Compliance Score %</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 3: Compliance Progress by Host -->
+  <row>
+    <panel>
+      <title>Compliance Score Progress by Host</title>
+      <chart>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_hostname, benchmark_title, profile
+| eval assessment_date=strftime(strptime(assessment_time, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d")
+| stats mean(compliance_score) AS score by assessment_date, asset_hostname
+| eval score=round(score, 1)
+| chart values(score) over assessment_date by asset_hostname</query>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.axisTitleX.text">Assessment Date</option>
+        <option name="charting.axisTitleY.text">Compliance Score %</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.axisY.maximumNumber">100</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 4: Upload Log -->
+  <row>
+    <panel>
+      <title>Upload Log</title>
+      <table>
+        <search base="base_all">
+          <query>| dedup upload_batch_id
+| eval upload_date=strftime(strptime(upload_time, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d %H:%M:%S")
+| table upload_date, asset_hostname, benchmark_title, profile, upload_batch_id
+| rename upload_date AS "Upload Date", asset_hostname AS Host, benchmark_title AS Benchmark, profile AS Profile, upload_batch_id AS "Batch ID"
+| sort - "Upload Date"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 5: Scan Snapshot per Upload -->
+  <row>
+    <panel>
+      <title>Scan Snapshot per Upload (by Host)</title>
+      <table>
+        <search base="base_all">
+          <query>| dedup upload_batch_id, asset_hostname, benchmark_title, profile, rule_id
+| eval upload_date=strftime(strptime(upload_time, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d %H:%M")
+| stats max(compliance_score) AS "Compliance Score %",
+        count(eval(result="pass")) AS Pass,
+        count(eval(result="fail")) AS Fail,
+        count(eval(result="error")) AS Error,
+        count(eval(result="notapplicable" OR result="informational")) AS Excluded,
+        count AS Total
+  by upload_date, asset_hostname, benchmark_title, profile
+| eval "Compliance Score %"=round('Compliance Score %', 1)
+| rename upload_date AS "Upload Date", asset_hostname AS Host, benchmark_title AS Benchmark, profile AS Profile
+| sort - "Upload Date"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Compliance Score %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="60" midValue="80" maxValue="100"></scale>
+        </format>
+        <format type="color" field="Fail">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="10" maxValue="30"></scale>
+        </format>
+        <format type="color" field="Error">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="1" maxValue="5"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+</dashboard>

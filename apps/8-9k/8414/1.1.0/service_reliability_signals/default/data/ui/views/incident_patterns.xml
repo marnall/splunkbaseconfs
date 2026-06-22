@@ -1,0 +1,144 @@
+<form theme="dark" version="1.1">
+  <label>Incident Patterns</label>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>service_reliability_test</default>
+    </input>
+    <input type="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Repeated Failure Windows (15-Minute Buckets)</title>
+      <chart>
+        <title>Identifies clusters of failures that repeatedly occur within short time windows. High counts indicate recurring incidents or unstable deployments.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=15m sum(is_failure) AS failures BY service</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.overflowMode">ellipsisMiddle</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.axisY.abbreviation">none</option>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">323</option>
+        <option name="trellis.enabled">0</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Incident Duration Distribution</title>
+      <chart>
+        <title>Estimates incident duration based on consecutive failure periods. Longer durations indicate outages; short durations indicate flapping.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | sort service _time
+            | streamstats current=f last(is_failure) AS prev_failure BY service
+            | eval incident_start = if(is_failure=1 AND prev_failure=0, _time, null())
+            | eval incident_end   = if(is_failure=0 AND prev_failure=1, _time, null())
+            | stats earliest(incident_start) AS start
+                    latest(incident_end) AS end
+              BY service
+            | eval duration_min = round((end - start) / 60, 2)
+            | where duration_min &gt; 0
+            | bucket duration_min span=5
+            | stats count BY duration_min</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Service Recovery / Restart Frequency</title>
+      <table>
+        <title>Number of detected recovery transitions per service. High values may indicate restarts, retries, or automated recovery loops.</title>
+        <search>
+          <query>`svc_recovery_patterns($index$)`
+            | eval recovery_severity = case(
+                recovery_events &gt;= 20, "HIGH",
+                recovery_events &gt;= 5, "MEDIUM",
+                true(), "LOW"
+              )
+            | sort - recovery_events</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Time-of-Day Failure Pattern</title>
+      <viz type="Splunk_ML_Toolkit.HeatmapViz">
+        <title>Heatmap of failure frequency by hour of day. Useful for identifying batch jobs, cron schedules, traffic spikes, or maintenance windows causing incidents.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | eval hour=strftime(_time, "%H")
+            | stats sum(is_failure) AS failures BY service hour</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">608</option>
+      </viz>
+    </panel>
+  </row>
+  <row>
+  <panel>
+    <title>How to Interpret Incident Patterns</title>
+    <html>
+      <div>
+        <h3>What This Dashboard Analyzes</h3>
+        <p>
+          This dashboard helps identify recurring incident behavior and failure windows
+          using historical log data. It is intended for post-incident review and long-term
+          reliability improvement.
+        </p>
+
+        <h3>Understanding Incident Windows</h3>
+        <ul>
+          <li>An incident window is a period of consecutive failure events.</li>
+          <li>Repeated short windows indicate flapping or unstable dependencies.</li>
+          <li>Long windows indicate sustained outages.</li>
+        </ul>
+
+        <h3>Time-of-Day Patterns</h3>
+        <ul>
+          <li>Consistent failures at the same hour often indicate scheduled jobs or traffic spikes.</li>
+          <li>Random patterns suggest code or dependency instability.</li>
+        </ul>
+
+        <h3>How to Use This Dashboard</h3>
+        <ul>
+          <li>Use during post-incident analysis.</li>
+          <li>Correlate with deployment or change timelines.</li>
+          <li>Feed insights into runbooks and alert tuning.</li>
+        </ul>
+      </div>
+    </html>
+  </panel>
+</row>
+</form>

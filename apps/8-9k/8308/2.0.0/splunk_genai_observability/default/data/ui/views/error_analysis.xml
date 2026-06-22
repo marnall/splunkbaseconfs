@@ -1,0 +1,194 @@
+<form version="1.1" theme="dark">
+  <label>Error Analysis</label>
+  <description>Investigate and troubleshoot GenAI errors - error trends, root cause analysis, and resolution tracking</description>
+  <!-- Error KPIs -->
+  <!-- Error Trends -->
+  <!-- Error Breakdown -->
+  <!-- Error Details Table -->
+  <!-- Recent Errors -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="span_type_filter" searchWhenChanged="true">
+      <label>Span Type</label>
+      <choice value="*">All Errors</choice>
+      <default>*</default>
+      <search>
+        <query>`genai_traces_index` is_error=1 | stats count by span_type | sort - count</query>
+        <earliest>-7d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>span_type</fieldForLabel>
+      <fieldForValue>span_type</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total Errors</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.is_error=1 GenAI_Span.span_type=$span_type_filter$</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,100]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Error Rate</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as total_requests sum(GenAI_Span.is_error) as error_count from datamodel=GenAI_Traces | eval error_rate=round((error_count/total_requests)*100,2) | fields error_rate</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">%</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[2,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Unique Error Types</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true dc(GenAI_Span.span_type) as types from datamodel=GenAI_Traces where GenAI_Span.is_error=1</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Affected Workflows</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true dc(GenAI_Span.workflow_name) as workflows from datamodel=GenAI_Traces where GenAI_Span.is_error=1</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[3,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Errors by Type</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.is_error=1 by GenAI_Span.span_type | rename GenAI_Span.span_type as span_type | sort - count | head 10</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Errors by Model</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.is_error=1 by GenAI_Span.model_name | rename GenAI_Span.model_name as model_name | sort - count | head 10</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Errors by Workflow</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.is_error=1 by GenAI_Span.workflow_name | rename GenAI_Span.workflow_name as workflow_name | sort - count | head 10</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Trend Over Time</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.is_error=1 GenAI_Span.span_type=$span_type_filter$ by _time span=1h | timechart span=1h count as Errors</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.fieldColors">{"Errors": 0xDC4E41}</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Error Rate Trend</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true count sum(GenAI_Span.is_error) from datamodel=GenAI_Traces by _time span=1h | timechart span=1h count as total sum(GenAI_Span.is_error) as errors | eval error_rate = round((errors/total)*100, 2) | fields _time, error_rate</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Error Rate (%)</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Details</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as occurrences latest(_time) as last_seen values(GenAI_Span.workflow_name) as workflows values(GenAI_Span.model_name) as models from datamodel=GenAI_Traces where GenAI_Span.is_error=1 GenAI_Span.span_type=$span_type_filter$ by GenAI_Span.span_type GenAI_Span.error_message | rename GenAI_Span.* as * | sort - occurrences | eval last_seen = strftime(last_seen, "%Y-%m-%d %H:%M") | table span_type, error_message, occurrences, last_seen, workflows, models | rename span_type as "Error Type", error_message as "Error Message", occurrences as "Count", last_seen as "Last Seen", workflows as "Affected Workflows", models as "Affected Models"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Count">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Recent Errors (Last 100)</title>
+      <table>
+        <search>
+          <query>`genai_traces_index` is_error=1 span_type=$span_type_filter$
+| head 100
+| table _time, trace_id, span_type, workflow_name, model_name, span_type, error_message, duration_ms
+| sort - _time
+| rename _time as "Time", trace_id as "Trace ID", span_type as "Span Type", workflow_name as "Workflow", model_name as "Model", span_type as "Error Type", error_message as "Error Message", duration_ms as "Duration (ms)"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <drilldown>
+          <link target="_blank">/app/genai_observability_platform/trace_explorer?trace_id=$row.Trace ID$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

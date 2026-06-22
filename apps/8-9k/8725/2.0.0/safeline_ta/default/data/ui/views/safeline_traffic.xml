@@ -1,0 +1,209 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Traffic Analysis</label>
+  <description>HTTP traffic patterns, latency, bandwidth and clients.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="site_tok" searchWhenChanged="true">
+      <label>Site (vhost)</label>
+      <choice value="*">All sites</choice>
+      <default>*</default>
+      <prefix>site_url=</prefix>
+      <fieldForLabel>site_name</fieldForLabel>
+      <fieldForValue>site_url</fieldForValue>
+      <search>
+        <query>`safeline_waf` site_url=* | stats count by site_url site_name | sort - count | head 50</query>
+        <earliest>$tr.earliest$</earliest>
+        <latest>$tr.latest$</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <single>
+        <title>Requests/min (avg)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | bucket _time span=1m | stats count by _time | stats avg(count) AS rpm | eval rpm=round(rpm,1)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Avg latency (ms)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ total_duration_ms=* | stats avg(total_duration_ms) AS avg_lat | eval avg_lat=round(avg_lat,1)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>P95 latency (ms)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ total_duration_ms=* | stats perc95(total_duration_ms) AS p95 | eval p95=round(p95,1)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Error rate (4xx+5xx)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | stats count count(eval(status_code&gt;=400)) AS errors | eval rate=round(errors/count*100,2) | fields rate</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="unit">%</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Total bytes (in/out)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | stats sum(bytes) AS total | eval total=tostring(total,"commas")</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Request volume</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | timechart count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Status codes over time</title>
+        <search>
+          <query>`safeline_waf` $site_tok$
+| eval status_class = case(status_code&lt;200,"1xx",status_code&lt;300,"2xx",status_code&lt;400,"3xx",status_code&lt;500,"4xx",status_code&gt;=500,"5xx")
+| timechart count by status_class</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"2xx":0x55c98f,"3xx":0x6db7c6,"4xx":0xf1813f,"5xx":0xdc4e41,"1xx":0xb3b3b3}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Latency percentiles (ms)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ total_duration_ms=*
+| timechart perc50(total_duration_ms) AS p50 perc90(total_duration_ms) AS p90 perc95(total_duration_ms) AS p95 perc99(total_duration_ms) AS p99</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>HTTP methods</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ | top limit=10 method</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Top sites (vhosts)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ site_url=*
+| stats count AS requests
+        count(eval(status_code&gt;=400)) AS errors
+        count(eval(blocked=1)) AS blocked
+        count(eval(is_attack=1)) AS attacks
+        avg(total_duration_ms) AS avg_ms
+        perc95(total_duration_ms) AS p95_ms
+        dc(src_ip) AS sources
+        dc(urlpath) AS distinct_paths
+        by site_name site_url site_uuid
+| eval avg_ms=round(avg_ms,1), p95_ms=round(p95_ms,1), error_rate=round(errors/requests*100,1)
+| sort - requests
+| head 25
+| fields site_name site_uuid requests attacks blocked errors error_rate avg_ms p95_ms sources distinct_paths site_url</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link><![CDATA[search?q=`safeline_waf` site_name="$row.site_name$"&earliest=$tr.earliest$&latest=$tr.latest$]]></link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Top user agents</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| stats count AS requests dc(src_ip) AS sources values(method) AS methods by user_agent
+| sort - requests | head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>Top URL paths</title>
+        <search>
+          <query>`safeline_waf` $site_tok$
+| stats count AS hits avg(total_duration_ms) AS avg_ms count(eval(status_code&gt;=400)) AS errors by site_name urlpath
+| eval avg_ms=round(avg_ms,1)
+| sort - hits | head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>JA4 fingerprint families</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ tls_ja4_family=* | top limit=15 tls_ja4_family</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+</form>

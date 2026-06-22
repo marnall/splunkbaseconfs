@@ -1,0 +1,398 @@
+<form version="1.1" theme="light">
+  <label>Hardware Inventory</label>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match(value,&quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="dropdown" token="typeSelector">
+      <label>Physical Type</label>
+      <choice value="Chassis">Chassis</choice>
+      <choice value="Chassis OR physicalAssetType=Module">Chassis &amp; Module</choice>
+      <choice value="*">Chassis, Module, Fan, PwrSply</choice>
+      <choice value="Fan">Fan</choice>
+      <choice value="Module">Module</choice>
+      <choice value="&quot;Power Supply&quot;">Power Supply</choice>
+      <default>Chassis</default>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Date &amp; Time Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Hardware Diversity Summary" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>LAN Switch Diversity</title>
+      <single>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset physicalAssetType=$typeSelector$
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| $singleLineGroupSelector$
+| mvexpand groupName 
+| stats dc(productId) as PIDs by productFamily 
+| search productFamily="*Catalyst*" 
+| stats avg(PIDs) as LANswitchDiversity</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[4,8]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Average Product IDs per Catalyst Family</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Router PIDs</title>
+      <single>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset physicalAssetType=$typeSelector$ AND productType ="Routers"
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| $singleLineGroupSelector$
+| stats dc(productId) as PIDs by productFamily 
+| stats avg(PIDs) as RouterDiversity</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[4,8]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Average Product IDs per Router Family</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Inventory and Diversity Details" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Chassis and PID Counts</title>
+      <chart>
+        <title>Top 10 Chassis by Product Type</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats dc(serialNumber) as Chassis by productType 
+| sort -Chassis 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis and PID Counts</title>
+      <chart>
+        <title>Top 10 PID Count by Product Type</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats dc(productId) as PIDs by productType 
+| sort -PIDs 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis and PID Counts</title>
+      <chart>
+        <title>Top 10 Chassis by Product Family</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats dc(serialNumber) as Chassis by productFamily 
+| sort -Chassis 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Product Type Diversification</title>
+      <chart>
+        <title>Top 10 Product IDs by Product Type</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, covered_product_line_end_date, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats dc(productId) as "Product IDs" by productType 
+| sort -"Product IDs" 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis Diversification</title>
+      <chart>
+        <title>Top 10 Chassis by Product ID</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productType, productFamily, productId, physicalAssetType, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats count as Chassis by productId 
+| sort -Chassis 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Product Family Diversification</title>
+      <chart>
+        <title>Top 10 Product IDs by Product Family</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset 
+| fields deviceName, deviceId, productFamily, productId, physicalAssetType, covered_product_line_end_date, serialNumber 
+| dedup serialNumber 
+| search physicalAssetType=Chassis 
+| $singleLineGroupSelector$ 
+| stats dc(productId) as "Product IDs" by productFamily 
+| sort -"Product IDs" 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Module Diversification</title>
+      <chart>
+        <title>Top 10 Module PIDs</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset physicalAssetType=Module
+| fields deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber 
+| $singleLineGroupSelector$
+| table deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber
+| dedup deviceId serialNumber
+| stats count as Modules by productId 
+| sort -Modules 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Transceiver Diversification</title>
+      <chart>
+        <title>Top 10 Transceiver PIDs</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset productFamily="*Transceiver*"
+| fields deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber 
+| $singleLineGroupSelector$
+| table deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber
+| dedup deviceId serialNumber
+| stats count as Transceivers by productId 
+| sort -Transceivers 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Fan Diversification</title>
+      <chart>
+        <title>Top 10 Fan PIDs</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset physicalAssetType="Fan"
+| fields deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber, _time slot
+| $singleLineGroupSelector$
+| table deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber, slot, groupName, _time 
+| dedup deviceId productId slot 
+| stats count as Fans by productId 
+| sort -Fans 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Power Supply Diversification</title>
+      <chart>
+        <title>Top 10 Power Supply PIDs</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset physicalAssetType="Power Supply"
+| fields deviceName, deviceId, productFamily, productId, physicalAssetType, serialNumber slot
+| dedup deviceId productId slot
+| stats count as Supplies by productId 
+| sort -Supplies 
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Download Data Here</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:asset
+| $singleLineGroupSelector$
+| dedup physicalAssetId
+| table chassisName cpyKey deviceId deviceName groupName hardwareRevision installedFlash installedMemory physicalAssetId physicalAssetSubtype physicalAssetType printedCircuitBoardName printedCircuitBoardRevision productFamily productId productType serialNumber serialNumberStatus slot softwareVersion timestamp topAssemblyNumber topAssemblyNumberRevision
+| sort groupName chassisName</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

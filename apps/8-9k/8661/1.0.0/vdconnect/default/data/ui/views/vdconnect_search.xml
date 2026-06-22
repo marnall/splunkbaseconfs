@@ -1,0 +1,110 @@
+<dashboard version="1.1" theme="dark" stylesheet="vdconnect.css">
+  <label>Search Explorer</label>
+  <description>Query vector database collections directly and preview data before indexing</description>
+
+  <fieldset submitButton="true" autoRun="false">
+    <input type="dropdown" token="selected_db_type" searchWhenChanged="false">
+      <label>Database Type</label>
+      <default>milvus</default>
+      <choice value="milvus">Milvus</choice>
+      <choice value="pinecone">Pinecone</choice>
+      <choice value="weaviate">Weaviate</choice>
+      <choice value="chromadb">ChromaDB</choice>
+      <choice value="qdrant">Qdrant</choice>
+      <choice value="pgvector">pgvector</choice>
+    </input>
+    <input type="dropdown" token="selected_input" searchWhenChanged="false">
+      <label>Input / Connection</label>
+      <search>
+        <query>| rest /services/data/inputs/vdconnect | table title | rename title AS input_name</query>
+      </search>
+      <fieldForLabel>input_name</fieldForLabel>
+      <fieldForValue>input_name</fieldForValue>
+    </input>
+    <input type="text" token="search_filter" searchWhenChanged="false">
+      <label>Filter Expression</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="search_limit" searchWhenChanged="false">
+      <label>Max Results</label>
+      <default>100</default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Query Results Preview</title>
+      <table>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:$selected_db_type$
+              $search_filter$
+            | head $search_limit$
+            | table _time _raw sourcetype source
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Field Summary</title>
+      <table>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:$selected_db_type$
+              $search_filter$
+              earliest=-24h latest=now
+            | head 1000
+            | fieldsummary
+            | table field count distinct_count is_exact numeric_count min max
+            | rename field AS "Field",
+                     count AS "Count",
+                     distinct_count AS "Distinct Values",
+                     is_exact AS "Exact",
+                     numeric_count AS "Numeric Count",
+                     min AS "Min",
+                     max AS "Max"
+            | sort - Count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Raw Event Inspector</title>
+      <event>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:$selected_db_type$
+              $search_filter$
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="list.drilldown">full</option>
+        <option name="maxLines">10</option>
+        <option name="raw.drilldown">full</option>
+        <option name="type">list</option>
+      </event>
+    </panel>
+  </row>
+</dashboard>

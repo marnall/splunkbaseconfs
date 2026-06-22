@@ -1,0 +1,569 @@
+[
+  {
+    "name": "firewall_paloalto",
+    "description": "Palo Alto Networks firewall traffic logs with source/destination IPs, ports, zones, actions, and byte counts",
+    "sourcetype": "pan:traffic",
+    "format": "csv",
+    "templates": [
+      "<timestamp>,TRAFFIC,end,<src_zone>,<dst_zone>,<src_ip>,<dst_ip>,<src_port>,<dst_port>,<protocol>,<action>,<app>,<bytes_sent>,<bytes_recv>,<session_duration>,<rule_name>",
+      "<timestamp>,TRAFFIC,start,<src_zone>,<dst_zone>,<src_ip>,<dst_ip>,<src_port>,<dst_port>,<protocol>,<action>,<app>,<bytes_sent>,<bytes_recv>,0,<rule_name>",
+      "<timestamp>,TRAFFIC,drop,<src_zone>,<dst_zone>,<src_ip>,<dst_ip>,<src_port>,<dst_port>,<protocol>,deny,<app>,0,0,0,<rule_name>",
+      "<timestamp>,THREAT,alert,<src_zone>,<dst_zone>,<src_ip>,<dst_ip>,<src_port>,<dst_port>,<protocol>,alert,<app>,<bytes_sent>,<bytes_recv>,<session_duration>,<rule_name>"
+    ],
+    "template_weights": [50, 25, 15, 10],
+    "token_rules": [
+      {
+        "name": "timestamp",
+        "pattern": "<timestamp>",
+        "token_type": "timestamp",
+        "config": {"offset_seconds": 0, "jitter_seconds": 60, "format": "%Y/%m/%d %H:%M:%S"}
+      },
+      {
+        "name": "src_zone",
+        "pattern": "<src_zone>",
+        "token_type": "weighted",
+        "config": {"values": ["trust", "untrust", "dmz", "guest"], "weights": [40, 35, 15, 10]}
+      },
+      {
+        "name": "dst_zone",
+        "pattern": "<dst_zone>",
+        "token_type": "weighted",
+        "config": {"values": ["untrust", "trust", "dmz", "server"], "weights": [45, 30, 15, 10]}
+      },
+      {
+        "name": "src_ip",
+        "pattern": "<src_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "10.0.0.0/8"}
+      },
+      {
+        "name": "dst_ip",
+        "pattern": "<dst_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "0.0.0.0/0"}
+      },
+      {
+        "name": "src_port",
+        "pattern": "<src_port>",
+        "token_type": "integer_range",
+        "config": {"type": "port", "min": 1024, "max": 65535}
+      },
+      {
+        "name": "dst_port",
+        "pattern": "<dst_port>",
+        "token_type": "weighted",
+        "config": {"values": ["443", "80", "53", "8080", "22", "3389", "8443", "25"], "weights": [35, 20, 15, 10, 5, 5, 5, 5]}
+      },
+      {
+        "name": "protocol",
+        "pattern": "<protocol>",
+        "token_type": "weighted",
+        "config": {"values": ["tcp", "udp", "icmp"], "weights": [70, 25, 5]}
+      },
+      {
+        "name": "action",
+        "pattern": "<action>",
+        "token_type": "weighted",
+        "config": {"values": ["allow", "deny", "drop", "reset-both"], "weights": [75, 12, 8, 5]}
+      },
+      {
+        "name": "app",
+        "pattern": "<app>",
+        "token_type": "weighted",
+        "config": {"values": ["web-browsing", "ssl", "dns", "ms-office365", "youtube", "ssh", "rdp", "smtp", "incomplete", "not-applicable"], "weights": [25, 20, 15, 10, 5, 5, 5, 5, 5, 5]}
+      },
+      {
+        "name": "bytes_sent",
+        "pattern": "<bytes_sent>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 64, "max": 524288}
+      },
+      {
+        "name": "bytes_recv",
+        "pattern": "<bytes_recv>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 64, "max": 1048576}
+      },
+      {
+        "name": "session_duration",
+        "pattern": "<session_duration>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 1, "max": 3600}
+      },
+      {
+        "name": "rule_name",
+        "pattern": "<rule_name>",
+        "token_type": "weighted",
+        "config": {"values": ["allow-outbound", "allow-inbound-web", "deny-all", "allow-dns", "allow-vpn", "dmz-to-server", "guest-internet"], "weights": [30, 20, 15, 10, 10, 10, 5]}
+      }
+    ],
+    "fields": [
+      {"name": "src_ip", "type": "ipv4", "cardinality": 254},
+      {"name": "dst_ip", "type": "ipv4", "cardinality": 1000},
+      {"name": "src_port", "type": "port", "cardinality": 64511},
+      {"name": "dst_port", "type": "port", "cardinality": 8},
+      {"name": "protocol", "type": "string", "cardinality": 3},
+      {"name": "action", "type": "string", "cardinality": 4},
+      {"name": "app", "type": "string", "cardinality": 10},
+      {"name": "bytes_sent", "type": "number", "cardinality": 100},
+      {"name": "bytes_recv", "type": "number", "cardinality": 100},
+      {"name": "rule_name", "type": "string", "cardinality": 7}
+    ]
+  },
+  {
+    "name": "windows_security",
+    "description": "Windows Security event logs covering logon/logoff events, privilege use, account management, and process creation",
+    "sourcetype": "WinEventLog:Security",
+    "format": "kv",
+    "templates": [
+      "<timestamp> EventCode=<event_code> ComputerName=<computer_name> User=<domain>\\<username> LogonType=<logon_type> SourceNetworkAddress=<src_ip> Status=<status> TargetUserName=<target_user> WorkstationName=<workstation>",
+      "<timestamp> EventCode=<event_code> ComputerName=<computer_name> User=<domain>\\<username> ProcessName=<process_name> ProcessId=<process_id> ParentProcessName=<parent_process> CommandLine=<command_line>",
+      "<timestamp> EventCode=<event_code> ComputerName=<computer_name> User=<domain>\\<username> PrivilegeList=<privilege> TargetUserName=<target_user> SubjectLogonId=<logon_id>",
+      "<timestamp> EventCode=<event_code> ComputerName=<computer_name> User=<domain>\\<username> ServiceName=<service_name> ServiceFileName=<service_file> ServiceType=<service_type> ServiceStartType=<start_type>"
+    ],
+    "template_weights": [45, 25, 15, 15],
+    "token_rules": [
+      {
+        "name": "timestamp",
+        "pattern": "<timestamp>",
+        "token_type": "timestamp",
+        "config": {"offset_seconds": 0, "jitter_seconds": 30, "format": "%m/%d/%Y %I:%M:%S %p"}
+      },
+      {
+        "name": "event_code",
+        "pattern": "<event_code>",
+        "token_type": "weighted",
+        "config": {"values": ["4624", "4625", "4634", "4672", "4688", "4697", "4720", "4732", "4648", "4776"], "weights": [25, 15, 15, 10, 10, 5, 5, 5, 5, 5]}
+      },
+      {
+        "name": "computer_name",
+        "pattern": "<computer_name>",
+        "token_type": "weighted",
+        "config": {"values": ["DC01.corp.local", "WEB01.corp.local", "SQL01.corp.local", "FILE01.corp.local", "APP01.corp.local", "WKS001.corp.local", "WKS002.corp.local", "WKS003.corp.local"], "weights": [20, 15, 15, 10, 10, 10, 10, 10]}
+      },
+      {
+        "name": "domain",
+        "pattern": "<domain>",
+        "token_type": "weighted",
+        "config": {"values": ["CORP", "NT AUTHORITY", "WORKGROUP"], "weights": [70, 25, 5]}
+      },
+      {
+        "name": "username",
+        "pattern": "<username>",
+        "token_type": "weighted",
+        "config": {"values": ["admin", "svc_sql", "svc_web", "jsmith", "mjones", "agarcia", "SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE", "DWM-1"], "weights": [15, 10, 10, 10, 10, 10, 15, 5, 5, 10]}
+      },
+      {
+        "name": "logon_type",
+        "pattern": "<logon_type>",
+        "token_type": "weighted",
+        "config": {"values": ["2", "3", "4", "5", "7", "10", "11"], "weights": [15, 35, 5, 15, 10, 10, 10]}
+      },
+      {
+        "name": "src_ip",
+        "pattern": "<src_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "10.0.0.0/16"}
+      },
+      {
+        "name": "status",
+        "pattern": "<status>",
+        "token_type": "weighted",
+        "config": {"values": ["0x0", "0xC000006D", "0xC0000064", "0xC000006A", "0xC0000234", "0xC0000072"], "weights": [65, 12, 8, 8, 4, 3]}
+      },
+      {
+        "name": "target_user",
+        "pattern": "<target_user>",
+        "token_type": "weighted",
+        "config": {"values": ["admin", "jsmith", "mjones", "agarcia", "svc_sql", "svc_web", "Administrator", "Guest"], "weights": [20, 15, 15, 15, 10, 10, 10, 5]}
+      },
+      {
+        "name": "workstation",
+        "pattern": "<workstation>",
+        "token_type": "weighted",
+        "config": {"values": ["WKS001", "WKS002", "WKS003", "LAPTOP01", "LAPTOP02", "REMOTE01", "-"], "weights": [15, 15, 15, 15, 15, 15, 10]}
+      },
+      {
+        "name": "process_name",
+        "pattern": "<process_name>",
+        "token_type": "weighted",
+        "config": {"values": ["C:\\Windows\\System32\\cmd.exe", "C:\\Windows\\System32\\powershell.exe", "C:\\Windows\\System32\\svchost.exe", "C:\\Windows\\explorer.exe", "C:\\Windows\\System32\\lsass.exe", "C:\\Program Files\\app.exe"], "weights": [20, 20, 20, 15, 15, 10]}
+      },
+      {
+        "name": "process_id",
+        "pattern": "<process_id>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 100, "max": 65535}
+      },
+      {
+        "name": "parent_process",
+        "pattern": "<parent_process>",
+        "token_type": "weighted",
+        "config": {"values": ["C:\\Windows\\explorer.exe", "C:\\Windows\\System32\\services.exe", "C:\\Windows\\System32\\svchost.exe", "C:\\Windows\\System32\\cmd.exe", "C:\\Windows\\System32\\wininit.exe"], "weights": [30, 25, 20, 15, 10]}
+      },
+      {
+        "name": "command_line",
+        "pattern": "<command_line>",
+        "token_type": "weighted",
+        "config": {"values": ["\"cmd.exe\" /c dir", "powershell.exe -ExecutionPolicy Bypass -File script.ps1", "svchost.exe -k netsvcs -p", "net user /domain", "whoami /all", "ipconfig /all"], "weights": [20, 20, 20, 15, 15, 10]}
+      },
+      {
+        "name": "privilege",
+        "pattern": "<privilege>",
+        "token_type": "weighted",
+        "config": {"values": ["SeDebugPrivilege", "SeBackupPrivilege", "SeRestorePrivilege", "SeTakeOwnershipPrivilege", "SeImpersonatePrivilege"], "weights": [25, 25, 20, 15, 15]}
+      },
+      {
+        "name": "logon_id",
+        "pattern": "<logon_id>",
+        "token_type": "guid",
+        "config": {"type": "guid"}
+      },
+      {
+        "name": "service_name",
+        "pattern": "<service_name>",
+        "token_type": "weighted",
+        "config": {"values": ["W32Time", "BITS", "wuauserv", "Spooler", "WinRM", "RemoteRegistry", "TermService"], "weights": [15, 15, 15, 15, 15, 15, 10]}
+      },
+      {
+        "name": "service_file",
+        "pattern": "<service_file>",
+        "token_type": "weighted",
+        "config": {"values": ["C:\\Windows\\System32\\svchost.exe -k netsvcs", "C:\\Windows\\System32\\spoolsv.exe", "C:\\Windows\\System32\\w32time.dll"], "weights": [50, 30, 20]}
+      },
+      {
+        "name": "service_type",
+        "pattern": "<service_type>",
+        "token_type": "weighted",
+        "config": {"values": ["0x10", "0x20", "0x110"], "weights": [50, 30, 20]}
+      },
+      {
+        "name": "start_type",
+        "pattern": "<start_type>",
+        "token_type": "weighted",
+        "config": {"values": ["2", "3", "4"], "weights": [50, 40, 10]}
+      }
+    ],
+    "fields": [
+      {"name": "event_code", "type": "string", "cardinality": 10},
+      {"name": "computer_name", "type": "string", "cardinality": 8},
+      {"name": "username", "type": "string", "cardinality": 10},
+      {"name": "logon_type", "type": "string", "cardinality": 7},
+      {"name": "src_ip", "type": "ipv4", "cardinality": 254},
+      {"name": "status", "type": "string", "cardinality": 6},
+      {"name": "process_name", "type": "string", "cardinality": 6},
+      {"name": "service_name", "type": "string", "cardinality": 7}
+    ]
+  },
+  {
+    "name": "web_access_combined",
+    "description": "Apache/Nginx combined access log format with client IPs, HTTP methods, URIs, status codes, and user agents",
+    "sourcetype": "access_combined",
+    "format": "unknown",
+    "templates": [
+      "<src_ip> - <username> [<timestamp>] \"<method> <uri> HTTP/<http_version>\" <status_code> <bytes> \"<referrer>\" \"<user_agent>\"",
+      "<src_ip> - - [<timestamp>] \"<method> <uri> HTTP/<http_version>\" <status_code> <bytes> \"-\" \"<user_agent>\"",
+      "<src_ip> - - [<timestamp>] \"<method> <uri>?<query_string> HTTP/<http_version>\" <status_code> <bytes> \"<referrer>\" \"<user_agent>\""
+    ],
+    "template_weights": [30, 45, 25],
+    "token_rules": [
+      {
+        "name": "src_ip",
+        "pattern": "<src_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "0.0.0.0/0"}
+      },
+      {
+        "name": "username",
+        "pattern": "<username>",
+        "token_type": "weighted",
+        "config": {"values": ["admin", "user1", "api_service", "monitor"], "weights": [30, 30, 25, 15]}
+      },
+      {
+        "name": "timestamp",
+        "pattern": "<timestamp>",
+        "token_type": "timestamp",
+        "config": {"offset_seconds": 0, "jitter_seconds": 5, "format": "%d/%b/%Y:%H:%M:%S +0000"}
+      },
+      {
+        "name": "method",
+        "pattern": "<method>",
+        "token_type": "weighted",
+        "config": {"values": ["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"], "weights": [55, 20, 8, 5, 5, 4, 3]}
+      },
+      {
+        "name": "uri",
+        "pattern": "<uri>",
+        "token_type": "weighted",
+        "config": {"values": ["/", "/index.html", "/api/v1/users", "/api/v1/products", "/api/v1/orders", "/api/v1/auth/login", "/api/v1/auth/logout", "/static/css/main.css", "/static/js/app.js", "/health", "/favicon.ico", "/robots.txt", "/api/v2/search", "/dashboard", "/admin/settings"], "weights": [8, 5, 10, 10, 8, 12, 5, 7, 7, 8, 5, 3, 5, 4, 3]}
+      },
+      {
+        "name": "http_version",
+        "pattern": "<http_version>",
+        "token_type": "weighted",
+        "config": {"values": ["1.1", "2.0", "1.0"], "weights": [60, 35, 5]}
+      },
+      {
+        "name": "status_code",
+        "pattern": "<status_code>",
+        "token_type": "weighted",
+        "config": {"values": ["200", "201", "204", "301", "302", "304", "400", "401", "403", "404", "405", "500", "502", "503"], "weights": [45, 5, 3, 5, 5, 8, 5, 4, 3, 8, 2, 3, 2, 2]}
+      },
+      {
+        "name": "bytes",
+        "pattern": "<bytes>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 0, "max": 524288}
+      },
+      {
+        "name": "referrer",
+        "pattern": "<referrer>",
+        "token_type": "weighted",
+        "config": {"values": ["https://example.com/", "https://example.com/dashboard", "https://www.google.com/", "https://example.com/login", "-"], "weights": [30, 25, 15, 15, 15]}
+      },
+      {
+        "name": "user_agent",
+        "pattern": "<user_agent>",
+        "token_type": "weighted",
+        "config": {"values": ["Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/122.0.0.0", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Safari/537.36", "Mozilla/5.0 (X11; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0", "curl/8.4.0", "python-requests/2.31.0", "PostmanRuntime/7.36.0", "Googlebot/2.1 (+http://www.google.com/bot.html)"], "weights": [30, 20, 15, 10, 10, 10, 5]}
+      },
+      {
+        "name": "query_string",
+        "pattern": "<query_string>",
+        "token_type": "weighted",
+        "config": {"values": ["q=search+term&page=1", "id=12345&format=json", "limit=50&offset=0", "token=abc123&lang=en", "category=security&sort=date"], "weights": [25, 25, 20, 15, 15]}
+      }
+    ],
+    "fields": [
+      {"name": "src_ip", "type": "ipv4", "cardinality": 1000},
+      {"name": "method", "type": "string", "cardinality": 7},
+      {"name": "uri", "type": "string", "cardinality": 15},
+      {"name": "status_code", "type": "string", "cardinality": 14},
+      {"name": "bytes", "type": "number", "cardinality": 100},
+      {"name": "user_agent", "type": "string", "cardinality": 7}
+    ]
+  },
+  {
+    "name": "dns_query",
+    "description": "DNS query and response logs with query types, domains, response codes, and resolution details",
+    "sourcetype": "dns",
+    "format": "kv",
+    "templates": [
+      "<timestamp> client <src_ip>#<src_port>: query: <domain> IN <query_type> + (<flags>)",
+      "<timestamp> client <src_ip>#<src_port>: query: <domain> IN <query_type> -EDC (<flags>)",
+      "<timestamp> <src_ip> -> <dst_ip>: <query_type> <domain> <response_code> <answer_ip> <ttl>",
+      "<timestamp> <src_ip> -> <dst_ip>: <query_type> <domain> <response_code> - 0"
+    ],
+    "template_weights": [30, 10, 40, 20],
+    "token_rules": [
+      {
+        "name": "timestamp",
+        "pattern": "<timestamp>",
+        "token_type": "timestamp",
+        "config": {"offset_seconds": 0, "jitter_seconds": 2, "format": "%d-%b-%Y %H:%M:%S.%f"}
+      },
+      {
+        "name": "src_ip",
+        "pattern": "<src_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "10.0.0.0/16"}
+      },
+      {
+        "name": "dst_ip",
+        "pattern": "<dst_ip>",
+        "token_type": "weighted",
+        "config": {"values": ["10.0.0.2", "10.0.0.3", "8.8.8.8", "8.8.4.4", "1.1.1.1"], "weights": [30, 30, 20, 10, 10]}
+      },
+      {
+        "name": "src_port",
+        "pattern": "<src_port>",
+        "token_type": "integer_range",
+        "config": {"type": "port", "min": 1024, "max": 65535}
+      },
+      {
+        "name": "domain",
+        "pattern": "<domain>",
+        "token_type": "weighted",
+        "config": {"values": ["www.google.com", "login.microsoftonline.com", "api.github.com", "cdn.cloudflare.com", "update.microsoft.com", "mail.google.com", "dns.google", "s3.amazonaws.com", "outlook.office365.com", "slack-msgs.com", "ocsp.digicert.com", "time.windows.com", "wpad.corp.local", "dc01.corp.local", "internal.corp.local"], "weights": [12, 10, 8, 8, 8, 7, 5, 7, 7, 5, 5, 5, 5, 5, 3]}
+      },
+      {
+        "name": "query_type",
+        "pattern": "<query_type>",
+        "token_type": "weighted",
+        "config": {"values": ["A", "AAAA", "CNAME", "MX", "TXT", "PTR", "SRV", "SOA", "NS"], "weights": [45, 15, 10, 8, 7, 5, 4, 3, 3]}
+      },
+      {
+        "name": "response_code",
+        "pattern": "<response_code>",
+        "token_type": "weighted",
+        "config": {"values": ["NOERROR", "NXDOMAIN", "SERVFAIL", "REFUSED", "FORMERR"], "weights": [80, 10, 5, 3, 2]}
+      },
+      {
+        "name": "answer_ip",
+        "pattern": "<answer_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "0.0.0.0/0"}
+      },
+      {
+        "name": "ttl",
+        "pattern": "<ttl>",
+        "token_type": "weighted",
+        "config": {"values": ["60", "300", "600", "900", "1800", "3600", "86400"], "weights": [10, 25, 20, 15, 15, 10, 5]}
+      },
+      {
+        "name": "flags",
+        "pattern": "<flags>",
+        "token_type": "weighted",
+        "config": {"values": ["10.0.0.2", "10.0.0.3", "192.168.1.1"], "weights": [40, 40, 20]}
+      }
+    ],
+    "fields": [
+      {"name": "src_ip", "type": "ipv4", "cardinality": 254},
+      {"name": "domain", "type": "string", "cardinality": 15},
+      {"name": "query_type", "type": "string", "cardinality": 9},
+      {"name": "response_code", "type": "string", "cardinality": 5},
+      {"name": "ttl", "type": "number", "cardinality": 7}
+    ]
+  },
+  {
+    "name": "linux_syslog",
+    "description": "Linux syslog messages covering authentication, kernel, cron, and system service events",
+    "sourcetype": "syslog",
+    "format": "unknown",
+    "templates": [
+      "<timestamp> <hostname> sshd[<pid>]: <auth_action> for <username> from <src_ip> port <src_port> ssh2",
+      "<timestamp> <hostname> sshd[<pid>]: Failed password for invalid user <username> from <src_ip> port <src_port> ssh2",
+      "<timestamp> <hostname> sudo: <username> : TTY=<tty> ; PWD=<pwd> ; USER=root ; COMMAND=<command>",
+      "<timestamp> <hostname> kernel: [<uptime>] <kernel_module>: <kernel_msg>",
+      "<timestamp> <hostname> CRON[<pid>]: (<username>) CMD (<cron_command>)",
+      "<timestamp> <hostname> systemd[1]: <service_action> <service_name>.",
+      "<timestamp> <hostname> sshd[<pid>]: Disconnected from user <username> <src_ip> port <src_port>",
+      "<timestamp> <hostname> su[<pid>]: pam_unix(su:session): session <session_action> for user <username> by <su_by>(uid=<uid>)"
+    ],
+    "template_weights": [20, 10, 12, 15, 10, 15, 10, 8],
+    "token_rules": [
+      {
+        "name": "timestamp",
+        "pattern": "<timestamp>",
+        "token_type": "timestamp",
+        "config": {"offset_seconds": 0, "jitter_seconds": 30, "format": "%b %d %H:%M:%S"}
+      },
+      {
+        "name": "hostname",
+        "pattern": "<hostname>",
+        "token_type": "weighted",
+        "config": {"values": ["web-prod-01", "web-prod-02", "db-prod-01", "app-prod-01", "bastion-01", "monitor-01", "ci-runner-01", "k8s-node-01"], "weights": [15, 15, 15, 15, 10, 10, 10, 10]}
+      },
+      {
+        "name": "pid",
+        "pattern": "<pid>",
+        "token_type": "integer_range",
+        "config": {"type": "integer", "min": 1000, "max": 65535}
+      },
+      {
+        "name": "auth_action",
+        "pattern": "<auth_action>",
+        "token_type": "weighted",
+        "config": {"values": ["Accepted publickey", "Accepted password", "Failed password"], "weights": [50, 30, 20]}
+      },
+      {
+        "name": "username",
+        "pattern": "<username>",
+        "token_type": "weighted",
+        "config": {"values": ["root", "deploy", "ubuntu", "admin", "jenkins", "postgres", "www-data", "nobody", "backup", "monitoring"], "weights": [10, 15, 15, 10, 10, 10, 10, 5, 10, 5]}
+      },
+      {
+        "name": "src_ip",
+        "pattern": "<src_ip>",
+        "token_type": "ipv4",
+        "config": {"subnet": "10.0.0.0/8"}
+      },
+      {
+        "name": "src_port",
+        "pattern": "<src_port>",
+        "token_type": "integer_range",
+        "config": {"type": "port", "min": 1024, "max": 65535}
+      },
+      {
+        "name": "tty",
+        "pattern": "<tty>",
+        "token_type": "weighted",
+        "config": {"values": ["pts/0", "pts/1", "pts/2", "pts/3", "tty1"], "weights": [30, 25, 20, 15, 10]}
+      },
+      {
+        "name": "pwd",
+        "pattern": "<pwd>",
+        "token_type": "weighted",
+        "config": {"values": ["/root", "/home/deploy", "/home/ubuntu", "/var/www", "/opt/app"], "weights": [25, 25, 20, 15, 15]}
+      },
+      {
+        "name": "command",
+        "pattern": "<command>",
+        "token_type": "weighted",
+        "config": {"values": ["/usr/bin/systemctl restart nginx", "/usr/bin/apt-get update", "/usr/bin/docker ps", "/usr/bin/journalctl -xe", "/bin/cat /var/log/syslog", "/usr/sbin/service mysql restart", "/usr/bin/tail -f /var/log/auth.log"], "weights": [20, 15, 15, 15, 15, 10, 10]}
+      },
+      {
+        "name": "uptime",
+        "pattern": "<uptime>",
+        "token_type": "float_range",
+        "config": {"type": "float", "min": 100.0, "max": 9999999.0, "precision": 6}
+      },
+      {
+        "name": "kernel_module",
+        "pattern": "<kernel_module>",
+        "token_type": "weighted",
+        "config": {"values": ["NET", "iptables", "OOM", "USB", "ACPI", "EXT4-fs"], "weights": [25, 20, 10, 15, 15, 15]}
+      },
+      {
+        "name": "kernel_msg",
+        "pattern": "<kernel_msg>",
+        "token_type": "weighted",
+        "config": {"values": ["link up", "link down", "IN=eth0 OUT= SRC=10.0.0.1 DST=10.0.0.2", "Out of memory: Kill process", "new USB device found", "Power Button pressed", "mounted filesystem with ordered data mode"], "weights": [20, 15, 20, 10, 10, 10, 15]}
+      },
+      {
+        "name": "cron_command",
+        "pattern": "<cron_command>",
+        "token_type": "weighted",
+        "config": {"values": ["/usr/bin/find /tmp -mtime +7 -delete", "/opt/scripts/backup.sh", "/usr/bin/logrotate /etc/logrotate.conf", "/opt/monitoring/check_health.sh", "/usr/bin/certbot renew --quiet"], "weights": [20, 25, 20, 20, 15]}
+      },
+      {
+        "name": "service_action",
+        "pattern": "<service_action>",
+        "token_type": "weighted",
+        "config": {"values": ["Started", "Stopped", "Starting", "Stopping", "Reloaded", "Failed to start"], "weights": [30, 20, 15, 10, 15, 10]}
+      },
+      {
+        "name": "service_name",
+        "pattern": "<service_name>",
+        "token_type": "weighted",
+        "config": {"values": ["nginx.service", "sshd.service", "docker.service", "postgresql.service", "cron.service", "NetworkManager.service", "ufw.service", "fail2ban.service"], "weights": [20, 15, 15, 10, 10, 10, 10, 10]}
+      },
+      {
+        "name": "session_action",
+        "pattern": "<session_action>",
+        "token_type": "weighted",
+        "config": {"values": ["opened", "closed"], "weights": [50, 50]}
+      },
+      {
+        "name": "su_by",
+        "pattern": "<su_by>",
+        "token_type": "weighted",
+        "config": {"values": ["deploy", "admin", "ubuntu", "root"], "weights": [30, 30, 25, 15]}
+      },
+      {
+        "name": "uid",
+        "pattern": "<uid>",
+        "token_type": "weighted",
+        "config": {"values": ["0", "1000", "1001", "1002", "33"], "weights": [15, 30, 25, 20, 10]}
+      }
+    ],
+    "fields": [
+      {"name": "hostname", "type": "string", "cardinality": 8},
+      {"name": "username", "type": "string", "cardinality": 10},
+      {"name": "src_ip", "type": "ipv4", "cardinality": 254},
+      {"name": "auth_action", "type": "string", "cardinality": 3},
+      {"name": "service_name", "type": "string", "cardinality": 8},
+      {"name": "kernel_module", "type": "string", "cardinality": 6}
+    ]
+  }
+]

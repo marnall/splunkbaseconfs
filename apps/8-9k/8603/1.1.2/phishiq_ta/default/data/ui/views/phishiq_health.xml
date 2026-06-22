@@ -1,0 +1,68 @@
+<dashboard version="1.1" theme="dark">
+  <label>PhishIQPlus - Health</label>
+  <description>Operational health and error visibility for PhishIQPlus enrichment.</description>
+
+  <fieldset submitButton="false">
+    <input type="text" token="phishiqplus_internal_index">
+      <label>Internal index</label>
+      <default>phishiqplus_internal</default>
+    </input>
+    <input type="text" token="phishiqplus_internal_sourcetype">
+      <label>Internal sourcetype</label>
+      <default>phishiqplus:internal</default>
+    </input>
+    <input type="time" token="time">
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Run summary (last 24h)</title>
+      <table>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| eval urls_total=coalesce(urls_total,0), urls_success=coalesce(urls_success,0), urls_failed=coalesce(urls_failed,0)
+| eval error=coalesce(client_metrics.last_error,"none"), status=coalesce(client_metrics.last_status,"")
+| table _time stanza api_base_url urls_total urls_success urls_failed cache_hits duration_ms error status degraded_mode</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Error rate</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m sum(urls_failed) as failed sum(urls_success) as success
+| eval error_rate=case((success+failed)&gt;0, round((failed/(success+failed))*100,2), true(), 0)
+| fields _time error_rate</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleY.text">Error rate (%)</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Circuit breaker opens</title>
+      <chart>
+        <search>
+          <query>index=$phishiqplus_internal_index$ sourcetype=$phishiqplus_internal_sourcetype$ event_type=run_summary
+| timechart span=15m sum(client_metrics.circuit_open) as circuit_open</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

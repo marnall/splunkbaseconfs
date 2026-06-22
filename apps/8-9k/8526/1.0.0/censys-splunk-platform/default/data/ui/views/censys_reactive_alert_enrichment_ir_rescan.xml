@@ -1,0 +1,124 @@
+<form version="1.1">
+  <label>Censys Rescan</label>
+  <init>
+    <set token="show_service_id_object">true</set>
+    <set token="show_host_panel">true</set>
+  </init>
+  <fieldset submitButton="true">
+    <input type="dropdown" token="tkn_account_name">
+      <label>Censys Account*</label>
+      <fieldForLabel>title</fieldForLabel>
+      <fieldForValue>title</fieldForValue>
+      <search>
+        <query>| rest /services/properties/censys-splunk-platform_account splunk_server=local | dedup title | table title</query>
+        <done>
+          <set token="tkn_account_name">$result.title$</set>
+          <set token="form.tkn_account_name">$result.title$</set>
+        </done>
+      </search>
+    </input>
+    <input type="dropdown" token="tkn_indicator_type">
+      <label>Indicator Type*</label>
+      <choice value="host">Service</choice>
+      <choice value="web_property">Web Origin</choice>
+      <change>
+        <condition value="host">
+          <set token="show_host_panel">true</set>
+          <unset token="show_web_property_panel"></unset>
+          <set token="show_service_id_object">true</set>
+          <unset token="show_web_origin">true</unset>
+        </condition>
+        <condition value="web_property">
+          <set token="show_web_property_panel">true</set>
+          <unset token="show_host_panel"></unset>
+          <unset token="show_service_id_object"></unset>
+          <set token="show_web_origin">true</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="tkn_indicator_value">
+      <label>Indicator Value*</label>
+    </input>
+    <input type="text" token="tkn_service_port" depends="$show_service_id_object$">
+      <label>Port*</label>
+    </input>
+    <input type="text" token="tkn_service_protocol" depends="$show_service_id_object$">
+      <label>Protocol*</label>
+    </input>
+    <input type="dropdown" token="tkn_service_transport_protocol" depends="$show_service_id_object$">
+      <label>Transport Protocol*</label>
+      <choice value="unknown">unknown</choice>
+      <choice value="tcp">tcp</choice>
+      <choice value="udp">udp</choice>
+      <choice value="icmp">icmp</choice>
+      <choice value="quic">quic</choice>
+      <default>unknown</default>
+    </input>
+    <input type="text" token="tkn_web_origin_port" depends="$show_web_origin$">
+      <label>Port*</label>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <html>
+        <div style="margin-top: 5px; font-size: 12px;">
+          Please select the appropriate Censys Account and Indicator Type to proceed with the rescan.
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$show_host_panel$">
+      <title>Enriched Host Data</title>
+      <event>
+        <search id="host_search">
+          <query>
+            | censysalertenrichmentrescan account_name="$tkn_account_name$" indicator_type="host" service_ip="$tkn_indicator_value$" service_port="$tkn_service_port$" service_protocol="$tkn_service_protocol$" service_transport_protocol="$tkn_service_transport_protocol$"
+            $show_host_panel$
+            | kv limit=0
+            | rename ip AS IP, labels{} AS Labels, service_count AS "Service Count", services_ports{} AS "Service Ports", services_protocols{} AS "Service Protocols", services_transport_protocols{} AS "Service Transport Protocols", services_labels{} AS "Service Labels", services_vulns{} AS "Service Vulns", services_threats{} AS "Service Threats", services_scan_times{} AS "Service Scan Times", dns_names{} AS "DNS Names", forward_dns_names AS "Forward DNS Names", reverse_dns_names{} AS "Reverse DNS Names", network_name AS "Network Name", cidrs{} AS cidrs, autonomous_system_name AS "Autonomous System Name", autonomous_system_asn AS "Autonomous System asn", city AS City, province AS Province, postal_code AS "Postal Code", country AS Country, country_code AS "Country Code", continent AS Continent, latitude AS Latitude, longitude AS Longitude
+            | table IP, Labels, "Service Count", "Service Ports", "Service Protocols", "Service Transport Protocols", "Service Labels", "Service Vulns", "Service Threats", "Service Scan Times", "DNS Names", "Forward DNS Names", "Reverse DNS Names", "Network Name", cidrs, "Autonomous System Name", "Autonomous System asn", City, Province, "Postal Code", Country, "Country Code", Continent, Latitude, Longitude
+          </query>
+        </search>
+        <option name="list.drilldown">none</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$show_host_panel$">
+      <title>Key Host Fields</title>
+      <table>
+        <search base="host_search"></search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$show_web_property_panel$">
+      <title>Enriched Web Property Data</title>
+      <event>
+        <search id="web_property_search">
+          <query>
+            | censysalertenrichmentrescan account_name="$tkn_account_name$" indicator_type="web_property" web_origin_hostname="$tkn_indicator_value$" web_origin_port="$tkn_web_origin_port$"
+            $show_web_property_panel$
+            | kv limit=0
+            | rename hostname AS Hostname, port AS Port, scan_time AS "Scan Time", endpoint_types{} AS "Endpoint Types", endpoint_paths{} AS "Endpoint Paths", labels{} AS Labels, threats_names{} AS "Threat Names", vulns_names{} AS "Vulns Names" vendors{} AS Vendors, products{} AS Products, versions{} AS Versions, fingerprint_sha256 AS sha256, self_signed AS "Self Signed", subject_dn AS Subject_dn, issuer_dn AS Issuer_dn, common_names{} AS "Common Names", not_before AS "Not Before", not_after AS "Not After"
+            | table Hostname, Port, "Scan Time", "Endpoint Types", "Endpoint Paths", Labels, "Threat Names", "Vulns Names", Vendors, Products, Versions, sha256, "Self Signed", Subject_dn, Issuer_dn, "Common Names", "Not Before", "Not After"
+          </query>
+        </search>
+        <option name="list.drilldown">none</option>
+      </event>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$show_web_property_panel$">
+      <title>Key Web Property Fields</title>
+      <table>
+        <search base="web_property_search"></search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,24 @@
+/*
+PURPOSE:
+  Assess reliability regression or improvement after a change.
+
+WHY:
+  Changes often introduce subtle reliability degradation.
+
+MODEL:
+  - Split selected time range into two halves
+  - Compare failure behavior before vs after midpoint
+
+LIMITATIONS:
+  - Assumes change occurred near midpoint
+*/
+
+| eventstats min(_time) AS min_t max(_time) AS max_t
+| eval midpoint = min_t + ((max_t - min_t) / 2)
+| eval phase = if(_time >= midpoint, "post", "pre")
+| stats sum(is_failure) AS failures BY service phase
+| stats
+    sum(eval(if(phase="post", failures, 0))) AS post_failures
+    sum(eval(if(phase="pre", failures, 0))) AS pre_failures
+  BY service
+| eval delta = post_failures - pre_failures

@@ -1,0 +1,347 @@
+<dashboard version="1.1" theme="dark">
+  <label>AWS DFD Visualizer User Guide</label>
+  <description>Comprehensive interactive reference and live demonstration of the React &amp; D3.js custom AWS Data Flow Diagram visualizer.</description>
+  
+  <row>
+    <panel>
+      <html>
+        <div class="user-guide-welcome" style="padding: 15px; background-color: #1e2832; border-radius: 6px; border: 1px solid #2d3e50; margin-bottom: 20px;">
+          <h1 style="color: #FF9900; margin-top: 0; font-weight: 500; font-size: 28px;">AWS Security Data Flow Diagram (DFD) Visualizer</h1>
+          <p style="font-size: 15px; line-height: 1.6; color: #dcdcdc;">
+            Welcome to the <strong>AWS-DFD-Visualizer</strong>, a React-based custom visualization for Splunk built to render complex AWS Config relationships as dynamic, interactive AWS Application Composer-style Data Flow Diagrams. This app is architected with DoD Impact Level 5 (IL5) environments, Risk Management Framework (RMF) audits, and Zero-Trust architecture (ZTA) in mind.
+          </p>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel title="Interactive Live Demonstration (Force Layout)">
+      <viz type="AWS-DFD-Visualizer.AWS-DFD-Visualizer">
+        <search>
+          <query><![CDATA[| makeresults count=5
+| streamstats count as id
+| eval from=case(id=1, "Internet", id=2, "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-alb/987654321", id=3, "arn:aws:lambda:us-east-1:123456789012:function:order-processor-fn", id=4, "arn:aws:rds:us-east-1:123456789012:db:production-db", id=5, "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/edge-waf/11223344")
+| eval to=case(id=1, "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/edge-waf/11223344", id=2, "arn:aws:lambda:us-east-1:123456789012:function:order-processor-fn", id=3, "arn:aws:rds:us-east-1:123456789012:db:production-db", id=5, "arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/app-alb/987654321")
+| eval type=case(id=1, "AWS::Resource", id=2, "AWS::Resource", id=3, "AWS::Resource", id=4, "AWS::Resource", id=5, "AWS::Resource")
+| eval node_label=case(id=1, "Internet", id=2, "App Load Balancer", id=3, "Order Processor Function", id=4, "Production RDS Database", id=5, "App Edge WAF")
+| eval edge_label=case(id=1, "HTTPS/443", id=2, "HTTPS/8443", id=3, "MySQL/3306", id=5, "Forward")
+| eval group=case(id=1, "External Zone", id=2, "Security Boundary", id=3, "Compute Boundary", id=4, "Database Boundary", id=5, "Security Boundary")
+| eval status=case(id=4, "OK", id=3, "OK", id=2, "OK", id=5, "OK", id=1, "OK")
+| eval icon=case(id=1, "RESOURCE", id=2, "ALB", id=3, "LAMBDA", id=4, "RDS", id=5, "WAF")
+| table from to type node_label edge_label group status icon]]></query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="height">600</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.display_mode">auto</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.layoutMode">force</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.clusterBy">group</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.draggableNodes">true</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.smoothEdges">true</option>
+      </viz>
+    </panel>
+    <panel title="Interactive Static Blueprint Demonstration (Hierarchy Layout)">
+      <viz type="AWS-DFD-Visualizer.AWS-DFD-Visualizer">
+        <search>
+          <query><![CDATA[| makeresults 
+| eval from="ROOT_NODE", to="policy-plane-root", type="AWS::IAM::Role", node_label="Zero-Trust Boundary", edge_label=""
+| append [
+    | makeresults
+    | eval from="ROOT_NODE", to="data-plane-root", type="AWS::IAM::Role", node_label="Zero-Trust Boundary", edge_label=""
+  ]
+| append [
+    | makeresults
+    | eval from="ROOT_NODE", to="identity-plane-root", type="AWS::IAM::Role", node_label="Zero-Trust Boundary", edge_label=""
+  ]
+| append [
+    | makeresults
+    | eval from="policy-plane-root", to="pe-engine", type="AWS::Resource", node_label="Policy Engine (PE)", edge_label="", group="Policy Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="pe-engine", to="pa-admin", type="AWS::Resource", node_label="Policy Administrator (PA)", edge_label="Decision Channel", group="Policy Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="identity-plane-root", to="developer-user", type="AWS::IAM::User", node_label="Developer User", edge_label="", group="Identity Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="developer-user", to="bastion-host", type="AWS::EC2::Instance", node_label="Bastion Host", edge_label="Assume Role", group="Identity Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="data-plane-root", to="bastion-host", type="AWS::EC2::Instance", node_label="Bastion Host", edge_label="", group="Data Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="bastion-host", to="web-server", type="AWS::EC2::Instance", node_label="Web Server", edge_label="SSH/22", group="Data Plane"
+  ]
+| append [
+    | makeresults
+    | eval from="web-server", to="db-server", type="AWS::RDS::DBInstance", node_label="DB Server", edge_label="SQL/3306", group="Data Plane"
+  ]
+| fields from to type node_label edge_label group status]]></query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="height">600</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.layoutMode">Hierarchy</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.clusterBy">group</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.draggableNodes">false</option>
+        <option name="AWS-DFD-Visualizer.AWS-DFD-Visualizer.smoothEdges">false</option>
+      </viz>
+    </panel>
+  </row>
+
+  <row>
+    <panel title="1. Query Schema &amp; Data Specification">
+      <html>
+        <div style="font-size: 14px; color: #dcdcdc; line-height: 1.6;">
+          <p>The visualizer reads standard tabular results from your SPL query. You should format your query using <code>| table</code> or <code>| project</code> to yield the following columns:</p>
+          <table class="table table-bordered table-striped" style="color: #dcdcdc; width: 100%; border-collapse: collapse; border: 1px solid #444; margin-top: 10px; margin-bottom: 20px;">
+            <thead>
+              <tr style="background-color: #2c3e50; border-bottom: 2px solid #FF9900;">
+                <th style="padding: 10px; border: 1px solid #444;">Column</th>
+                <th style="padding: 10px; border: 1px solid #444;">Type</th>
+                <th style="padding: 10px; border: 1px solid #444;">Description</th>
+                <th style="padding: 10px; border: 1px solid #444;">Example Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">from / source</td>
+                <td style="padding: 10px; border: 1px solid #444; font-weight: bold; color: #FF9900;">Required</td>
+                <td style="padding: 10px; border: 1px solid #444;">The source node resourceId or full AWS ARN. ARNs are normalized internally for safe D3 selections.</td>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">arn:aws:lambda:us-east-1:123:function:my-func</td>
+              </tr>
+              <tr style="background-color: #252a30;">
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">to / destination</td>
+                <td style="padding: 10px; border: 1px solid #444; font-weight: bold; color: #879196;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">The destination node resourceId or ARN. If left empty, an isolated node is drawn without connections.</td>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">arn:aws:rds:us-east-1:123:db:my-db</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">type</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">AWS resource type, used to resolve service-specific architectural icons automatically.</td>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">AWS::Lambda::Function</td>
+              </tr>
+              <tr style="background-color: #252a30;">
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">node_label / label</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">Human-readable label shown inside the node card. Falls back to extracting the short name from the ARN.</td>
+                <td style="padding: 10px; border: 1px solid #444;">Order Processor API</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">edge_label / link_text</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">Relationship descriptor text overlaying the link curve, enclosed in a clean background halo.</td>
+                <td style="padding: 10px; border: 1px solid #444;">HTTPS / 443</td>
+              </tr>
+              <tr style="background-color: #252a30;">
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">group</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">Pillar/security zone name. Nodes of the same group are drawn inside curved, shaded convex hulls.</td>
+                <td style="padding: 10px; border: 1px solid #444;">Private Subnet A</td>
+              </tr>
+              <tr>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">status</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">Configuration status. Statuses like <code>ResourceDeleted</code> render cards with reduced opacity and dashed borders.</td>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">ResourceDeleted</td>
+              </tr>
+              <tr style="background-color: #252a30;">
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">captureTime</td>
+                <td style="padding: 10px; border: 1px solid #444; color: #a9b1ba;">Optional</td>
+                <td style="padding: 10px; border: 1px solid #444;">Configuration capture timestamp. Older snapshots trigger stale-node fade-out animations.</td>
+                <td style="padding: 10px; border: 1px solid #444; font-family: monospace;">2026-05-20T12:00:00Z</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel title="1.2. Integrated Data Source Targeting &amp; SPL Best Practices">
+      <html>
+        <div style="font-size: 14px; color: #dcdcdc; line-height: 1.6;">
+          <p>When query-generating data from live AWS Config JSON tables or building mock datasets, adhere strictly to the following ingestion best practices:</p>
+          <ul style="padding-left: 20px;">
+            <li><strong>JSON Targeting:</strong> Base queries on <code>sourcetype="aws:config"</code> or equivalent JSON formats. Utilize <code>spath</code> to extract fields cleanly.</li>
+            <li><strong>Memory-Safe Relationship Extraction:</strong> Always append a limit when expanding relationship arrays (e.g. <code>| mvexpand rels limit=1000</code>) to prevent high-volume workloads from hitting Splunk memory caps.</li>
+            <li><strong>Schema Field Retention:</strong> Ensure extended attributes (<code>subnetId</code>, <code>vpcId</code>, and <code>securityGroups</code>) are explicitly returned in your terminal <code>| table</code> command, even if not represented as nodes. These fields are mandatory to drive active drilldowns and concentric compliance rings.</li>
+            <li><strong>Mandatory Group Boundaries:</strong> Nesting structures correctly requires formatting the <code>group</code> field inline: <code>| eval group = case(isnotnull(vpcId) AND isnotnull(subnetId), vpcId . "/" . subnetId, isnotnull(vpcId), vpcId, 1=1, "GLOBAL_ROOT")</code>.</li>
+            <li><strong>JSON Escaping inside SPL:</strong> When hardcoding mock nodes (e.g. via <code>| makeresults</code>), all quote characters inside the JSON strings (such as <code>securityGroups</code>) MUST be escaped with a backslash: <code>\"</code>.</li>
+            <li><strong>Tabular Schema Padding:</strong> If using <code>append</code> combinations, initialize empty attributes (e.g. <code>subnetId="" vpcId="" securityGroups=""</code>) on non-infrastructure layers to prevent schema mismatch rendering failures.</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel title="2. NIST 800-207 Zero-Trust Architecture (ZTA) Copy-Paste SPL Scenarios">
+      <html>
+        <div style="font-size: 14px; color: #dcdcdc; line-height: 1.6;">
+          <p>You can visualize NIST 800-207 Zero-Trust logical diagrams directly inside Splunk. Copy and paste either of the following standard self-contained SPL searches into a search panel or dashboard to see ZTA rendering in action:</p>
+          
+          <h3 style="color: #FF9900; margin-top: 15px;">Scenario A: Core PDP/PEP Data Access Path</h3>
+          <p style="margin-bottom: 5px;">This scenario models the logical path of a User Subject requesting access to an Enterprise Resource, intercepted by a Policy Enforcement Point (PEP), which verifies identity and posture policies with the Policy Decision Point (PE / PA):</p>
+          <pre style="background-color: #1a222a; color: #5cb85c; padding: 12px; border-radius: 4px; border: 1px solid #333; overflow-x: auto; font-family: monospace; font-size: 12px; line-height: 1.4;"><![CDATA[| makeresults count=1
+| eval data="
+SubjectDevice,null,AWS::Resource,Subject / User Device,null,Data Plane,DEVICE,OK;
+PEP_Gateway,null,AWS::Resource,Policy Enforcement Point (PEP),null,Data Plane,WAF,OK;
+EnterpriseResource,null,AWS::Resource,Enterprise Resource,null,Data Plane,RDS,OK;
+PA_Administrator,null,AWS::Resource,Policy Administrator (PA),null,Control Plane,IAM,OK;
+PE_Engine,null,AWS::Resource,Policy Engine (PE),null,Control Plane,POLICYENGINE,OK;
+SubjectDevice,PEP_Gateway,AWS::Resource,Subject / User Device,Access Request (HTTPS),Data Plane,DEVICE,OK;
+PEP_Gateway,EnterpriseResource,AWS::Resource,Policy Enforcement Point (PEP),Authorized Tunnel,Data Plane,WAF,OK;
+PEP_Gateway,PA_Administrator,AWS::Resource,Policy Enforcement Point (PEP),Decision Request,Data Plane,WAF,OK;
+PA_Administrator,PE_Engine,AWS::Resource,Policy Administrator (PA),Evaluate Policy,Control Plane,IAM,OK;
+PE_Engine,PA_Administrator,AWS::Resource,Policy Engine (PE),Grant/Deny Action,Control Plane,POLICYENGINE,OK
+"
+| nomv data
+| eval row=split(data, ";")
+| mvexpand row
+| eval parts=split(row, ",")
+| eval from=mvindex(parts, 0), to=mvindex(parts, 1), type=mvindex(parts, 2), node_label=mvindex(parts, 3), edge_label=mvindex(parts, 4), group=mvindex(parts, 5), icon=mvindex(parts, 6), status=mvindex(parts, 7)
+| eval to=if(to="null", null(), to)
+| eval edge_label=if(edge_label="null", null(), edge_label)
+| table from to type node_label edge_label group icon status]]></pre>
+
+          <h3 style="color: #FF9900; margin-top: 25px;">Scenario B: Multi-Source PIP Query Engine</h3>
+          <p style="margin-bottom: 5px;">This scenario models the Policy Engine (PE) querying multiple distinct Policy Information Points (PIPs)—such as the User Attribute Registry (IAM), MDM Posture Manager (DEVICE), and Activity Logs audit database (CLOUDTRAIL)—to feed the trust algorithm during an evaluation:</p>
+          <pre style="background-color: #1a222a; color: #5cb85c; padding: 12px; border-radius: 4px; border: 1px solid #333; overflow-x: auto; font-family: monospace; font-size: 12px; line-height: 1.4;"><![CDATA[| makeresults count=1
+| eval data="
+PE_Engine,null,AWS::Resource,Policy Engine (PE),null,Control Plane,POLICYENGINE,OK;
+PA_Administrator,null,AWS::Resource,Policy Administrator (PA),null,Control Plane,IAM,OK;
+PIP_UserRegistry,null,AWS::Resource,PIP - Identity Directory,null,Support Plane,IAM,OK;
+PIP_DevicePosture,null,AWS::Resource,PIP - MDM Posture,null,Support Plane,DEVICE,OK;
+PIP_BehaviorAudit,null,AWS::Resource,PIP - Behavior Logs,null,Support Plane,CLOUDTRAIL,OK;
+PA_Administrator,PE_Engine,AWS::Resource,Policy Administrator (PA),Evaluate Policy,Control Plane,IAM,OK;
+PE_Engine,PA_Administrator,AWS::Resource,Policy Engine (PE),Grant/Deny Action,Control Plane,POLICYENGINE,OK;
+PE_Engine,PIP_UserRegistry,AWS::Resource,Policy Engine (PE),Fetch User Attributes,Control Plane,POLICYENGINE,OK;
+PE_Engine,PIP_DevicePosture,AWS::Resource,Policy Engine (PE),Check Device Health,Control Plane,POLICYENGINE,OK;
+PE_Engine,PIP_BehaviorAudit,AWS::Resource,Policy Engine (PE),Query Activity Logs,Control Plane,POLICYENGINE,OK
+"
+| nomv data
+| eval row=split(data, ";")
+| mvexpand row
+| eval parts=split(row, ",")
+| eval from=mvindex(parts, 0), to=mvindex(parts, 1), type=mvindex(parts, 2), node_label=mvindex(parts, 3), edge_label=mvindex(parts, 4), group=mvindex(parts, 5), icon=mvindex(parts, 6), status=mvindex(parts, 7)
+| eval to=if(to="null", null(), to)
+| eval edge_label=if(edge_label="null", null(), edge_label)
+| table from to type node_label edge_label group icon status]]></pre>
+
+          <h3 style="color: #FF9900; margin-top: 25px;">Scenario C: Zero-Trust Static Layout &amp; Multi-Plane Compliance Interception</h3>
+          <p style="margin-bottom: 5px;">This scenario models elements across all three Zero-Trust planes (Identity, Policy &amp; Control, and Infrastructure). It features assumed roles, WAF-protected CDNs routing to VPC subnets, compliant/non-compliant security groups, and mid-flight compliance violations (SSH/22 rendered in dashed red):</p>
+          <pre style="background-color: #1a222a; color: #5cb85c; padding: 12px; border-radius: 4px; border: 1px solid #333; overflow-x: auto; font-family: monospace; font-size: 12px; line-height: 1.4;"><![CDATA[| makeresults 
+| eval from="user-dev", to="audit-role", type="AWS::IAM::User", node_label="Developer User", edge_label="Assumes Role", subnetId="", vpcId="", securityGroups=""
+| append [
+    | makeresults
+    | eval from="audit-role", to="", type="AWS::IAM::Role", node_label="Audit Administrator Role", edge_label="", subnetId="", vpcId="", securityGroups=""
+  ]
+| append [
+    | makeresults
+    | eval from="edge-waf", to="cf-cdn", type="AWS::WAFV2::WebACL", node_label="Edge WAF WebACL", edge_label="Protects CDN", subnetId="", vpcId="", securityGroups=""
+  ]
+| append [
+    | makeresults
+    | eval from="cf-cdn", to="bastion-host", type="AWS::CloudFront::Distribution", node_label="CloudFront CDN", edge_label="Routes Traffic", subnetId="", vpcId="", securityGroups=""
+  ]
+| append [
+    | makeresults
+    | eval from="bastion-host", to="web-server", type="AWS::EC2::Instance", node_label="Bastion Host", edge_label="HTTPS/443", subnetId="subnet-2", vpcId="vpc-1", securityGroups="[{\"id\":\"sg-3\",\"name\":\"bastion-sg\",\"is_compliant\":true}]"
+  ]
+| append [
+    | makeresults
+    | eval from="web-server", to="db-server", type="AWS::EC2::Instance", node_label="Web Server", edge_label="SSH/22", subnetId="subnet-1", vpcId="vpc-1", securityGroups="[{\"id\":\"sg-1\",\"name\":\"web-sg\",\"is_compliant\":true}]"
+  ]
+| append [
+    | makeresults
+    | eval from="db-server", to="", type="AWS::RDS::DBInstance", node_label="DB Server", edge_label="", subnetId="subnet-1", vpcId="vpc-1", securityGroups="[{\"id\":\"sg-2\",\"name\":\"db-sg\",\"is_compliant\":false}]"
+  ]
+| fields from to type node_label edge_label subnetId vpcId securityGroups]]></pre>
+
+          <h3 style="color: #FF9900; margin-top: 25px;">Scenario D: Live AWS Config Ingestion</h3>
+          <p style="margin-bottom: 5px;">This query handles standard live-data ingestion from `sourcetype="aws:config:json"`. It extracts core resource attributes, formats them to the diagram schema, and uses `mvzip` and `mvexpand` to safely map parent-child relationships and association names without positional shifts:</p>
+          <pre style="background-color: #1a222a; color: #5cb85c; padding: 12px; border-radius: 4px; border: 1px solid #333; overflow-x: auto; font-family: monospace; font-size: 12px; line-height: 1.4;"><![CDATA[index=aws sourcetype="aws:config:json"
+| eval from='configurationItem.resourceId'
+| eval type='configurationItem.resourceType'
+| eval node_label=coalesce('configurationItem.resourceName', 'configurationItem.resourceId')
+| eval group=coalesce('configurationItem.awsRegion', "Global")
+| eval status='configurationItem.configurationItemStatus'
+| eval captureTime='configurationItem.configurationItemCaptureTime'
+| rename configurationItem.relationships{}.resourceId as related_id, configurationItem.relationships{}.relationshipName as relation_name
+| eval zipped_relations=mvzip(related_id, relation_name, "::")
+| mvexpand zipped_relations
+| eval parts=split(zipped_relations, "::")
+| eval to=mvindex(parts, 0)
+| eval edge_label=mvindex(parts, 1)
+| table from to type node_label edge_label group status captureTime]]></pre>
+
+          <h3 style="color: #FF9900; margin-top: 30px;">The "Executive Blueprint" Reference Recipe</h3>
+          <p>To establish a stable, aggregated, and compliant static dashboard layout that represents Zero-Trust architecture boundaries, combine the following three mandatory architectural rules:</p>
+          
+          <ul style="color: #dcdcdc; line-height: 1.6; margin-left: 20px;">
+            <li><strong>Rule 1: The ROOT_NODE Mathematical Constraint:</strong> Hierarchical layouts (non-physics trees) require a single parentless root node to stabilize. The input dataset must inject a virtual parentless node (e.g. <code>ROOT_NODE</code>) for all plane/zone roots to branch from.</li>
+            <li><strong>Rule 2: The Aggregation &amp; Live-Data Pattern:</strong> Instead of listing static templates, use an <code>| inputlookup</code> combined with a <code>| stats count by role | xyseries</code> pattern to dynamically aggregate asset counts into the node labels (e.g., "Policy Engine (4 Active Devices)").</li>
+            <li><strong>Rule 3: Mandatory Dashboard XML Options:</strong> Bypassing Splunk dashboard rendering defects requires explicitly setting and locking the following XML attributes in the dashboard panel configuration:
+              <ul style="list-style-type: circle; margin-left: 20px;">
+                <li><code>layoutMode="Hierarchy"</code> - Locks nodes onto static grid positions.</li>
+                <li><code>clusterBy="group"</code> - Tells D3 to construct clean, padded rectangular swimlanes wrapping each group.</li>
+                <li><code>draggableNodes="false"</code> - Freezes coordinates and disables visual dragging for static briefings.</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel title="3. Architectural and Security Design Highlights">
+      <html>
+        <div style="font-size: 14px; color: #dcdcdc; line-height: 1.6;">
+          <h3 style="color: #FF9900; margin-top: 0;">React-D3 Separation of Concerns</h3>
+          <p>
+            Traditional force-graphs frequently suffer from DOM-sync crashes because D3 directly mutates elements managed by React. This visualizer utilizes D3 strictly as a math and physics co-processor to calculate 2D spatial coordinates (handling <code>d3.forceSimulation</code>, collision detection, and zoom matrices), while React retains complete ownership of the DOM (rendering high-fidelity SVG <code>&lt;rect&gt;</code> card elements, images, text, and binding secure events).
+          </p>
+          
+          <h3 style="color: #FF9900;">Zero-Trust Architecture (ZTA) Zones</h3>
+          <p>
+            When grouping by VPC subnets or security domains (using the <code>group</code> column), the visualizer uses <code>d3.polygonHull</code> combined with a Catmull-Rom closed interpolator to draw shaded convex hulls enclosing the nodes. This allows for immediate visual identification of missing firewalls, insecure trust boundaries, and network segregation breaches in Impact Level 5 (IL5) environments.
+          </p>
+          
+          <h3 style="color: #FF9900;">Strict Bidirectional Edge Deduplication</h3>
+          <p>
+            In AWS Config relationships, associations are often declared on both ends (e.g. from EC2 pointing to Subnet and vice-versa). The visualizer uses a sorted canonical edge set key (<code>[from, to].sort().join('|')</code>) to automatically prune duplicate connections, preventing D3 forces from double-pulling nodes and collapsing the diagram into visual anomalies.
+          </p>
+          
+          <h3 style="color: #FF9900;">Layout Persistence &amp; Maintenance (Blueprint Mode)</h3>
+          <p>
+            Traditional D3 force-directed visualizers place a heavy maintenance burden on administrators, who must manually drag cards to organize the layout and save their coordinates. The AWS-DFD-Visualizer completely eliminates this layout persistence overhead via its <strong>Pure Deterministic Static Layout Engine</strong>. In Blueprint Mode (activated by setting <code>layoutMode="Hierarchy"</code>, <code>clusterBy="group"</code>, and <code>draggableNodes="false"</code>), new subnets or EC2 scaling groups automatically compute their own structural grid dimensions bottom-up on search refresh. No human dragging, coordinate databases, or manual drag-and-drop maintenance is required.
+          </p>
+        </div>
+      </html>
+    </panel>
+    <panel title="4. Full Configuration Properties Reference">
+      <html>
+        <div style="font-size: 14px; color: #dcdcdc; line-height: 1.6;">
+          <p>Customize the presentation of your diagram using the visualizer Format menu in the Edit view:</p>
+          <ul style="padding-left: 20px;">
+            <li><strong>Node Placement Mode</strong> (<code>display_mode</code>): Switch between <em>Auto (Physics)</em> to allow forces to self-arrange, or <em>Manual (Sticky)</em> to lock nodes where you drop them.</li>
+            <li><strong>Layout Engine</strong> (<code>layoutMode</code>): Choose <em>Force Directed</em> for organic physics layouts or <em>Hierarchy (Tree)</em> to organize nodes as Top-to-Bottom or Left-to-Right BFS trees.</li>
+            <li><strong>Clustering</strong> (<code>clusterBy</code>): Render security envelopes by group by selecting <em>Group</em>.</li>
+            <li><strong>Draggability and Zoom</strong> (<code>draggableNodes</code> / <code>canZoom</code>): Toggles interactivity for static audit exports.</li>
+            <li><strong>Edge Styling</strong> (<code>smoothEdges</code>): Toggle curved SVG paths versus straight vector lines to maximize link legibility.</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+</dashboard>

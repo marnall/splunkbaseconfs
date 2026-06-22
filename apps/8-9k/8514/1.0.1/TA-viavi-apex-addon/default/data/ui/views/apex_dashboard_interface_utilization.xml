@@ -1,0 +1,76 @@
+<dashboard version="1.1">
+  <label>Interface Utilization</label>
+  <description>Flow Device Interface Utilization Load</description>
+  <search>
+    <query>
+          sourcetype="apex" index="*" field_name="Utilization Total" |stats latest(_time) as _time by apex_dashboard   |  sort 0 - _time | head 1 | table apex_dashboard | rename apex_dashboard as url_token
+    </query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="url_token">$result.url_token$</set>
+    </done>
+  </search>
+  <row depends="$url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <a href="$url_token$" target="_blank">Click here to visit the Apex dashboard</a>
+      </html>
+    </panel>
+  </row>
+  <row depends="$!url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <div style="color: #ff6b35; padding: 10px; border-left: 4px solid #ff6b35;">
+          <strong>No Apex Dashboard Available</strong><br/>
+          No events received in the last 24 hours. Check your Apex configuration and ensure events are being sent to Splunk.
+          <br/><br/>
+          <a href="/en-US/app/TA-viavi-apex-addon/apex_setup_page">Configure Add-on Settings</a>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Utilization By Device Over Last 24 Hours</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name="Utilization Total"
+| where isnotnull(device) AND isnotnull(interface) | eval util=replace(current_value, "%", "") | timechart span=5m avg(util) by device</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Utilization</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Devices with High Utilization</title>
+      <table>
+        <title>Average utilization per device/interface over last 60 minutes</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name = "Utilization Total" | where isnotnull(device) AND isnotnull(interface) | eval util=replace(current_value, "%", "") | stats avg(util) AS avg_util BY device, interface | eval "Utilization Total"=tostring(avg_util, "commas") | table device, interface, "Utilization Total"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

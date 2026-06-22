@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?><form version="1.1" script="customsplunk_alerts.js" stylesheet="customsplunk_alerts.css" theme="light">
+  <label>Correlation Alerts</label>
+  <fieldset submitButton="false" autoRun="false">
+    <input type="time" token="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="app">
+      <label>Alerting app</label>
+      <fieldForLabel>app</fieldForLabel>
+      <fieldForValue>app</fieldForValue>
+      <selectFirstChoice>true</selectFirstChoice>
+      <search>
+        <query>|rest /servicesNS/admin/Bitdefender-TI-Splunk-App/alerts/fired_alerts| where title!="-"| dedup title| rename "eai:acl.app" as app | where app="Bitdefender-TI-Splunk-App" | dedup app| table title, app</query>
+        <earliest>$time.earliest$</earliest>
+        <latest>$time.latest$</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="alert_name">
+      <label>Triggered correlation rule</label>
+      <fieldForLabel>title</fieldForLabel>
+      <fieldForValue>encoded_title</fieldForValue>
+      <selectFirstChoice>true</selectFirstChoice>
+      <search>
+        <query>|rest /servicesNS/admin/$app$/alerts/fired_alerts| where title!="-"| dedup title | rename "eai:acl.app" as app | where app="Bitdefender-TI-Splunk-App" | eval encoded_title = replace(title, " ", "%20") | dedup title |dedup encoded_title| table title, app,encoded_title</query>
+        <earliest>$time.earliest$</earliest>
+        <latest>$time.latest$</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Alert count</title>
+      <single>
+        <search>
+          <query>|rest /servicesNS/admin/$app$/alerts/fired_alerts/$alert_name$ | where title!="-"| eval _time=trigger_time, earliest_time=if(replace("$time.earliest$","\d[\.\d]*","")!="",relative_time(now(),"$time.earliest$"),"$time.earliest$"), latest_time=case(replace("$time.latest$","\d[\.\d]*","")!="",relative_time(now(),if("$time.latest$"="now", "-0","$time.latest$")),"$time.latest$"="", relative_time(now(),"-0"), 1=1, "$time.latest$")|where trigger_time&gt;=earliest_time AND trigger_time &lt; latest_time | timechart span=1d count</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="colorBy">trend</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x000","0x000"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">0</option>
+        <option name="trendColorInterpretation">inverse</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Alert trend</title>
+      <chart>
+        <search>
+          <query>|rest /servicesNS/admin/$app$/alerts/fired_alerts/$alert_name$| where title!="-" | eval _time=trigger_time, earliest_time=if(replace("$time.earliest$","\d[\.\d]*","")!="",relative_time(now(),"$time.earliest$"),"$time.earliest$"), latest_time=case(replace("$time.latest$","\d[\.\d]*","")!="",relative_time(now(),if("$time.latest$"="now", "-0","$time.latest$")),"$time.latest$"="", relative_time(now(),"-0"), 1=1, "$time.latest$")|where trigger_time&gt;=earliest_time AND trigger_time &lt; latest_time| timechart span=1d count</query>
+          <earliest>$time.earliest$</earliest>
+          <latest>$time.latest$</latest>
+          <refresh>30s</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Alert details</title>
+      <html>
+        <div id="table2"/>
+        <div id="export"/>
+      </html>
+    </panel>
+  </row>
+</form>

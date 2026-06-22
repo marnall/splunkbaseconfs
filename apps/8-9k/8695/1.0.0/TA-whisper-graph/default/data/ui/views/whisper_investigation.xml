@@ -1,0 +1,195 @@
+<dashboard version="2">
+  <label>Whisper - Lookup / Investigation</label>
+  <description>Ad hoc domain and IP investigation using Whisper Knowledge Graph pivots. Enter an indicator and click Submit to run multiple read-only graph queries in parallel. Nothing is written and no risk events are generated.</description>
+  <definition><![CDATA[
+{
+  "title": "Whisper - Lookup / Investigation",
+  "description": "Ad hoc indicator investigation. All panels run read-only graph pivots against the Whisper Knowledge Graph. No data is written and no alerts are generated. The indicator_input token is passed directly to each panel; the strict allowlist validation (^[A-Za-z0-9._:\\-]+$) and lowercasing is applied inside whisperquery via the validate_indicator option, which short-circuits with zero events on invalid input before any Cypher executes. The enrichment panel performs the same validation inline in SPL via whisperlookup, which is a streaming command and can consume a pipeline. Cypher queries use parameterized placeholders ($indicator) rather than string interpolation.",
+  "dataSources": {
+    "ds_enrichment": {
+      "type": "ds.search",
+      "options": {
+        "query": "| makeresults | eval indicator=lower(\"$indicator_input$\") | where match(indicator, \"^[A-Za-z0-9._:\\-]+$\") | whisperlookup field=indicator | table indicator whisper_ip whisper_asn whisper_asn_name whisper_country whisper_prefix whisper_cohost_count whisper_nameservers whisper_threat_score whisper_threat_level whisper_risk_score whisper_risk_level whisper_feed_names whisper_feed_count whisper_cname_chain"
+      }
+    },
+    "ds_threat_feed": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"CALL explain($indicator) YIELD score, level, factors, sources RETURN score, level, factors, sources\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_shared_ns": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (d:HOSTNAME {name: $indicator})-[:NAMESERVER_FOR]-(ns:HOSTNAME)<-[:NAMESERVER_FOR]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN peer.name AS peer_host, count(DISTINCT ns) AS shared_ns_count ORDER BY shared_ns_count DESC LIMIT 25\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_cohosted": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (d:HOSTNAME {name: $indicator})-[:RESOLVES_TO]->(ip:IPV4)<-[:RESOLVES_TO]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN ip.name AS ip, count(DISTINCT peer) AS cohosted_count, collect(DISTINCT peer.name)[..10] AS sample_domains ORDER BY cohosted_count DESC LIMIT 25\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_whois": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (d:HOSTNAME {name: $indicator})-[:HAS_REGISTRAR]->(r:REGISTRAR)<-[:HAS_REGISTRAR]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN 'registrar' AS pivot, r.name AS shared_value, peer.name AS peer_domain LIMIT 15 UNION ALL MATCH (d:HOSTNAME {name: $indicator})-[:REGISTERED_BY]->(o:ORGANIZATION)<-[:REGISTERED_BY]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN 'organization' AS pivot, o.name AS shared_value, peer.name AS peer_domain LIMIT 15 UNION ALL MATCH (d:HOSTNAME {name: $indicator})-[:HAS_EMAIL]->(e:EMAIL)<-[:HAS_EMAIL]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN 'email' AS pivot, e.name AS shared_value, peer.name AS peer_domain LIMIT 15 UNION ALL MATCH (d:HOSTNAME {name: $indicator})-[:HAS_PHONE]->(p:PHONE)<-[:HAS_PHONE]-(peer:HOSTNAME) WHERE peer.name <> d.name RETURN 'phone' AS pivot, p.name AS shared_value, peer.name AS peer_domain LIMIT 15\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\" | table pivot shared_value peer_domain"
+      }
+    },
+    "ds_whois_history": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"CALL whisper.history($indicator) YIELD type, createDate, updateDate, registrar, registrant, country, nameServers, origin, prefix, startTime, endTime RETURN type, createDate, updateDate, registrar, registrant, country, nameServers, origin, prefix, startTime, endTime ORDER BY coalesce(updateDate, createDate) DESC LIMIT 50\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_cname": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH path = (d:HOSTNAME {name: $indicator})-[:ALIAS_OF*1..5]->(target:HOSTNAME) RETURN [n IN nodes(path) | n.name] AS cname_chain, length(path) AS hops ORDER BY hops DESC LIMIT 10\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_spf": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH path = (d:HOSTNAME {name: $indicator})-[:SPF_INCLUDE*1..5]->(target:HOSTNAME) RETURN [n IN nodes(path) | n.name] AS spf_chain, length(path) AS hops ORDER BY hops DESC LIMIT 25\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_mx": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (d:HOSTNAME {name: $indicator})-[:MAIL_FOR]-(mx:HOSTNAME) OPTIONAL MATCH (mx)-[:RESOLVES_TO]->(ip:IPV4) RETURN mx.name AS mail_server, collect(DISTINCT ip.name) AS ips LIMIT 25\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_subdomains": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (sub:HOSTNAME)-[:CHILD_OF]->(d:HOSTNAME {name: $indicator}) RETURN sub.name AS subdomain LIMIT 100\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_asn": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (h:HOSTNAME {name: $indicator})-[:RESOLVES_TO]->(ip:IPV4)-[:ANNOUNCED_BY]->(ap:ANNOUNCED_PREFIX)-[:ROUTES]->(a:ASN)-[:HAS_NAME]->(n:ASN_NAME) RETURN h.name AS hostname, ip.name AS ip, ap.name AS prefix, a.name AS asn, n.name AS asn_name LIMIT 25\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\""
+      }
+    },
+    "ds_weblinks": {
+      "type": "ds.search",
+      "options": {
+        "query": "| whisperquery query=\"MATCH (h:HOSTNAME {name: $indicator})-[l:LINKS_TO]->(peer:HOSTNAME) RETURN peer.name AS linked_host, 'outbound' AS direction, count(l) AS feed_count UNION ALL MATCH (peer:HOSTNAME)-[l:LINKS_TO]->(h:HOSTNAME {name: $indicator}) RETURN peer.name AS linked_host, 'inbound' AS direction, count(l) AS feed_count LIMIT 50\" params=\"indicator=$indicator_input$\" validate_indicator=\"indicator\" | table linked_host direction feed_count"
+      }
+    }
+  },
+  "inputs": {
+    "indicator_input": {
+      "type": "input.text",
+      "options": {
+        "defaultValue": "",
+        "token": "indicator_input"
+      },
+      "title": "Indicator (domain or IP)"
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "global": {
+        "refresh": {
+          "auto": {
+            "enabled": false
+          }
+        }
+      }
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": ["indicator_input"],
+    "options": {
+      "submitButton": true
+    },
+    "structure": [
+      { "item": "header", "position": { "x": 0, "y": 0, "w": 1200, "h": 60 } },
+      { "item": "enrichment_table", "position": { "x": 0, "y": 60, "w": 1200, "h": 320 } },
+      { "item": "threat_feed", "position": { "x": 0, "y": 380, "w": 600, "h": 320 } },
+      { "item": "shared_ns", "position": { "x": 600, "y": 380, "w": 600, "h": 320 } },
+      { "item": "cohosted", "position": { "x": 0, "y": 700, "w": 600, "h": 320 } },
+      { "item": "whois", "position": { "x": 600, "y": 700, "w": 600, "h": 320 } },
+      { "item": "whois_history", "position": { "x": 0, "y": 1020, "w": 1200, "h": 280 } },
+      { "item": "cname", "position": { "x": 0, "y": 1300, "w": 600, "h": 280 } },
+      { "item": "spf", "position": { "x": 600, "y": 1300, "w": 600, "h": 280 } },
+      { "item": "mx", "position": { "x": 0, "y": 1580, "w": 600, "h": 280 } },
+      { "item": "subdomains", "position": { "x": 600, "y": 1580, "w": 600, "h": 280 } },
+      { "item": "asn", "position": { "x": 0, "y": 1860, "w": 600, "h": 280 } },
+      { "item": "weblinks", "position": { "x": 600, "y": 1860, "w": 600, "h": 280 } }
+    ]
+  },
+  "visualizations": {
+    "header": {
+      "type": "viz.markdown",
+      "options": {
+        "markdown": "## Indicator Investigation\nEnter a domain or IP address above and click **Submit**. All panels run read-only graph pivots. The indicator is lowercased and validated against a strict character allowlist (`^[A-Za-z0-9._:\\-]+$`) inside `whisperquery` via `validate_indicator=\"indicator\"` (and inline in SPL for the enrichment panel); invalid input short-circuits with zero rows before any Cypher is issued. Cypher queries use parameterized placeholders (`$indicator`) rather than string interpolation. This dashboard does not write to any index, does not use `collect` against an index, and does not generate risk events or alerts."
+      }
+    },
+    "enrichment_table": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_enrichment" },
+      "title": "whisperlookup enrichment"
+    },
+    "threat_feed": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_threat_feed" },
+      "title": "Threat feed / explain"
+    },
+    "shared_ns": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_shared_ns" },
+      "title": "Shared nameservers (peer hostnames sharing NS with the indicator)"
+    },
+    "cohosted": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_cohosted" },
+      "title": "Co-hosted domains / shared IP"
+    },
+    "whois": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_whois" },
+      "title": "WHOIS pivots — related domains sharing registrar / organization / email / phone"
+    },
+    "whois_history": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_whois_history" },
+      "title": "WHOIS / BGP history (previous registrar, ownership)"
+    },
+    "cname": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_cname" },
+      "title": "CNAME chain"
+    },
+    "spf": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_spf" },
+      "title": "SPF include chain"
+    },
+    "mx": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_mx" },
+      "title": "MX / mail infrastructure"
+    },
+    "subdomains": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_subdomains" },
+      "title": "Subdomains"
+    },
+    "asn": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_asn" },
+      "title": "ASN / BGP / prefix context (hostname → IP → ANNOUNCED_PREFIX → ASN)"
+    },
+    "weblinks": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_weblinks" },
+      "title": "Web links (inbound + outbound LINKS_TO, with feed_count)"
+    }
+  }
+}
+]]></definition>
+</dashboard>

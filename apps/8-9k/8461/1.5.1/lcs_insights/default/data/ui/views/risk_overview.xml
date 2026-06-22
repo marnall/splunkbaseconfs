@@ -1,0 +1,1599 @@
+<!-- 
+  # ========================================================================================================================
+  #   Risk Overview 2.8
+  #   Part of Sprint 3 for LCS Insights on splunkbase.com
+  #   Optimized with base searches (referenced with loadjob) for all data domains.
+  #   Base searches: HW_EOX, SW_EOX, SW_DEFERRAL, PSIRT, FN, CONFORMANCE, BP, DEVICE, CHASSIS
+  #
+  #   Version History:
+  #     2.8 - Optimized with base queries for all data domains (HW_EOX, SW_EOX, SW_DEFERRAL, PSIRT, FN, CONFORMANCE, BP, DEVICE, CHASSIS)
+  #     2.7 - Added drilldowns for Compliance (2) and Data Collection (4)
+  #     2.6 - Added drilldowns for Lifecycle Risk (3) and Vulnerability Risk (2)
+  #     2.5 - Fixed default grouping (No group filtering). Added more PSIRT & BP panels, more drilldowns
+  #     2.4 - Added Trend Indicator option, now using tstats subsearches for grouping, added HW EoX filter, PSIRT filter, BP Filter
+  # ========================================================================================================================
+-->
+<form version="1.1">
+  <init>
+    <set token="kvManagedElements">0</set>
+    <set token="kvChassisCount">0</set>
+    <set token="kvTrackedElements">0</set>
+  </init>
+  <label>Risk Overview</label>
+  <description>Version 2.8: Optimized with base queries for all data domains (HW_EOX, SW_EOX, SW_DEFERRAL, PSIRT, FN, CONFORMANCE, BP, DEVICE, CHASSIS).</description>
+  <!-- ============================================================
+       HIDDEN UTILITY PANELS
+       ============================================================ -->
+  <!-- ============================================================
+       FILTER STRATEGY PANELS (Hidden)
+       ============================================================ -->
+  <!-- ============================================================
+       HIDDEN BASE SEARCHES
+       ============================================================ -->
+  <!-- ============================================================
+       KPI HEADER
+       ============================================================ -->
+  <!-- ============================================================
+       LIFECYCLE RISK
+       ============================================================ -->
+  <!-- Lifecycle Drilldowns -->
+  <!-- ============================================================
+       VULNERABILITY RISK
+       ============================================================ -->
+  <!-- Vulnerability Drilldowns -->
+  <!-- ============================================================
+       COMPLIANCE RISK
+       ============================================================ -->
+  <!-- Compliance Drilldowns -->
+  <!-- ============================================================
+       DATA COLLECTION
+       ============================================================ -->
+  <!-- Data Collection Drilldowns -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="dropdown" token="hwEoxFilter">
+      <label>HW EoX Filter</label>
+      <choice value="&quot;ldos&quot;">LDoS</choice>
+      <choice value="&quot;ldosOrEovss&quot;">LDoS or EoVSS</choice>
+      <default>"ldos"</default>
+      <initialValue>"ldos"</initialValue>
+    </input>
+    <input type="dropdown" token="swEoxFilter">
+      <label>SW EoX Filter</label>
+      <choice value="&quot;LDoS&quot;">LDoS</choice>
+      <choice value="&quot;EoVSS&quot;">EoVSS</choice>
+      <choice value="&quot;EoSWM&quot;">EoSWM</choice>
+      <default>"LDoS"</default>
+      <initialValue>"LDoS"</initialValue>
+    </input>
+    <input type="dropdown" token="psirtFilter" searchWhenChanged="true">
+      <label>PSIRT Filter</label>
+      <choice value="&quot;workarounds&quot;">PSIRTs with Workarounds</choice>
+      <choice value="&quot;critical&quot;">Critical PSIRTs</choice>
+      <choice value="&quot;criticalHigh&quot;">Critical/High PSIRTs</choice>
+      <choice value="&quot;*&quot;">All PSIRTs</choice>
+      <default>"critical"</default>
+      <initialValue>"critical"</initialValue>
+    </input>
+    <input type="dropdown" token="fnFilter" searchWhenChanged="true">
+      <label>Field Notice Filter</label>
+      <choice value="&quot;cpuMemory&quot;">CPU and Memory</choice>
+      <choice value="&quot;all&quot;">All Field Notices</choice>
+      <default>"all"</default>
+      <initialValue>"all"</initialValue>
+    </input>
+    <input type="dropdown" token="bpFilter" searchWhenChanged="true">
+      <label>Best Practice Filter</label>
+      <choice value="&quot;Top3&quot;">Top3 Best Practices</choice>
+      <choice value="&quot;High&quot;">High Risk BP</choice>
+      <choice value="&quot;HighMed&quot;">High/Medium BP</choice>
+      <default>"High"</default>
+      <initialValue>"High"</initialValue>
+    </input>
+    <input type="dropdown" token="sparklineToggle">
+      <label>Show Sparklines</label>
+      <choice value="1">Yes</choice>
+      <choice value="0">No</choice>
+      <default>1</default>
+      <initialValue>1</initialValue>
+    </input>
+    <input type="dropdown" token="trendToggle">
+      <label>Show Trend Indicators</label>
+      <choice value="1">Yes</choice>
+      <choice value="0">No</choice>
+      <default>1</default>
+      <initialValue>1</initialValue>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Date &amp; Time Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$HideThis$">
+      <title>GroupName</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvGroupName">$result.groupName$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults 
+| eval groupName="$groupIdSelected$" 
+| table groupName</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf8be34","0xf8be34"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$HideMe$">
+      <title>HW EoX Filter</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvHwEoxStrategy">$result.hwEoxStrategy$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults
+| eval hwEoxStrategy = if(like($hwEoxFilter$,"ldos"), "currentEndOfLifeMilestone=*LDoS*", "currentEndOfLifeMilestone=*LDoS* OR currentEndOfLifeMilestone=*EoVSS* OR currentEndOfLifeMilestone=*EoSCR*")
+| table hwEoxStrategy</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x555","0x555"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">preview</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel depends="$HideMe$">
+      <title>SW EoX Filter</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvSwEoxStrategy">$result.swEoxStrategy$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults
+| eval swEoxStrategy = case($swEoxFilter$="LDoS", " (currentEndOfLifeMilestone=LDoS)", $swEoxFilter$="EoVSS", " (currentEndOfLifeMilestone=LDoS OR currentEndOfLifeMilestone=EoVSS)", $swEoxFilter$="EoSWM", "(currentEndOfLifeMilestone=LDoS OR currentEndOfLifeMilestone=EoVSS OR currentEndOfLifeMilestone=EoSWM)")
+| table swEoxStrategy</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x555","0x555"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">preview</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel depends="$HideMe$">
+      <title>PSIRT Filter</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvPsirtStrategy">$result.psirtStrategy$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults
+| eval psirtStrategy = case(like($psirtFilter$, "workarounds"), "| eval psirtVulnDevice = if(psirtColdId=679 OR psirtColdId=906 OR psirtColdId=1071 OR psirtColdId=1219 OR psirtColdId=1429 OR psirtColdId=1648 OR psirtColdId=1497 OR psirtColdId=598 OR psirtColdId=646 OR psirtColdId=912 OR psirtColdId=913 OR psirtColdId=328, 1, 0)", like($psirtFilter$,"critical"), "| eval psirtVulnDevice = if(securityImpactRating=\"Critical\", 1, 0)", like($psirtFilter$,"criticalHigh"), "| eval psirtVulnDevice = if(securityImpactRating=\"Critical\" OR securityImpactRating=\"High\", 1, 0)", 1=1, "| eval psirtVulnDevice = if(securityImpactRating=\"Critical\" OR securityImpactRating=\"High\" OR securityImpactRating=\"Medium\" OR securityImpactRating=\"Low\", 1, 0)")
+| table psirtStrategy</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x555","0x555"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">preview</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel depends="$HideMe$">
+      <title>FN Filter</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvFnStrategy">$result.fnStrategy$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults
+| eval fnStrategy = if(like($fnFilter$,"all"), "matchConfidence=Vulnerable", "matchConfidence=Vulnerable (bulletinTitle=*cpu* OR bulletinTitle=*memory*)")
+| table fnStrategy</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x555","0x555"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">preview</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel depends="$HideMe$">
+      <title>BP Filter</title>
+      <single>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvBpStrategy">$result.bpStrategy$</set>
+            </condition>
+          </finalized>
+          <query>| makeresults 
+| eval bpStrategy=if(like($bpFilter$,"Top3"),"| eval HighBPDevice = if(bpRuleId=\"7710\" OR bpRuleId=\"7348\" OR bpRuleId=\"8315\", 1, 0)", 
+    if(like($bpFilter$,"HighMed"),"| eval HighBPDevice = if(bpRisk=\"High\" OR bpRisk=\"Medium\", 1, 0)",
+    "| eval HighBPDevice = if(bpRisk=\"High\", 1, 0)"))
+| eval bpStrategy = bpStrategy . " | search HighBPDevice=1"
+| table bpStrategy</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x555","0x555"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="refresh.display">preview</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <title>Base: HW_EOX</title>
+      <table>
+        <search>
+          <done>
+            <set token="HW_EOX">$job.sid$</set>
+          </done>
+          <query>| tstats values(deviceId) as deviceId, values(currentEndOfLifeMilestone) as currentEndOfLifeMilestone, values(currentEndOfLifeMilestoneDate) as currentEndOfLifeMilestoneDate, values(deviceName) as deviceName, values(hardwareEndOfLifeId) as hardwareEndOfLifeId, values(nextEndOfLifeMilestone) as nextEndOfLifeMilestone, values(nextEndOfLifeMilestoneDate) as nextEndOfLifeMilestoneDate, values(physicalAssetType) as physicalAssetType, values(productId) as productId WHERE (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:hardwareendoflife) by physicalAssetId, _time
+| fillnull value="NA" currentEndOfLifeMilestone 
+| fillnull value="NA" currentEndOfLifeMilestoneDate 
+| fillnull value="NA" nextEndOfLifeMilestone 
+| fillnull value="NA" nextEndOfLifeMilestoneDate 
+| fillnull value="NA" hardwareEndOfLifeId
+| search physicalAssetType=Chassis AND ($kvHwEoxStrategy$)</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: SW_EOX</title>
+      <table>
+        <search>
+          <done>
+            <set token="SW_EOX">$job.sid$</set>
+          </done>
+          <query>| tstats values(currentEndOfLifeMilestone) as currentEndOfLifeMilestone, values(currentEndOfLifeMilestoneDate) as currentEndOfLifeMilestoneDate, values(deviceName) as deviceName, values(softwareEndOfLifeId) as softwareEndOfLifeId, values(nextEndOfLifeMilestone) as nextEndOfLifeMilestone, values(nextEndOfLifeMilestoneDate) as nextEndOfLifeMilestoneDate, values(productId) as productId, values(productFamily) as productFamily, values(productType) as productType, values(softwareVersion) as softwareVersion WHERE ((`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:softwareendoflife) OR (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:device)) deviceId IN (*) by deviceId, _time
+| fillnull value="NA" currentEndOfLifeMilestone 
+| fillnull value="NA" currentEndOfLifeMilestoneDate 
+| fillnull value="NA" nextEndOfLifeMilestone 
+| fillnull value="NA" nextEndOfLifeMilestoneDate
+| search ($kvSwEoxStrategy$)</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: SW_DEFERRAL</title>
+      <table>
+        <search>
+          <done>
+            <set token="SW_DEFERRAL">$job.sid$</set>
+          </done>
+          <query>| tstats values(deviceName) as deviceName, values(productId) as productId, values(productFamily) as productFamily, values(productType) as productType, values(softwareVersion) as softwareVersion, values(softwareType) as softwareType, values(softwareAlertUrl) as softwareAlertUrl, values(imageName) as imageName WHERE ((`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:softwareadvisoryalert softwareAlertType=DF) OR (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:device)) deviceId IN (*) by deviceId, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <title>Base: PSIRT</title>
+      <table>
+        <search>
+          <done>
+            <set token="PSIRT">$job.sid$</set>
+          </done>
+          <query>(`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:securityadvisory) OR (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:securityadvisorybulletin) 
+| stats values(deviceId) as deviceId, values(matchConfidence) as matchConfidence, values(matchConfidenceReason) as matchConfidenceReason, values(securityImpactRating) as securityImpactRating, values(bulletinUrl) as bulletinUrl by securityAdvisoryColdId 
+| mvexpand deviceId 
+| search matchConfidence=Vulnerable
+$kvPsirtStrategy$ 
+| search psirtVulnDevice=1</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: FN</title>
+      <table>
+        <search>
+          <done>
+            <set token="FN">$job.sid$</set>
+          </done>
+          <query>(`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:fieldnotice) OR (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:fieldnoticebulletin) 
+| stats values(deviceId) as deviceId, values(matchConfidence) as matchConfidence, values(bulletinTitle) as bulletinTitle, values(bulletinUrl) as bulletinUrl by fieldNoticeId 
+| mvexpand deviceId 
+| search $kvFnStrategy$</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: CONFORMANCE</title>
+      <table>
+        <search>
+          <done>
+            <set token="CONFORMANCE">$job.sid$</set>
+          </done>
+          <query>| tstats latest(isSoftwareTrackCompliant) as isSoftwareTrackCompliant, latest(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant, latest(isSoftwareTrackPreviousCompliant) as isSoftwareTrackPreviousCompliant, latest(softwareTrackId) as softwareTrackId, latest(softwareTrackName) as softwareTrackName WHERE (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:softwaretrackmember) by deviceId, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$HideThis$">
+    <panel>
+      <title>Base: BP</title>
+      <table>
+        <search>
+          <done>
+            <set token="BP">$job.sid$</set>
+          </done>
+          <query>| tstats values(deviceId) as deviceId, values(totalDevices) as totalDevices, values(bestPracticeRisk) as bpRisk, values(bestPracticePrimaryTechnology) as bestPracticePrimaryTechnology, values(bestPracticeTitle) as bestPracticeTitle, values(softwareType) as softwareType, values(bestPracticeNuggetId) as bestPracticeNuggetId WHERE ((`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:configbestpracticesummary) OR (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:configbestpracticedetail)) bestPracticeRuleId IN (*) by bestPracticeRuleId, _time
+| mvexpand deviceId
+$kvBpStrategy$</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: DEVICE</title>
+      <table>
+        <search>
+          <done>
+            <set token="DEVICE">$job.sid$</set>
+          </done>
+          <query>| tstats latest(deviceName) as deviceName, latest(productId) as productId, latest(productFamily) as productFamily, latest(productType) as productType, latest(softwareVersion) as softwareVersion, latest(softwareType) as softwareType, latest(inventoryStatus) as inventoryStatus, latest(inventoryTimestamp) as inventoryTimestamp, latest(configStatus) as configStatus, latest(configTimestamp) as configTimestamp, latest(deviceStatus) as deviceStatus WHERE (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:device) by deviceId, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Base: CHASSIS</title>
+      <table>
+        <search>
+          <done>
+            <set token="CHASSIS">$job.sid$</set>
+          </done>
+          <query>| tstats latest(deviceId) as deviceId, latest(physicalAssetType) as physicalAssetType, latest(productId) as productId WHERE (`cisco_oi_index($cpyKey$)` sourcetype=cisco:bcs:asset physicalAssetType=Chassis) by physicalAssetId, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="KPIs by Category and Risk Source" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Lifecycle Risk" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Count of Hardware EoX</title>
+      <single>
+        <title>HW EoX Strategy: $hwEoxFilter$</title>
+        <search>
+          <query>| loadjob $HW_EOX$
+| $singleLineGroupSelector$
+| stats dc(physicalAssetId) as count by _time 
+| table count, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendInterval">-7d</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showHwEoxDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>% of Hardware EoX</title>
+      <single>
+        <title>Green &lt; Yellow: 5%-10% &lt; Red</title>
+        <search>
+          <query>| loadjob $HW_EOX$
+| $singleLineGroupSelector$
+| stats dc(physicalAssetId) as count by _time 
+| eval hwLdosPerc = (100*count/$kvChassisCount$) 
+| table hwLdosPerc, _time
+| appendpipe 
+    [| stats count as hwLdosPerc 
+    | where hwLdosPerc=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Count of Software EoX</title>
+      <single>
+        <title>SW EoX Strategy: $swEoxFilter$</title>
+        <search>
+          <query>| loadjob $SW_EOX$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as count by _time
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendInterval">-7d</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showSwEoxDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>% of Software EoX</title>
+      <single>
+        <title>Green &lt; Yellow: 5%-10% &lt; Red</title>
+        <search>
+          <query>| loadjob $SW_EOX$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as count by _time
+| eval swEoxPerc = (100*count/$kvManagedElements$) 
+| table swEoxPerc, _time
+| appendpipe 
+    [| stats count as swEoxPerc 
+    | where swEoxPerc=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>S/W Advisory: Count Deferred</title>
+      <single>
+        <title>In selected group</title>
+        <search>
+          <query>| loadjob $SW_DEFERRAL$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as count by _time
+| appendpipe 
+    [| stats count
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[2,5]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showSwDeferralDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>S/W Advisory: % Deferred</title>
+      <single>
+        <title>Green &lt; Yellow: 2%-5% &lt; Red</title>
+        <search>
+          <query>| loadjob $SW_DEFERRAL$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as count by _time
+| eval dfPerc = (100*count/$kvManagedElements$) 
+| table dfPerc, _time
+| appendpipe 
+    [| stats count as dfPerc 
+    | where dfPerc=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[2,5]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showHwEoxDetails$">
+      <table>
+        <title>HW Eox Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $HW_EOX$ 
+| eval pauseUntilDrilldown = $showHwEoxDetails$
+| $singleLineGroupSelector$ 
+| lookup `cisco_oi_hw_bulletin_lookup($cpyKey$)` productId OUTPUT bulletinNumber, bulletinTitle, bulletinUrl, endOfLifeAnnouncementDate, endOfNewServiceAttachmentDate, endOfRoutineFailureAnalysisDate, endOfSaleDate, endOfServiceContractRenewalDate, endOfSoftwareMaintenanceReleasesDate, endOfVulnerabilitySecuritySupportDate, lastDayOfSupportDate, lastShipDate 
+| fields deviceName, deviceId, physicalAssetId, physicalAssetType, productId, productFamily, productType, softwareVersion, hardwareEndOfLifeId, currentEndOfLifeMilestone, currentEndOfLifeMilestoneDate, nextEndOfLifeMilestone, nextEndOfLifeMilestoneDate, bulletinNumber, bulletinTitle, bulletinUrl, endOfLifeAnnouncementDate, endOfNewServiceAttachmentDate, endOfRoutineFailureAnalysisDate, endOfSaleDate, endOfServiceContractRenewalDate, endOfSoftwareMaintenanceReleasesDate, endOfVulnerabilitySecuritySupportDate, lastDayOfSupportDate, lastShipDate 
+| stats latest(*) as * by physicalAssetId 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT productFamily, productType, softwareVersion 
+| table deviceId, deviceName, physicalAssetId, physicalAssetType, productId, productFamily, productType, softwareVersion, currentEndOfLifeMilestone, currentEndOfLifeMilestoneDate, nextEndOfLifeMilestone, nextEndOfLifeMilestoneDate, endOfLifeAnnouncementDate, endOfSaleDate, lastShipDate, endOfSoftwareMaintenanceReleasesDate, endOfRoutineFailureAnalysisDate, endOfNewServiceAttachmentDate, endOfVulnerabilitySecuritySupportDate, endOfServiceContractRenewalDate, lastDayOfSupportDate</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showHwEoxDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$showSwEoxDetails$">
+      <table>
+        <title>SW Eox Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $SW_EOX$
+| eval pauseUntilDrilldown = $showSwEoxDetails$
+| $singleLineGroupSelector$
+| dedup deviceId
+| table deviceName, deviceId, productId, productFamily, productType, softwareVersion, softwareEndOfLifeId, currentEndOfLifeMilestone, currentEndOfLifeMilestoneDate, nextEndOfLifeMilestone, nextEndOfLifeMilestoneDate
+| lookup `cisco_oi_sw_bulletin_lookup($cpyKey$)` softwareEndOfLifeId OUTPUT bulletinNumber, bulletinTitle, bulletinUrl, endOfLifeAnnouncementDate, endOfSaleDate, endOfSoftwareMaintenanceReleasesDate, endOfVulnerabilitySecuritySupportDate, lastDayOfSupportDate</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showSwEoxDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$showSwDeferralDetails$">
+      <table>
+        <title>SW Deferral Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $SW_DEFERRAL$
+| eval pauseUntilDrilldown = $showSwDeferralDetails$
+| $singleLineGroupSelector$
+| table deviceName, deviceId, productId, productFamily, productType, softwareVersion, softwareType, softwareAlertUrl, imageName</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showSwDeferralDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Vulnerability Risk" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>PSIRT: Vulnerable Advisories</title>
+      <single>
+        <title>PSIRT Strategy: $psirtFilter$</title>
+        <search>
+          <query>| loadjob $PSIRT$
+| search $groupSelector$ 
+| stats dc(securityAdvisoryColdId) as vulnPsirts 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[75,100]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>PSIRT: Vulnerable Exceptions</title>
+      <single>
+        <title>PSIRT Strategy: $psirtFilter$</title>
+        <search>
+          <query>| loadjob $PSIRT$
+| search $groupSelector$ 
+| dedup deviceId, securityAdvisoryColdId 
+| stats count as vulnExceptions 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[75,100]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showPsirtDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>PSIRT: Elements Vulnerable</title>
+      <single>
+        <title>PSIRT Strategy: $psirtFilter$</title>
+        <search>
+          <query>| loadjob $PSIRT$
+| search $groupSelector$ 
+| stats dc(deviceId) as VulnDevices 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>PSIRT: % of Elements Vulnerable</title>
+      <single>
+        <title>Green &lt; Yellow: 25%-50% &lt; Red</title>
+        <search>
+          <query>| loadjob $PSIRT$
+| search $groupSelector$ 
+| stats dc(deviceId) as VulnDevices 
+| eval psirtPerc = (100*VulnDevices/$kvManagedElements$) 
+| table psirtPerc 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Field Notices: Vulnerable Notices</title>
+      <single>
+        <title>FN Strategy: $fnFilter$</title>
+        <search>
+          <query>| loadjob $FN$
+| search $groupSelector$ 
+| stats dc(fieldNoticeId) as vulnFNs 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Field Notices: Vulnerable Exceptions</title>
+      <single>
+        <title>FN Strategy: $fnFilter$</title>
+        <search>
+          <query>| loadjob $FN$
+| search $groupSelector$ 
+| search matchConfidence=Vulnerable 
+| dedup deviceId, fieldNoticeId 
+| stats count as vulnFnExceptions 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showFnExceptionDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Field Notices: Vulnerable Elements</title>
+      <single>
+        <title>FN Strategy: $fnFilter$</title>
+        <search>
+          <query>| loadjob $FN$
+| search $groupSelector$ 
+| search matchConfidence=Vulnerable 
+| stats dc(deviceId) as vulnDevices 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Field Notices: % of Elements Vulnerable</title>
+      <single>
+        <title>Green &lt; Yellow: 5%-10% &lt; Red</title>
+        <search>
+          <query>| loadjob $FN$
+| search $groupSelector$
+| search matchConfidence=Vulnerable
+| stats dc(deviceId) as VulnDevices
+| eval fnPerc = (100*VulnDevices/$kvManagedElements$) 
+| table fnPerc
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showPsirtDetails$">
+      <table>
+        <title>PSIRT Exception Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $PSIRT$
+| eval pauseUntilDrilldown = $showPsirtDetails$
+| search $groupSelector$
+| dedup deviceId, securityAdvisoryColdId 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName, softwareVersion, softwareType, productId, productFamily, productType 
+| fields - psirtVulnDevice 
+| table deviceName, deviceId, productId, productFamily, productType, softwareVersion, softwareType, securityAdvisoryColdId, securityImpactRating, matchConfidence, matchConfidenceReason, bulletinUrl</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showPsirtDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$showFnExceptionDetails$">
+      <table>
+        <title>FN Exception Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $FN$
+| eval pauseUntilDrilldown = $showFnExceptionDetails$
+| search $groupSelector$ 
+| search matchConfidence=Vulnerable
+| dedup deviceId, fieldNoticeId 
+| lookup local=true `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName productId productFamily productType softwareVersion 
+| table deviceName, productId, productFamily, productType, softwareVersion, bulletinTitle, bulletinUrl</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showFnExceptionDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Compliance Risk" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Software Conformance: Strict Devices</title>
+      <single>
+        <title>Conformant</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| $singleLineGroupSelector$
+| search isSoftwareTrackCompliant=true
+| stats dc(deviceId) as tcDevices by _time 
+| table tcDevices, _time 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showConformance">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Software Conformance: Strict (N) %</title>
+      <single>
+        <title>Red &lt; Yellow: 60%-80% &lt; Green</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| $singleLineGroupSelector$
+| search isSoftwareTrackCompliant=true
+| stats dc(deviceId) as tcDevices by _time 
+| eval tcPerc = (100*tcDevices/$kvTrackedElements$) 
+| table tcPerc, _time 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Software Conformance: Flexible Devices</title>
+      <single>
+        <title>Red &lt; Yellow: 70%-90% &lt; Green</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| $singleLineGroupSelector$
+| search isSoftwareTrackFlexibleCompliant=true
+| stats dc(deviceId) as tcDevices by _time 
+| table tcDevices, _time 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showConformance">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Software Conformance: Flexible (N-2) %</title>
+      <single>
+        <title>Red &lt; Yellow: 70%-90% &lt; Green</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| $singleLineGroupSelector$
+| search isSoftwareTrackFlexibleCompliant=true
+| stats dc(deviceId) as fcDevices by _time 
+| eval fcPerc = (100*fcDevices/$kvTrackedElements$) 
+| table fcPerc, _time 
+| appendpipe 
+    [| stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Best Practice: Rules with Exceptions</title>
+      <single>
+        <title>BP Strategy: $bpFilter$</title>
+        <search>
+          <query>| loadjob $BP$
+| search $groupSelector$
+| stats dc(bestPracticeRuleId) as Rules by _time
+| table Rules, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,25]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Best Practice: Exceptions</title>
+      <single>
+        <title>BP Strategy: $bpFilter$</title>
+        <search>
+          <query>| loadjob $BP$
+| search $groupSelector$
+| stats count as Exceptions by _time
+| table Exceptions, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,25]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showBpDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Best Practice: Elements with Exceptions</title>
+      <single>
+        <title>BP Strategy: $bpFilter$</title>
+        <search>
+          <query>| loadjob $BP$
+| search $groupSelector$
+| stats dc(deviceId) as Devices by _time
+| table Devices, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,25]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Best Practice: % Elements Impacted</title>
+      <single>
+        <title>Green &lt; Yellow: 15%-30% &lt; Red</title>
+        <search>
+          <query>| loadjob $BP$
+| search $groupSelector$
+| stats dc(deviceId) as Devices by _time
+| eval BPDevicePercent = round(100*Devices/$kvManagedElements$) 
+| table BPDevicePercent, _time 
+| appendpipe 
+    [ stats count 
+    | where count=0 ]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[15,30]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showConformance$">
+      <table>
+        <title>Conformance Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| eval pauseUntilDrilldown = $showConformance$
+| append
+    [| tstats latest(softwareTrackDescription) as softwareTrackDescription,
+        latest(softwareTrackLastModifiedDate) as softwareTrackLastModifiedDate,
+        latest(softwareTrackRating) as softwareTrackRating,
+        latest(softwareTrackRecommendationDate) as softwareTrackRecommendationDate,
+        latest(softwareTrackPreviousVersion1) as softwareTrackPreviousVersion1,
+        latest(softwareTrackPreviousVersion2) as softwareTrackPreviousVersion2,
+        latest(softwareTrackStandardVersion) as softwareTrackStandardVersion,
+        latest(softwareTrackStatus) as softwareTrackStatus,
+        latest(softwareTrackUpgradeReason) as softwareTrackUpgradeReason,
+        latest(softwareType) as softwareType
+        WHERE (`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:softwaretracksummary)
+        by softwareTrackId]
+| stats values(isSoftwareTrackCompliant) as isSoftwareTrackCompliant,
+    values(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant,
+    values(isSoftwareTrackPreviousCompliant) as isSoftwareTrackPreviousCompliant,
+    values(softwareTrackName) as softwareTrackName,
+    values(softwareTrackDescription) as softwareTrackDescription,
+    values(softwareTrackLastModifiedDate) as softwareTrackLastModifiedDate,
+    values(softwareTrackRating) as softwareTrackRating,
+    values(softwareTrackRecommendationDate) as softwareTrackRecommendationDate,
+    values(softwareTrackPreviousVersion1) as softwareTrackPreviousVersion1,
+    values(softwareTrackPreviousVersion2) as softwareTrackPreviousVersion2,
+    values(softwareTrackStandardVersion) as softwareTrackStandardVersion,
+    values(softwareTrackStatus) as softwareTrackStatus,
+    values(softwareTrackUpgradeReason) as softwareTrackUpgradeReason,
+    values(softwareType) as softwareType,
+    values(deviceId) as deviceId
+    by softwareTrackId
+| mvexpand deviceId
+| $singleLineGroupSelector$ 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName, featureSetDescription, imageName, lastResetTimestamp, productFamily, productId, productType, softwareVersion, resetReason, snmpSysDescription, snmpSysLocation
+| table deviceId, deviceName, softwareTrackId, softwareTrackName, softwareTrackDescription, softwareVersion, softwareType, softwareTrackStandardVersion, softwareTrackPreviousVersion1, softwareTrackPreviousVersion2, productId, productFamily, productType *</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showConformance"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showBpDetails$">
+      <table>
+        <title>BP Exceptions Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $BP$
+| eval pauseUntilDrilldown = $showBpDetails$
+| search $groupSelector$
+| search deviceId!=""
+| lookup local=true `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName productId productFamily productType softwareVersion 
+| rex field=bestPracticePrimaryTechnology mode=sed "s/\*//"
+| table deviceName, productId, productFamily, productType, softwareVersion, bestPracticeRuleId, bestPracticeTitle, bpRisk, bestPracticePrimaryTechnology</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showBpDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Data Collection" 
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Tracked Elements</title>
+      <single>
+        <title>In at least one SW track</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvTrackedElements">$result.TrackedElements$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $CONFORMANCE$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as TrackedElements</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[70,80]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showTrackedDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Managed Elements</title>
+      <single>
+        <title>In Selected Group</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvManagedElements">$result.ManagedElements$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $DEVICE$
+| $singleLineGroupSelector$
+| stats dc(deviceId) as ManagedElements</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[70,80]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="useColors">0</option>
+        <drilldown>
+          <set token="showManagedElementDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Chassis Count</title>
+      <single>
+        <title>In Selected Group</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvChassisCount">$result.NumChassis$</set>
+            </condition>
+          </finalized>
+          <query>| loadjob $CHASSIS$
+| $singleLineGroupSelector$
+| stats dc(physicalAssetId) as NumChassis</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">preview</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendInterval">-7d</option>
+        <drilldown>
+          <set token="showChassisDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Inventory Collection %</title>
+      <single>
+        <title>Red &lt; Yellow: 80%-95% &lt; Green</title>
+        <search>
+          <query>| loadjob $DEVICE$
+| $singleLineGroupSelector$
+| search inventoryStatus=Completed
+| stats dc(deviceId) as Inventories by _time
+| eval invPerc = (100*Inventories/$kvManagedElements$) 
+| table invPerc, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[80,95]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="trendDisplayMode">absolute</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="showDataCaptureDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <title>Config Collection %</title>
+      <single>
+        <title>Red &lt; Yellow: 75%-90% &lt; Green</title>
+        <search>
+          <query>| loadjob $DEVICE$
+| $singleLineGroupSelector$
+| search configStatus=Completed
+| stats dc(deviceId) as Configs by _time
+| eval confPerc = (100*Configs/$kvManagedElements$) 
+| table confPerc, _time</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">all</option>
+        <option name="height">90</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="showSparkline">$sparklineToggle$</option>
+        <option name="showTrendIndicator">$trendToggle$</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <set token="showDataCaptureDetails">$click.name$</set>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showTrackedDetails$">
+      <table>
+        <title>Tracked Elements Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $CONFORMANCE$
+| eval pauseUntilDrilldown = $showTrackedDetails$
+| $singleLineGroupSelector$
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName, productId, productFamily, productType, softwareVersion
+| stats values(softwareTrackName) as Tracks, latest(isSoftwareTrackCompliant) as isSoftwareTrackCompliant, latest(isSoftwareTrackFlexibleCompliant) as isSoftwareTrackFlexibleCompliant by deviceId, deviceName, productId, productFamily, productType, softwareVersion
+| table deviceId, deviceName, productId, productFamily, productType, softwareVersion, Tracks, isSoftwareTrackCompliant, isSoftwareTrackFlexibleCompliant</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showTrackedDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$showManagedElementDetails$">
+      <table>
+        <title>Managed Elements Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $DEVICE$
+| eval pauseUntilDrilldown = $showManagedElementDetails$
+| $singleLineGroupSelector$
+| dedup deviceId
+| table deviceId, deviceName, productId, productFamily, productType, softwareVersion, softwareType, inventoryStatus, configStatus</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showManagedElementDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+    <panel depends="$showChassisDetails$">
+      <table>
+        <title>Chassis Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $CHASSIS$
+| eval pauseUntilDrilldown = $showChassisDetails$
+| $singleLineGroupSelector$
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceId OUTPUT deviceName, productFamily, productType, softwareVersion
+| table deviceId, deviceName, physicalAssetId, physicalAssetType, productId, productFamily, productType, softwareVersion</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showChassisDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$showDataCaptureDetails$">
+      <table>
+        <title>Data Capture Drilldown. To dismiss this drilldown, click anywhere in the table below the header.</title>
+        <search>
+          <query>| loadjob $DEVICE$
+| eval pauseUntilDrilldown = $showDataCaptureDetails$
+| $singleLineGroupSelector$
+| dedup deviceId
+| table deviceId, deviceName, productId, productFamily, productType, softwareVersion, inventoryStatus, inventoryTimestamp, configStatus, configTimestamp</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <unset token="showDataCaptureDetails"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</form>

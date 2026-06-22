@@ -1,0 +1,247 @@
+<form version="1.1" theme="dark">
+  <label>PonyPoll Analytics</label>
+  <description>Same metrics as the Pony Poll Analytics tab — filter by time and session, then open any panel in Search for further analysis.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+
+    <input type="dropdown" token="quiz_tok" searchWhenChanged="true">
+      <label>Quiz</label>
+      <choice value="*">All quizzes</choice>
+      <default>*</default>
+      <fieldForLabel>label</fieldForLabel>
+      <fieldForValue>quiz_id</fieldForValue>
+      <search>
+        <query>`ponypoll_index` sourcetype=ponypoll_attempt
+          | stats first(quiz_name) as quiz_name by quiz_id
+          | eval label=if(isnotnull(quiz_name) AND quiz_name!="", quiz_name, quiz_id)
+          | fields quiz_id label
+          | sort label</query>
+        <earliest>0</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+
+    <input type="dropdown" token="session_tok" searchWhenChanged="true">
+      <label>Session</label>
+      <choice value="*">All sessions</choice>
+      <default>*</default>
+      <fieldForLabel>session_name</fieldForLabel>
+      <fieldForValue>session_name</fieldForValue>
+      <search>
+        <query>`ponypoll_index` sourcetype=ponypoll_answer session_name=*
+          | stats max(_time) as last_event by session_name
+          | sort -last_event
+          | fields session_name</query>
+        <earliest>0</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+
+    <input type="text" token="nickname_tok" searchWhenChanged="true">
+      <label>Nickname</label>
+      <default>*</default>
+      <prefix>nickname="</prefix>
+      <suffix>"</suffix>
+    </input>
+  </fieldset>
+
+  <!-- ── KPI row ───────────────────────────────────────────────────────────── -->
+  <row>
+    <panel>
+      <single>
+        <title>Quiz completions</title>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt event=quiz_complete
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x009CDE","0x009CDE"]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique players</title>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt event=quiz_complete
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats dc(nickname) as players</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="useColors">1</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="rangeColors">["0x5CC05C","0x5CC05C"]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Avg score</title>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt event=quiz_complete
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats avg(total_score) as avg_score
+            | eval avg_score=round(avg_score,0)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="useColors">1</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="rangeColors">["0xF5A623","0xF5A623"]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Top score</title>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt event=quiz_complete
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats max(total_score) as top_score</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="useColors">1</option>
+        <option name="colorBy">value</option>
+        <option name="colorMode">none</option>
+        <option name="rangeColors">["0xED8B00","0xED8B00"]</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Answers submitted</title>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_answer
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ── Leaderboard + Question difficulty ─────────────────────────────────── -->
+  <row>
+    <panel>
+      <title>🏆 Leaderboard</title>
+      <table>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt event=quiz_complete
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | stats max(total_score) as best_score count as runs by nickname
+            | sort -best_score
+            | head 20
+            | streamstats count as rank
+            | eval "#"=case(rank==1,"🥇", rank==2,"🥈", rank==3,"🥉", true(),tostring(rank))
+            | rename nickname as Player, best_score as "Best score", runs as Runs
+            | table "#" Player "Best score" Runs</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">cell</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Best score">
+          <colorPalette type="list">[#DC4E41,#F5A623,#5CC05C]</colorPalette>
+          <scale type="threshold">1000,5000</scale>
+        </format>
+      </table>
+    </panel>
+
+    <panel>
+      <title>📊 Question difficulty (hardest first)</title>
+      <table>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_answer
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | eval correct_int=if(correct="true",1,0)
+            | stats count as Total sum(correct_int) as Correct sum(points) as Pts by question
+            | eval Wrong=Total-Correct
+            | eval pct_correct=round(Correct/Total*100,1)
+            | eval avg_pts=round(Pts/Total,0)
+            | rename question as Question, pct_correct as "% Correct", avg_pts as "Avg pts"
+            | table Question "% Correct" Correct Wrong "Avg pts"
+            | sort "% Correct"</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">cell</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+        <format type="color" field="% Correct">
+          <colorPalette type="list">[#DC4E41,#F5A623,#5CC05C]</colorPalette>
+          <scale type="threshold">40,70</scale>
+        </format>
+        <format type="number" field="% Correct">
+          <option name="unit">%</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ── Recent sessions ───────────────────────────────────────────────────── -->
+  <row>
+    <panel>
+      <title>🕒 Recent sessions</title>
+      <table>
+        <search>
+          <query>`ponypoll_index` sourcetype=ponypoll_attempt
+            ($quiz_tok$="*" OR quiz_id="$quiz_tok$")
+            ($session_tok$="*" OR session_name="$session_tok$")
+            ($nickname_tok$="*" OR nickname="$nickname_tok$")
+            | sort - _time
+            | head 50
+            | eval Time=strftime(_time,"%Y-%m-%d %H:%M")
+            | eval Score=if(isnotnull(total_score),total_score,"—")
+            | rename nickname as Player, session_name as Session, quiz_name as Quiz, question_count as Questions, event as Event
+            | table Time Player Session Quiz Event Score Questions</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="count">50</option>
+        <option name="drilldown">cell</option>
+        <option name="rowNumbers">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</form>

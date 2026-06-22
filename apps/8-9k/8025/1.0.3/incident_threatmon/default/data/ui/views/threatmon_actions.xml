@@ -1,0 +1,180 @@
+<dashboard version="1.1" theme="light" script="js/actions_page.js">
+  <label>ThreatMon Actions</label>
+  <description>Update incident status or submit takedown requests via ThreatMon API</description>
+
+  <!-- Fieldset — URL param token population (hidden via JS) -->
+  <fieldset submitButton="false" autoRun="false">
+    <input type="text" token="action_alarm_id" searchWhenChanged="false">
+      <label>Alert Code</label>
+      <default></default>
+    </input>
+    <input type="text" token="action_title" searchWhenChanged="false">
+      <label>Title</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <!-- ── Set Status ─────────────────────────────────────── -->
+  <row>
+    <panel>
+      <html>
+        <style>
+          div.fieldset { display: none !important; }
+          .tm-act { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+          .tm-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:20px 24px; }
+          .tm-card-title { margin:0 0 16px; font-size:15px; font-weight:700; color:#1e293b; display:flex; align-items:center; gap:8px; }
+          .tm-form { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px; }
+          .tm-fg { display:flex; flex-direction:column; gap:4px; }
+          .tm-fg label { font-size:12px; font-weight:600; color:#374151; }
+          .tm-fg input, .tm-fg select { border:1px solid #d1d5db; border-radius:6px; padding:8px 10px; font-size:13px; color:#1e293b; background:#fff; min-width:170px; }
+          .tm-fg input:focus, .tm-fg select:focus { border-color:#2563eb; outline:none; box-shadow:0 0 0 3px rgba(37,99,235,.1); }
+          .tm-fg input[readonly] { background:#f8fafc; color:#64748b; cursor:default; }
+          .tm-btn-blue { background:#2563eb; color:#fff; border:none; border-radius:6px; padding:9px 22px; font-size:13px; font-weight:600; cursor:pointer; }
+          .tm-btn-blue:hover { background:#1d4ed8; }
+          .tm-btn-red  { background:#dc3545; color:#fff; border:none; border-radius:6px; padding:9px 22px; font-size:13px; font-weight:600; cursor:pointer; }
+          .tm-btn-red:hover  { background:#b91c1c; }
+        </style>
+        <div class="tm-act">
+          <div class="tm-card">
+            <div class="tm-card-title">
+              <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="8.5" r="7.5" stroke="#2563eb" stroke-width="1.4"/><path d="M4.5 8.5l3 3 5-5" stroke="#2563eb" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Set Status
+            </div>
+            <div class="tm-form">
+              <div class="tm-fg">
+                <label>Alarm ID</label>
+                <input type="text" id="ss_alarm_id" placeholder="e.g. 11103786" />
+              </div>
+              <div class="tm-fg">
+                <label>New Status</label>
+                <select id="ss_status">
+                  <option value="Open">Open</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="False Positive">False Positive</option>
+                  <option value="Ignore">Ignore</option>
+                  <option value="Resolved">Resolved</option>
+                </select>
+              </div>
+              <button type="button" id="btn_setstatus" class="tm-btn-blue">Set Status</button>
+            </div>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Set Status Result -->
+  <row depends="$trigger_setstatus$">
+    <panel>
+      <title>Set Status Result</title>
+      <table>
+        <search>
+          <query>| threatmonsetstatus alarm_id="$tok_ss_alarm_id$" status="$tok_ss_status$"</query>
+          <earliest>-1s</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">false</option>
+        <format type="color" field="result">
+          <colorPalette type="map">{"status updated successfully": "#27ae60"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ── Findings Table ─────────────────────────────────── -->
+  <row>
+    <panel>
+      <title>Findings — Click a row to request takedown</title>
+      <table>
+        <search>
+          <query>index="main" sourcetype="threatmon:incident" alarmCode="$action_alarm_id$" earliest=0 latest=now
+| head 1
+| spath input=_raw path=details{} output=detail_json
+| fields detail_json
+| mvexpand detail_json
+| spath input=detail_json
+| fields - detail_json _*
+| rename findingId AS "Finding ID"
+| fields "Finding ID", *</query>
+          <earliest>0</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <drilldown>
+          <set token="tok_td_finding_id">$row.Finding ID$</set>
+          <set token="tok_td_finding_asset">$row.Asset$</set>
+          <set token="tok_td_title">$action_title$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ── Takedown Form (appears after a finding row is clicked) ── -->
+  <row depends="$tok_td_finding_id$">
+    <panel>
+      <html>
+        <div class="tm-act">
+          <div class="tm-card" style="border-top:3px solid #dc3545;">
+            <div class="tm-card-title">
+              <svg width="17" height="17" viewBox="0 0 17 17" fill="none"><circle cx="8.5" cy="8.5" r="7.5" stroke="#dc3545" stroke-width="1.4"/><path d="M8.5 4.5v5M8.5 11.5v.5" stroke="#dc3545" stroke-width="1.4" stroke-linecap="round"/></svg>
+              Request Takedown
+            </div>
+            <div class="tm-form">
+              <div class="tm-fg">
+                <label>Finding ID</label>
+                <input type="text" id="td_finding_id" readonly="readonly" placeholder="Selected from table" />
+              </div>
+              <div class="tm-fg">
+                <label>Asset</label>
+                <input type="text" id="td_asset" readonly="readonly" placeholder="Selected from table" style="min-width:220px;" />
+              </div>
+              <div class="tm-fg">
+                <label>Description</label>
+                <input type="text" id="td_desc" placeholder="Enter description" style="min-width:260px;" />
+              </div>
+              <button type="button" id="btn_takedown" class="tm-btn-red">Request Takedown</button>
+            </div>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <!-- Takedown Result -->
+  <row depends="$trigger_takedown$">
+    <panel>
+      <title>Takedown Result</title>
+      <table>
+        <search>
+          <query>| threatmontakedown finding_id="$tok_td_finding_id$" finding="$tok_td_desc$" title="$tok_td_title$"</query>
+          <earliest>-1s</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">false</option>
+        <format type="color" field="result">
+          <colorPalette type="map">{"Takedown request submitted successfully": "#27ae60"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Info -->
+  <row>
+    <panel>
+      <html>
+        <div style="padding:12px; background:#f8f9fa; border-left:4px solid #2563eb; border-radius:4px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+          <strong style="color:#1e293b;">Usage</strong>
+          <ul style="margin:8px 0 0 0; color:#555; font-size:13px; line-height:1.7;">
+            <li><strong>Set Status:</strong> Enter Alarm ID, select a status, click <em>Set Status</em></li>
+            <li><strong>Takedown:</strong> Click a row in the Findings table to select a finding, enter a description, click <em>Request Takedown</em></li>
+            <li>Error codes: <code>404</code> not found | <code>409</code> already submitted | <code>403</code> quota exceeded | <code>400</code> not eligible</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+</dashboard>

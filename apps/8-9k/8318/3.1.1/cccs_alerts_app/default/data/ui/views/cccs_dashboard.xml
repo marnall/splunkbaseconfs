@@ -1,0 +1,122 @@
+<form version="1.1" theme="dark">
+  <label>Canadian Centre for Cyber Security Dashboard</label>
+  <description>Canadian Centre for Cyber Security - Alerts and Advisories</description>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_range">
+      <label>Time Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="search_filter">
+      <label>Search Filter</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <title>Events in the Last 24h</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts $search_filter$
+| stats dc(id) as count</query>
+          <earliest>-24h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,20,70]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Events in the Last 7 Days</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts $search_filter$
+| stats dc(id) as count</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,50,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Exploitable Events in the Last 7 days</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts exploit_mentioned=true $search_filter$
+| stats dc(id) as count</query>
+          <earliest>-7d@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[0,2,5]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Events Over Time</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts $search_filter$ 
+| bin _time span=1d
+| eval date=strftime(_time, "%Y-%m-%d")
+| stats dc(id) as count by date</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Number of Alerts</option>
+        <option name="charting.chart">column</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Events by Vendor</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts $search_filter$ 
+| rex field=title "(?&lt;vendor&gt;\w+)"
+| stats dc(id) as count by vendor
+| sort -count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Recent CCCS Alerts and Advisories</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts $search_filter$
+| eval affected_products=mvjoin('affected_products{}.product', ", ") | sort -updated
+| table date title cves{} id exploit_mentioned affected_products recommendations{}
+| rename date as "Date", title as "Title", cves{} as "CVE", id as "ID", exploit_mentioned as "Exploit Mentioned", affected_products as "Affected Products", recommendations{} as "Recommendations"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

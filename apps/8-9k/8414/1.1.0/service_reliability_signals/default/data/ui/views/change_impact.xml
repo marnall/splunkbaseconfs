@@ -1,0 +1,144 @@
+<form theme="dark" version="1.1">
+  <label>Change Impact &amp; Reliability Regression</label>
+  <description>Evaluates the impact of recent changes or deployments on service reliability by
+comparing pre-change and post-change failure behavior. Helps identify regressions
+and rollback candidates using log data only.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>service_reliability_test</default>
+    </input>
+    <input type="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Overall Regression Risk Indicator</title>
+      <single>
+        <title>Aggregated indicator showing whether recent changes have negatively impacted overall service reliability.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | eval phase = if(_time &gt;= relative_time(now(), "-6h"), "post_change", "pre_change")
+            | stats sum(is_failure) AS failures BY phase
+            | eval delta = failures
+            | stats 
+                sum(eval(if(phase="post_change", failures, 0))) AS post_failures
+                sum(eval(if(phase="pre_change", failures, 0))) AS pre_failures
+            | eval regression_score = post_failures - pre_failures</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">209</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="trellis.enabled">1</option>
+        <option name="trellis.size">large</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Service-Level Change Impact</title>
+      <table>
+        <title>Compares failure counts before and after recent changes for each service. Positive delta indicates potential regression.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | eval phase = if(_time &gt;= relative_time(now(), "-6h"), "post_change", "pre_change")
+            | stats sum(is_failure) AS failures BY service phase
+            | stats 
+                sum(eval(if(phase="post_change", failures, 0))) AS post_failures
+                sum(eval(if(phase="pre_change", failures, 0))) AS pre_failures
+              BY service
+            | eval failure_delta = post_failures - pre_failures
+            | eval impact = case(
+                failure_delta &gt;= 10, "HIGH",
+                failure_delta &gt;= 3, "MEDIUM",
+                true(), "LOW"
+              )
+            | sort - failure_delta</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <format type="color" field="impact">
+          <colorPalette type="map">{"HIGH":#D41F1F,"MEDIUM":#D94E17,"LOW":#118832}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Pre vs Post Change Failure Comparison</title>
+      <chart>
+        <title>Visual comparison of failure volume before and after recent changes. A visible increase post-change suggests regression.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | eval phase = if(_time &gt;= relative_time(now(), "-6h"), "Post-Change", "Pre-Change")
+            | timechart span=1h sum(is_failure) BY phase</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">256</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Post-Change Failure Trend</title>
+      <chart>
+        <title>Tracks failure behavior after recent changes to confirm whether reliability is stabilizing or continuing to degrade.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | where _time &gt;= relative_time(now(), "-6h")
+            | timechart span=30m sum(is_failure) AS failures</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+  <panel>
+    <title>How Change Impact Is Determined</title>
+    <html>
+      <div>
+        <h3>What This Dashboard Answers</h3>
+        <p>
+          This dashboard compares failure behavior before and after a recent change
+          to identify potential reliability regressions.
+        </p>
+
+        <h3>Pre vs Post Change Logic</h3>
+        <ul>
+          <li>The selected time range is split into two halves.</li>
+          <li>The first half represents pre-change behavior.</li>
+          <li>The second half represents post-change behavior.</li>
+        </ul>
+
+        <h3>Interpreting Results</h3>
+        <ul>
+          <li><b>Positive Failure Delta</b> – Reliability regression.</li>
+          <li><b>Negative Failure Delta</b> – Reliability improvement.</li>
+          <li><b>Near Zero</b> – No significant impact.</li>
+        </ul>
+
+        <h3>Important Limitations</h3>
+        <ul>
+          <li>This analysis assumes a change occurred near the midpoint of the time range.</li>
+          <li>Use deployment markers for higher accuracy in future versions.</li>
+        </ul>
+      </div>
+    </html>
+  </panel>
+</row>
+</form>

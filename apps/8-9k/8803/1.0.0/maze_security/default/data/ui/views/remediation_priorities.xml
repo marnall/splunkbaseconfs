@@ -1,0 +1,248 @@
+<dashboard version="2" theme="dark">
+    <label>Remediation Priorities</label>
+    <description>What to fix first — sorted by impact, filtered to open findings only</description>
+    <definition><![CDATA[
+{
+    "dataSources": {
+        "ds_p0_count": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" maze_severity=\"CRITICAL\" | stats count as p0",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_p1_count": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" maze_severity=\"HIGH\" | stats count as p1",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_p2_count": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" maze_severity=\"MEDIUM\" | stats count as p2",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_unique_cves": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" | stats dc(cve_id) as unique_cves",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_highest_impact_cves": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" | spath path=\"related_scanner_findings{}.asset_name\" output=asset_name | mvexpand asset_name | spath path=\"snapshot.cve.description\" output=cve_description | eval severity_weight=case(maze_severity=\"CRITICAL\", $w_critical$, maze_severity=\"HIGH\", $w_high$, maze_severity=\"MEDIUM\", $w_medium$, maze_severity=\"LOW\", $w_low$, 1=1, 0) | where severity_weight > 0 | stats dc(asset_name) as affected_assets values(asset_name) as assets sum(severity_weight) as impact_score first(likelihood) as likelihood first(impact) as impact first(cve_description) as description by cve_id maze_severity | eval impact_score=round(impact_score, 1) | eval assets=mvjoin(assets, \", \") | sort - impact_score | fields cve_id maze_severity likelihood impact affected_assets assets impact_score description | head 20",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_riskiest_assets": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" | spath path=\"related_scanner_findings{}.asset_name\" output=asset_name | spath path=\"related_scanner_findings{}.asset_type\" output=asset_type | mvexpand asset_name | eval severity_weight=case(maze_severity=\"CRITICAL\", $w_critical$, maze_severity=\"HIGH\", $w_high$, maze_severity=\"MEDIUM\", $w_medium$, maze_severity=\"LOW\", $w_low$, 1=1, 0) | where severity_weight > 0 | stats sum(severity_weight) as risk_score count as exploitable_findings count(eval(maze_severity=\"CRITICAL\")) as critical count(eval(maze_severity=\"HIGH\")) as high count(eval(maze_severity=\"MEDIUM\")) as medium count(eval(maze_severity=\"LOW\")) as low dc(cve_id) as unique_cves first(asset_type) as type by asset_name | sort - risk_score | head 20 | fields asset_name type risk_score exploitable_findings critical high medium low unique_cves",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        },
+        "ds_p0_actions": {
+            "type": "ds.search",
+            "options": {
+                "query": "`maze_investigations` | spath path=\"snapshot.status\" output=inv_status | search inv_status=\"$status_filter$\" exploitability=\"exploitable\" (maze_severity=\"CRITICAL\" OR maze_severity=\"HIGH\") | spath path=\"related_scanner_findings{}.asset_name\" output=asset_name | mvexpand asset_name | spath path=\"severity_details.severity_drivers{}.factor\" output=risk_factors | eval risk_factors=mvjoin(risk_factors, \"; \") | eval guidance=if(isnotnull(remediation) AND remediation!=\"null\", remediation, exploitability_reason) | eval priority=if(maze_severity=\"CRITICAL\", \"P0\", \"P1\") | table priority cve_id asset_name maze_severity likelihood impact risk_factors guidance | sort priority cve_id asset_name",
+                "queryParameters": {
+                    "earliest": "$time_tok.earliest$",
+                    "latest": "$time_tok.latest$"
+                }
+            }
+        }
+    },
+    "defaults": {},
+    "inputs": {
+        "input_time": {
+            "type": "input.timerange",
+            "title": "Time Range",
+            "options": {
+                "token": "time_tok",
+                "defaultValue": "0,now"
+            }
+        },
+        "input_status": {
+            "type": "input.dropdown",
+            "title": "Status",
+            "options": {
+                "token": "status_filter",
+                "defaultValue": "open",
+                "items": [
+                    {"label": "Open", "value": "open"},
+                    {"label": "Closed", "value": "closed"},
+                    {"label": "All", "value": "*"}
+                ]
+            }
+        },
+        "input_weight_critical": {
+            "type": "input.text",
+            "title": "Critical Weight",
+            "options": {
+                "token": "w_critical",
+                "defaultValue": "5"
+            }
+        },
+        "input_weight_high": {
+            "type": "input.text",
+            "title": "High Weight",
+            "options": {
+                "token": "w_high",
+                "defaultValue": "3"
+            }
+        },
+        "input_weight_medium": {
+            "type": "input.text",
+            "title": "Medium Weight",
+            "options": {
+                "token": "w_medium",
+                "defaultValue": "0"
+            }
+        },
+        "input_weight_low": {
+            "type": "input.text",
+            "title": "Low Weight",
+            "options": {
+                "token": "w_low",
+                "defaultValue": "0"
+            }
+        }
+    },
+    "layout": {
+        "type": "grid",
+        "options": {
+            "width": 1440,
+            "height": 1800
+        },
+        "structure": [
+            {
+                "item": "viz_p0",
+                "type": "block",
+                "position": { "x": 0, "y": 0, "w": 360, "h": 150 }
+            },
+            {
+                "item": "viz_p1",
+                "type": "block",
+                "position": { "x": 360, "y": 0, "w": 360, "h": 150 }
+            },
+            {
+                "item": "viz_p2",
+                "type": "block",
+                "position": { "x": 720, "y": 0, "w": 360, "h": 150 }
+            },
+            {
+                "item": "viz_unique_cves",
+                "type": "block",
+                "position": { "x": 1080, "y": 0, "w": 360, "h": 150 }
+            },
+            {
+                "item": "viz_highest_impact_cves",
+                "type": "block",
+                "position": { "x": 0, "y": 150, "w": 1440, "h": 420 }
+            },
+            {
+                "item": "viz_riskiest_assets",
+                "type": "block",
+                "position": { "x": 0, "y": 570, "w": 1440, "h": 420 }
+            },
+            {
+                "item": "viz_p0_actions",
+                "type": "block",
+                "position": { "x": 0, "y": 990, "w": 1440, "h": 500 }
+            }
+        ],
+        "globalInputs": ["input_time", "input_status", "input_weight_critical", "input_weight_high", "input_weight_medium", "input_weight_low"]
+    },
+    "visualizations": {
+        "viz_p0": {
+            "type": "splunk.singlevalue",
+            "title": "P0 — Critical + Exploitable",
+            "dataSources": { "primary": "ds_p0_count" },
+            "options": {
+                "majorValue": "> primary | seriesByName('p0') | lastPoint()",
+                "majorColor": "#dc4e41",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_p1": {
+            "type": "splunk.singlevalue",
+            "title": "P1 — High + Exploitable",
+            "dataSources": { "primary": "ds_p1_count" },
+            "options": {
+                "majorValue": "> primary | seriesByName('p1') | lastPoint()",
+                "majorColor": "#f8be34",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_p2": {
+            "type": "splunk.singlevalue",
+            "title": "P2 — Medium + Exploitable",
+            "dataSources": { "primary": "ds_p2_count" },
+            "options": {
+                "majorValue": "> primary | seriesByName('p2') | lastPoint()",
+                "majorColor": "#f1813f",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_unique_cves": {
+            "type": "splunk.singlevalue",
+            "title": "Unique CVEs to Remediate",
+            "dataSources": { "primary": "ds_unique_cves" },
+            "options": {
+                "majorValue": "> primary | seriesByName('unique_cves') | lastPoint()",
+                "backgroundColor": "transparent"
+            }
+        },
+        "viz_highest_impact_cves": {
+            "type": "splunk.table",
+            "title": "Highest Impact CVEs — scored by (severity weight × affected assets)",
+            "dataSources": { "primary": "ds_highest_impact_cves" },
+            "options": {
+                "count": 20
+            }
+        },
+        "viz_riskiest_assets": {
+            "type": "splunk.table",
+            "title": "Riskiest Assets — scored by sum of severity weights across findings",
+            "dataSources": { "primary": "ds_riskiest_assets" },
+            "options": {
+                "count": 20
+            }
+        },
+        "viz_p0_actions": {
+            "type": "splunk.table",
+            "title": "P0 + P1 Action Items — what to fix and why",
+            "dataSources": { "primary": "ds_p0_actions" },
+            "options": {
+                "count": 50
+            }
+        }
+    },
+    "title": "Remediation Priorities"
+}
+]]>
+    </definition>
+</dashboard>

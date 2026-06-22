@@ -1,0 +1,177 @@
+<form version="1.1" theme="dark">
+  <label>MITRE ATT&amp;CK Analysis</label>
+  <description>MITRE ATT&amp;CK Threat Intelligence from Canadian Centre for Cyber Security Alerts</description>
+  <!-- Top Row: Key Metrics -->
+  <!-- MITRE ATT&amp;CK Tactics Distribution -->
+  <!-- Top Techniques -->
+  <!-- Tactics Timeline -->
+  <!-- Critical Alerts with Active Exploits -->
+  <!-- Attack Complexity Analysis -->
+  <!-- Recent High-Severity Alerts -->
+  <!-- MITRE Technique Heatmap by Product -->
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_range">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="severity_filter">
+      <label>MITRE Severity</label>
+      <choice value="*">All Severities</choice>
+      <choice value="critical">Critical</choice>
+      <choice value="high">High</choice>
+      <choice value="medium">Medium</choice>
+      <choice value="low">Low</choice>
+      <default>*</default>
+    </input>
+    <input type="text" token="search_filter">
+      <label>Keyword Search</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <title>Total Events with MITRE Enrichment</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_enriched=true mitre_severity=$severity_filter$ $search_filter$
+| stats dc(id) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique MITRE Techniques Detected</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_severity=$severity_filter$ $search_filter$ mitre_techniques{}.id=*
+| stats dc(mitre_techniques{}.id) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Critical Severity Events</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_severity=critical $search_filter$
+| stats dc(id) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,10,20]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Unique CCCS Events with MITRE ATT&amp;CK information</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_severity=$severity_filter$ $search_filter$ mitre_enriched=true
+| bin _time span=1d
+| stats dc(id) as "Unique Alerts" by _time
+| timechart span=1d sum("Unique Alerts") as "Alert Count"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Number of Alerts</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Threat Score Distribution</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_severity=$severity_filter$ $search_filter$ mitre_threat_score=* 
+| eval score_range=case(
+    mitre_threat_score &lt; 20, "0-19 (Low)",
+    mitre_threat_score &lt; 40, "20-39 (Medium-Low)",
+    mitre_threat_score &lt; 60, "40-59 (Medium)",
+    mitre_threat_score &lt; 80, "60-79 (High)",
+    1=1, "80-100 (Critical)"
+  )
+| stats count by score_range
+| sort score_range</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Top 15 MITRE Techniques Detected</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts mitre_severity=$severity_filter$ $search_filter$ | stats dc(id) as alert_count by mitre_techniques{}.id, mitre_techniques{}.name, mitre_techniques{}.tactic
+| sort -alert_count
+| head 15
+| rename mitre_techniques{}.id as "Technique ID", mitre_techniques{}.name as "Technique Name", mitre_techniques{}.tactic as "Tactic", alert_count as "Alert Count"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Alert Count">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">/app/cccs_alerts_app/search?q=search%20index%3Dcyber_gc_ca%20sourcetype%3Dcccs%3Aalerts%20mitre_techniques%7B%7D.id%3D%22$row.Technique ID$%22&amp;earliest=$time_range.earliest$&amp;latest=$time_range.latest$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <table>
+        <title>Events with Active Exploits and MITRE Mapping</title>
+        <search>
+          <query>index=cyber_gc_ca sourcetype=cccs:alerts exploit_mentioned=true mitre_enriched=true mitre_severity=$severity_filter$ $search_filter$ | sort -updated
+| eval published_formatted=strftime(strptime(published, "%Y-%m-%dT%H:%M:%SZ"), "%Y-%m-%d %H:%M")
+| table date, title, mitre_severity, mitre_threat_score, mitre_tactics{}, mitre_techniques{}.id, exploit_context, cves{}
+| sort date
+| rename date as "Published", title as "Title", mitre_severity as "Severity", mitre_threat_score as "Threat Score", mitre_tactics{} as "Tactics", mitre_techniques{}.id as "Techniques", exploit_context as "Exploit Context", cves{} as "CVEs"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"critical":#D93F3C,"high":#F58F39,"medium":#F7BC38,"low":#65A637}</colorPalette>
+        </format>
+        <format type="color" field="Threat Score">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" maxType="number" maxValue="100" midType="number" midValue="50" minType="number" minValue="0"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

@@ -1,0 +1,303 @@
+<form version="1.1">
+  <label>Pi-Hole Overview</label>
+  <description>Main dashboard for Pi-Hole DNS and ad blocking statistics</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_token" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Total DNS Queries</title>
+      <single>
+        <search>
+          <query>`pihole_base` "query[" | stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Total Queries</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Blocked Queries</title>
+      <single>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "is 0.0.0.0") | stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Blocked</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Forwarded Queries</title>
+      <single>
+        <search>
+          <query>`pihole_base` "forwarded" | stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Forwarded</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Cached Queries</title>
+      <single>
+        <search>
+          <query>`pihole_base` "cached" | stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">From Cache</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Rate Limited</title>
+      <single>
+        <search>
+          <query>`pihole_base` "Rate-limiting" | stats count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Rate Limited</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[10,100,1000]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Blocking Percentage</title>
+      <single>
+        <search>
+          <query>`pihole_base` ("query[" OR "gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "is 0.0.0.0")
+| eval is_blocked=if(match(_raw, "gravity blocked|exactly denied|special domain|Apple iCloud Private Relay|Designated Resolver|is 0\.0\.0\.0"), 1, 0)
+| stats sum(is_blocked) as blocked, count as total 
+| eval block_percentage=round((blocked/total)*100, 2)
+| fields block_percentage</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">%</option>
+        <option name="underLabel">Blocked Percentage</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,10,15,20]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Cache Hit Rate</title>
+      <single>
+        <search>
+          <query>`pihole_base` ("cached" OR "forwarded")
+| eval is_cached=if(match(_raw, "cached"), 1, 0)
+| stats sum(is_cached) as cached, count as total 
+| eval cache_rate=round((cached/total)*100, 2)
+| fields cache_rate</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">%</option>
+        <option name="underLabel">Cache Hit Rate</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0xD93F3C","0xF58F39","0xF7BC38","0x6DB7C6","0x65A637"]</option>
+        <option name="rangeValues">[20,40,60,80]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Stale Cache Rate</title>
+      <single>
+        <search>
+          <query>`pihole_base` "cached"
+| eval is_stale=if(match(_raw, "cached-stale"), 1, 0)
+| stats sum(is_stale) as stale, count as total 
+| eval stale_rate=round((stale/total)*100, 2)
+| fields stale_rate</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">%</option>
+        <option name="underLabel">Stale Cache Served</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[10,25,50,75]</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Block Source Breakdown</title>
+      <chart>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "Apple iCloud Private Relay" OR "Designated Resolver" OR "special domain")
+| eval block_source=case(
+    match(_raw, "gravity blocked"), "Gravity",
+    match(_raw, "exactly denied"), "Exact Match",
+    match(_raw, "Apple iCloud Private Relay"), "Apple Private Relay",
+    match(_raw, "Designated Resolver"), "Designated Resolver",
+    match(_raw, "special domain"), "Special Domain",
+    1=1, "Other"
+)
+| stats count by block_source
+| sort -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>DNS Response Types</title>
+      <chart>
+        <search>
+          <query>`pihole_base` "reply"
+| rex field=_raw "is\s+(?&lt;response_type&gt;NODATA(?:-IPv6)?|NXDOMAIN|&lt;CNAME&gt;|&lt;HTTPS&gt;|\d+\.\d+\.\d+\.\d+|[0-9a-fA-F:]+)"
+| eval response_category=case(
+    match(response_type, "^\d+\.\d+\.\d+\.\d+$"), "IPv4 Address",
+    match(response_type, "^[0-9a-fA-F:]+$"), "IPv6 Address",
+    response_type="NODATA", "NODATA",
+    response_type="NODATA-IPv6", "NODATA-IPv6",
+    response_type="NXDOMAIN", "NXDOMAIN",
+    response_type="&lt;CNAME&gt;", "CNAME",
+    response_type="&lt;HTTPS&gt;", "HTTPS",
+    1=1, "Other"
+)
+| stats count by response_category
+| sort -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>DNS Activity Over Time</title>
+      <chart>
+        <search>
+          <query>`pihole_base`
+| eval action=case(
+    match(_raw, "gravity blocked|exactly denied|Apple iCloud Private Relay|Designated Resolver|special domain|is 0\.0\.0\.0|is ::$"), "blocked",
+    match(_raw, "Rate-limiting"), "rate_limited",
+    match(_raw, "forwarded"), "forwarded",
+    match(_raw, "cached-stale"), "cached_stale",
+    match(_raw, "cached"), "cached",
+    match(_raw, "reply"), "reply",
+    match(_raw, "/etc/hosts"), "local_lookup",
+    match(_raw, "query\["), "query",
+    1=1, "other"
+)
+| timechart span=10m count by action</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Event Count</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 10 Queried Domains</title>
+      <table>
+        <search>
+          <query>`pihole_base` "query[" domain=*
+| stats count by domain 
+| sort -count 
+| head 10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Top 10 Blocked Domains</title>
+      <table>
+        <search>
+          <query>`pihole_base` ("gravity blocked" OR "exactly denied" OR "special domain" OR "Apple iCloud Private Relay" OR "Designated Resolver") domain=*
+| stats count by domain 
+| sort -count 
+| head 10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 10 Client Devices</title>
+      <table>
+        <search>
+          <query>`pihole_base` client_ip=* 
+| stats count by client_ip 
+| sort -count 
+| head 10</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Query Types Distribution</title>
+      <chart>
+        <search>
+          <query>`pihole_base` query_type=* 
+| stats count by query_type 
+| sort -count</query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

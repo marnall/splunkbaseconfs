@@ -1,0 +1,114 @@
+<dashboard version="1.1">
+  <label>User Experience Score</label>
+  <description>Critical Services and Sites with Low User Experience Score</description>
+  <search>
+    <query>
+          sourcetype="apex" index="*" field_name="User Experience Score" |stats latest(_time) as _time by apex_dashboard   |  sort 0 - _time | head 1 | table apex_dashboard | rename apex_dashboard as url_token
+    </query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="url_token">$result.url_token$</set>
+    </done>
+  </search>
+  <row depends="$url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <a href="$url_token$" target="_blank">Click here to visit the Apex dashboard</a>
+      </html>
+    </panel>
+  </row>
+  <row depends="$!url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <div style="color: #ff6b35; padding: 10px; border-left: 4px solid #ff6b35;">
+          <strong>No Apex Dashboard Available</strong><br/>
+          No events received in the last 24 hours. Check your Apex configuration and ensure events are being sent to Splunk.
+          <br/><br/>
+          <a href="/en-US/app/TA-viavi-apex-addon/apex_setup_page">Configure Add-on Settings</a>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row depends="$url_token$">
+    <panel>
+      <title>EUE Score Distribution over Last 24 Hours</title>
+      <chart>
+        <search>
+          <query>sourcetype="apex" index="*" field_name = "User Experience Score" | eval current_value=replace(current_value, "Score", "") | timechart span=3m avg(current_value) as avg_score | eval "User Experience Score"=round(avg_score,3) | fields _time "User Experience Score" critical_threshold | eval critical_threshold=5</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisY2.enabled">0</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>EUE Score by Application</title>
+      <chart>
+        <search>
+          <query>sourcetype="apex" index="*" field_name = "User Experience Score"   | eval current_value=replace(current_value, "Score", "") | stats avg(current_value) BY application | sort -avg(current_value)</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleY.text">EUE Score</option>
+        <option name="charting.axisY.maximumNumber">10</option>
+        <option name="charting.axisY.minimumNumber">0</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>EUE Score for Critical Services</title>
+      <table>
+        <title>EUE Score for critical services over the last 60 minutes</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name ="User Experience Score" | where isnotnull(ip_address_server) AND isnotnull(application) AND isnotnull(current_value) | eval eue_score=replace(current_value, " Score", "") | stats avg(eue_score) AS avg_eue_score BY ip_address_server, application | eval "User Experience Score"=round(avg_eue_score, 2) | rename ip_address_server as "Server IP" | table "Server IP" application "User Experience Score" | sort + "User Experience Score"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>EUE Score for Sites</title>
+      <table>
+        <title>EUE Score for different sites over the last 60 minutes</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name="User Experience Score"  | where isnotnull(site_client) AND isnotnull(current_value) | eval eue_score=replace(current_value, " Score", "") | stats avg(eue_score) AS avg_eue_score BY site_client |eval "User Experience Score"=round(avg_eue_score, 2) |rename site_client AS "Site" | table "Site" "User Experience Score" | sort + "User Experience Score"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

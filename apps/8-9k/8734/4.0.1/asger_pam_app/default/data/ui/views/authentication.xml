@@ -1,0 +1,34 @@
+<dashboard version="1.1" theme="dark">
+  <label>Authentication</label>
+  <description>Login Activity, MFA, SAML SSO, RADIUS, Mobile Authentication</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true"><label>Time Range</label><default><earliest>-24h@h</earliest><latest>now</latest></default></input>
+  </fieldset>
+
+  <!-- ── KPI ROW ── -->
+  <row>
+    <panel><single><title>Successful Logins</title><search><query>`asger_auth` outcome="success" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="colorMode">block</option><option name="rangeColors">["#53a051","#53a051"]</option><option name="useColors">true</option></single></panel>
+    <panel><single><title>Failed Logins</title><search><query>`asger_auth` outcome="failure" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="colorMode">block</option><option name="rangeColors">["#dc4e41","#dc4e41"]</option><option name="useColors">true</option></single></panel>
+    <panel><single><title>MFA Challenges</title><search><query>`asger_auth` event_type="*mfa_*" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>SAML SSO Events</title><search><query>`asger_auth` event_type="saml_*" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+    <panel><single><title>Unique Users</title><search><query>`asger_auth` | stats dc(user)</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search></single></panel>
+  </row>
+
+  <!-- ── TREND + AUTH METHOD ── -->
+  <row>
+    <panel><chart><title>Login Success vs Failure Over Time</title><search><query>`asger_auth` | eval status=if(outcome="success","Success","Failure") | timechart span=1h count by status</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">column</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><chart><title>Auth Method Distribution</title><search><query>`asger_auth` auth_method=* | top limit=10 auth_method</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">pie</option></chart></panel>
+  </row>
+
+  <!-- ── LOGIN STEP BREAKDOWN ── -->
+  <row>
+    <panel><chart><title>Login Event Type Breakdown</title><search><query>`asger_auth` | eval step=case(match(event_type,"identity"),"Identity",match(event_type,"password"),"Password",match(event_type,"mfa_"),"MFA",match(event_type,"saml_"),"SAML SSO",match(event_type,"ota_"),"OTA",match(event_type,"prelogin"),"Pre-Login",match(event_type,"mobile_"),"Mobile",match(event_type,"token"),"Token",1==1,"Other") | stats count by step, outcome</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+    <panel><chart><title>SAML SSO Flow</title><search><query>`asger_auth` event_type="saml_*" | stats count by event_type, outcome | sort event_type</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="charting.chart">bar</option><option name="charting.chart.stackMode">stacked</option></chart></panel>
+  </row>
+
+  <!-- ── BRUTE FORCE + EVENTS ── -->
+  <row>
+    <panel><table><title>Top Failed Login Sources (Potential Brute Force)</title><search><query>`asger_auth` outcome="failure" | stats count as failures, dc(user) as attempted_users, values(user) as users by src_ip | where failures > 3 | sort -failures</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">15</option></table></panel>
+    <panel><table><title>Recent Authentication Events</title><search><query>`asger_auth` | table _time, user, src_ip, event_type, auth_method, outcome, device_action, reason | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search><option name="count">20</option></table></panel>
+  </row>
+</dashboard>

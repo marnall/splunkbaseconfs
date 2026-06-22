@@ -1,0 +1,175 @@
+<dashboard version="2" theme="dark">
+  <label>Identity &amp; Access</label>
+  <description>Authentication, MFA, VPN sessions, account lockouts, and O365 admin operations.</description>
+  <definition><![CDATA[
+{
+  "title": "Identity & Access — Event Builder For Splunk",
+  "description": "Authentication events, MFA, VPN sessions, account lockouts, and O365 admin operations.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1200,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_auth_failures_kpi",  "type": "block", "position": { "x": 0,    "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_lockouts_kpi",       "type": "block", "position": { "x": 360,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_vpn_sessions_kpi",   "type": "block", "position": { "x": 720,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_mfa_events_kpi",     "type": "block", "position": { "x": 1080, "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_auth_trend",         "type": "block", "position": { "x": 0,    "y": 200, "w": 720, "h": 300 } },
+      { "item": "viz_auth_by_src",        "type": "block", "position": { "x": 720,  "y": 200, "w": 720, "h": 300 } },
+      { "item": "viz_vpn_sessions",       "type": "block", "position": { "x": 0,    "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_mfa_table",          "type": "block", "position": { "x": 480,  "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_o365_ops",           "type": "block", "position": { "x": 960,  "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_auth_details",       "type": "block", "position": { "x": 0,    "y": 800, "w": 1440,"h": 350 } }
+    ],
+    "globalInputs": ["input_time_range"]
+  },
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-60m,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "dataSources": {
+    "ds_auth_failures_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=windows sourcetype=WinEventLog:Security EventCode=4625) OR (index=linux sourcetype=linux_secure (\"Failed password\" OR \"authentication failure\")) OR (index=identity sourcetype=OktaIM2:log \"AUTHENTICATION_FAILED\") OR (index=o365 sourcetype=azure:aad:signin \"Failure\") | stats count as failures",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_lockouts_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=windows sourcetype=WinEventLog:Security EventCode=4740 | stats count as lockouts",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_vpn_sessions_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=vpn sourcetype=cisco:asa:vpn \"Connected\") OR (index=vpn sourcetype=pan:globalprotect \"gateway-connected\") | stats count as vpn_sessions",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_mfa_events_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=identity sourcetype=OktaIM2:log (eventType=\"user.mfa.factor.activate\" OR eventType=\"user.mfa.factor.deactivate\" OR eventType=\"user.authentication.auth_via_mfa\") | stats count as mfa_events",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_auth_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "((index=windows sourcetype=WinEventLog:Security (EventCode=4624 OR EventCode=4625)) OR (index=linux sourcetype=linux_secure (\"Accepted password\" OR \"Failed password\")) OR (index=identity sourcetype=OktaIM2:log (\"user.session.start\" OR \"AUTHENTICATION_FAILED\"))) | eval auth_result=case(EventCode=\"4624\" OR match(_raw,\"Accepted\") OR match(_raw,\"user.session.start\"), \"Success\", true(), \"Failure\") | timechart span=5m count BY auth_result",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_auth_by_src": {
+      "type": "ds.search",
+      "options": {
+        "query": "((index=windows sourcetype=WinEventLog:Security EventCode=4625) OR (index=linux sourcetype=linux_secure \"Failed password\") OR (index=identity sourcetype=OktaIM2:log \"AUTHENTICATION_FAILED\")) | eval src=coalesce(Source_Network_Address, src_ip, client.ipAddress) | where isnotnull(src) AND src!=\"-\" | top limit=15 src",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_vpn_sessions": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=vpn sourcetype=cisco:asa:vpn) OR (index=vpn sourcetype=pan:globalprotect) | eval user=coalesce(user, 'auth.alternateId') | eval action=coalesce(action, \"connected\") | stats count BY user, action | sort -count | head 20",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_mfa_table": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=identity sourcetype=OktaIM2:log (eventType=\"user.mfa.factor.activate\" OR eventType=\"user.mfa.factor.deactivate\" OR eventType=\"user.authentication.auth_via_mfa\") | eval user=coalesce(actor.alternateId, actor.displayName) | stats count BY eventType, user | sort -count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_o365_ops": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=o365 (sourcetype=o365:management:activity OR sourcetype=azure:aad:signin) | eval user=coalesce(UserId, userPrincipalName) | eval operation=coalesce(Operation, eventType) | stats count BY operation | sort -count | head 15",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_auth_details": {
+      "type": "ds.search",
+      "options": {
+        "query": "((index=windows sourcetype=WinEventLog:Security (EventCode=4624 OR EventCode=4625 OR EventCode=4740)) OR (index=linux sourcetype=linux_secure) OR (index=identity sourcetype=OktaIM2:log) OR (index=o365 sourcetype=azure:aad:signin) OR (index=vpn)) | eval user=coalesce(Account_Name, user, actor.alternateId, userPrincipalName) | eval src=coalesce(Source_Network_Address, src_ip, client.ipAddress, clientip) | eval result=coalesce(action, auth_result, outcome.result) | table _time, index, sourcetype, user, src, result, host | sort -_time | head 100",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_auth_failures_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_auth_failures_kpi" },
+      "options": { "majorField": "failures", "majorColor": "#FF4444", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Auth Failures"
+    },
+    "viz_lockouts_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_lockouts_kpi" },
+      "options": { "majorField": "lockouts", "majorColor": "#FF8C00", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Account Lockouts"
+    },
+    "viz_vpn_sessions_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_vpn_sessions_kpi" },
+      "options": { "majorField": "vpn_sessions", "majorColor": "#20B2AA", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "VPN Sessions"
+    },
+    "viz_mfa_events_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_mfa_events_kpi" },
+      "options": { "majorField": "mfa_events", "majorColor": "#7AB8F5", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "MFA Events"
+    },
+    "viz_auth_trend": {
+      "type": "viz.area",
+      "dataSources": { "primary": "ds_auth_trend" },
+      "options": { "xAxisTitleText": "Time", "yAxisTitleText": "Auth Events", "legendDisplay": "bottom", "backgroundColor": "transparent" },
+      "title": "Authentication Trend (Success vs Failure)"
+    },
+    "viz_auth_by_src": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_auth_by_src" },
+      "options": { "xAxisTitleText": "Source IP", "yAxisTitleText": "Failures", "legendDisplay": "off", "backgroundColor": "transparent" },
+      "title": "Top Auth Failure Sources"
+    },
+    "viz_vpn_sessions": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_vpn_sessions" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "VPN Sessions by User"
+    },
+    "viz_mfa_table": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_mfa_table" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "MFA Events by Type & User"
+    },
+    "viz_o365_ops": {
+      "type": "viz.pie",
+      "dataSources": { "primary": "ds_o365_ops" },
+      "options": { "backgroundColor": "transparent", "labelField": "operation", "valueField": "count" },
+      "title": "O365 / Azure Operations"
+    },
+    "viz_auth_details": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_auth_details" },
+      "options": { "backgroundColor": "transparent", "count": 20 },
+      "title": "Authentication Event Details"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

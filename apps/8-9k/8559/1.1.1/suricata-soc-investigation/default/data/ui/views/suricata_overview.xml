@@ -1,0 +1,172 @@
+<dashboard version="1.1">
+  <label>Suricata Overview</label>
+
+  <search>
+    <query>
+      | inputlookup suricata_settings.csv
+      | stats latest(eval(if(setting="search_scope", value, null()))) as search_scope latest(eval(if(setting="time_choice", value, null()))) as time_choice
+      | eval search_scope=coalesce(search_scope, "index=suricata")
+      | eval time_choice=coalesce(time_choice, "24h")
+      | eval earliest_tok=case(time_choice=="7d", "-7d@d", time_choice=="30d", "-30d@d", time_choice=="all", "0", true(), "-24h@h")
+      | eval latest_tok="now"
+    </query>
+    <done>
+      <set token="search_scope">$result.search_scope$</set>
+      <set token="form.search_scope">$result.search_scope$</set>
+      <set token="time_choice">$result.time_choice$</set>
+      <set token="form.time_choice">$result.time_choice$</set>
+      <set token="earliest_tok">$result.earliest_tok$</set>
+      <set token="latest_tok">$result.latest_tok$</set>
+      <set token="settings_loaded">1</set>
+    </done>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="time_choice">
+      <label>Time Range</label>
+      <choice value="24h">Last 24 hours</choice>
+      <choice value="7d">Last 7 days</choice>
+      <choice value="30d">Last 30 days</choice>
+      <choice value="all">All time</choice>
+      <default>24h</default>
+      <initialValue>24h</initialValue>
+      <change>
+        <condition value="24h">
+          <set token="earliest_tok">-24h@h</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="7d">
+          <set token="earliest_tok">-7d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="30d">
+          <set token="earliest_tok">-30d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="all">
+          <set token="earliest_tok">0</set>
+          <set token="latest_tok">now</set>
+        </condition>
+      </change>
+    </input>
+
+    <input type="text" token="search_scope">
+      <label>Search Scope</label>
+      <default>index=suricata</default>
+      <initialValue>index=suricata</initialValue>
+    </input>
+  </fieldset>
+
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Alerts Over Time</title>
+      <chart>
+        <search>
+          <query>$search_scope$ event_type=alert | timechart span=1h count</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Top Alert Signatures</title>
+      <table>
+        <search>
+          <query>$search_scope$ event_type=alert | top limit=10 alert.signature</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+
+    <panel>
+      <title>Top Source IPs</title>
+      <table>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | top limit=10 src_ip
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <drilldown>
+          <link>
+            /app/suricata-soc-investigation/suricata_investigation?form.src=$row.src_ip$&amp;form.search_scope=$search_scope|u$
+          </link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Severity Distribution</title>
+      <chart>
+        <search>
+          <query>$search_scope$ event_type=alert | stats count by alert.severity | sort
+            alert.severity</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Top Targeted Hosts</title>
+      <chart>
+        <search>
+          <query>$search_scope$ event_type=alert | top limit=10 dest_ip</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Protocol Distribution</title>
+      <chart>
+        <search>
+          <query>$search_scope$ | stats count by proto</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Possible Port Scanners</title>
+      <table>
+        <search>
+          <query>$search_scope$ event_type=alert | stats count dc(dest_port) as unique_ports by
+            src_ip dest_ip | where unique_ports &gt; 20 | sort - unique_ports</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$settings_loaded$">
+    <panel>
+      <title>Recent Alerts</title>
+      <table>
+        <search>
+          <query>$search_scope$ event_type=alert | table _time src_ip dest_ip dest_port proto
+            alert.signature alert.category alert.severity | sort - _time</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

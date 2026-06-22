@@ -1,0 +1,92 @@
+<form version="1.1">
+  <label>Core Web Vitals</label>
+  <description>Web Vitals from Vercel Speed Insights.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="project" searchWhenChanged="true">
+      <label>Project</label>
+      <choice value="*">All</choice>
+      <search>
+        <query>`vercel_speed_insights` | stats count by projectName | sort -count</query>
+      </search>
+      <fieldForLabel>projectName</fieldForLabel>
+      <fieldForValue>projectName</fieldForValue>
+      <default>*</default>
+    </input>
+    <eval token="project_filter">if("$project$"="*" OR "$project$"="", "", "projectName=\"$project$\"")</eval>
+  </fieldset>
+
+  <search id="baseSpeed">
+    <query>`vercel_speed_insights` $project_filter$</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+
+  <row>
+    <panel>
+      <title>LCP p75 (ms)</title>
+      <single>
+        <search base="baseSpeed">
+          <query>| stats perc75(lcp) as lcp_p75</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CLS p75</title>
+      <single>
+        <search base="baseSpeed">
+          <query>| stats perc75(cls) as cls_p75</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>INP p75 (ms)</title>
+      <single>
+        <search base="baseSpeed">
+          <query>| stats perc75(inp) as inp_p75</query>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Core Web Vitals p75 over time</title>
+      <chart>
+        <search base="baseSpeed">
+          <query>| timechart span=15m perc75(lcp) as LCP perc75(cls) as CLS perc75(inp) as INP</query>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top pages by LCP p75</title>
+      <table>
+        <search base="baseSpeed">
+          <query>| stats perc75(lcp) as lcp_p75 count by uri_path | sort - lcp_p75 | head 10</query>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>LCP distribution</title>
+      <chart>
+        <search base="baseSpeed">
+          <query>| stats perc50(lcp) as p50 perc75(lcp) as p75 perc95(lcp) as p95</query>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+  </row>
+</form>

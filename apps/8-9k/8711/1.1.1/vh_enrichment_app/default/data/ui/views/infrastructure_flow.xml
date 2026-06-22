@@ -1,0 +1,265 @@
+<form version="1.1" theme="dark" script="vh_enrichment_dashboard_init.js">
+  <label>Security Analytics - Infrastructure Flow</label>
+
+  <!--
+    Inputs and panels are gated on $default_indexes_csv$, which is populated
+    by vh_enrichment_dashboard_init.js when the dashboard loads.  The init
+    script reads vh_enrichment_app_settings (KV Store) and sets two tokens:
+
+      $default_indexes_csv$  — multiselect default for the Index input
+      $vh_coalesce_args$     — IP field list for  eval ip = coalesce(...)
+
+    Sourcetype is auto-discovered at runtime via the dropdown below, scoped
+    to whichever indexes are currently selected — no Setup configuration
+    required.  Customers manage indexes and IP fields in Setup.
+  -->
+
+  <fieldset submitButton="false">
+    <input type="multiselect" token="selected_indexes" searchWhenChanged="true"
+           depends="$default_indexes_csv$">
+      <label>Index</label>
+      <fieldForLabel>index</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| tstats count where index=* by index | where count > 0 | fields index | sort index</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>$default_indexes_csv$</default>
+      <delimiter>,</delimiter>
+    </input>
+
+    <!--
+      Source Type is discovered at runtime from the indexes the user just
+      picked.  tstats reads only the tsidx (no full event scan) and is
+      bounded to -24h@h..now so the dropdown stays fast even on large
+      deployments.  The dropdown re-runs whenever $selected_indexes$
+      changes (re-eval'd by Splunk because it appears in this search's
+      query), so the choice list always matches the active indexes.
+
+      The "*" choice is the default and means "no sourcetype filter".
+      Splicing it into `sourcetype IN (*)` is the standard Splunk wildcard
+      idiom — the search runs against every sourcetype in the selected
+      indexes.
+    -->
+    <input type="multiselect" token="selected_sourcetype" searchWhenChanged="true"
+           depends="$selected_indexes$">
+      <label>Source Type</label>
+      <choice value="*">All</choice>
+      <fieldForLabel>sourcetype</fieldForLabel>
+      <fieldForValue>sourcetype</fieldForValue>
+      <search>
+        <query>| tstats count where index IN ($selected_indexes$) by sourcetype | fields sourcetype | sort sourcetype</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <delimiter>,</delimiter>
+      <default>*</default>
+    </input>
+
+    <input type="time" token="time_tok" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+
+    <input type="dropdown" token="action_tok" searchWhenChanged="true">
+      <label>WAF Action</label>
+      <choice value="*">All Actions</choice>
+      <choice value="ALLOW">ALLOW</choice>
+      <choice value="BLOCK">BLOCK</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <row depends="$selected_sourcetype$">
+    <panel>
+      <single>
+        <title>Total Enriched Threats Detected</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| lookup vh_enrichment_lookup ip AS ip OUTPUT risk_tags
+| where isnotnull(risk_tags) AND risk_tags!=""
+| stats count</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x53a051","0x0877a6"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row depends="$selected_sourcetype$">
+    <panel>
+      <chart>
+        <title>Noise</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| stats count by ip
+| lookup vh_enrichment_lookup ip AS ip OUTPUT is_scanner, scanner_name, is_commercial_vpn
+| eval noise_category = case(
+    is_scanner=="1" AND NOT (scanner_name=="null" OR isnull(scanner_name) OR scanner_name==""), "Known_Scanners",
+    is_scanner=="1", "Scanners",
+    is_commercial_vpn=="1", "Commercial_VPN"
+)
+| where isnotnull(noise_category)
+| stats sum(count) as count by noise_category</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="height">350</option>
+      </chart>
+    </panel>
+    <panel>
+      <map>
+        <title>High-Risk IP Map</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| stats count by ip
+| lookup vh_enrichment_lookup ip AS ip OUTPUT latitude, longitude, risk_score
+| where isnotnull(latitude) AND isnotnull(longitude)
+| geostats latfield=latitude longfield=longitude sum(count) by risk_score</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="mapping.type">marker</option>
+        <option name="height">350</option>
+      </map>
+    </panel>
+  </row>
+
+  <row depends="$selected_sourcetype$">
+    <panel>
+      <chart>
+        <title>Known Scanners Breakdown</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| stats count by ip
+| lookup vh_enrichment_lookup ip AS ip OUTPUT scanner_name
+| search scanner_name!="null" AND scanner_name!=""
+| where isnotnull(scanner_name)
+| stats sum(count) as count by scanner_name
+| sort - count</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="height">350</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Threat Distribution</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| stats count by ip
+| lookup vh_enrichment_lookup ip AS ip OUTPUT risk_tags
+| where isnotnull(risk_tags) AND risk_tags!=""
+| eval risk_tags = replace(risk_tags, "[\[\]\"]", "")
+| makemv delim="," risk_tags
+| mvexpand risk_tags
+| eval threat_type = lower(trim(risk_tags))
+| search threat_type IN ("c2", "cobalt-strike", "tor-exit-node", "honeypot", "risk-transfer", "pulse-signal")
+| stats sum(count) as count by threat_type</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="height">350</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row depends="$selected_sourcetype$">
+    <panel>
+      <chart>
+        <title>Enriched Events - All Risk Tags Breakdown</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| stats count by ip
+| lookup vh_enrichment_lookup ip AS ip OUTPUT risk_tags
+| eval risk_tags = replace(risk_tags, "[\[\]\"]", "")
+| makemv delim="," risk_tags
+| mvexpand risk_tags
+| eval risk_tag = trim(risk_tags)
+| search risk_tag!="" AND risk_tag!="null"
+| stats sum(count) as count by risk_tag
+| sort - count</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="height">725</option>
+      </chart>
+    </panel>
+    <panel>
+      <table>
+        <title>Last Risky Events</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| lookup vh_enrichment_lookup ip AS ip OUTPUT risk_score, risk_tags, scanner_name
+| where risk_score == 2
+| eval end_time = _time + 1
+| table _time, end_time, ip, risk_score, risk_tags, scanner_name, sourcetype
+| sort - _time
+| head 100</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$selected_sourcetype$">
+    <panel>
+      <viz type="dataflect_sankey_visualization.dataflect_sankey">
+        <title>Security Event Flow</title>
+        <search>
+          <query>index IN ($selected_indexes$) sourcetype IN ($selected_sourcetype$) (action="$action_tok$" OR NOT sourcetype="aws:waf")
+| eval ip = coalesce($vh_coalesce_args$)
+| lookup vh_enrichment_lookup ip AS ip OUTPUT risk_tags
+| eval risk_tags = replace(risk_tags, "[\[\]\"]", "")
+| makemv delim="," risk_tags
+| mvexpand risk_tags
+| search risk_tags!="" AND risk_tags!="null"
+| eval s1 = case(sourcetype=="aws:cloudtrail", "CloudTrail", sourcetype=="aws:elb:accesslogs", "ELB", sourcetype=="aws:waf", "WAF", 1=1, "Other"),
+       s2 = case(
+         sourcetype=="aws:waf" AND action=="BLOCK", "Blocked",
+         sourcetype=="aws:waf" AND action=="ALLOW", "Success",
+         sourcetype=="aws:elb:accesslogs" AND status &gt;= 400, "Failure",
+         sourcetype=="aws:elb:accesslogs" AND status &lt; 400, "Success",
+         isnotnull(errorCode), "Failure",
+         1=1, "Success"),
+       s3 = risk_tags
+| stats count as real_count by s1, s2, s3
+| rename s1 as From, s2 as To, real_count as count
+| appendpipe [| rename To as From, s3 as To | stats sum(count) as count by From, To]
+| where isnotnull(From) AND isnotnull(To) AND From!=To
+| eval Weight = log(count + 1, 1.15)
+| stats sum(Weight) as Weight by From, To</query>
+          <earliest>$time_tok.earliest$</earliest>
+          <latest>$time_tok.latest$</latest>
+        </search>
+        <option name="dataflect_sankey_visualization.dataflect_sankey.linkColor">target</option>
+        <option name="dataflect_sankey_visualization.dataflect_sankey.margin">{"top":20,"right":450,"bottom":20,"left":20}</option>
+        <option name="dataflect_sankey_visualization.dataflect_sankey.nodeAlign">left</option>
+        <option name="height">700</option>
+      </viz>
+    </panel>
+  </row>
+</form>

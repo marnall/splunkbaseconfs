@@ -1,0 +1,68 @@
+<dashboard version="1.1" theme="dark">
+  <label>ASGER PAM — Overview</label>
+  <description>Privileged Access Management — Real-Time Security Overview</description>
+
+  <fieldset submitButton="false">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default><earliest>-24h@h</earliest><latest>now</latest></default>
+    </input>
+  </fieldset>
+
+  <!-- KPI Row -->
+  <row>
+    <panel><single><title>Total Events</title>
+      <search><query>`asger_events` | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="colorMode">block</option><option name="rangeColors">["#53a051","#53a051"]</option><option name="useColors">true</option>
+    </single></panel>
+    <panel><single><title>Active Sessions</title>
+      <search><query>`asger_sessions` action="connect" outcome="success" | stats dc(session_id) as sessions</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="colorMode">block</option><option name="rangeColors">["#006d9c","#006d9c"]</option><option name="useColors">true</option>
+    </single></panel>
+    <panel><single><title>Failed Logins</title>
+      <search><query>`asger_auth` outcome="failure" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="colorMode">block</option><option name="rangeColors">["#dc4e41","#dc4e41"]</option><option name="useColors">true</option>
+    </single></panel>
+    <panel><single><title>Vault Access</title>
+      <search><query>`asger_vault` (action="retrieve" OR action="copy") | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="colorMode">block</option><option name="rangeColors">["#f8be34","#f8be34"]</option><option name="useColors">true</option>
+    </single></panel>
+    <panel><single><title>Policy Changes</title>
+      <search><query>`asger_admin` audit_type="policy" | stats count</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="colorMode">block</option><option name="rangeColors">["#ed8440","#ed8440"]</option><option name="useColors">true</option>
+    </single></panel>
+  </row>
+
+  <!-- Timeline -->
+  <row>
+    <panel><chart><title>Event Volume by Audit Type</title>
+      <search><query>`asger_events` | timechart span=1h count by audit_type</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="charting.chart">area</option><option name="charting.chart.stackMode">stacked</option>
+      <option name="charting.legend.placement">bottom</option>
+    </chart></panel>
+  </row>
+
+  <!-- Top Users / Targets -->
+  <row>
+    <panel><chart><title>Top 10 Users by Activity</title>
+      <search><query>`asger_events` | top limit=10 user</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="charting.chart">bar</option><option name="charting.chart.showDataLabels">all</option>
+    </chart></panel>
+    <panel><chart><title>Top 10 Target Hosts</title>
+      <search><query>`asger_sessions` target_host=* | top limit=10 target_host</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="charting.chart">bar</option><option name="charting.chart.showDataLabels">all</option>
+    </chart></panel>
+    <panel><chart><title>Protocol Distribution</title>
+      <search><query>`asger_sessions` protocol=* | top limit=10 protocol</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="charting.chart">pie</option>
+    </chart></panel>
+  </row>
+
+  <!-- Recent Critical Events -->
+  <row>
+    <panel><table><title>Recent High-Severity Events</title>
+      <search><query>`asger_events` (outcome="failure" OR device_action="deny" OR device_action="block") | head 20 | table _time, audit_type, event_type, user, src_ip, target_host, protocol, outcome, reason | sort -_time</query><earliest>$time_range.earliest$</earliest><latest>$time_range.latest$</latest></search>
+      <option name="drilldown">row</option><option name="count">20</option>
+    </table></panel>
+  </row>
+</dashboard>

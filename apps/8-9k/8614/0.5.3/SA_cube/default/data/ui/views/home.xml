@@ -1,0 +1,615 @@
+<!-- Copyright (C) 2024-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Home</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+
+    <module name="Search">
+      <param name="search"><![CDATA[
+| rest /services/apps/local splunk_server=local
+| search title="cisco_cdr"
+| stats count last(title) as appContext
+| fillnull appContext value="$sideview.currentApp$"
+      ]]></param>
+
+      <module name="ResultsValueSetter" layoutPanel="viewHeader">
+        <param name="fields">appContext</param>
+
+
+
+        <module name="Search">
+          <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-app splunk_server=local
+| rename eai:acl.app as app
+| search app="$sideview.currentApp$"
+| stats last(build) as build last(version) as version last(description) as description
+| appendcols [
+  | rest /services/apps/local splunk_server=local
+  | search title="cisco_cdr"
+  | stats count
+  | eval installation_state=if("$test_cisco_cdr_not_installed$_foo"=="1_foo" OR count=0,"cisco_cdr_not_installed","cisco_cdr_is_installed")
+  | table installation_state
+]
+| appendcols [
+  | inputlookup data_types
+  | search app="$sideview.currentApp$"
+  | stats count
+  | eval data_type_enabled=if(count==0,0,1)
+]
+| eval installation_state=if(installation_state=="cisco_cdr_is_installed" AND data_type_enabled==0,"cisco_cdr_installed_but_data_table_not_enabled", installation_state)
+
+          ]]></param>
+          <param name="appContext">$appContext$</param>
+
+
+          <module name="ResultsValueSetter" layoutPanel="viewHeader">
+            <param name="fields">installation_state, version</param>
+
+
+
+            <module name="Button">
+              <param name="label">About this app</param>
+              <param name="float">right</param>
+
+              <module name="Layer">
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+
+                  <h3>How do we use this app?</h3>
+
+                  <p>
+                    Start with the <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-cube" target="_blank">documentation</a> for this app if you haven't already.
+                  </p>
+
+                  <p>
+                    Broadly speaking there are two ways to use this app.
+                  </p>
+                  <ol>
+                    <li>The simple way:  Follow the docs, and/or the README files for this app and it's index-tier cousin app, "TA_cube", and then hand-write all your SPL, searches, reports, dashboards from scratch  (wait that last part sounds bad).</li>
+
+                    <li>The vastly better way: Do all that, but also set up our main app <a href="https://sideviewapps.com/products/cisco-cdr-reporting" target="_blank">Cisco CDR Reporting and Analytics</a>, whose full setup documentation is <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation" target="_blank">here</a>.  This turns this whole dataset into a huge open flat playground you can just click around in to investigate and analyze your CUBE traffic without learning the Splunk search language.</li>
+                  </ol>
+                  <p>
+                    In any event, no matter your situation we'd love you to send us an email at <a href="mailto:info@sideviewapps.com">info@sideviewapps.com</a> if you haven't already.
+                  </p>
+
+                  ]]></param>
+                </module>
+
+                <module name="Switcher">
+                  <param name="selectedGroup">$installation_state$</param>
+
+                  <module name="HTML" group="cisco_cdr_not_installed">
+                    <param name="html"><![CDATA[
+
+
+                    <p>
+                      The Cisco CDR Reporting and Analytics app is not currently installed here,  but you can <a href="https://sideviewapps.com/products/cisco-cdr-reporting">learn more about it on our website</a>. It is available as a free trial and can be set up quite easily <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation" target="_blank">following these steps</a>.
+                    </p>
+                    <p>
+                      No matter your situation, hopefully you are talking to us and you can always reach us at <a href="mailto:info@sideviewapps.com">info@sideviewapps.com</a>.
+                    </p>
+
+
+                    ]]></param>
+                  </module>
+
+
+                </module>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+
+                  <p>(hit Escape to close, or click the little X at the top right here).</p>
+
+                  ]]></param>
+                </module>
+
+
+              </module>
+
+
+
+
+
+
+
+            </module>
+
+            <module name="HTML">
+              <param name="html"><![CDATA[
+              <h2>Welcome to Sideview's Supporting App for CUBE $version$</h2>
+
+              ]]></param>
+            </module>
+
+
+
+
+
+            <module name="Search" layoutPanel="panel_row1_col1">
+              <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-checklist splunk_server=local
+| rename eai:appName as app search as searchToRun
+| search app="$sideview.currentApp$"
+| fields app title searchToRun drilldown
+| search title="critical_*"
+| eval drilldownLabel=if(isnull(drilldown),"see health check results","run troubleshooting search")
+| eval drilldown=if(isnull(drilldown),searchToRun,drilldown)
+              ]]></param>
+
+
+
+              <module name="HTML">
+                <param name="html"><![CDATA[
+                  <strong>One or more critical health checks have failed and should be addressed as soon as possible:</strong>
+                ]]></param>
+              </module>
+
+              <module name="Pager">
+
+                <module name="Multiplexer">
+                  <param name="fields">app,searchToRun,drilldown,drilldownLabel</param>
+
+                  <module name="Search">
+                    <param name="search">$searchToRun.rawValue$ | sort - severity_level |  table severity_level metric</param>
+
+                    <module name="ProgressIndicator" />
+
+                    <module name="HTML">
+                      <param name="html"><![CDATA[
+                       <p class="checklistConfSeverity$results[0].severity_level$" style="margin-bottom:0px;">
+                          $results[0].metric$
+                        </p>
+                      ]]></param>
+                      <param name="customBehavior">setPageStateIfCriticalHealthCheckFailed</param>
+                    </module>
+                  </module>
+                </module>
+              </module>
+
+
+
+              <module name="HTML">
+                <param name="html">
+                  If you need more detail or help fixing these issues, contact us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>
+                </param>
+              </module>
+
+            </module>
+
+
+
+            <module name="TimePicker" layoutPanel="mainSearchControls">
+              <param name="default">Last 24 hours</param>
+
+              <module name="Search" layoutPanel="panel_row3_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact ")
+| eval {type}_call_id = call_id
+| eval {activity}_call_id = call_id
+| eval external_party_number = case(type=="incoming",callingPartyNumber,type=="outgoing",calledPartyNumber,true(),null())
+| eval internal_party_number = case(type=="incoming",calledPartyNumber,type=="outgoing",callingPartyNumber,true(),null())
+
+| fields *_call_id call_id *_party_number
+
+| stats dc(call_id) as total dc(*_call_id) as * dc(*_party_number) as *
+| table  total incoming outgoing "two way call" "call forward all" "blind transfer" * internal external
+| rename total as "total calls" internal as "internal numbers" external as "external numbers"
+                ]]></param>
+
+                <module name="Pager">
+                  <module name="Table"/>
+                </module>
+
+                <module name="Switcher">
+                  <param name="selectedGroup">$installation_state$</param>
+
+                  <module name="HTML" group="cisco_cdr_not_installed">
+                    <param name="html"><![CDATA[
+
+                      WARNING: The Cisco CDR Reporting and Analytics app is not currently installed.   Drilldowns on this page will only include links to the generic Splunk Search UI using raw SPL.
+                    ]]></param>
+                  </module>
+
+                  <module name="HTML" group="cisco_cdr_installed_but_data_table_not_enabled">
+                    <param name="html"><![CDATA[
+
+                      <p>
+                          WARNING: The Cisco CDR Reporting and Analytics app is  installed but the CUBE data_type has not been enabled yet.   <br>
+                          TO FIX: Navigate to the <a href="../cisco_cdr/setup_data_types">Enable/disable data types</a> page in the Cisco CDR Reporting and Analytics app, and enable the CUBE data_type there.
+                      </p>
+                      <p>
+                        In the meantime drilldowns on this page will only include links to the generic Splunk Search UI using raw SPL.
+                      </p>
+                    ]]></param>
+                  </module>
+
+
+
+                  <module name="Link" group="cisco_cdr_is_installed">
+                    <param name="label">Investigate these calls in the Cisco CDR Reporting and Analytics app</param>
+
+                    <module name="Redirector">
+                      <param name="url">../cisco_cdr/calls</param>
+                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                      <param name="arg.latest">$search.timeRange.latest$</param>
+                      <param name="arg.data_type">cube</param>
+
+
+                    </module>
+                  </module>
+
+                </module>
+
+
+              </module>
+
+
+
+
+              <module name="Search" layoutPanel="panel_row4_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact ")
+| eval internal_party_number = case(type=="incoming",calledPartyNumber,type=="outgoing",callingPartyNumber,true(),null())
+| eval activity=mvappend(activity,"total")
+| chart dc(call_id) over internal_party_number by activity
+| sort 0 - total
+| fields - total
+| head 20
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Top 20 Internal DN/Extension values</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">bar</param>
+                  <param name="arg.charting.chart.stackMode">stacked</param>
+
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+
+
+                    <module name="Layer">
+                      <param name="cssClass">menu</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$installation_state$</param>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">investigate $chart.splitByValue$ calls to/from $chart.xValue$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.searchterms">activity="$chart.splitByValue$"</param>
+                          </module>
+                        </module>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart $chart.splitByValue$ calls to/from $chart.xValue$ over time</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.searchterms">activity="$chart.splitByValue$"</param>
+                          </module>
+                        </module>
+
+
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate $chart.splitByValue$ calls to/from $chart.xValue$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart $chart.splitByValue$ calls to/from $chart.xValue$ over time</param>
+                        </module>
+
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate $chart.splitByValue$ calls to/from $chart.xValue$ (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart $chart.splitByValue$ calls to/from $chart.xValue$ over time (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+
+
+                      </module>
+
+                      <module name="Link">
+                        <param name="cssClass">menuItem</param>
+                        <param name="label">view raw CSV events in Splunk</param>
+
+                        <module name="Redirector">
+                          <param name="url">search</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                          <param name="arg.q">`custom_index` (sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact") internal_party_number="$chart.xValue$" activity="$chart.splitByValue$"</param>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+
+              <module name="Search" layoutPanel="panel_row4_col2">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact ")
+| eval external_party_number = case(type=="incoming",callingPartyNumber,type=="outgoing",calledPartyNumber,true(),null())
+| eval activity=mvappend(activity,"total")
+| chart dc(call_id) over external_party_number by activity
+| sort 0 - total
+| fields - total
+| head 20
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Top 20 External DN/Extension values</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">bar</param>
+                  <param name="arg.charting.chart.stackMode">stacked</param>
+
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+
+
+                    <module name="Layer">
+                      <param name="cssClass">menu</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$installation_state$</param>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">investigate $chart.splitByValue$ calls to/from $chart.xValue$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.searchterms">activity="$chart.splitByValue$"</param>
+                          </module>
+                        </module>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart $chart.splitByValue$ calls to/from $chart.xValue$ over time</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.number">$chart.xValue$</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.searchterms">activity="$chart.splitByValue$"</param>
+                          </module>
+                        </module>
+
+
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate $chart.splitByValue$ calls to/from $chart.xValue$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart $chart.splitByValue$ calls to/from $chart.xValue$ over time (cisco_cdr not installed)</param>
+                        </module>
+
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate $chart.splitByValue$ calls to/from $chart.xValue$ (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart calls with $chart.xValue$ over time (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+
+
+                      </module>
+
+                      <module name="Link">
+                        <param name="cssClass">menuItem</param>
+                        <param name="label">view raw CSV events in Splunk</param>
+
+                        <module name="Redirector">
+                          <param name="url">search</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                          <param name="arg.q">`custom_index` (sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact") external_party_number="$chart.xValue$" activity="$chart.splitByValue$"</param>
+                        </module>
+                      </module>
+                    </module>
+
+                  </module>
+                </module>
+              </module>
+
+
+
+
+              <module name="Search" layoutPanel="panel_row5_col1">
+                <param name="search"><![CDATA[
+`custom_index` ( sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact ")
+``` inline version of the Cisco CDR apps get_concurrency macro, the complex version with a split-by ```
+
+| eval increment = if(duration>0,mvappend("1","-1"),"0")
+| mvexpand type
+| mvexpand increment
+| eval _time = if(increment==1, _time, _time + duration)
+| sort 0 + _time
+| fillnull type value="NULL"
+| streamstats sum(increment) as post_concurrency by type
+| eval concurrency = if(increment==-1, post_concurrency+1, post_concurrency)
+``` inline version of the Cisco CDR apps timechart_for_concurrency macro, the complex version with split-by and bins```
+| timechart fixedrange=false bins=400 max(concurrency) as max_concurrency last(post_concurrency) as last_concurrency by type limit=60
+| filldown last_concurrency*
+| foreach "max_concurrency:*" [eval <<MATCHSTR>>=coalesce('max_concurrency:<<MATCHSTR>>','last_concurrency:<<MATCHSTR>>')]
+| fields - last_concurrency* max_concurrency*
+| fillnull
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Max Concurrent calls/meetings</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">line</param>
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+                  </module>
+                </module>
+              </module>
+
+
+              <module name="Search" layoutPanel="panel_row5_col2">
+                <param name="search"><![CDATA[
+`custom_index` (sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact")
+| append
+    [|  makeresults
+    | fields - _time
+    | eval hour_of_day=split("00,01,02,03,04,05,06,07,08,09,10,11,12,13,14,15,16,17,18,19,20,21,22,23",",")
+    | mvexpand hour_of_day
+    ]
+| chart dc(call_id) over hour_of_day by day_of_week | fields - NULL
+                ]]></param>
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                    <h3>Intraday call volume</h3>
+                  ]]></param>
+                </module>
+
+                <module name="ValueSetter">
+                  <param name="arg.charting.chart">line</param>
+                  <module name="Chart" >
+                    <param name="height">400px</param>
+
+                    <module name="Layer">
+                      <param name="cssClass">menu</param>
+
+                      <module name="Switcher">
+                        <param name="selectedGroup">$installation_state$</param>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">investigate calls on $chart.splitByValue$ with $chart.xTerm$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.searchterms">hour_of_day="$chart.xValue$" day_of_week="$chart.splitByValue$"</param>
+                          </module>
+                        </module>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart top callingPartyNumbers on $chart.splitByValue$ with $chart.xTerm$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.searchterms">hour_of_day="$chart.xValue$" day_of_week="$chart.splitByValue$"</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.xField">callingPartyNumber</param>
+                          </module>
+                        </module>
+
+                        <module name="Link"  group="cisco_cdr_is_installed">
+                          <param name="cssClass">menuItem</param>
+                          <param name="label">chart top calledPartyNumbers on $chart.splitByValue$ with $chart.xTerm$</param>
+
+                          <module name="Redirector">
+                            <param name="url">../cisco_cdr/calls</param>
+                            <param name="arg.earliest">$search.timeRange.earliest$</param>
+                            <param name="arg.latest">$search.timeRange.latest$</param>
+                            <param name="arg.data_type">cube</param>
+                            <param name="arg.searchterms">hour_of_day="$chart.xValue$" day_of_week="$chart.splitByValue$"</param>
+                            <param name="arg.mode">chart</param>
+                            <param name="arg.xField">calledPartyNumber</param>
+                          </module>
+                        </module>
+
+
+
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top callingPartyNumbers on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr not installed)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_not_installed">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top calledPartyNumbers on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr not installed)</param>
+                        </module>
+
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">investigate calls on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top callingPartyNumbers on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+                        <module name="HTML"  group="cisco_cdr_installed_but_data_table_not_enabled">
+                          <param name="cssClass">menuLinkDisabled</param>
+                          <param name="html">chart top calledPartyNumbers on $chart.splitByValue$ with $chart.xTerm$ (cisco_cdr is installed but cube data is disabled)</param>
+                        </module>
+
+
+
+                      </module>
+
+                      <module name="Link">
+                        <param name="cssClass">menuItem</param>
+                        <param name="label">view raw CSV events in Splunk</param>
+
+                        <module name="Redirector">
+                          <param name="url">search</param>
+                          <param name="arg.earliest">$search.timeRange.earliest$</param>
+                          <param name="arg.latest">$search.timeRange.latest$</param>
+                          <param name="arg.q">`custom_index` ( sourcetype="cube_cdr" OR sourcetype="cube_cdr_compact") hour_of_day="$chart.xValue$" day_of_week="$chart.splitByValue$"</param>
+                        </module>
+                      </module>
+                    </module>
+
+
+                  </module>
+                </module>
+              </module>
+            </module>
+
+          </module>
+        </module>
+      </module>
+    </module>
+  </module>
+</view>

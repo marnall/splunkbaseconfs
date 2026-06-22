@@ -1,0 +1,236 @@
+<dashboard version="2">
+  <label>Whisper - MITRE ATT&amp;CK Coverage</label>
+  <description>MITRE ATT&amp;CK technique coverage from Whisper infrastructure threat detections, mapped by tactic and technique.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - MITRE ATT&CK Coverage",
+  "description": "MITRE ATT&CK technique coverage from Whisper infrastructure threat detections, mapped by tactic and technique.",
+  "dataSources": {
+    "ds_technique_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=technique_id path={}.technique_id | mvexpand technique_id | stats dc(technique_id) AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_detections": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | stats count AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_by_technique": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=techniques path={} | mvexpand techniques | spath input=techniques output=technique_id path=technique_id | spath input=techniques output=technique path=technique | spath input=techniques output=tactic path=tactic | stats count AS detections, dc(domain) AS domains BY technique_id, technique, tactic | sort - detections | rename technique_id AS \"ID\", technique AS \"Technique\", tactic AS \"Tactic\", detections AS \"Detections\", domains AS \"Affected Domains\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_by_tactic": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=tactic path={}.tactic | mvexpand tactic | stats count BY tactic",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_detection_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=technique_id path={}.technique_id | mvexpand technique_id | timechart span=1d count BY technique_id",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_affected_domains": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=* | spath input=mitre_attack output=technique_id path={}.technique_id | mvexpand technique_id | stats count AS detections, values(technique_id) AS techniques BY domain | sort - detections | head 20 | rename domain AS \"Domain\", detections AS \"Total Detections\", techniques AS \"Techniques\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-7d@d,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_technique_count",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 600,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_total_detections",
+        "position": {
+          "x": 600,
+          "y": 0,
+          "w": 600,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_by_tactic",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_detection_trend",
+        "position": {
+          "x": 600,
+          "y": 100,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_by_technique",
+        "position": {
+          "x": 0,
+          "y": 400,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_affected_domains",
+        "position": {
+          "x": 0,
+          "y": 700,
+          "w": 1200,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_technique_count": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_technique_count"
+      },
+      "title": "Unique Techniques Detected",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#7B68EE",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_total_detections": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_detections"
+      },
+      "title": "Total MITRE-Mapped Detections",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#d41f1c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_by_tactic": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_by_tactic"
+      },
+      "title": "Detections by Tactic",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f", "#d41f1c", "#1a3e5c"]
+      }
+    },
+    "viz_detection_trend": {
+      "type": "viz.bar",
+      "dataSources": {
+        "primary": "ds_detection_trend"
+      },
+      "title": "Detection Trend by Technique",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f", "#d41f1c", "#1a3e5c"],
+        "stackMode": "stacked"
+      }
+    },
+    "viz_by_technique": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_by_technique"
+      },
+      "title": "Technique Coverage Detail",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" mitre_attack=*$row.ID$*",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_affected_domains": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_affected_domains"
+      },
+      "title": "Most Affected Domains",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" domain=\"$row.Domain$\" mitre_attack=*",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

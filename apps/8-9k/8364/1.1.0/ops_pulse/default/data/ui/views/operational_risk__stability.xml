@@ -1,0 +1,121 @@
+<form theme="dark" version="1.1">
+  <label>Operational Risk &amp; Stability</label>
+  <description>Assess operational risk and system stability by analysing error concentration, volatility, and consistency over time. This dashboard focuses on identifying systemic weaknesses rather than short-lived anomalies.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Select the index containing log data.</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label>Risk Analysis Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Operational Stability Score Over Time</title>
+      <chart>
+        <title>Quantifies overall operational stability by combining event volume volatility and error rate fluctuations. Higher values indicate more consistent and predictable system behavior.</title>
+        <search>
+          <query>`ops_pulse_stability_score_ts($index$)`</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisY.scale">log</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">322</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Concentration by Host</title>
+      <chart>
+        <title>Highlights hosts responsible for a disproportionate share of errors. High concentration may indicate single points of failure or unhealthy nodes.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| stats count AS error_count BY extracted_host
+| sort - error_count
+| head 10</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">284</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Service Risk Distribution</title>
+      <chart>
+        <title>Shows how operational risk is distributed across services, helping prioritise investigation and remediation efforts.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| stats count AS error_count BY service
+| sort - error_count</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">283</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Event Volume Volatility Trend</title>
+      <chart>
+        <title>Detects instability patterns caused by inconsistent event rates, even when overall traffic volume appears normal.</title>
+        <search>
+          <query>index=$index$
+| timechart span=1h count
+| streamstats window=5 stdev(count) AS volatility</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Host-Level Risk Classification</title>
+      <table>
+        <title>Classifies hosts into Low, Medium, or High operational risk based on observed error rate, enabling targeted remediation.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| stats count AS events sum(is_error) AS errors BY extracted_host
+| eval error_rate = round((errors/events)*100, 2)
+| eval risk_level = case(
+    error_rate &gt; 20, "High",
+    error_rate &gt; 10, "Medium",
+    true(), "Low"
+)
+| sort - error_rate</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

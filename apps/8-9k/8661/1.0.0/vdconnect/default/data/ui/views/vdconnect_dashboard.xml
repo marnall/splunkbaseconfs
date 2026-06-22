@@ -1,0 +1,218 @@
+<dashboard version="1.1" theme="dark" stylesheet="vdconnect.css">
+  <label>VDConnect Dashboard</label>
+  <description>Real-time overview of vector database log collection</description>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  ROW 1 — Key Metrics                                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <title>Total Events Collected (24h)</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:*
+              earliest=-24h latest=now
+            | stats count AS total_events
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x555555","0x5468FF"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <option name="numberPrecision">0</option>
+        <option name="showTrendIndicator">1</option>
+        <option name="trendDisplayMode">percent</option>
+        <option name="trendInterval">-24h</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Active Inputs</title>
+      <single>
+        <search>
+          <query>
+            | rest /services/data/inputs/vdconnect
+            | search disabled=0
+            | stats count AS active_inputs
+          </query>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x555555","0x2DDE98"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Collection Errors (24h)</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_internal sourcetype=vdconnect:internal level=ERROR
+              earliest=-24h latest=now
+            | stats count AS error_count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x2DDE98","0xFFC107","0xFF5252"]</option>
+        <option name="rangeValues">[0,5]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Events per Second (avg)</title>
+      <single>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:*
+              earliest=-1h latest=now
+            | stats count
+            | eval eps = round(count / 3600, 2)
+            | fields eps
+          </query>
+          <earliest>-1h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="colorBy">value</option>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="rangeColors">["0x555555","0x00A1EA"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="useColors">1</option>
+        <option name="unit">eps</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  ROW 2 — Event Throughput Over Time                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <title>Event Throughput by Database Type</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:*
+              earliest=-24h latest=now
+            | eval db_type = case(
+                sourcetype=="vdconnect:milvus",   "Milvus",
+                sourcetype=="vdconnect:pinecone",  "Pinecone",
+                sourcetype=="vdconnect:weaviate",  "Weaviate",
+                sourcetype=="vdconnect:chromadb",  "ChromaDB",
+                sourcetype=="vdconnect:qdrant",    "Qdrant",
+                sourcetype=="vdconnect:pgvector",  "pgvector",
+                true(), "Other"
+              )
+            | timechart span=15m count by db_type
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Events</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.fieldColors">{"Milvus":0x00A1EA,"Pinecone":0x5468FF,"Weaviate":0x2DDE98,"ChromaDB":0xFF6B35,"Qdrant":0xDC382C,"pgvector":0x336791}</option>
+        <option name="height">300</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  ROW 3 — Events by Severity + Top Collections                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <title>Events by Severity</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:*
+              earliest=-24h latest=now
+            | eval severity = coalesce(severity, level, "UNKNOWN")
+            | stats count by severity
+            | sort - count
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.fieldColors">{"ERROR":0xFF5252,"WARN":0xFFC107,"INFO":0x2DDE98,"DEBUG":0x5468FF,"UNKNOWN":0x9E9E9E}</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Top Collections by Volume</title>
+      <chart>
+        <search>
+          <query>
+            index=vdconnect_logs OR index=vdconnect_audit OR index=vdconnect_metrics
+              sourcetype=vdconnect:*
+              earliest=-24h latest=now
+            | stats count by source
+            | sort - count
+            | head 10
+          </query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.axisTitleX.text">Events</option>
+        <option name="charting.axisTitleY.text">Collection</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!--  ROW 4 — Recent Activity Feed                                         -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <row>
+    <panel>
+      <title>Recent Internal Activity</title>
+      <table>
+        <search>
+          <query>
+            index=vdconnect_internal sourcetype=vdconnect:internal
+              earliest=-4h latest=now
+            | table _time level input_name db_type message
+            | sort - _time
+            | head 50
+            | rename _time AS "Time", level AS "Level", input_name AS "Input",
+                     db_type AS "Database", message AS "Message"
+          </query>
+          <earliest>-4h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">15</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Level">
+          <colorPalette type="map">{"ERROR":#FF5252,"WARN":#FFC107,"INFO":#2DDE98,"DEBUG":#5468FF}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

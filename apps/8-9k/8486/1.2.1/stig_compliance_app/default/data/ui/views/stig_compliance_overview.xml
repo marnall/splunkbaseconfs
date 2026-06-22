@@ -1,0 +1,260 @@
+<dashboard version="1.1" theme="dark">
+  <label>STIG Compliance Overview</label>
+  <description>Enterprise STIG checklist compliance status and reporting (shows latest checklist per host/STIG only)</description>
+
+  <!-- BASE SEARCH: runs once, all panels post-process from this -->
+  <search id="base_latest">
+    <query>`stig_latest` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="selected_host" searchWhenChanged="true">
+      <label>Host</label>
+      <choice value="*">All Hosts</choice>
+      <default>*</default>
+      <fieldForLabel>asset_host_name</fieldForLabel>
+      <fieldForValue>asset_host_name</fieldForValue>
+      <search base="base_latest">
+        <query>| dedup asset_host_name | sort asset_host_name | table asset_host_name</query>
+      </search>
+    </input>
+    <input type="dropdown" token="selected_stig" searchWhenChanged="true">
+      <label>STIG</label>
+      <choice value="*">All STIGs</choice>
+      <default>*</default>
+      <fieldForLabel>stig_title</fieldForLabel>
+      <fieldForValue>stig_title</fieldForValue>
+      <search base="base_latest">
+        <query>| dedup stig_title | sort stig_title | table stig_title</query>
+      </search>
+    </input>
+    <input type="dropdown" token="selected_category" searchWhenChanged="true">
+      <label>Category</label>
+      <choice value="*">All Categories</choice>
+      <choice value="CAT I">CAT I (High)</choice>
+      <choice value="CAT II">CAT II (Medium)</choice>
+      <choice value="CAT III">CAT III (Low)</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Total Findings</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">none</option>
+        <option name="useColors">0</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Open Findings</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$" vuln_status="Open" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xf7bc38","0xf2b827","0xd93f3c"]</option>
+        <option name="rangeValues">[0,50,100]</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Compliance Rate</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$" | stats count(eval(vuln_status="NotAFinding" OR vuln_status="Not_Applicable")) AS compliant, count AS total | eval compliance_pct=round((compliant/total)*100, 1) | table compliance_pct</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0xd93f3c","0xf7bc38","0x65a637"]</option>
+        <option name="rangeValues">[70,90]</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>CAT I Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT I" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xd93f3c"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CAT II Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT II" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xf7bc38","0xf2b827"]</option>
+        <option name="rangeValues">[0,25]</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CAT III Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT III" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0x6DB7C6"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="height">120</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Findings by Status</title>
+      <chart>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$" 
+| eval status_display=case(
+    vuln_status=="NotAFinding", "Not a Finding",
+    vuln_status=="Not_Applicable", "Not Applicable",
+    vuln_status=="Not_Reviewed", "Not Reviewed",
+    vuln_status=="Open", "Open",
+    true(), vuln_status)
+| stats count by status_display 
+| rename status_display AS Status, count AS Count</query>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">true</option>
+        <option name="charting.fieldColors">{"Open": 0xD93F3C, "Not a Finding": 0x65A637, "Not Applicable": 0x6DB7C6, "Not Reviewed": 0xF7BC38}</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Open Findings by Category</title>
+      <chart>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" 
+| eval cat_display=case(
+    category=="CAT I", "CAT I (High)",
+    category=="CAT II", "CAT II (Medium)",
+    category=="CAT III", "CAT III (Low)",
+    true(), category)
+| stats count by cat_display 
+| sort cat_display</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.fieldColors">{"CAT I (High)": 0xD93F3C, "CAT II (Medium)": 0xF7BC38, "CAT III (Low)": 0x6DB7C6}</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Open Findings by STIG</title>
+      <chart>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" vuln_status="Open" category="$selected_category$"
+| stats count by stig_title 
+| sort - count
+| head 10</query>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">280</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Compliance by Host and STIG</title>
+      <table>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$"
+| stats count(eval(vuln_status="Open")) AS Open, 
+        count(eval(vuln_status="Open" AND category="CAT I")) AS "CAT I Open",
+        count(eval(vuln_status="NotAFinding")) AS "Not a Finding", 
+        count(eval(vuln_status="Not_Applicable")) AS "N/A", 
+        count(eval(vuln_status="Not_Reviewed")) AS "Not Reviewed", 
+        count AS Total 
+  by asset_host_name, stig_title 
+| eval "Compliance %"=round((('Not a Finding'+'N/A')/Total)*100, 1) 
+| rename asset_host_name AS Host, stig_title AS STIG
+| sort - Open, Host</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">20</option>
+        <format type="color" field="Open">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="10" maxValue="30"></scale>
+        </format>
+        <format type="color" field="CAT I Open">
+          <colorPalette type="minMidMax" minColor="#FFFFFF" midColor="#F7BC38" maxColor="#D93F3C"></colorPalette>
+          <scale type="minMidMax" minValue="0" midValue="1" maxValue="5"></scale>
+        </format>
+        <format type="color" field="Compliance %">
+          <colorPalette type="minMidMax" minColor="#D93F3C" midColor="#F7BC38" maxColor="#65A637"></colorPalette>
+          <scale type="minMidMax" minValue="70" midValue="85" maxValue="100"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Open Findings Detail</title>
+      <input type="dropdown" token="sort_by" searchWhenChanged="true">
+        <label>Sort By</label>
+        <choice value="category">Category</choice>
+        <choice value="asset_host_name">Host</choice>
+        <choice value="stig_title">STIG</choice>
+        <default>category</default>
+      </input>
+      <table>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" category="$selected_category$" vuln_status="Open" 
+| eval Category=case(
+    category=="CAT I", "CAT I (High)",
+    category=="CAT II", "CAT II (Medium)",
+    category=="CAT III", "CAT III (Low)",
+    true(), category)
+| table asset_host_name, stig_title, Category, vuln_vuln_num, vuln_rule_title, vuln_finding_details, vuln_comments
+| rename asset_host_name AS Host, stig_title AS STIG, vuln_vuln_num AS "Vuln ID", vuln_rule_title AS "Rule Title", vuln_finding_details AS "Finding Details", vuln_comments AS "Comments/POA&amp;M"
+| sort $sort_by$, Host, "Vuln ID"</query>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">25</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"CAT I (High)": "#D93F3C", "CAT II (Medium)": "#F7BC38", "CAT III (Low)": "#6DB7C6"}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</dashboard>

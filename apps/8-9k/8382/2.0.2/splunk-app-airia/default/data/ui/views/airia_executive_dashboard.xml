@@ -1,0 +1,537 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form version="1.1">
+  <label>Airia Platform - Executive Dashboard</label>
+  <description>Comprehensive analytics with interactive drilldowns, filtering, and real-time insights</description>
+
+  <!-- Advanced fieldset with multiple filters -->
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_picker" searchWhenChanged="false">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+
+    <input type="dropdown" token="provider_filter" searchWhenChanged="false">
+      <label>Provider</label>
+      <choice value="*">All Providers</choice>
+      <search>
+        <query>`airia_base_with_fields` | stats count by provider | sort -count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>provider</fieldForLabel>
+      <fieldForValue>provider</fieldForValue>
+      <default>*</default>
+    </input>
+
+    <input type="dropdown" token="model_filter" searchWhenChanged="false">
+      <label>Model</label>
+      <choice value="*">All Models</choice>
+      <search>
+        <query>`airia_base_with_fields` | stats count by model_name | sort -count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>model_name</fieldForLabel>
+      <fieldForValue>model_name</fieldForValue>
+      <default>*</default>
+    </input>
+
+    <input type="dropdown" token="prompt_filter" searchWhenChanged="false">
+      <label>Prompt</label>
+      <choice value="*">All Prompts</choice>
+      <search>
+        <query>`airia_base_with_fields` | where prompt_name!="null" | stats count by prompt_name | sort -count</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>prompt_name</fieldForLabel>
+      <fieldForValue>prompt_name</fieldForValue>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- KPI Row with Dynamic Highlighting -->
+  <row>
+    <panel>
+      <title>Total Cost</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where cost_numeric > 0
+| stats sum(cost_numeric) as total_cost
+| eval total_cost=round(total_cost, 2)
+| eval total_cost_display="$".tostring(total_cost,"commas")</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Total AI Spend</option>
+        <option name="rangeColors">["0x65A637","0x6DB7C6","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,10,50,100]</option>
+        <option name="useColors">1</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="field">total_cost_display</option>
+        <drilldown>
+          <link target="_blank">/app/airia_platform/search?q=`airia_base_with_fields` cost_numeric>0 | stats sum(cost_numeric) by model_name&amp;earliest=$time_picker.earliest$&amp;latest=$time_picker.latest$</link>
+        </drilldown>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Total Requests</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| stats count as total_requests
+| eval total_requests_display=tostring(total_requests,"commas")</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="colorMode">none</option>
+        <option name="underLabel">Total Executions</option>
+        <option name="field">total_requests_display</option>
+        <drilldown>
+          <link target="_blank">/app/airia_platform/search?q=`airia_base_with_fields`&amp;earliest=$time_picker.earliest$&amp;latest=$time_picker.latest$</link>
+        </drilldown>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Success Rate</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_match=1
+| stats count as total, sum(eval(if(Success="true",1,0))) as success
+| eval success_rate=round((success/total)*100,2)
+| eval success_rate_display=success_rate."%"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Success Rate</option>
+        <option name="rangeColors">["0xD93F3C","0xF58F39","0xF7BC38","0x6DB7C6","0x65A637"]</option>
+        <option name="rangeValues">[50,75,90,95]</option>
+        <option name="useColors">1</option>
+        <option name="field">success_rate_display</option>
+        <drilldown>
+          <link target="_blank">/app/airia_platform/search?q=`airia_failures`&amp;earliest=$time_picker.earliest$&amp;latest=$time_picker.latest$</link>
+        </drilldown>
+      </single>
+    </panel>
+
+    <panel>
+      <title>DLP Block Rate</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_match=1
+| stats count as total, sum(eval(if(is_dlp_blocked="true",1,0))) as blocked
+| eval dlp_rate=round((blocked/total)*100,2)
+| eval dlp_rate_display=dlp_rate."%"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">DLP Block Rate</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[5,15,30]</option>
+        <option name="useColors">1</option>
+        <option name="field">dlp_rate_display</option>
+        <drilldown>
+          <link target="_blank">/app/airia_platform/airia_dlp_dashboard?earliest=$time_picker.earliest$&amp;latest=$time_picker.latest$</link>
+        </drilldown>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Avg Cost per Request</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_match=1
+| stats avg(cost_numeric) as avg_cost
+| eval avg_cost_display="$".tostring(round(avg_cost,4))</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">none</option>
+        <option name="underLabel">Average Cost</option>
+        <option name="field">avg_cost_display</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Cost Trend with Drilldown -->
+  <row>
+    <panel>
+      <title>Cost and Volume Trend (Click to drill down)</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_match=1
+| timechart span=1h sum(cost_numeric) as "Cost (USD)" count as "Request Count"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.overlayFields">"Request Count"</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Cost (USD)</option>
+        <option name="charting.axisTitleY2.text">Requests</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.lineWidth">2</option>
+        <option name="charting.drilldown">all</option>
+        <drilldown>
+          <set token="selected_time">$click.value$</set>
+          <set token="show_time_detail">true</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Conditional panel that appears when time is clicked -->
+  <row depends="$show_time_detail$">
+    <panel>
+      <title>Details for $selected_time$ (Click to clear)</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| search _time=$selected_time$
+| table _time model_name provider prompt_name cost_numeric tokens_numeric Success is_dlp_blocked user_input
+| eval cost_numeric="$".cost_numeric
+| rename model_name as "Model", provider as "Provider", prompt_name as "Prompt", cost_numeric as "Cost", tokens_numeric as "Tokens", Success as "Success", is_dlp_blocked as "DLP Blocked", user_input as "User Input"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <drilldown>
+          <unset token="show_time_detail"></unset>
+          <unset token="selected_time"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Provider Spend Table -->
+  <row>
+    <panel>
+      <title>Total Spend by Provider</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where model_match=1 AND prompt_match=1
+| stats count as api_calls,
+        sum(cost_numeric) as total_spend,
+        avg(cost_numeric) as avg_cost,
+        sum(tokens_numeric) as total_tokens,
+        avg(tokens_numeric) as avg_tokens
+        by provider
+| eval "Total Spend"="$".tostring(round(total_spend,2),"commas")
+| eval "Avg Cost/Call"="$".tostring(round(avg_cost,4))
+| eval "Total Tokens"=tostring(total_tokens,"commas")
+| eval "Avg Tokens/Call"=round(avg_tokens,0)
+| rename provider as "Provider", api_calls as "API Calls"
+| table "Provider" "Total Spend" "API Calls" "Avg Cost/Call" "Total Tokens" "Avg Tokens/Call"
+| sort -total_spend</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">false</option>
+        <format type="color" field="Total Spend">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+        <drilldown>
+          <set token="provider_filter">$row.Provider$</set>
+          <set token="form.provider_filter">$row.Provider$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Provider and Model Breakdown with Drilldown -->
+  <row>
+    <panel>
+      <title>Cost by Provider (Click to filter)</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where model_match=1 AND prompt_match=1
+| stats sum(cost_numeric) as total_cost by provider
+| sort -total_cost</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.drilldown">all</option>
+        <drilldown>
+          <set token="provider_filter">$click.value$</set>
+          <set token="form.provider_filter">$click.value$</set>
+        </drilldown>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Cost by Model (Click to filter)</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND prompt_match=1
+| stats sum(cost_numeric) as total_cost by model_display
+| sort -total_cost
+| head 10</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Cost (USD)</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.drilldown">all</option>
+        <drilldown>
+          <set token="model_filter">$row.model_name$</set>
+          <set token="form.model_filter">$row.model_name$</set>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Model Performance Table with Color Coding -->
+  <row>
+    <panel>
+      <title>Model Performance Matrix (Click row for details)</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| eval prompt_match=if("$prompt_filter$"="*", 1, if(prompt_name="$prompt_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_match=1
+| stats count as "Requests",
+        sum(cost_numeric) as total_cost,
+        avg(cost_numeric) as avg_cost,
+        sum(tokens_numeric) as total_tokens,
+        avg(tokens_numeric) as avg_tokens,
+        sum(eval(if(Success="true",1,0))) as success_count,
+        sum(eval(if(is_dlp_blocked="true",1,0))) as dlp_blocked
+        by model_display, provider, model_tier
+| eval "Total Cost"="$".tostring(round(total_cost,2),"commas")
+| eval "Avg Cost"="$".tostring(round(avg_cost,4))
+| eval "Total Tokens"=tostring(total_tokens,"commas")
+| eval "Avg Tokens"=round(avg_tokens,0)
+| eval "Success Rate"=round((success_count/Requests)*100,1)."%"
+| eval "DLP Blocked"=dlp_blocked
+| eval "Efficiency"=if(total_cost>0, round(total_tokens/total_cost,0), 0)
+| rename model_display as "Model", provider as "Provider", model_tier as "Tier"
+| table "Model" "Provider" "Tier" "Requests" "Total Cost" "Avg Cost" "Total Tokens" "Avg Tokens" "Success Rate" "DLP Blocked" "Efficiency"
+| sort -Requests</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <format type="color" field="Total Cost">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+        <format type="color" field="Success Rate">
+          <colorPalette type="list">
+            <listItem value="#D93F3C">&lt;80%</listItem>
+            <listItem value="#F7BC38">80-90%</listItem>
+            <listItem value="#6DB7C6">90-95%</listItem>
+            <listItem value="#65A637">&gt;95%</listItem>
+          </colorPalette>
+        </format>
+        <format type="color" field="DLP Blocked">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" minColor="#65A637"></colorPalette>
+        </format>
+        <format type="number" field="Efficiency">
+          <option name="precision">0</option>
+        </format>
+        <drilldown>
+          <set token="selected_model">$row.Model$</set>
+          <set token="show_model_detail">true</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Conditional Model Detail Panel -->
+  <row depends="$show_model_detail$">
+    <panel>
+      <title>Detailed View: $selected_model$ (Click to close)</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where model_display="$selected_model$"
+| timechart span=1h sum(cost_numeric) as Cost avg(tokens_numeric) as "Avg Tokens" count as Requests</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.drilldown">all</option>
+        <drilldown>
+          <unset token="show_model_detail"></unset>
+          <unset token="selected_model"></unset>
+        </drilldown>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Prompt Performance with Drilldown -->
+  <row>
+    <panel>
+      <title>Top 15 Prompts by Cost (Click for details)</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| where provider_match=1 AND model_match=1 AND prompt_name!="null" AND isnotnull(prompt_name) AND prompt_name!=""
+| `prompt_comparison`
+| eval total_cost=round(total_cost,2)
+| eval avg_cost=round(avg_cost,4)
+| eval avg_tokens=round(avg_tokens,0)
+| eval success_rate=round(success_rate,1)
+| eval dlp_rate=round(dlp_rate,1)
+| rename prompt_name as "Prompt", usage_count as "Usage", total_cost as "Total Cost", avg_cost as "Avg Cost", avg_tokens as "Avg Tokens", success_rate as "Success %", dlp_rate as "DLP %"
+| sort -"Total Cost"
+| head 15</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <format type="color" field="Total Cost">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+        </format>
+        <format type="number" field="DLP %">
+          <option name="precision">1</option>
+        </format>
+        <drilldown>
+          <set token="prompt_filter">$row.Prompt$</set>
+          <set token="form.prompt_filter">$row.Prompt$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Cost Optimization Insights -->
+  <row>
+    <panel>
+      <title>💡 Cost Optimization Opportunities</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where isnotnull(prompt_name) AND prompt_name!="null" AND prompt_name!=""
+| stats count as requests, sum(cost_numeric) as total_cost, avg(cost_numeric) as avg_cost, avg(tokens_numeric) as avg_tokens by model_display, prompt_name
+| eval cost_per_request=round(avg_cost, 6)
+| eval total_cost=round(total_cost, 4)
+| eval cost_efficiency=if(avg_cost > 0.01, "High Cost - Consider Budget Model", if(avg_cost > 0.001, "Moderate Cost", "Efficient"))
+| eval recommendation=case(
+    avg_cost > 0.1, "⚠️ High cost per request - Review if premium model is needed",
+    avg_cost > 0.01, "💡 Consider testing with budget-tier models",
+    1=1, "✓ Cost efficient"
+)
+| eval total_cost="$".tostring(total_cost)
+| eval cost_per_request="$".tostring(cost_per_request)
+| eval avg_tokens=round(avg_tokens, 0)
+| where requests > 1
+| rename model_display as "Model", prompt_name as "Prompt", requests as "Requests", total_cost as "Total Cost", cost_per_request as "Cost/Request", avg_tokens as "Avg Tokens", cost_efficiency as "Efficiency", recommendation as "Recommendation"
+| table "Model" "Prompt" "Requests" "Total Cost" "Cost/Request" "Avg Tokens" "Efficiency" "Recommendation"
+| sort -"Requests"
+| head 10</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Hour of Day Analysis -->
+  <row>
+    <panel>
+      <title>Cost Distribution by Hour of Day</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| where provider_match=1 AND model_match=1
+| eval hour=tonumber(strftime(_time, "%H"))
+| stats sum(cost_numeric) as total_cost count as requests by hour
+| eval total_cost=round(total_cost,2)
+| sort hour</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Hour of Day (24h format)</option>
+        <option name="charting.axisTitleY.text">Cost (USD)</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Request Volume by Day of Week</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval provider_match=if("$provider_filter$"="*", 1, if(provider="$provider_filter$", 1, 0))
+| eval model_match=if("$model_filter$"="*", 1, if(model_name="$model_filter$", 1, 0))
+| where provider_match=1 AND model_match=1
+| eval day_num=tonumber(strftime(_time, "%w"))
+| eval day_name=case(day_num=0, "Sunday", day_num=1, "Monday", day_num=2, "Tuesday", day_num=3, "Wednesday", day_num=4, "Thursday", day_num=5, "Friday", day_num=6, "Saturday")
+| stats count as requests sum(cost_numeric) as total_cost by day_name, day_num
+| eval total_cost=round(total_cost,2)
+| sort day_num
+| fields - day_num</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Requests</option>
+        <option name="charting.axisTitleY.text">Day of Week</option>
+        <option name="charting.legend.placement">bottom</option>
+      </chart>
+    </panel>
+  </row>
+
+</form>

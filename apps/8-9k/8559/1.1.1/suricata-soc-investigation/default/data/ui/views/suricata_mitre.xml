@@ -1,0 +1,127 @@
+<dashboard version="1.1">
+  <label>MITRE ATT&amp;CK Mapping</label>
+  <description>Map Suricata alert signatures to MITRE ATT&amp;CK tactics and techniques for rapid threat context.</description>
+
+  <search>
+    <query>
+      | inputlookup suricata_settings.csv
+      | stats latest(eval(if(setting="search_scope", value, null()))) as search_scope latest(eval(if(setting="time_choice", value, null()))) as time_choice
+      | eval search_scope=coalesce(search_scope, "index=suricata")
+      | eval time_choice=coalesce(time_choice, "24h")
+      | eval earliest_tok=case(time_choice=="7d", "-7d@d", time_choice=="30d", "-30d@d", time_choice=="all", "0", true(), "-24h@h")
+      | eval latest_tok="now"
+    </query>
+    <done>
+      <set token="search_scope">$result.search_scope$</set>
+      <set token="form.search_scope">$result.search_scope$</set>
+      <set token="time_choice">$result.time_choice$</set>
+      <set token="form.time_choice">$result.time_choice$</set>
+      <set token="earliest_tok">$result.earliest_tok$</set>
+      <set token="latest_tok">$result.latest_tok$</set>
+    </done>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="time_choice">
+      <label>Time Range</label>
+      <choice value="24h">Last 24 hours</choice>
+      <choice value="7d">Last 7 days</choice>
+      <choice value="30d">Last 30 days</choice>
+      <choice value="all">All time</choice>
+      <default>24h</default>
+      <initialValue>24h</initialValue>
+      <change>
+        <condition value="24h">
+          <set token="earliest_tok">-24h@h</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="7d">
+          <set token="earliest_tok">-7d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="30d">
+          <set token="earliest_tok">-30d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="all">
+          <set token="earliest_tok">0</set>
+          <set token="latest_tok">now</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="search_scope">
+      <label>Search Scope</label>
+      <default>index=suricata</default>
+      <initialValue>index=suricata</initialValue>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Top MITRE Tactics</title>
+      <chart>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval signature = coalesce(signature, 'alert.signature')
+            | lookup suricata_mitre signature OUTPUT technique_id technique_name tactic
+            | eval technique_id = coalesce(technique_id, "Unknown")
+            | eval technique_name = coalesce(technique_name, "Unknown")
+            | eval tactic = coalesce(tactic, "Unknown")
+            | stats count by tactic
+            | sort - count
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top MITRE Techniques</title>
+      <table>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval signature = coalesce(signature, 'alert.signature')
+            | lookup suricata_mitre signature OUTPUT technique_id technique_name tactic
+            | eval technique_id = coalesce(technique_id, "Unknown")
+            | eval technique_name = coalesce(technique_name, "Unknown")
+            | eval tactic = coalesce(tactic, "Unknown")
+            | stats count by technique_id technique_name tactic
+            | sort - count
+            | head 25
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top Signatures (Mapped)</title>
+      <table>
+        <search>
+          <query>
+            $search_scope$ event_type=alert
+            | eval signature = coalesce(signature, 'alert.signature')
+            | lookup suricata_mitre signature OUTPUT technique_id technique_name tactic
+            | eval technique_id = coalesce(technique_id, "Unknown")
+            | eval technique_name = coalesce(technique_name, "Unknown")
+            | eval tactic = coalesce(tactic, "Unknown")
+            | stats count by signature technique_id technique_name tactic
+            | sort - count
+            | head 25
+          </query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

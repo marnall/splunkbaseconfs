@@ -1,0 +1,262 @@
+<dashboard version="2">
+  <label>Whisper - Attack Surface Change Timeline</label>
+  <description>Drill-down timeline of infrastructure changes with risk scoring, change details, and high-priority change alerts.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - Attack Surface Change Timeline",
+  "description": "Drill-down timeline of infrastructure changes with risk scoring, change details, and high-priority change alerts.",
+  "dataSources": {
+    "ds_total_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | stats count AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_high_risk_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score>=70 | stats count AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_affected_domains": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | stats dc(domain) AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_change_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | timechart span=1d count BY change_type",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_risk_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score=* | timechart span=1d avg(risk_score) AS \"Avg Risk\" max(risk_score) AS \"Max Risk\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_change_detail": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | table _time, domain, record_type, change_type, old_value, new_value, risk_score | sort -_time | head 100 | rename _time AS \"Time\", domain AS \"Domain\", record_type AS \"Record Type\", change_type AS \"Change Type\", old_value AS \"Old Value\", new_value AS \"New Value\", risk_score AS \"Risk Score\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_changes_by_type": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" | stats count BY record_type | sort - count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_high_priority": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface_change\" risk_score>=70 | table _time, domain, record_type, change_type, old_value, new_value, risk_score | sort - risk_score | head 20 | rename _time AS \"Time\", domain AS \"Domain\", record_type AS \"Record Type\", change_type AS \"Change Type\", old_value AS \"Old Value\", new_value AS \"New Value\", risk_score AS \"Risk Score\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-7d@d,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_total_changes",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_high_risk_count",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_affected_domains",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_change_timeline",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_risk_trend",
+        "position": {
+          "x": 600,
+          "y": 150,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_changes_by_type",
+        "position": {
+          "x": 0,
+          "y": 450,
+          "w": 400,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_high_priority",
+        "position": {
+          "x": 400,
+          "y": 450,
+          "w": 800,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_change_detail",
+        "position": {
+          "x": 0,
+          "y": 750,
+          "w": 1200,
+          "h": 350
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_total_changes": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_changes"
+      },
+      "title": "Total Changes",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_high_risk_count": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_high_risk_count"
+      },
+      "title": "High-Risk Changes (>= 70)",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_affected_domains": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_affected_domains"
+      },
+      "title": "Affected Domains",
+      "options": {
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_change_timeline": {
+      "type": "viz.bar",
+      "dataSources": {
+        "primary": "ds_change_timeline"
+      },
+      "title": "Change Timeline by Type",
+      "options": {
+        "stackMode": "stacked"
+      }
+    },
+    "viz_risk_trend": {
+      "type": "viz.line",
+      "dataSources": {
+        "primary": "ds_risk_trend"
+      },
+      "title": "Risk Score Trend",
+      "options": {
+        "yAxisTitleText": "Risk Score"
+      }
+    },
+    "viz_changes_by_type": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_changes_by_type"
+      },
+      "title": "Changes by Record Type"
+    },
+    "viz_high_priority": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_high_priority"
+      },
+      "title": "High-Priority Changes"
+    },
+    "viz_change_detail": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_change_detail"
+      },
+      "title": "All Change Details"
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

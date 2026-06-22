@@ -1,0 +1,171 @@
+<dashboard version="1.1" theme="light">
+  <label>Alertes et notifications</label>
+  <description>Configuration et historique des alertes pour les pannes et interruptions</description>
+  <row>
+    <panel>
+      <html>
+        <h2 style="color: #1e88e5;">Configuration des Alertes</h2>
+        <p style="color: #000000;">Les alertes suivantes sont configurées dans cette application. Vous pouvez les activer/désactiver et configurer les actions dans <b>Paramètres &gt; Recherches, rapports et alertes</b>.</p>
+        <br/>
+        <div style="padding: 15px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #cccccc;">
+          <h3 style="color: #F58F39;">🔔 Nouvelle panne détectée</h3>
+          <p style="color: #000000;">
+            <b>Description:</b> Alerte déclenchée lors de la détection d'une nouvelle panne dans n'importe quelle municipalité.</p>
+          <p style="color: #000000;">
+            <b>Fréquence:</b> Toutes les 5 minutes</p>
+          <p style="color: #000000;">
+            <b>Condition:</b> Panne détectée dans les 10 dernières minutes</p>
+        </div>
+        
+        <div style="padding: 15px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #cccccc;">
+          <h3 style="color: #D93F3C;">⚠️ Panne importante - Plus de 100 clients</h3>
+          <p style="color: #000000;">
+            <b>Description:</b> Alerte pour les pannes affectant plus de 100 clients (seuil configurable).</p>
+          <p style="color: #000000;">
+            <b>Fréquence:</b> Toutes les 5 minutes</p>
+          <p style="color: #000000;">
+            <b>Condition:</b> Plus de 100 clients affectés</p>
+          <p style="color: #000000;">
+            <b>Note:</b> Vous pouvez modifier le seuil dans la recherche sauvegardée</p>
+        </div>
+        
+        <div style="padding: 15px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #cccccc;">
+          <h3 style="color: #6CB8CA;">📅 Interruption planifiée prochainement</h3>
+          <p style="color: #000000;">
+            <b>Description:</b> Alerte quotidienne pour les interruptions planifiées dans les prochaines 24 heures.</p>
+          <p style="color: #000000;">
+            <b>Fréquence:</b> Tous les jours à 8h00</p>
+          <p style="color: #000000;">
+            <b>Condition:</b> Interruption planifiée dans les 24 prochaines heures</p>
+        </div>
+        
+        <div style="padding: 15px; border-radius: 5px; margin-bottom: 15px; border: 1px solid #cccccc;">
+          <h3 style="color: #FF6F00;">⚡ Demande d'électricité élevée</h3>
+          <p style="color: #000000;">
+            <b>Description:</b> Alerte déclenchée lorsque la demande d'électricité dépasse un seuil critique (ex: 40,000 MW).</p>
+          <p style="color: #000000;">
+            <b>Fréquence:</b> Toutes les 15 minutes</p>
+          <p style="color: #000000;">
+            <b>Condition:</b> Demande &gt; 40,000 MW (seuil configurable)</p>
+          <p style="color: #000000;">
+            <b>Note:</b> Utile pour anticiper les périodes de pointe hivernale</p>
+        </div>
+        
+        <br/>
+        <h3 style="color: #42a5f5;">Configuration des Actions d'Alerte</h3>
+        <p style="color: #000000;">Pour chaque alerte, vous pouvez configurer les actions suivantes:</p>
+        <ul style="color: #000000;">
+          <li>
+            <b>Email:</b> Envoyer un courriel</li>
+          <li>
+            <b>Webhook:</b> Appeler une URL</li>
+          <li>
+            <b>Script:</b> Exécuter un script personnalisé</li>
+          <li>
+            <b>Ticket:</b> Créer un ticket dans un système externe</li>
+        </ul>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Statistiques des Alertes (dernières 24h)</title>
+      <table>
+        <search>
+          <query>| makeresults 
+| eval alerte="Nouvelles pannes détectées", valeur="N/A" 
+| append [search index=hydroquebec sourcetype=hydroquebec:pannes 
+    | stats earliest(_time) as premiere_detection by id_panne 
+    | where premiere_detection &gt; relative_time(now(), "-24h") 
+    | stats count 
+    | eval alerte="Nouvelles pannes détectées", valeur=count]
+| append [| makeresults 
+    | eval alerte="Pannes importantes (&gt;100 clients)", valeur="N/A"]
+| append [search index=hydroquebec sourcetype=hydroquebec:pannes 
+    | stats latest(_time) as derniere_maj, latest(nombre_clients) as clients by id_panne 
+    | where clients &gt; 100 AND derniere_maj &gt; relative_time(now(), "-1h") 
+    | stats count 
+    | eval alerte="Pannes importantes (&gt;100 clients)", valeur=count]
+| append [| makeresults 
+    | eval alerte="Interruptions prochaines 24h", valeur="N/A"]
+| append [search index=hydroquebec sourcetype=hydroquebec:interruption_planifie 
+    | stats latest(_time) as derniere_maj, latest(date_debut_prevue) as debut by id_interruption 
+    | eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S") 
+    | where debut_timestamp &gt; now() AND debut_timestamp &lt; (now() + 86400) 
+    | stats count 
+    | eval alerte="Interruptions prochaines 24h", valeur=count]
+| append [| makeresults 
+    | eval alerte="Demande élevée (&gt;40,000 MW)", valeur="N/A"]
+| append [search index=hydroquebec sourcetype=hydroquebec:demande 
+    | stats latest(demande_mw) as derniere_demande 
+    | where derniere_demande &gt; 40000 
+    | stats count 
+    | eval alerte="Demande élevée (&gt;40,000 MW)", valeur=count]
+| stats latest(valeur) as valeur by alerte
+| table alerte valeur
+| rename alerte as "Type d'alerte", valeur as "Nombre d'événements"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <format type="color" field="Nombre d'événements">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="number" midValue="5"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Tendance des Alertes (7 derniers jours)</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec (sourcetype=hydroquebec:pannes OR sourcetype=hydroquebec:interruption_planifie OR sourcetype=hydroquebec:demande)
+| eval type_alerte = case(
+    sourcetype=="hydroquebec:pannes" AND nombre_clients &gt; 100, "Panne importante",
+    sourcetype=="hydroquebec:pannes", "Nouvelle panne",
+    sourcetype=="hydroquebec:interruption_planifie", "Interruption planifiée",
+    sourcetype=="hydroquebec:demande" AND demande_mw &gt; 40000, "Demande élevée",
+    1=1, "Autre"
+)
+| where type_alerte != "Autre"
+| timechart span=1d count by type_alerte</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Nombre d'alertes</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Demande d'Électricité - Dépassements du Seuil (7 derniers jours)</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:demande
+| timechart span=1h max(demande_mw) as demande_max
+| eval seuil=40000
+| eval depassement=if(demande_max &gt; seuil, demande_max, null())</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleX.text">Date/Heure</option>
+        <option name="charting.axisTitleY.text">Demande (MW)</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.overlayFields">seuil</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.fieldColors">{"demande_max": 0x1e88e5, "seuil": 0xD93F3C, "depassement": 0xFF6F00}</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</dashboard>

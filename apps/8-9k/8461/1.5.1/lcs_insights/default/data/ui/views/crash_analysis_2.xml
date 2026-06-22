@@ -1,0 +1,487 @@
+<form version="1.1">
+  <label>Crash Analysis</label>
+  <description>Leverages cisco_oi_device_lookup for environment portability</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match(value,&quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Date &amp; Time Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <!-- Row 1: Crash Counts with Label Headers -->
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval Label="Crashes in Last 30 Days"
+| table Label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xa6af43","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (30*86400)) 
+| stats count as Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">_aggregation</option>
+        <option name="underLabel">Devices</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval Label="Crashes in Last 60 Days"
+| table Label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xa6af43","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (60*86400)) 
+| stats count as Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">_aggregation</option>
+        <option name="underLabel">Devices</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval Label="Crashes in Last 90 Days"
+| table Label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xa6af43","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (90*86400)) 
+| stats count as Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[5,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.size">medium</option>
+        <option name="trellis.splitBy">_aggregation</option>
+        <option name="underLabel">Devices</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">0</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 2: Crashes by Reset Reason and PID for 30/60/90 days -->
+  <row>
+    <panel>
+      <title>Crashes in Last 30 Days by Reset Reason</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| eval resetReason=lower(resetReason) 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (30*86400))
+| eval resetReason = case(match(resetReason,".*panic.*"), "Kernel Panic", match(resetReason,".*s/w reset.*"), "Software Reset", match(resetReason,".*software.*"), "Software Exception", match(resetReason,".*critical process.*"), "Critical Process Crash", match(resetReason,".*watchdog time.*"), "Watchdog Timeout", match(resetReason,".*error at pc.*"), "Parity Check Error", match(resetReason,".*cpu.*"), "CPU Usage", match(resetReason,".*localsoft.*"), "LocalSoft ADR", 1=1, resetReason) 
+| fillnull value=null resetReason
+| stats count as Devices by resetReason
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 30 Days by PID</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (30*86400))
+| stats count as Devices by productId
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes in Last 60 Days by Reset Reason</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| eval resetReason=lower(resetReason) 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (60*86400))
+| eval resetReason = case(match(resetReason,".*panic.*"), "Kernel Panic", match(resetReason,".*s/w reset.*"), "Software Reset", match(resetReason,".*software.*"), "Software Exception", match(resetReason,".*critical process.*"), "Critical Process Crash", match(resetReason,".*watchdog time.*"), "Watchdog Timeout", match(resetReason,".*error at pc.*"), "Parity Check Error", match(resetReason,".*cpu.*"), "CPU Usage", match(resetReason,".*localsoft.*"), "LocalSoft ADR", 1=1, resetReason) 
+| fillnull value=null resetReason
+| stats count as Devices by resetReason
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 60 Days by PID</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (60*86400))
+| stats count as Devices by productId
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes in Last 90 Days by Reset Reason</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| eval resetReason=lower(resetReason) 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (90*86400))
+| eval resetReason = case(match(resetReason,".*panic.*"), "Kernel Panic", match(resetReason,".*s/w reset.*"), "Software Reset", match(resetReason,".*software.*"), "Software Exception", match(resetReason,".*critical process.*"), "Critical Process Crash", match(resetReason,".*watchdog time.*"), "Watchdog Timeout", match(resetReason,".*error at pc.*"), "Parity Check Error", match(resetReason,".*cpu.*"), "CPU Usage", match(resetReason,".*localsoft.*"), "LocalSoft ADR", 1=1, resetReason) 
+| fillnull value=null resetReason
+| stats count as Devices by resetReason
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 90 Days by PID</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (90*86400))
+| stats count as Devices by productId
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 3: Crashes by SW Version & Type and SW Type for 30/60/90 days -->
+  <row>
+    <panel>
+      <title>Crashes in Last 30 Days by SW Version &amp; Type</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (30*86400))
+| stats count as Devices by softwareType, softwareVersion
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 30 Days by SW Type</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (30*86400))
+| stats count as Devices by softwareType
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes in Last 60 Days by SW Version &amp; Type</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (60*86400))
+| stats count as Devices by softwareType, softwareVersion
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 60 Days by SW Type</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (60*86400))
+| stats count as Devices by softwareType
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Crashes in Last 90 Days by SW Version &amp; Type</title>
+      <table>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (90*86400))
+| stats count as Devices by softwareType, softwareVersion
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Crashes in Last 90 Days by SW Type</title>
+      <chart>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| where lastResetEpoch &gt; (now() - (90*86400))
+| stats count as Devices by softwareType
+| sort -Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 4: Download Label Header -->
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="Download"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Row 5: All Crash Details -->
+  <row>
+    <panel>
+      <title>Crash Details</title>
+      <table>
+        <title>Download details using 'Export' button on lower right</title>
+        <search>
+          <query>| inputlookup `cisco_oi_device_lookup($cpyKey$)` 
+| $singleLineGroupSelector$ 
+| search resetReason=*error* OR resetReason=*critical* OR resetReason=*exception* OR resetReason=*watchdog* OR resetReason=*panic* OR resetReason=*cpu* OR resetReason=*localsoft* 
+| eval lastResetEpoch = strptime(lastResetTimestamp, "%Y-%m-%dT%H:%M:%S") 
+| eval ninetyDaysEpoch = 90*86400 
+| eval last90crash = if((now() - lastResetEpoch) &lt; ninetyDaysEpoch, 1, 0) 
+| table deviceId, deviceName, deviceIp, productId, productFamily, softwareVersion, softwareType, lastResetTimestamp, last90crash, resetReason, riskCategory, riskScore, groupName</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="wrap">false</option>
+      </table>
+    </panel>
+  </row>
+</form>

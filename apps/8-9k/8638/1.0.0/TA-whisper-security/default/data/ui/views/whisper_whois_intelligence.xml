@@ -1,0 +1,315 @@
+<dashboard version="2">
+  <label>Whisper - WHOIS Intelligence</label>
+  <description>WHOIS registrar, registrant organization, email, and registration date analysis with contact correlation for threat attribution.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - WHOIS Intelligence",
+  "description": "WHOIS registrar, registrant organization, email, and registration date analysis with contact correlation for threat attribution.",
+  "dataSources": {
+    "ds_registrar_dist": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrar=* | stats dc(domain) AS domains BY whisper_registrar | sort - domains | head 20",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_registrant_org": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrant_org=* | stats dc(domain) AS domains BY whisper_registrant_org | sort - domains | head 20 | rename whisper_registrant_org AS \"Registrant Org\", domains AS \"Domains\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_privacy_proxied": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrant_org=* | dedup domain sortby -_time | eval is_privacy=if(match(whisper_registrant_org, \"(?i)privacy|proxy|redacted|whoisguard|domains by proxy|contact privacy\"), 1, 0) | stats count(eval(is_privacy=1)) AS proxied, count(eval(is_privacy=0)) AS not_proxied | eval display=proxied | fields display, proxied, not_proxied",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_newly_registered": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registration_date=* | eval reg_epoch=strptime(whisper_registration_date, \"%Y-%m-%d\") | eval age_days=round((now()-reg_epoch)/86400, 0) | where age_days <= 30 | table domain, whisper_registration_date, age_days, whisper_registrar | sort age_days | head 20 | rename domain AS \"Domain\", whisper_registration_date AS \"Registration Date\", age_days AS \"Age (days)\", whisper_registrar AS \"Registrar\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_registrar_changes": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_prev_registrar=* | where whisper_registrar!=whisper_prev_registrar | table domain, whisper_registrar, whisper_prev_registrar | rename domain AS \"Domain\", whisper_registrar AS \"Current Registrar\", whisper_prev_registrar AS \"Previous Registrar\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_shared_email": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrant_email=* | stats dc(domain) AS domain_count, values(domain) AS domains BY whisper_registrant_email | where domain_count > 1 | sort - domain_count | head 20 | rename whisper_registrant_email AS \"Registrant Email\", domain_count AS \"Shared Domains\", domains AS \"Domain List\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_org_pivot": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_organization=* | stats dc(domain) AS domain_count, values(domain) AS domains BY whisper_organization | where domain_count > 1 | sort - domain_count | head 20 | rename whisper_organization AS \"Organization\", domain_count AS \"Domains\", domains AS \"Domain List\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_whois_summary": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" | stats dc(eval(if(whisper_registrar!=\"\", domain, null()))) AS with_registrar, dc(eval(if(whisper_registrant_org!=\"\", domain, null()))) AS with_org, dc(eval(if(whisper_registrant_email!=\"\", domain, null()))) AS with_email, dc(eval(if(whisper_registration_date!=\"\", domain, null()))) AS with_reg_date, dc(domain) AS total_domains",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_whois_summary",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 600,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_privacy_proxied",
+        "position": {
+          "x": 600,
+          "y": 0,
+          "w": 600,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_registrar_dist",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_registrant_org",
+        "position": {
+          "x": 600,
+          "y": 150,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_newly_registered",
+        "position": {
+          "x": 0,
+          "y": 450,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_registrar_changes",
+        "position": {
+          "x": 600,
+          "y": 450,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_shared_email",
+        "position": {
+          "x": 0,
+          "y": 750,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_org_pivot",
+        "position": {
+          "x": 0,
+          "y": 1050,
+          "w": 1200,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_whois_summary": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_whois_summary"
+      },
+      "title": "WHOIS Data Coverage"
+    },
+    "viz_privacy_proxied": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_privacy_proxied"
+      },
+      "title": "Privacy-Proxied Domains",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f1813f",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_registrar_dist": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_registrar_dist"
+      },
+      "title": "Registrar Distribution",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f", "#d41f1c", "#1a3e5c"]
+      }
+    },
+    "viz_registrant_org": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_registrant_org"
+      },
+      "title": "Registrant Organization Clustering",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrant_org=\"$row.Registrant Org$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_newly_registered": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_newly_registered"
+      },
+      "title": "Newly Registered Domains (Last 30 Days)",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" domain=\"$row.Domain$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_registrar_changes": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_registrar_changes"
+      },
+      "title": "Registrar Change History",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" domain=\"$row.Domain$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_shared_email": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_shared_email"
+      },
+      "title": "Shared Registrant Email Correlation",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_registrant_email=\"$row.Registrant Email$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    },
+    "viz_org_pivot": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_org_pivot"
+      },
+      "title": "Organization Pivot Analysis",
+      "eventHandlers": [
+        {
+          "type": "drilldown.linkToSearch",
+          "event": "table.cellClick",
+          "options": {
+            "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_organization=\"$row.Organization$\"",
+            "earliest": "$time_range.earliest$",
+            "latest": "$time_range.latest$",
+            "openInNewTab": true
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

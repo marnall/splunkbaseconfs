@@ -1,0 +1,855 @@
+
+<dashboard version="2" theme="dark">
+    <label>Cost Efficiency Analysis</label>
+    <description>Kubernetes cost efficiency and optimization dashboard highlighting resource waste, over-provisioning, and savings opportunities</description>
+    <definition><![CDATA[
+{
+	"title": "Cost Efficiency Analysis",
+	"description": "Kubernetes cost efficiency and optimization dashboard highlighting resource waste, over-provisioning, and savings opportunities",
+	"inputs": {
+		"input_cluster_selector": {
+			"dataSources": {
+				"primary": "ds_cluster_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "cluster_token"
+			},
+			"title": "Cluster",
+			"type": "input.dropdown"
+		},
+		"input_global_trp": {
+			"options": {
+				"defaultValue": "-24h@h,now",
+				"token": "global_time"
+			},
+			"title": "Time Range",
+			"type": "input.timerange"
+		},
+		"input_index_selector": {
+			"context": {
+				"formattedConfig": {
+					"number": {
+						"prefix": ""
+					}
+				},
+				"formattedStatics": ">statics | formatByType(formattedConfig)",
+				"label": ">primary | seriesByName(\"metrics_index_key\") | renameSeries(\"label\") | formatByType(formattedConfig)",
+				"statics": [],
+				"value": ">primary | seriesByName(\"metrics_index_value\") | renameSeries(\"value\") | formatByType(formattedConfig)"
+			},
+			"dataSources": {
+				"primary": "ds_Z6e6YBzW"
+			},
+			"options": {
+				"items": ">frame(label, value) | prepend(formattedStatics) | objects()",
+				"selectFirstSearchResult": true,
+				"token": "index_token"
+			},
+			"title": "Metrics Index",
+			"type": "input.dropdown"
+		},
+		"input_namespace_selector": {
+			"dataSources": {
+				"primary": "ds_namespace_list"
+			},
+			"options": {
+				"defaultValue": "*",
+				"token": "namespace_token"
+			},
+			"title": "Namespace",
+			"type": "input.dropdown"
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "$global_time.earliest$",
+						"latest": "$global_time.latest$"
+					}
+				}
+			}
+		}
+	},
+	"visualizations": {
+		"viz_avg_cpu_utilization": {
+			"dataSources": {
+				"primary": "ds_cluster_utilization"
+			},
+			"description": "Cluster-wide CPU efficiency",
+			"options": {
+				"majorColor": "> majorValue | rangeValue(utilColorConfig)",
+				"majorValue": "> primary | seriesByName('avg_cpu_util') | lastPoint()",
+				"numberPrecision": 1,
+				"unit": "%",
+				"utilColorConfig": [
+					{
+						"color": "#D41F1F",
+						"to": 40,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 70,
+						"value": 40
+					},
+					{
+						"color": "#118832",
+						"value": 70
+					}
+				]
+			},
+			"title": "Avg CPU Utilization",
+			"type": "splunk.singlevalue"
+		},
+		"viz_avg_memory_utilization": {
+			"dataSources": {
+				"primary": "ds_cluster_utilization"
+			},
+			"description": "Cluster-wide memory efficiency",
+			"options": {
+				"majorValue": "> primary | seriesByName('avg_mem_util') | lastPoint()",
+				"numberPrecision": 1,
+				"unit": "%"
+			},
+			"title": "Avg Memory Utilization",
+			"type": "splunk.singlevalue"
+		},
+		"viz_cost_by_workload_type": {
+			"dataSources": {
+				"primary": "ds_cost_by_workload_type"
+			},
+			"description": "Resource consumption breakdown",
+			"options": {
+				"labelField": "workload_type",
+				"showDonutHole": true,
+				"valueField": "total_cpu"
+			},
+			"title": "CPU Usage by Workload Type",
+			"type": "splunk.pie"
+		},
+		"viz_cpu_efficiency_timeline": {
+			"dataSources": {
+				"primary": "ds_cpu_efficiency_timeline"
+			},
+			"description": "Target: 70% for optimal efficiency",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"cpu_utilization": "#1E93C6",
+					"target_70": "#118832"
+				},
+				"xField": "_time"
+			},
+			"title": "CPU Utilization Trend",
+			"type": "splunk.line"
+		},
+		"viz_idle_pods": {
+			"dataSources": {
+				"primary": "ds_idle_pods"
+			},
+			"description": "Potential candidates for termination",
+			"title": "Idle Pods (CPU <5%)",
+			"type": "splunk.table"
+		},
+		"viz_memory_efficiency_timeline": {
+			"dataSources": {
+				"primary": "ds_memory_efficiency_timeline"
+			},
+			"description": "Target: 70% for optimal efficiency",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"memory_utilization": "#1E93C6",
+					"target_70": "#118832"
+				},
+				"xField": "_time"
+			},
+			"title": "Memory Utilization Trend",
+			"type": "splunk.line"
+		},
+		"viz_memory_request_vs_usage": {
+			"dataSources": {
+				"primary": "ds_memory_request_vs_usage"
+			},
+			"description": "Equal halves of each vertical indicates good usage",
+			"options": {
+				"stackMode": "stacked"
+			},
+			"title": "Memory Requests vs Actual Usage (GB)",
+			"type": "splunk.column",
+			"containerOptions": {},
+			"showProgressBar": false,
+			"showLastUpdated": false
+		},
+		"viz_namespace_waste": {
+			"dataSources": {
+				"primary": "ds_namespace_waste"
+			},
+			"description": "CPU cores and memory GB wasted per namespace",
+			"options": {
+				"legendDisplay": "bottom",
+				"seriesColorsByField": {
+					"wasted_cpu": "#D41F1F",
+					"wasted_memory_gb": "#F5A800"
+				},
+				"stackMode": "stacked",
+				"xField": "namespace"
+			},
+			"title": "Resource Waste by Namespace",
+			"type": "splunk.column"
+		},
+		"viz_node_utilization": {
+			"dataSources": {
+				"primary": "ds_node_utilization"
+			},
+			"description": "Identify underutilized nodes",
+			"title": "Node Utilization Analysis",
+			"type": "splunk.table"
+		},
+		"viz_overprovisioned_pods": {
+			"dataSources": {
+				"primary": "ds_overprovisioned_count"
+			},
+			"description": "Pods using <50% of requests",
+			"options": {
+				"majorColor": "#D41F1F",
+				"majorValue": "> primary | seriesByName('overprovisioned_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Pods"
+			},
+			"title": "Over-Provisioned Pods",
+			"type": "splunk.singlevalue"
+		},
+		"viz_persistent_volume_waste": {
+			"dataSources": {
+				"primary": "ds_pv_waste"
+			},
+			"description": "PVs using <50% capacity",
+			"title": "Underutilized Persistent Volumes",
+			"type": "splunk.table"
+		},
+		"viz_pods_without_limits": {
+			"dataSources": {
+				"primary": "ds_pods_without_limits"
+			},
+			"description": "Risk of resource exhaustion",
+			"title": "Pods Without Resource Limits",
+			"type": "splunk.table"
+		},
+		"viz_pods_without_requests": {
+			"dataSources": {
+				"primary": "ds_pods_without_requests"
+			},
+			"description": "Missing resource requests/limits",
+			"options": {
+				"majorColor": "#D41F1F",
+				"majorValue": "> primary | seriesByName('no_requests_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Pods"
+			},
+			"title": "Pods Without Requests",
+			"type": "splunk.singlevalue"
+		},
+		"viz_recommendations": {
+			"dataSources": {
+				"primary": "ds_recommendations"
+			},
+			"description": "Actionable steps to reduce costs",
+			"title": "Cost Optimization Recommendations",
+			"type": "splunk.table"
+		},
+		"viz_request_vs_usage": {
+			"dataSources": {
+				"primary": "ds_request_vs_usage"
+			},
+			"description": "Equal halves of each vertical indicate good usage",
+			"options": {
+				"stackMode": "stacked"
+			},
+			"title": "CPU Requests vs Actual Usage",
+			"type": "splunk.column",
+			"containerOptions": {},
+			"showProgressBar": false,
+			"showLastUpdated": false
+		},
+		"viz_restarts_impact": {
+			"dataSources": {
+				"primary": "ds_restarts_impact"
+			},
+			"description": "Pods with frequent restarts waste resources",
+			"title": "High Restart Count (Cost Impact)",
+			"type": "splunk.table"
+		},
+		"viz_rightsizing_opportunities": {
+			"dataSources": {
+				"primary": "ds_rightsizing_opportunities"
+			},
+			"description": "Pods with highest potential savings",
+			"options": {
+				"backgroundColor": "> table | seriesByName('Opportunity') | matchValue(opportunityColorMap)",
+				"opportunityColorMap": {
+					"High Savings": "#D41F1F",
+					"Low Savings": "#118832",
+					"Medium Savings": "#F5A800",
+					"OOM Risk": "#D41F1F"
+				}
+			},
+			"title": "Top Right-Sizing Opportunities",
+			"type": "splunk.table"
+		},
+		"viz_total_potential_savings": {
+			"dataSources": {
+				"primary": "ds_total_potential_savings"
+			},
+			"description": "Total % of resources that could be saved",
+			"options": {
+				"majorColor": "> majorValue | rangeValue(savingsColorConfig)",
+				"majorValue": "> primary | seriesByName('total_savings_percent') | lastPoint()",
+				"numberPrecision": 1,
+				"savingsColorConfig": [
+					{
+						"color": "#118832",
+						"to": 10,
+						"value": 0
+					},
+					{
+						"color": "#F5A800",
+						"to": 25,
+						"value": 10
+					},
+					{
+						"color": "#D41F1F",
+						"value": 25
+					}
+				],
+				"unit": "% Savings"
+			},
+			"title": "Potential Cost Savings",
+			"type": "splunk.singlevalue"
+		},
+		"viz_underprovisioned_pods": {
+			"dataSources": {
+				"primary": "ds_underprovisioned_count"
+			},
+			"description": "Pods using >90% of requests (OOM risk)",
+			"options": {
+				"majorColor": "#F5A800",
+				"majorValue": "> primary | seriesByName('underprovisioned_count') | lastPoint()",
+				"numberPrecision": 0,
+				"unit": "Pods"
+			},
+			"title": "Under-Provisioned Pods",
+			"type": "splunk.singlevalue"
+		},
+		"viz_wasted_cpu_cores": {
+			"dataSources": {
+				"primary": "ds_wasted_resources"
+			},
+			"description": "Allocated but unused CPU",
+			"options": {
+				"majorValue": "> primary | seriesByName('wasted_cpu') | lastPoint()",
+				"numberPrecision": 1,
+				"unit": "CPU Cores"
+			},
+			"title": "Wasted CPU Cores",
+			"type": "splunk.singlevalue"
+		},
+		"viz_wasted_memory_gb": {
+			"dataSources": {
+				"primary": "ds_wasted_resources"
+			},
+			"description": "Allocated but unused memory",
+			"options": {
+				"majorValue": "> primary | seriesByName('wasted_memory_gb') | lastPoint()",
+				"numberPrecision": 1,
+				"unit": "GB"
+			},
+			"title": "Wasted Memory",
+			"type": "splunk.singlevalue"
+		}
+	},
+	"dataSources": {
+		"ds_Z6e6YBzW": {
+			"name": "metrics_index_dropdown",
+			"options": {
+				"query": "| inputlookup append=t k8s_metrics_indexes_dropdown_lookup.csv"
+			},
+			"type": "ds.search"
+		},
+		"ds_cluster_list": {
+			"name": "Cluster List",
+			"options": {
+				"query": "| mcatalog values(k8s.cluster.name) as cluster WHERE index=$index_token$ | mvexpand cluster | rename cluster as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_cluster_utilization": {
+			"name": "Cluster Utilization",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request OR metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"cpu.request\"), value, null()), mem_usage=if(match(metric_name, \"memory.usage\"), value, null()), mem_request=if(match(metric_name, \"memory.request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request, avg(mem_usage) as mem_usage, avg(mem_request) as mem_request | eval avg_cpu_util=if(cpu_request>0, round((cpu_usage/cpu_request)*100, 1), 0), avg_mem_util=if(mem_request>0, round((mem_usage/mem_request)*100, 1), 0)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_cost_by_workload_type": {
+			"name": "Cost by Workload Type",
+			"options": {
+				"query": "| mstats avg(_value) as cpu WHERE index=$index_token$ metric_name=container.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by k8s.pod.name\n| rename k8s.pod.name as Pod \n| join type=outer Pod \n    [ | mstats latest(k8s.pod.phase) as pod_phase WHERE index=$index_token$ k8s.namespace.name=$namespace_token$ k8s.cluster.name=$cluster_token$\n    by k8s.pod.name, k8s.namespace.name, k8s.node.name,\n       k8s.deployment.name, k8s.daemonset.name, k8s.statefulset.name,\n       k8s.replicaset.name, k8s.job.name, k8s.cronjob.name\n     fillnull_value=\"NA\"\n| rename k8s.namespace.name as namespace , k8s.statefulset.name as statefulset, k8s.deployment.name as deployment, k8s.daemonset.name as daemonset, k8s.job.name as job, k8s.cronjob.name as cronjob, k8s.pod.name as pod, k8s.replicaset.name as replicaset, k8s.node.name as node\n| stats count by namespace, pod, deployment, daemonset, statefulset, replicaset, job, cronjob, node\n| eval workload_type=case(\n    cronjob!=\"NA\", \"Job/CronJob\",\n    job!=\"NA\", \"Job/CronJob\",\n    deployment!=\"NA\", \"Deployment\",\n    daemonset!=\"NA\", \"DaemonSet\",\n    statefulset!=\"NA\", \"StatefulSet\",\n    replicaset!=\"NA\", \"ReplicaSet\",\n    1=1, \"Standalone\"\n)\n| eval statefulset=nullif(statefulset, \"NA\"), deployment=nullif(deployment, \"NA\"), daemonset=nullif(daemonset,\"NA\"), replicaset=nullif(replicaset, \"NA\"), job=nullif(job,\"NA\"), cronjob=nullif(cronjob,\"NA\")\n| eval workload_name=coalesce(\n    cronjob, job, deployment,\n    daemonset, statefulset,\n    replicaset\n)\n| table namespace, workload_type, workload_name, pod, node\n| rename namespace as Namespace, workload_type as Workload-Type, workload_name as Workload-Name, pod as Pod, node as Node\n|  fields Namespace, Workload-Type,Pod]\n|  stats sum(cpu) as total_cpu by Workload-Type",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_cpu_efficiency_timeline": {
+			"name": "CPU Efficiency Timeline",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ span=1h by metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request by _time | eval cpu_utilization=if(cpu_request>0, round((cpu_usage/cpu_request)*100, 1), 0), target_70=70",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_idle_pods": {
+			"name": "Idle Pods",
+			"options": {
+				"query": "| mstats avg(_value) as cpu WHERE index=$index_token$ metric_name=container.cpu.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name | where cpu<5 | join type=left k8s.pod.name [| mstats avg(_value) as mem_bytes WHERE index=$index_token$ metric_name=container.memory.usage k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name | eval mem_mb=mem_bytes/1048576] | eval \"CPU %\"=round(cpu, 2), \"Memory (MB)\"=round(mem_mb, 0) | rename k8s.pod.name as Pod, k8s.namespace.name as Namespace | table Pod, Namespace, \"CPU %\", \"Memory (MB)\" | sort Namespace, Pod | head 20",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_memory_efficiency_timeline": {
+			"name": "Memory Efficiency Timeline",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.memory.usage OR metric_name=k8s.pod.memory.request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ span=1h by metric_name | eval mem_usage=if(match(metric_name, \"usage\"), value, null()), mem_request=if(match(metric_name, \"request\"), value, null()) | stats avg(mem_usage) as mem_usage, avg(mem_request) as mem_request by _time | eval memory_utilization=if(mem_request>0, round((mem_usage/mem_request)*100, 1), 0), target_70=70",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_memory_request_vs_usage": {
+			"name": "Memory Request vs Usage",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name, metric_name | eval mem_usage=if(match(metric_name, \"usage\"), value/1073741824, null()), mem_request=if(match(metric_name, \"request\"), value/1073741824, null()) | stats avg(mem_usage) as memory_usage_gb, avg(mem_request) as memory_request_gb by k8s.pod.name, k8s.namespace.name | where memory_request_gb>0 | rename k8s.namespace.name as namespace | fields namespace, memory_request_gb, memory_usage_gb| stats p90(memory_request_gb) as memory_request_gb, p90(memory_usage_gb) as memory_usage_gb by namespace",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_namespace_list": {
+			"name": "Namespace List",
+			"options": {
+				"query": "| mcatalog values(k8s.namespace.name) as namespace WHERE index=$index_token$ | mvexpand namespace | rename namespace as label | eval value=label",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_namespace_waste": {
+			"name": "Namespace Waste",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request OR metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.namespace.name, k8s.pod.name, metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"cpu_request\"), value, null()), mem_usage=if(match(metric_name, \"memory.usage\"), value, null()), mem_request=if(match(metric_name, \"memory_request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request, avg(mem_usage) as mem_usage, avg(mem_request) as mem_request by k8s.namespace.name, k8s.pod.name | eval cpu_waste=if(cpu_request>cpu_usage, cpu_request-cpu_usage, 0), mem_waste=if(mem_request>mem_usage, mem_request-mem_usage, 0) | stats sum(cpu_waste) as wasted_cpu, sum(mem_waste) as wasted_memory by k8s.namespace.name | eval wasted_memory_gb=round(wasted_memory/1073741824, 2) | rename k8s.namespace.name as namespace | sort -wasted_cpu | head 10",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_node_utilization": {
+			"name": "Node Utilization",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=node.cpu.usage OR metric_name=k8s.node.cpu.usage OR metric_name=node.memory.usage OR metric_name=k8s.node.memory.usage) k8s.cluster.name=$cluster_token$ by k8s.node.name, metric_name | eval cpu_util=if(match(metric_name, \"cpu\"), value, null()), mem_util=if(match(metric_name, \"memory\"), value, null()) | stats avg(cpu_util) as \"CPU %\", avg(mem_util) as \"Memory %\" by k8s.node.name | eval \"CPU %\"=round('CPU %', 1), \"Memory %\"=round('Memory %', 1), Status=case('CPU %'<30 AND 'Memory %'<30, \"Underutilized\", 'CPU %'>85 OR 'Memory %'>85, \"Overloaded\", 1==1, \"Normal\") | rename k8s.node.name as Node | table Node, \"CPU %\", \"Memory %\", Status | sort -\"CPU %\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_overprovisioned_count": {
+			"name": "Over-Provisioned Count",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, metric_name | eval cpu_usage=if(match(metric_name, \"usage\"), value, null()), cpu_request=if(match(metric_name, \"request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request by k8s.pod.name | eval utilization_percent=if(cpu_request>0, (cpu_usage/cpu_request)*100, 0) | where utilization_percent<50 AND cpu_request>0 | stats count as overprovisioned_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_pods_without_limits": {
+			"name": "Pods Without Limits",
+			"options": {
+				"query": "| mstats latest(_value) as has_limit WHERE index=$index_token$ metric_name=k8s.container.cpu_limit k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name | join type=outer k8s.pod.name [| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name] | where (isnull(has_limit) OR has_limit==0) AND (phase==2 OR phase==\"Running\") | rename k8s.pod.name as Pod, k8s.namespace.name as Namespace | table Pod, Namespace | sort Namespace, Pod | head 50",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_pods_without_requests": {
+			"name": "Pods Without Requests",
+			"options": {
+				"query": "| mstats latest(_value) as has_request WHERE index=$index_token$ metric_name=k8s.container.cpu_request k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name fillnull_value=0| join type=outer k8s.pod.name [| mstats latest(_value) as phase WHERE index=$index_token$ metric_name=k8s.pod.phase k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name] | where (isnull(has_request) OR has_request==0) AND (phase==2 OR phase==\"Running\") | stats count as no_requests_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_pv_waste": {
+			"name": "PV Waste",
+			"options": {
+				"query": "| mstats latest(_value) as value WHERE index=$index_token$ (metric_name=k8s.volume.capacity OR metric_name=k8s.volume.available) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$  by k8s.volume.name, k8s.namespace.name, metric_name | eval capacity=if(match(metric_name, \"capacity\"), value, null()), available=if(match(metric_name, \"available\"), value, null()) | stats latest(capacity) as capacity, latest(available) as available by k8s.volume.name, k8s.namespace.name | eval used_percent=if(capacity>0, round(((capacity-available)/capacity)*100, 1), 0) | where used_percent<50 | eval \"Capacity (GB)\"=round(capacity/1073741824, 2), \"Used %\"=used_percent | rename k8s.volume.name as Volume, k8s.namespace.name as Namespace| table Namespace,Volume, \"Capacity (GB)\", \"Used %\" | sort \"Used %\" | head 20",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_recommendations": {
+			"name": "Recommendations",
+			"options": {
+				"query": "| makeresults count=1 | eval recommendations=split(\"1. Right-size over-provisioned pods to save CPU/memory costs|2. Add resource requests/limits to pods missing them|3. Review and terminate idle pods consuming resources|4. Consider node consolidation for underutilized nodes|5. Clean up underutilized persistent volumes|6. Investigate high-restart pods for optimization|7. Enable VPA for automated right-sizing recommendations|8. Review namespaces with highest waste for quick wins\", \"|\") | mvexpand recommendations | eval Priority=if(match(recommendations, \"^1\\.\"), \"High\", if(match(recommendations, \"^[234]\\.\"), \"Medium\", \"Low\")), Recommendation=recommendations | table Priority, Recommendation",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_request_vs_usage": {
+			"name": "Request vs Usage",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name, metric_name | eval cpu_usage=if(match(metric_name, \"usage\"), value, null()), cpu_request=if(match(metric_name, \"request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request by k8s.pod.name, k8s.namespace.name | where cpu_request>0 | rename k8s.namespace.name as namespace | fields namespace, cpu_request, cpu_usage| stats p90(cpu_request) as cpu_request, p90(cpu_usage) as cpu_usage by namespace",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_restarts_impact": {
+			"name": "Restarts Impact",
+			"options": {
+				"query": "| mstats sum(_value) as restart_count WHERE index=$index_token$ metric_name=k8s.container.restarts k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name | where restart_count>10 | sort -restart_count | rename k8s.pod.name as Pod, k8s.namespace.name as Namespace, restart_count as \"Restart Count\" | table Pod, Namespace, \"Restart Count\" | head 20",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_rightsizing_opportunities": {
+			"name": "Right-Sizing Opportunities",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request OR metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, k8s.namespace.name, metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"cpu.request\"), value, null()), mem_usage=if(match(metric_name, \"memory.usage\"), value, null()), mem_request=if(match(metric_name, \"memory.request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request, avg(mem_usage) as mem_usage, avg(mem_request) as mem_request by k8s.pod.name, k8s.namespace.name | eval cpu_waste=if(cpu_request>cpu_usage, cpu_request-cpu_usage, 0), mem_waste_gb=if(mem_request>mem_usage, (mem_request-mem_usage)/1073741824, 0), total_waste=cpu_waste+mem_waste_gb, utilization_percent=if(cpu_request>0, round((cpu_usage/cpu_request)*100, 0), 0) | eval Opportunity=case(cpu_waste>2 OR mem_waste_gb>4, \"High Savings\", cpu_waste>0.5 OR mem_waste_gb>1, \"Medium Savings\", utilization_percent>90, \"OOM Risk\", 1==1, \"Low Savings\") | eval \"CPU Waste\"=round(cpu_waste, 2), \"Memory Waste (GB)\"=round(mem_waste_gb, 2), \"Utilization %\"=utilization_percent | rename k8s.pod.name as Pod, k8s.namespace.name as Namespace | sort -total_waste | head 20 | table Pod, Namespace, Opportunity, \"CPU Waste\", \"Memory Waste (GB)\", \"Utilization %\"",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_total_potential_savings": {
+			"name": "Total Potential Savings",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request OR metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"cpu_request\"), value, null()), mem_usage=if(match(metric_name, \"memory.usage\"), value, null()), mem_request=if(match(metric_name, \"memory_request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request, avg(mem_usage) as mem_usage, avg(mem_request) as mem_request by k8s.pod.name | eval cpu_waste=if(cpu_request>cpu_usage, cpu_request-cpu_usage, 0), mem_waste=if(mem_request>mem_usage, mem_request-mem_usage, 0) | stats sum(cpu_waste) as total_cpu_waste, sum(cpu_request) as total_cpu_request, sum(mem_waste) as total_mem_waste, sum(mem_request) as total_mem_request | eval total_savings_percent=round(((total_cpu_waste+total_mem_waste)/(total_cpu_request+total_mem_request))*100, 1)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_underprovisioned_count": {
+			"name": "Under-Provisioned Count",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request by k8s.pod.name | eval utilization_percent=if(cpu_request>0, (cpu_usage/cpu_request)*100, 999) | where utilization_percent>90 AND cpu_request > 0| stats count as underprovisioned_count",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		},
+		"ds_wasted_resources": {
+			"name": "Wasted Resources",
+			"options": {
+				"query": "| mstats avg(_value) as value WHERE index=$index_token$ (metric_name=container.cpu.usage OR metric_name=k8s.container.cpu_request OR metric_name=container.memory.usage OR metric_name=k8s.container.memory_request) k8s.cluster.name=$cluster_token$ k8s.namespace.name=$namespace_token$ by k8s.pod.name, metric_name | eval cpu_usage=if(match(metric_name, \"cpu.usage\"), value, null()), cpu_request=if(match(metric_name, \"cpu_request\"), value, null()), mem_usage=if(match(metric_name, \"memory.usage\"), value, null()), mem_request=if(match(metric_name, \"memory.request\"), value, null()) | stats avg(cpu_usage) as cpu_usage, avg(cpu_request) as cpu_request, avg(mem_usage) as mem_usage, avg(mem_request) as mem_request by k8s.pod.name | eval cpu_waste=if(cpu_request>cpu_usage, cpu_request-cpu_usage, 0), mem_waste=if(mem_request>mem_usage, mem_request-mem_usage, 0) | stats sum(cpu_waste) as wasted_cpu, sum(mem_waste) as wasted_memory_bytes | eval wasted_memory_gb=round(wasted_memory_bytes/1073741824, 1)",
+				"queryParameters": {
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"type": "ds.search"
+		}
+	},
+	"layout": {
+		"globalInputs": [
+			"input_global_trp",
+			"input_index_selector",
+			"input_cluster_selector",
+			"input_namespace_selector"
+		],
+		"layoutDefinitions": {
+			"layout_1": {
+				"options": {
+					"height": 2400
+				},
+				"structure": [
+					{
+						"item": "viz_total_potential_savings",
+						"position": {
+							"h": 130,
+							"w": 190,
+							"x": 10,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_overprovisioned_pods",
+						"position": {
+							"h": 130,
+							"w": 180,
+							"x": 210,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_underprovisioned_pods",
+						"position": {
+							"h": 130,
+							"w": 190,
+							"x": 400,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_pods_without_requests",
+						"position": {
+							"h": 130,
+							"w": 190,
+							"x": 600,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_wasted_cpu_cores",
+						"position": {
+							"h": 130,
+							"w": 190,
+							"x": 800,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_wasted_memory_gb",
+						"position": {
+							"h": 130,
+							"w": 190,
+							"x": 1000,
+							"y": 10
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_avg_cpu_utilization",
+						"position": {
+							"h": 240,
+							"w": 320,
+							"x": 10,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_avg_memory_utilization",
+						"position": {
+							"h": 240,
+							"w": 350,
+							"x": 340,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_cost_by_workload_type",
+						"position": {
+							"h": 240,
+							"w": 490,
+							"x": 700,
+							"y": 150
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_namespace_waste",
+						"position": {
+							"h": 280,
+							"w": 1180,
+							"x": 10,
+							"y": 400
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_rightsizing_opportunities",
+						"position": {
+							"h": 300,
+							"w": 1180,
+							"x": 10,
+							"y": 690
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_request_vs_usage",
+						"position": {
+							"h": 300,
+							"w": 590,
+							"x": 10,
+							"y": 990
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_memory_request_vs_usage",
+						"position": {
+							"h": 300,
+							"w": 580,
+							"x": 610,
+							"y": 990
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_cpu_efficiency_timeline",
+						"position": {
+							"h": 250,
+							"w": 590,
+							"x": 10,
+							"y": 1300
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_memory_efficiency_timeline",
+						"position": {
+							"h": 250,
+							"w": 580,
+							"x": 610,
+							"y": 1300
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_node_utilization",
+						"position": {
+							"h": 250,
+							"w": 590,
+							"x": 10,
+							"y": 1560
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_idle_pods",
+						"position": {
+							"h": 250,
+							"w": 580,
+							"x": 610,
+							"y": 1560
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_pods_without_limits",
+						"position": {
+							"h": 250,
+							"w": 590,
+							"x": 10,
+							"y": 1820
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_persistent_volume_waste",
+						"position": {
+							"h": 250,
+							"w": 580,
+							"x": 610,
+							"y": 1820
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_restarts_impact",
+						"position": {
+							"h": 250,
+							"w": 590,
+							"x": 10,
+							"y": 2080
+						},
+						"type": "block"
+					},
+					{
+						"item": "viz_recommendations",
+						"position": {
+							"h": 250,
+							"w": 580,
+							"x": 610,
+							"y": 2080
+						},
+						"type": "block"
+					}
+				],
+				"type": "absolute"
+			}
+		},
+		"tabs": {
+			"items": [
+				{
+					"label": "New tab",
+					"layoutId": "layout_1"
+				}
+			]
+		}
+	},
+	"applicationProperties": {
+		"hideEdit": true
+	}
+}
+    ]]></definition>
+</dashboard>

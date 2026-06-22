@@ -1,0 +1,125 @@
+<dashboard version="1.1">
+  <label>Search Scope</label>
+  <description>Choose the default base search used by the Suricata dashboards.</description>
+
+  <search>
+    <query>
+      | inputlookup suricata_settings.csv
+      | stats latest(eval(if(setting="search_scope", value, null()))) as search_scope latest(eval(if(setting="time_choice", value, null()))) as time_choice
+      | eval search_scope=coalesce(search_scope, "index=suricata")
+      | eval time_choice=coalesce(time_choice, "24h")
+      | eval earliest_tok=case(time_choice=="7d", "-7d@d", time_choice=="30d", "-30d@d", time_choice=="all", "0", true(), "-24h@h")
+      | eval latest_tok="now"
+    </query>
+    <done>
+      <set token="search_scope">$result.search_scope$</set>
+      <set token="form.search_scope">$result.search_scope$</set>
+      <set token="time_choice">$result.time_choice$</set>
+      <set token="form.time_choice">$result.time_choice$</set>
+      <set token="earliest_tok">$result.earliest_tok$</set>
+      <set token="latest_tok">$result.latest_tok$</set>
+    </done>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="time_choice">
+      <label>Time Range</label>
+      <choice value="24h">Last 24 hours</choice>
+      <choice value="7d">Last 7 days</choice>
+      <choice value="30d">Last 30 days</choice>
+      <choice value="all">All time</choice>
+      <default>24h</default>
+      <initialValue>24h</initialValue>
+      <change>
+        <condition value="24h">
+          <set token="earliest_tok">-24h@h</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="7d">
+          <set token="earliest_tok">-7d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="30d">
+          <set token="earliest_tok">-30d@d</set>
+          <set token="latest_tok">now</set>
+        </condition>
+        <condition value="all">
+          <set token="earliest_tok">0</set>
+          <set token="latest_tok">now</set>
+        </condition>
+      </change>
+    </input>
+
+    <input type="text" token="search_scope">
+      <label>Search Scope</label>
+      <default>index=suricata</default>
+      <initialValue>index=suricata</initialValue>
+    </input>
+    <input type="link" token="save_defaults" searchWhenChanged="true">
+      <label>Save Defaults</label>
+      <choice value="1">Save</choice>
+      <change>
+        <condition value="1">
+          <set token="save_scope">1</set>
+        </condition>
+      </change>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <html>
+        <h2>How to use this setting</h2>
+        <p> The dashboards in this app now accept a <code>Search Scope</code> value. The default is <code>
+          index=suricata</code>, but you can also use values like <code>index=pfsense</code>, <code>
+          source=eve.json</code> or <code>index=suricata source="eve.json"</code>. </p>
+        <p>Use <b>Save search scope and time range</b> to make these values the defaults when
+          dashboards are opened again. Other dashboards can still be changed temporarily for one
+          investigation.</p>
+      </html>
+    </panel>
+  </row>
+
+  <row depends="$save_scope$">
+    <panel>
+      <title>Saved Defaults</title>
+      <table>
+        <search>
+          <query>
+            | makeresults count=2
+            | where "$save_scope$"="1"
+            | streamstats count as row
+            | eval setting=if(row==1, "search_scope", "time_choice")
+            | eval value=if(row==1, $search_scope|s$, $time_choice|s$)
+            | table setting value
+            | outputlookup suricata_settings.csv
+            | stats count as saved_settings
+            | eval status="Saved default"
+            | eval saved_search_scope=$search_scope|s$
+            | eval saved_time_range=$time_choice|s$
+            | table status saved_search_scope saved_time_range saved_settings
+          </query>
+          <done>
+            <unset token="save_scope"></unset>
+            <unset token="form.save_scope"></unset>
+            <unset token="save_defaults"></unset>
+            <unset token="form.save_defaults"></unset>
+          </done>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Preview Events</title>
+      <table>
+        <search>
+          <query>$search_scope$ | head 20</query>
+          <earliest>$earliest_tok$</earliest>
+          <latest>$latest_tok$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+</dashboard>

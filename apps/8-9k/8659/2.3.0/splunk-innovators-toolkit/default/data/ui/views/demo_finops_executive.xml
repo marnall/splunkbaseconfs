@@ -1,0 +1,144 @@
+<form version="1.1"
+  stylesheet="splunk-innovators-toolkit:css/sit-panel-polish.css,splunk-innovators-toolkit:css/sit-text-whitelist.css,splunk-innovators-toolkit:themes/gradient-luxury.css,splunk-innovators-toolkit:backgrounds/animated-mesh-gradient.css,splunk-innovators-toolkit:animations/stagger-grid.css,splunk-innovators-toolkit:animations/hover-glow-border.css,splunk-innovators-toolkit:widgets/kpi-neon-glow.css"
+  script="splunk-innovators-toolkit:backgrounds/background-helper.js,splunk-innovators-toolkit:toggles/dark-light-mode.js,splunk-innovators-toolkit:toggles/fullscreen-mode.js,splunk-innovators-toolkit:toggles/auto-refresh-countdown.js,splunk-innovators-toolkit:js/sit-remix-button.js">
+  <label>FinOps Executive Brief</label>
+  <description>Real-time license utilization, indexing-volume burn rate, and search-cost attribution — packaged for executive consumption. Built on Splunk metering data. Powered by Innovators Toolkit.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time" searchWhenChanged="true">
+      <label>Reporting Window</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>License Utilization</title>
+      <single>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | stats sum(b) as bytes | eval gb=round(bytes/1024/1024/1024,2) | eval pct=round(gb/500*100,1) | table pct</query>
+          <earliest>@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="rangeValues">[80,95]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">of daily quota</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Daily Burn (GB)</title>
+      <single>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | stats sum(b) as bytes | eval gb=round(bytes/1024/1024/1024,2)</query>
+          <earliest>@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">GB</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x4FC3F7"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">today indexed</option>
+      </single>
+    </panel>
+    <panel>
+      <title>7-Day Avg</title>
+      <single>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | bin _time span=1d | stats sum(b) as bytes by _time | stats avg(bytes) as avg | eval gb=round(avg/1024/1024/1024,2) | table gb</query>
+          <earliest>-7d@d</earliest>
+          <latest>@d</latest>
+        </search>
+        <option name="unit">GB</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x4FC3F7"]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">trailing baseline</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Variance vs Baseline</title>
+      <single>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | bin _time span=1d | stats sum(b) as bytes by _time | streamstats avg(bytes) as baseline window=7 | tail 1 | eval delta=round((bytes-baseline)/baseline*100,1) | table delta</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="unit">%</option>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x5CC05C","0xF7B500","0xDC3545"]</option>
+        <option name="rangeValues">[10,25]</option>
+        <option name="useColors">1</option>
+        <option name="underLabel">today vs avg</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>License Burn — 7 Day Trend</title>
+      <chart>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | bin _time span=1d | stats sum(b) as bytes by _time | eval gb=round(bytes/1024/1024/1024,2) | table _time, gb</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.nullValueMode">zero</option>
+        <option name="charting.fieldColors">{"gb":"0xC9A961"}</option>
+        <option name="charting.axisTitleY.text">GB</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Cost Attribution by Source Type</title>
+      <chart>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage | stats sum(b) as bytes by st | sort -bytes | head 8 | eval gb=round(bytes/1024/1024/1024,2) | table st, gb</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.chart.showPercent">1</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 10 Indexes — Storage &amp; Cost</title>
+      <table>
+        <search>
+          <query>index=_internal source=*license_usage.log type=Usage
+| stats sum(b) as bytes, sum(eval(if(idx="","main",idx)="")) as _ by idx
+| where bytes&gt;0
+| eval gb=round(bytes/1024/1024/1024,2)
+| eval est_cost=round(gb*5.50,2)
+| sort -gb | head 10
+| rename idx as "Index", gb as "Size (GB)", est_cost as "Est. Cost (USD)"
+| table "Index", "Size (GB)", "Est. Cost (USD)"</query>
+          <earliest>0</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Search Cost — Top Users</title>
+      <table>
+        <search>
+          <query>index=_internal sourcetype=scheduler | stats count as searches, sum(run_time) as runtime by user | sort -runtime | head 10 | eval cost=round(runtime*0.001*4.20,2) | rename user as "User", searches as "Searches", runtime as "Runtime (s)", cost as "Est. Cost (USD)"</query>
+          <earliest>-7d@d</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

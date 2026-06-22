@@ -1,0 +1,480 @@
+<form version="1.1" theme="dark">
+  <label>Pannes en cours</label>
+  <description>Surveillance en temps réel des pannes électriques au Québec</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range">
+      <label>Période</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="region_filter">
+      <label>Région</label>
+      <choice value="*">Toutes les régions</choice>
+      <default>*</default>
+      <fieldForLabel>region</fieldForLabel>
+      <fieldForValue>region</fieldForValue>
+      <search>
+        <query>index=hydroquebec sourcetype=hydroquebec:pannes
+| stats latest(bis_timestamp) as derniere_collecte by region
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| table region
+| sort region</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="municipalite_filter">
+      <label>Municipalité</label>
+      <choice value="*">Toutes les municipalités</choice>
+      <default>*</default>
+      <fieldForLabel>municipalite</fieldForLabel>
+      <fieldForValue>municipalite</fieldForValue>
+      <search>
+        <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$"
+| stats latest(bis_timestamp) as derniere_collecte by municipalite
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| table municipalite
+| sort municipalite</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Pannes actives</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eventstats latest(bis_id) as dernier_bis_id
+| where bis_id = dernier_bis_id
+| dedup id_panne
+| stats count as pannes_actives</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,20]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Pannes en cours</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Clients affectés présentement</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eventstats latest(bis_id) as dernier_bis_id
+| where bis_id = dernier_bis_id
+| dedup id_panne
+| stats sum(nombre_clients) as clients_affectes</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,1000,10000]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients sans électricité</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Nouvelles pannes (dans la dernière heure)</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eval debut_epoch=strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| where debut_epoch &gt;= (now() - 3600)
+| dedup id_panne
+| stats count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,3,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Nouvelles pannes</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Durée moyenne actuelle</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| eval duree_minutes = round((now() - debut_epoch) / 60, 0)
+| stats avg(duree_minutes) as duree_moyenne
+| eval duree_moyenne = round(duree_moyenne, 0)
+| fields duree_moyenne</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Minutes en moyenne</option>
+        <option name="unit">min</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Clients Affectés (pannes &gt; 2h)</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| where (now() - debut_epoch) &gt;= 7200
+| stats sum(nombre_clients) as clients_affectes| appendpipe [stats count | where count=0 | eval clients_affectes=0]
+| fields - count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients (pannes &gt; 2h)</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Clients Affectés (pannes &gt; 6h)</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| where (now() - debut_epoch) &gt;= 21600
+| stats sum(nombre_clients) as clients_affectes| appendpipe [stats count | where count=0 | eval clients_affectes=0]
+| fields - count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,100]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients (pannes &gt; 6h)</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Clients Affectés (pannes &gt; 12h)</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| where (now() - debut_epoch) &gt;= 43200
+| stats sum(nombre_clients) as clients_affectes| appendpipe [stats count | where count=0 | eval clients_affectes=0]
+| fields - count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients (pannes &gt; 12h)</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Clients Affectés (pannes &gt; 24h)</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| where (now() - debut_epoch) &gt;= 86400
+| stats sum(nombre_clients) as clients_affectes| appendpipe [stats count | where count=0 | eval clients_affectes=0]
+| fields - count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients (pannes &gt; 12h)</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Carte Géographique des Pannes au Québec</title>
+      <map>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| eval description = municipalite . " - " . nombre_clients . " clients"
+| geostats latfield=latitude longfield=longitude sum(nombre_clients) as clients by municipalite globallimit=0</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">600</option>
+        <option name="mapping.choroplethLayer.colorBins">5</option>
+        <option name="mapping.choroplethLayer.colorMode">auto</option>
+        <option name="mapping.choroplethLayer.maximumColor">0xD93F3C</option>
+        <option name="mapping.choroplethLayer.minimumColor">0x62B3B2</option>
+        <option name="mapping.choroplethLayer.neutralPoint">0</option>
+        <option name="mapping.choroplethLayer.shapeOpacity">0.75</option>
+        <option name="mapping.choroplethLayer.showBorder">1</option>
+        <option name="mapping.data.maxClusters">100</option>
+        <option name="mapping.map.center">(46.8,-71.2)</option>
+        <option name="mapping.map.zoom">6</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.showTiles">1</option>
+        <option name="mapping.tileLayer.maxZoom">19</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+        <option name="mapping.type">marker</option>
+        <option name="refresh.display">progressbar</option>
+      </map>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Pannes par Cause</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| stats count by cause_desc
+| sort - count
+| rename cause_desc as "Cause", count as "Nombre"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Pannes par Statut</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| stats count by statut
+| sort - count
+| rename statut as "Statut", count as "Nombre"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 5 - Régions les Plus Affectées</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:pannes | stats latest(bis_id) as bis_id | return bis_id]
+| dedup id_panne
+| stats sum(nombre_clients) as total_clients by region
+| sort - total_clients
+| head 5
+| rename region as "Région", total_clients as "Clients affectés"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Région</option>
+        <option name="charting.axisTitleY.text">Clients affectés</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top 5 - Municipalités les Plus Affectées</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eventstats latest(bis_id) as dernier_bis_id
+| where bis_id = dernier_bis_id
+| dedup id_panne
+| stats sum(nombre_clients) as total_clients by municipalite
+| sort - total_clients
+| head 5
+| rename municipalite as "Municipalité", total_clients as "Clients affectés"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Municipalité</option>
+        <option name="charting.axisTitleY.text">Clients affectés</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.fieldColors">{"Clients affectés": 0xD93F3C}</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Détails des Pannes Actives</title>
+      <table>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eventstats latest(bis_id) as dernier_bis_id
+| where bis_id = dernier_bis_id
+| dedup id_panne
+| eval debut_epoch = strptime(date_debut, "%Y-%m-%d %H:%M:%S")
+| eval duree_minutes = round((now() - debut_epoch) / 60, 0)
+| eval coords = latitude . ", " . longitude
+| table date_debut municipalite adresse nombre_clients cause_desc statut date_fin_estimee duree_minutes coords
+| rename date_debut as "Début", municipalite as "Municipalité", adresse as "Adresse", nombre_clients as "Clients", cause_desc as "Cause", statut as "Statut", date_fin_estimee as "Fin estimée", duree_minutes as "Durée (min)", coords as "Coordonnées"
+| sort - Clients</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">true</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Clients">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+        <format type="color" field="Statut">
+          <colorPalette type="map">{"Travail assigné":"#F7BC38","Équipe au travail":"#6CB8CA","Équipe en route":"#F58F39","N":"#D93F3C"}</colorPalette>
+        </format>
+        <format type="number" field="Durée (min)">
+          <option name="precision">0</option>
+          <option name="unit">min</option>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Évolution des pannes dans le temps</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| bin _time span=1h
+| stats dc(id_panne) as pannes_actives by _time
+| timechart span=1h max(pannes_actives) as "Pannes actives"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Heure</option>
+        <option name="charting.axisTitleY.text">Nombre de pannes</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Clients affectés dans le temps</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| bin _time span=1h
+| stats latest(nombre_clients) as clients by _time, id_panne
+| stats sum(clients) as total_clients by _time
+| timechart span=1h max(total_clients) as "Clients sans électricité"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Heure</option>
+        <option name="charting.axisTitleY.text">Nombre de clients</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Statistiques de Collecte</title>
+      <table>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:pannes region="$region_filter$" municipalite="$municipalite_filter$"
+| eventstats latest(bis_id) as dernier_bis_id by sourcetype
+| where bis_id = dernier_bis_id
+| stats latest(bis_timestamp) as derniere_collecte, latest(bis_id) as bis_id, count as total_events by sourcetype
+| eval derniere_collecte = strftime(strptime(derniere_collecte, "%Y-%m-%dT%H:%M:%S"), "%Y-%m-%d %H:%M:%S")
+| eval age_minutes = round((now() - strptime(derniere_collecte, "%Y-%m-%d %H:%M:%S")) / 60, 0)
+| table sourcetype derniere_collecte age_minutes bis_id total_events
+| rename sourcetype as "Type", derniere_collecte as "Dernière Collecte", age_minutes as "Âge (min)", bis_id as "Version BIS", total_events as "Événements"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>1m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Âge (min)">
+          <colorPalette type="list">[#65A637,#F7BC38,#F58F39,#D93F3C]</colorPalette>
+          <scale type="threshold">0,20,60,120</scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

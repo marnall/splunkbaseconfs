@@ -1,0 +1,234 @@
+<dashboard version="2">
+  <label>Whisper - Web Link Graph &amp; Trust</label>
+  <description>Web link graph analysis showing inbound/outbound link profiles, suspicious link detection, and link-based trust scoring.</description>
+  <definition><![CDATA[
+
+
+
+{
+  "title": "Whisper - Web Link Graph & Trust",
+  "description": "Web link graph analysis showing inbound/outbound link profiles, suspicious link detection, and link-based trust scoring.",
+  "dataSources": {
+    "ds_link_summary": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_link_count=* | dedup domain sortby -_time | stats dc(domain) AS domains_with_links, sum(whisper_link_count) AS total_links, sum(whisper_suspicious_link_count) AS suspicious_links, avg(whisper_link_count) AS avg_links | eval avg_links=round(avg_links, 1) | eval suspicious_pct=if(total_links>0, round((suspicious_links/total_links)*100, 1), 0) | table domains_with_links, total_links, suspicious_links, suspicious_pct, avg_links | rename domains_with_links AS \"Linked Domains\", total_links AS \"Total Links\", suspicious_links AS \"Suspicious Links\", suspicious_pct AS \"Suspicious %\", avg_links AS \"Avg Links\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_suspicious_count": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_suspicious_link_count>0 | stats dc(domain) AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_no_inbound": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_inbound_links=0 whisper_link_count=* | stats dc(domain) AS display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_link_profile": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_link_count=* | dedup domain sortby -_time | table domain, whisper_outbound_links, whisper_inbound_links, whisper_link_count, whisper_suspicious_link_count | eval trust_score=case(whisper_suspicious_link_count>0 AND whisper_inbound_links=0, \"Suspicious - Isolated\", whisper_suspicious_link_count>0, \"Suspicious Links Detected\", whisper_inbound_links=0, \"No Inbound Links\", 1=1, \"Normal\") | sort - whisper_suspicious_link_count | head 50 | rename domain AS \"Domain\", whisper_outbound_links AS \"Outbound Links\", whisper_inbound_links AS \"Inbound Links\", whisper_link_count AS \"Total Links\", whisper_suspicious_link_count AS \"Suspicious Links\", trust_score AS \"Trust Assessment\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_suspicious_domains": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_suspicious_link_count>0 | dedup domain sortby -_time | table domain, whisper_suspicious_link_count, whisper_link_count, whisper_inbound_links, whisper_outbound_links | sort - whisper_suspicious_link_count | head 20 | rename domain AS \"Domain\", whisper_suspicious_link_count AS \"Suspicious Links\", whisper_link_count AS \"Total Links\", whisper_inbound_links AS \"Inbound\", whisper_outbound_links AS \"Outbound\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_isolated_domains": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_inbound_links=0 whisper_link_count=* | dedup domain sortby -_time | table domain, whisper_outbound_links, whisper_link_count, whisper_suspicious_link_count | sort - whisper_link_count | head 20 | rename domain AS \"Domain\", whisper_outbound_links AS \"Outbound Links\", whisper_link_count AS \"Total Links\", whisper_suspicious_link_count AS \"Suspicious Links\"",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_link_dist": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:enrichment\" whisper_link_count=* | dedup domain sortby -_time | eval link_range=case(whisper_link_count=0, \"0\", whisper_link_count<=5, \"1-5\", whisper_link_count<=20, \"6-20\", whisper_link_count<=100, \"21-100\", 1=1, \"100+\") | stats count BY link_range",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range"
+    ],
+    "structure": [
+      {
+        "item": "viz_link_summary",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 600,
+          "h": 150
+        }
+      },
+      {
+        "item": "viz_suspicious_count",
+        "position": {
+          "x": 600,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_no_inbound",
+        "position": {
+          "x": 900,
+          "y": 0,
+          "w": 300,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_link_dist",
+        "position": {
+          "x": 0,
+          "y": 150,
+          "w": 400,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_link_profile",
+        "position": {
+          "x": 400,
+          "y": 150,
+          "w": 800,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_suspicious_domains",
+        "position": {
+          "x": 0,
+          "y": 450,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_isolated_domains",
+        "position": {
+          "x": 600,
+          "y": 450,
+          "w": 600,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_link_summary": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_link_summary"
+      },
+      "title": "Web Link Coverage Summary"
+    },
+    "viz_suspicious_count": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_suspicious_count"
+      },
+      "title": "Domains with Suspicious Links",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#d41f1c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_no_inbound": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_no_inbound"
+      },
+      "title": "Isolated Domains (No Inbound)",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#f1813f",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_link_dist": {
+      "type": "viz.pie",
+      "dataSources": {
+        "primary": "ds_link_dist"
+      },
+      "title": "Link Count Distribution",
+      "options": {
+        "seriesColors": ["#7B68EE", "#006d9c", "#65a637", "#f8be34", "#f1813f"]
+      }
+    },
+    "viz_link_profile": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_link_profile"
+      },
+      "title": "Domain Link Profiles"
+    },
+    "viz_suspicious_domains": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_suspicious_domains"
+      },
+      "title": "Domains with Suspicious Link Profiles"
+    },
+    "viz_isolated_domains": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_isolated_domains"
+      },
+      "title": "Isolated Domains (No Inbound Links)"
+    }
+  }
+}
+
+
+
+  ]]></definition>
+</dashboard>

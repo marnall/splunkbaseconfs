@@ -1,0 +1,350 @@
+<form version="1.1" theme="light">
+    <label>USOM Monitoring</label>
+    <description>USOM TR-CERT threat-intelligence feed: indicator inventory, fetch-cycle health, and operational logs. Snapshot panels reflect the current lookup contents; time-series panels honour the time picker.</description>
+
+    <fieldset submitButton="false" autoRun="true">
+        <input type="time" token="tr" searchWhenChanged="true">
+            <label>Time range (cycles &amp; logs)</label>
+            <default>
+                <earliest>-24h@h</earliest>
+                <latest>now</latest>
+            </default>
+        </input>
+    </fieldset>
+
+    <!-- Hidden driver search: feeds the "Last fetch status" HTML panel
+         with status text + colour tokens. Single-value coloring can't
+         map string outputs onto rangeColors, so we route the colour
+         through tokens and render an inline-styled HTML block. -->
+    <search>
+        <query>
+            index=_internal sourcetype="usom_ti:stats"
+            | head 1
+            | eval status_label = upper(status)
+            | eval status_color = if(status="ok", "#65a637", "#dc4e41")
+            | fields status_label, status_color
+        </query>
+        <earliest>-30d</earliest>
+        <latest>now</latest>
+        <refresh>1m</refresh>
+        <refreshType>delay</refreshType>
+        <done>
+            <condition match="'job.resultCount' &gt; 0">
+                <set token="status_label">$result.status_label$</set>
+                <set token="status_color">$result.status_color$</set>
+            </condition>
+            <condition>
+                <set token="status_label">NO DATA</set>
+                <set token="status_color">#888888</set>
+            </condition>
+        </done>
+    </search>
+
+    <!-- ===== Row 1: KPI strip ===== -->
+    <row>
+        <panel>
+            <title>Total indicators</title>
+            <single>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | stats count
+                        | appendcols [| inputlookup usom_ip6_intel    | stats count AS c2]
+                        | appendcols [| inputlookup usom_ip6net_intel | stats count AS c3]
+                        | appendcols [| inputlookup usom_domain_intel | stats count AS c4]
+                        | appendcols [| inputlookup usom_url_intel    | stats count AS c5]
+                        | eval total = count + c2 + c3 + c4 + c5
+                        | fields total
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="colorBy">value</option>
+                <option name="useColors">1</option>
+                <option name="rangeColors">["0xdc4e41","0xf8be34","0x65a637","0x1e93c6"]</option>
+                <option name="rangeValues">[1,1000,10000]</option>
+                <option name="numberPrecision">0</option>
+                <option name="unitPosition">after</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Critical indicators (criticality_level &lt;= 3)</title>
+            <single>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | where criticality_level &lt;= 3 | stats count
+                        | appendcols [| inputlookup usom_ip6_intel    | where criticality_level &lt;= 3 | stats count AS c2]
+                        | appendcols [| inputlookup usom_ip6net_intel | where criticality_level &lt;= 3 | stats count AS c3]
+                        | appendcols [| inputlookup usom_domain_intel | where criticality_level &lt;= 3 | stats count AS c4]
+                        | appendcols [| inputlookup usom_url_intel    | where criticality_level &lt;= 3 | stats count AS c5]
+                        | eval total = count + c2 + c3 + c4 + c5
+                        | fields total
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="colorBy">value</option>
+                <option name="useColors">1</option>
+                <option name="colorMode">block</option>
+                <option name="rangeColors">["0x65a637","0xf8be34","0xdc4e41"]</option>
+                <option name="rangeValues">[100,1000]</option>
+                <option name="numberPrecision">0</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Last fetch</title>
+            <single>
+                <search>
+                    <query>
+                        index=_internal sourcetype="usom_ti:stats"
+                        | head 1
+                        | eval delta = now() - _time
+                        | eval value = case(
+                            delta &lt; 60,    round(delta) . "s ago",
+                            delta &lt; 3600,  round(delta/60) . "m ago",
+                            delta &lt; 86400, round(delta/3600) . "h ago",
+                            true(),         round(delta/86400) . "d ago")
+                        | fields value
+                    </query>
+                    <earliest>-30d</earliest>
+                    <latest>now</latest>
+                    <refresh>1m</refresh>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="colorMode">none</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Last fetch status</title>
+            <html>
+                <div style="display:flex;align-items:center;justify-content:center;height:120px;border-radius:4px;color:#ffffff;font-size:32px;font-weight:600;letter-spacing:0.08em;background:$status_color$">$status_label$</div>
+            </html>
+        </panel>
+    </row>
+
+    <!-- ===== Row 2: Type + criticality ===== -->
+    <row>
+        <panel>
+            <title>Indicators by type</title>
+            <chart>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | stats count AS total | eval type="ip"
+                        | append [| inputlookup usom_ip6_intel    | stats count AS total | eval type="ip6"     ]
+                        | append [| inputlookup usom_ip6net_intel | stats count AS total | eval type="ip6net"  ]
+                        | append [| inputlookup usom_domain_intel | stats count AS total | eval type="domain"  ]
+                        | append [| inputlookup usom_url_intel    | stats count AS total | eval type="url"     ]
+                        | table type, total
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">pie</option>
+                <option name="charting.chart.sliceCollapsingThreshold">0</option>
+                <option name="charting.chart.showDataLabels">all</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">right</option>
+                <option name="height">320</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Indicators by criticality (1 = most critical)</title>
+            <chart>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | stats count BY criticality_level
+                        | append [| inputlookup usom_ip6_intel    | stats count BY criticality_level]
+                        | append [| inputlookup usom_ip6net_intel | stats count BY criticality_level]
+                        | append [| inputlookup usom_domain_intel | stats count BY criticality_level]
+                        | append [| inputlookup usom_url_intel    | stats count BY criticality_level]
+                        | stats sum(count) AS count BY criticality_level
+                        | sort criticality_level
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.axisTitleX.text">criticality_level</option>
+                <option name="charting.axisTitleY.text">indicators</option>
+                <option name="charting.seriesColors">[0xdc4e41]</option>
+                <option name="height">320</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- ===== Row 3: Categories / Sources ===== -->
+    <row>
+        <panel>
+            <title>Top categories</title>
+            <chart>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | stats count BY category
+                        | append [| inputlookup usom_ip6_intel    | stats count BY category]
+                        | append [| inputlookup usom_ip6net_intel | stats count BY category]
+                        | append [| inputlookup usom_domain_intel | stats count BY category]
+                        | append [| inputlookup usom_url_intel    | stats count BY category]
+                        | stats sum(count) AS count BY category
+                        | sort -count
+                        | head 15
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">bar</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.seriesColors">[0x1e93c6]</option>
+                <option name="height">340</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Top sources</title>
+            <chart>
+                <search>
+                    <query>
+                        | inputlookup usom_ip_intel    | stats count BY source
+                        | append [| inputlookup usom_ip6_intel    | stats count BY source]
+                        | append [| inputlookup usom_ip6net_intel | stats count BY source]
+                        | append [| inputlookup usom_domain_intel | stats count BY source]
+                        | append [| inputlookup usom_url_intel    | stats count BY source]
+                        | stats sum(count) AS count BY source
+                        | sort -count
+                        | head 15
+                    </query>
+                    <earliest>-1m</earliest>
+                    <latest>now</latest>
+                    <refresh>5m</refresh>
+                </search>
+                <option name="charting.chart">bar</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.seriesColors">[0x6db7c6]</option>
+                <option name="height">340</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- ===== Row 4: Time series ===== -->
+    <row>
+        <panel>
+            <title>Fetch cycles</title>
+            <chart>
+                <search>
+                    <query>
+                        index=_internal sourcetype="usom_ti:stats"
+                        | timechart span=1h count BY status
+                    </query>
+                    <earliest>$tr.earliest$</earliest>
+                    <latest>$tr.latest$</latest>
+                    <refresh>5m</refresh>
+                    <refreshType>delay</refreshType>
+                </search>
+                <option name="charting.chart">column</option>
+                <option name="charting.chart.stackMode">stacked</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="charting.fieldColors">{"ok":0x65a637,"error":0xdc4e41}</option>
+                <option name="height">280</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>Per-cycle indicator counts</title>
+            <chart>
+                <search>
+                    <query>
+                        index=_internal sourcetype="usom_ti:stats" status=ok
+                        | rename counts.ip AS ip, counts.ip6 AS ip6, counts.ip6net AS ip6net, counts.domain AS domain, counts.url AS url
+                        | timechart span=1h sum(ip) AS ip, sum(ip6) AS ip6, sum(ip6net) AS ip6net, sum(domain) AS domain, sum(url) AS url
+                    </query>
+                    <earliest>$tr.earliest$</earliest>
+                    <latest>$tr.latest$</latest>
+                    <refresh>5m</refresh>
+                    <refreshType>delay</refreshType>
+                </search>
+                <option name="charting.chart">line</option>
+                <option name="charting.chart.nullValueMode">connect</option>
+                <option name="charting.drilldown">none</option>
+                <option name="charting.legend.placement">bottom</option>
+                <option name="height">280</option>
+            </chart>
+        </panel>
+    </row>
+
+    <!-- ===== Row 5: Recent cycles ===== -->
+    <row>
+        <panel>
+            <title>Recent fetch cycles</title>
+            <table>
+                <search>
+                    <query>
+                        index=_internal sourcetype="usom_ti:stats"
+                        | eval duration = round('duration_seconds', 2)
+                        | rename counts.ip AS ip, counts.ip6 AS ip6, counts.ip6net AS ip6net, counts.domain AS domain, counts.url AS url
+                        | table _time, host, stanza, status, duration, ip, ip6, ip6net, domain, url, error
+                        | sort -_time
+                        | head 25
+                    </query>
+                    <earliest>$tr.earliest$</earliest>
+                    <latest>$tr.latest$</latest>
+                    <refresh>5m</refresh>
+                    <refreshType>delay</refreshType>
+                </search>
+                <option name="drilldown">none</option>
+                <option name="count">25</option>
+                <option name="wrap">true</option>
+                <format type="color" field="status">
+                    <colorPalette type="map">{"ok":#65a637,"error":#dc4e41}</colorPalette>
+                </format>
+                <format type="number" field="ip"><option name="precision">0</option></format>
+                <format type="number" field="ip6"><option name="precision">0</option></format>
+                <format type="number" field="ip6net"><option name="precision">0</option></format>
+                <format type="number" field="domain"><option name="precision">0</option></format>
+                <format type="number" field="url"><option name="precision">0</option></format>
+            </table>
+        </panel>
+    </row>
+
+    <!-- ===== Row 6: Logs ===== -->
+    <row>
+        <panel>
+            <title>Operational logs</title>
+            <event>
+                <search>
+                    <query>
+                        index=_internal sourcetype="ta_usom_cti:log"
+                        | head 200
+                    </query>
+                    <earliest>$tr.earliest$</earliest>
+                    <latest>$tr.latest$</latest>
+                    <refresh>5m</refresh>
+                    <refreshType>delay</refreshType>
+                </search>
+                <option name="count">25</option>
+                <option name="list.drilldown">none</option>
+                <option name="list.wrap">true</option>
+                <option name="type">list</option>
+            </event>
+        </panel>
+    </row>
+
+    <row>
+        <panel>
+            <html>
+                <div style="text-align:center;color:#888;font-size:11px;padding:6px 0;">
+                    © 2026 DataVira Teknoloji A.Ş. · Apache License 2.0 ·
+                    <a href="https://datavira.com" target="_blank" rel="noopener">datavira.com</a> ·
+                    <a href="mailto:support+usom-cti@datavira.com">support+usom-cti@datavira.com</a>
+                </div>
+            </html>
+        </panel>
+    </row>
+</form>

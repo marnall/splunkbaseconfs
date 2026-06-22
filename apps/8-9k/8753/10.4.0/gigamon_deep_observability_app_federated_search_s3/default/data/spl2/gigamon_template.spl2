@@ -1,0 +1,69 @@
+@template(
+    runtime: ["ingestProcessor"],
+    sourcetype: {field: "sourcetype", operator: "EQUAL", values: ["gigamon:traffic"]},
+    name: "Gigamon template for PCI Compliance use case",
+    description: "This implements the Gigamon template for PCI Compliance use case that is currently shipped in the DMX App",
+    events: [
+        {_raw: "{\"ts\":\"Thu May 14 02:29:28 2026\",\"vendor\":\"Gigamon\",\"version\":\"6.6.00\",\"generator\":\"gs_apps_appInst18_ec2fc7c2-7a46-dc49-834d-3a7424cef6b1\",\"dst_mac\":\"02:01:93:9c:99:4c\",\"src_mac\":\"02:01:93:9c:98:3c\",\"src_ip\":\"10.1.2.116\",\"dst_ip\":\"11.1.0.251\",\"protocol\":\"6\",\"src_port\":\"41303\",\"dst_port\":\"443\",\"ssl_common_name\":\"*.dummy.co\",\"ssl_issuer\":\"*.dummy.co\",\"ssl_server_name\":\"u.dummy.co\",\"ssl_validity_not_before\":\"2026-05-14 05:06:45\",\"ssl_validity_not_after\":\"2026-05-14 05:06:45\",\"ssl_cipher_suite_id\":\"47\",\"ssl_protocol_version\":\"771\",\"ssl_certificate_subject_cn\":\"*.scdn.co\",\"ssl_ext_sig_algorithms_len\":\"30\",\"ssl_ext_sig_algorithm_scheme\":\"1537\",\"ssl_ext_sig_algorithm_hash\":\"6\",\"ssl_ext_sig_algorithm_sig\":\"1\",\"app_id\":\"534\",\"tcp_flags\":\"12306\",\"src_bytes\":\"2244\",\"dst_bytes\":\"30590\",\"src_packets\":\"28\",\"dst_packets\":\"23\",\"start_time\":\"2026:05:14 02:28:35.732\",\"end_time\":\"2026:05:14 02:28:35.788\",\"flow_start_sec\":\"2026:05:14 02:28:35\",\"flow_end_sec\":\"2026:05:14 02:28:35\",\"sys_up_time_first\":\"85489728\",\"sys_up_time_last\":\"85489784\",\"end_reason\":\"1\",\"app_name\":\"spotify\",\"id\":\"5946597704766324737\",\"seq_num\":\"557829\"}"}]
+);
+/*
+ * This pipeline inspects JSON events and routes different subsets of data
+ * to specific destinations.
+ */
+$pipeline =
+| from $source
+
+/* 
+ * Expand any nested JSON structures in _raw into top level fields so they are
+ * easier to inspect and route on.
+ */
+| flatten _raw
+
+/*
+ * Build a JSON array of the top level keys present in _raw.
+ * This will be used with any(...) to detect SSL related fields.
+ */
+| eval event_keys = json_keys(_raw)
+
+/*
+ * Split the stream into two logical branches:
+ *  - Branch 1: ssl_cipher_suite_id , ssl_protocol_version, 5 tuple → Splunk indexer
+ *  - Branch 2: Send all JSON records → Amazon S3
+ */
+| branch
+[
+  /*
+   * BRANCH 1:
+   * Keep events that have SSL related fields:
+   * Then send them to the target Splunk indexer with a fixed index name.
+   */
+  | where any(
+      event_keys,
+      $k -> in($k, ["ssl_protocol_version", "ssl_cipher_suite_id"])
+    )
+
+  | eval _raw = json_object(
+    "id", id,
+    "app_name", app_name,
+    "src_ip", src_ip,
+    "dst_ip", dst_ip,
+    "src_port", src_port,
+    "dst_port", dst_port,
+    "ssl_protocol_version", ssl_protocol_version,
+    "ssl_cipher_suite_id", ssl_cipher_suite_id
+  )
+  /* Keep only routing relevant fields */
+  | fields _raw, source, sourcetype, host
+  /* Set the target index for these events */
+  | eval index = "main"
+  /* Route events to the Splunk indexer destination */
+  | into $splunk_indexer
+],
+[
+  /*
+   * BRANCH 2:
+   * Send all JSON records to Amazon S3
+   */
+  | fields source, sourcetype, host, _raw
+  | into $gigamon_dataset2
+];

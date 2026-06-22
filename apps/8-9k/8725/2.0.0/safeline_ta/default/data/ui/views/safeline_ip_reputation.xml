@@ -1,0 +1,309 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — IP Reputation &amp; Hunt</label>
+  <description>Source IP profiling, repeat offenders, persistence, and threat hunting.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-7d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="ip_tok" searchWhenChanged="true">
+      <label>IP filter (regex ok)</label>
+      <default>*</default>
+      <prefix>src_ip=</prefix>
+    </input>
+    <input type="dropdown" token="ctry_tok" searchWhenChanged="true">
+      <label>Country</label>
+      <choice value="*">All countries</choice>
+      <default>*</default>
+      <prefix>src_country=</prefix>
+      <fieldForLabel>src_country</fieldForLabel>
+      <fieldForValue>src_country</fieldForValue>
+      <search>
+        <query>`safeline_waf` src_country=* | stats count by src_country | sort - count</query>
+        <earliest>$tr.earliest$</earliest>
+        <latest>$tr.latest$</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <!-- Single IP deep-dive (auto-shown when ip_tok is set to a real IP) -->
+  <row depends="$ip_real$">
+    <panel>
+      <html>
+        <h3>Profile of $ip_tok$</h3>
+      </html>
+    </panel>
+  </row>
+
+  <!-- IP risk scoreboard -->
+  <row>
+    <panel>
+      <single>
+        <title>Active source IPs</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ | stats dc(src_ip)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Attacker IPs (≥1 attack)</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ is_attack=1 | stats dc(src_ip)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[1,10]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Heavy attackers (≥10 attacks)</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ is_attack=1
+| stats count AS attacks by src_ip
+| where attacks&gt;=10
+| stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xdc4e41"]</option>
+        <option name="rangeValues">[1]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>New attackers (period)</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ is_attack=1
+| stats earliest(_time) AS first_seen by src_ip
+| where first_seen &gt;= relative_time(now(),"$tr.earliest$")
+| stats count</query>
+          <earliest>-30d</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Multi-site attackers</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ is_attack=1
+| stats dc(site_url) AS sites by src_ip
+| where sites&gt;=2
+| stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xdc4e41"]</option>
+        <option name="rangeValues">[1]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- IP risk scoreboard -->
+  <row>
+    <panel>
+      <table>
+        <title>IP risk scoreboard — sorted by computed risk score</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ src_ip=*
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        count(eval(severity=="critical")) AS critical
+        count(eval(severity=="high")) AS high
+        dc(attack_type) AS distinct_attack_types
+        dc(site_url) AS sites_targeted
+        dc(urlpath) AS distinct_paths
+        values(attack_type) AS attack_types
+        values(site_name) AS sites
+        earliest(_time) AS first_seen
+        latest(_time) AS last_seen
+        by src_ip src_country src_city
+| eval risk_score = (critical*50) + (high*15) + (attacks*2) + (sites_targeted*5) + (distinct_attack_types*3)
+| eval persistence_min = round((last_seen - first_seen)/60, 0)
+| eval first_seen = strftime(first_seen,"%F %T")
+| eval last_seen = strftime(last_seen,"%F %T")
+| where attacks &gt; 0 OR risk_score &gt; 0
+| sort - risk_score
+| head 50
+| fields src_ip src_country src_city risk_score requests attacks critical high blocked distinct_attack_types attack_types sites_targeted sites distinct_paths persistence_min first_seen last_seen</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <format type="color" field="risk_score">
+          <colorPalette type="minMidMax" minColor="#55c98f" midColor="#f1813f" maxColor="#9c1f1f"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="50" maxType="number" maxValue="500"/>
+        </format>
+        <format type="color" field="critical">
+          <colorPalette type="list">[#55c98f,#9c1f1f]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <eval token="ip_tok">$row.src_ip$</eval>
+          <set token="ip_real">1</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Persistence analysis -->
+  <row>
+    <panel>
+      <chart>
+        <title>Repeat offenders — attack count distribution</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ $ctry_tok$ is_attack=1
+| stats count AS attacks by src_ip
+| eval bucket = case(
+    attacks=1, "1 attack",
+    attacks&lt;=5, "2-5",
+    attacks&lt;=10, "6-10",
+    attacks&lt;=50, "11-50",
+    attacks&lt;=100, "51-100",
+    attacks&gt;100, "100+")
+| stats count AS ips by bucket
+| sort bucket</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Country reputation (attacks per country)</title>
+        <search>
+          <query>`safeline_waf` $ctry_tok$ src_country=* is_attack=1
+| stats count AS attacks dc(src_ip) AS unique_ips by src_country
+| sort - attacks | head 15</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>New attackers (first seen in this period)</title>
+        <search>
+          <query>`safeline_waf` $ctry_tok$ is_attack=1
+| eventstats earliest(_time) AS first_ever by src_ip
+| where first_ever &gt;= relative_time(now(), "$tr.earliest$")
+| stats count AS attacks
+        dc(attack_type) AS types
+        values(attack_type) AS attack_types
+        dc(site_url) AS sites
+        latest(_time) AS last_seen
+        by src_ip src_country src_city
+| eval last_seen=strftime(last_seen,"%F %T")
+| sort - attacks | head 25</query>
+          <earliest>-30d</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>Multi-site attackers (1 IP, ≥2 sites)</title>
+        <search>
+          <query>`safeline_waf` $ctry_tok$ is_attack=1
+| stats dc(site_url) AS sites_count
+        count AS attacks
+        values(site_name) AS sites
+        values(attack_type) AS attack_types
+        by src_ip src_country
+| where sites_count&gt;=2
+| sort - sites_count - attacks | head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Single IP deep-dive (rendered when ip_tok matches a real IP) -->
+  <row depends="$ip_real$">
+    <panel>
+      <chart>
+        <title>$ip_tok$ — Activity timeline</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ | timechart count by action_cim</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"allowed":0x55c98f,"blocked":0xdc4e41}</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>$ip_tok$ — Attack types</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$ is_attack=1 | top limit=10 attack_type</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row depends="$ip_real$">
+    <panel>
+      <table>
+        <title>$ip_tok$ — Sites &amp; paths hit</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$
+| stats count AS hits
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        values(method) AS methods
+        values(status_code) AS statuses
+        latest(_time) AS last_seen
+        by site_name urlpath
+| eval last_seen=strftime(last_seen,"%F %T")
+| sort - hits | head 30</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row depends="$ip_real$">
+    <panel>
+      <table>
+        <title>$ip_tok$ — Recent events</title>
+        <search>
+          <query>`safeline_waf` $ip_tok$
+| sort - _time | head 100
+| table _time method site_name urlpath status_code attack_type severity action rule_id user_agent ja4_fingerprint</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="count">25</option>
+      </table>
+    </panel>
+  </row>
+
+</form>

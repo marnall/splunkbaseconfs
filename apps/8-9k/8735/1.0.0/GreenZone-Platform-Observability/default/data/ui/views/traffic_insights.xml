@@ -1,0 +1,69 @@
+<dashboard version="2" theme="dark">
+    <label>Traffic Insights</label>
+    <description>Monitor network traffic patterns, top talkers, and bandwidth utilization</description>
+    <definition><![CDATA[
+{
+  "title": "Traffic Insights",
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {"token": "time_range", "defaultValue": "-24h@h,now"},
+      "title": "Time Range"
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {"queryParameters": {"earliest": "$time_range.earliest$", "latest": "$time_range.latest$"}}
+      }
+    }
+  },
+  "visualizations": {
+    "viz_total_traffic": {"type": "splunk.singlevalue", "title": "Total Traffic (24h)", "dataSources": {"primary": "ds_total_traffic"}, "options": {"backgroundColor": "transparent", "numberPrecision": 2, "majorFontSize": 48, "unit": "GB"}},
+    "viz_allowed_traffic": {"type": "splunk.singlevalue", "title": "Allowed Traffic", "dataSources": {"primary": "ds_allowed_traffic"}, "options": {"backgroundColor": "#2ECC71", "numberPrecision": 2, "majorFontSize": 48, "unit": "GB"}},
+    "viz_blocked_traffic": {"type": "splunk.singlevalue", "title": "Blocked Connections", "dataSources": {"primary": "ds_blocked_traffic"}, "options": {"backgroundColor": "#E74C3C", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_unique_sources": {"type": "splunk.singlevalue", "title": "Unique Source IPs", "dataSources": {"primary": "ds_unique_sources"}, "options": {"backgroundColor": "#3498DB", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_traffic_trend": {"type": "splunk.area", "title": "Traffic Volume Trend (24 Hours)", "dataSources": {"primary": "ds_traffic_trend"}, "options": {"backgroundColor": "transparent", "yAxisTitleText": "GB per Hour"}},
+    "viz_protocol_distribution": {"type": "splunk.pie", "title": "Traffic by Protocol", "dataSources": {"primary": "ds_protocol_distribution"}, "options": {"showDonutHole": true, "backgroundColor": "transparent"}},
+    "viz_top_talkers_src": {"type": "splunk.table", "title": "Top 10 Source IPs by Traffic", "dataSources": {"primary": "ds_top_talkers_src"}, "options": {"count": 10}},
+    "viz_top_talkers_dest": {"type": "splunk.table", "title": "Top 10 Destination IPs by Traffic", "dataSources": {"primary": "ds_top_talkers_dest"}, "options": {"count": 10}},
+    "viz_top_blocked_ips": {"type": "splunk.table", "title": "Top 10 Blocked Source IPs", "dataSources": {"primary": "ds_top_blocked_ips"}, "options": {"count": 10}},
+    "viz_top_ports": {"type": "splunk.table", "title": "Top 20 Destination Ports", "dataSources": {"primary": "ds_top_ports"}, "options": {"count": 20}},
+    "viz_allow_deny_ratio": {"type": "splunk.line", "title": "Allow/Deny Ratio Over Time", "dataSources": {"primary": "ds_allow_deny_ratio"}, "options": {"backgroundColor": "transparent", "lineWidth": 2, "yAxisTitleText": "Connections"}},
+    "viz_bandwidth_by_protocol": {"type": "splunk.column", "title": "Bandwidth by Protocol", "dataSources": {"primary": "ds_bandwidth_by_protocol"}, "options": {"backgroundColor": "transparent", "yAxisTitleText": "GB"}}
+  },
+  "dataSources": {
+    "ds_total_traffic": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | stats sum(bytes) as total_bytes | eval total_gb=round(total_bytes/1024/1024/1024, 2) | fields total_gb"}},
+    "ds_allowed_traffic": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | where action=\"allowed\" | stats sum(bytes) as total_bytes | eval total_gb=round(total_bytes/1024/1024/1024, 2) | fields total_gb"}},
+    "ds_blocked_traffic": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | where action=\"blocked\" | stats count"}},
+    "ds_unique_sources": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | stats dc(src_ip) as unique_ips | fields unique_ips"}},
+    "ds_traffic_trend": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | bin _time span=1h | stats sum(bytes) as bytes by _time | eval gb=round(bytes/1024/1024/1024, 2) | timechart span=1h sum(gb) as \"Traffic (GB)\""}},
+    "ds_protocol_distribution": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | `traffic_protocol_classification` | stats sum(bytes) as bytes by protocol | eval gb=round(bytes/1024/1024/1024, 2) | sort -gb | head 10"}},
+    "ds_top_talkers_src": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | stats sum(bytes) as total_bytes, count as connections by src_ip | eval \"Traffic (GB)\"=round(total_bytes/1024/1024/1024, 2) | sort -total_bytes | head 10 | table src_ip, \"Traffic (GB)\", connections | rename src_ip as \"Source IP\", connections as \"Connections\""}},
+    "ds_top_talkers_dest": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | stats sum(bytes) as total_bytes, count as connections by dest_ip | eval \"Traffic (GB)\"=round(total_bytes/1024/1024/1024, 2) | sort -total_bytes | head 10 | table dest_ip, \"Traffic (GB)\", connections | rename dest_ip as \"Destination IP\", connections as \"Connections\""}},
+    "ds_top_blocked_ips": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | where action=\"blocked\" | stats count as \"Block Count\" by src_ip | sort -count | head 10 | rename src_ip as \"Source IP\""}},
+    "ds_top_ports": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | `traffic_protocol_classification` | stats count as connections, sum(bytes) as bytes by dest_port, protocol | eval \"Traffic (MB)\"=round(bytes/1024/1024, 2) | sort -connections | head 20 | table dest_port, protocol, connections, \"Traffic (MB)\" | rename dest_port as \"Port\", protocol as \"Protocol\", connections as \"Connections\""}},
+    "ds_allow_deny_ratio": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | bin _time span=15m | stats count(eval(action=\"allowed\")) as allowed, count(eval(action=\"blocked\")) as blocked by _time | timechart span=15m avg(allowed) as \"Allowed\", avg(blocked) as \"Blocked\""}},
+    "ds_bandwidth_by_protocol": {"type": "ds.search", "options": {"query": "| `traffic_network_data` | `traffic_protocol_classification` | stats sum(bytes) as bytes by protocol | eval \"Traffic (GB)\"=round(bytes/1024/1024/1024, 2) | sort -bytes | head 10 | fields protocol, \"Traffic (GB)\" | rename protocol as \"Protocol\""}}
+  },
+  "layout": {
+    "type": "grid",
+    "structure": [
+      {"item": "viz_total_traffic", "type": "block", "position": {"x": 0, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_allowed_traffic", "type": "block", "position": {"x": 300, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_blocked_traffic", "type": "block", "position": {"x": 600, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_unique_sources", "type": "block", "position": {"x": 900, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_traffic_trend", "type": "block", "position": {"x": 0, "y": 150, "w": 800, "h": 300}},
+      {"item": "viz_protocol_distribution", "type": "block", "position": {"x": 800, "y": 150, "w": 400, "h": 300}},
+      {"item": "viz_top_talkers_src", "type": "block", "position": {"x": 0, "y": 450, "w": 600, "h": 400}},
+      {"item": "viz_top_talkers_dest", "type": "block", "position": {"x": 600, "y": 450, "w": 600, "h": 400}},
+      {"item": "viz_allow_deny_ratio", "type": "block", "position": {"x": 0, "y": 850, "w": 800, "h": 300}},
+      {"item": "viz_bandwidth_by_protocol", "type": "block", "position": {"x": 800, "y": 850, "w": 400, "h": 300}},
+      {"item": "viz_top_blocked_ips", "type": "block", "position": {"x": 0, "y": 1150, "w": 600, "h": 400}},
+      {"item": "viz_top_ports", "type": "block", "position": {"x": 600, "y": 1150, "w": 600, "h": 400}}
+    ],
+    "globalInputs": ["input_time_range"]
+  }
+}
+    ]]></definition>
+</dashboard>

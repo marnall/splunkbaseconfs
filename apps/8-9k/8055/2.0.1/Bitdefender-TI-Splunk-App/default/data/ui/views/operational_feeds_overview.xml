@@ -1,0 +1,133 @@
+<form version="1.1">
+  <label>Feeds Overview</label>
+  <fieldset submitButton="true" autoRun="true">
+    <input type="dropdown" token="selected_index">
+      <label>Select Index</label>
+      <fieldForLabel>index</fieldForLabel>
+      <fieldForValue>index</fieldForValue>
+      <search>
+        <query>| eventcount summarize=false index=* |dedup index | fields index</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>bitdefender_ti_index</default>
+    </input>
+    <input type="time" token="time_range">
+      <label>Select Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+      <earliest>-24h@h</earliest>
+      <latest>now</latest>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Distinct Count of IPs</title>
+      <single>
+        <title>IPs</title>
+        <search>
+          <query>index="$selected_index$" | search sourcetype="bitdefender-ip-feed" | stats dc(ip) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Distinct Count of Web Indicators</title>
+      <single>
+        <title>Domains and URLs</title>
+        <search>
+          <query>index="$selected_index$" | search sourcetype="bitdefender-web-feed" | stats dc(url) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Distinct Count of Files</title>
+      <single>
+        <title>Files</title>
+        <search>
+          <query>index="$selected_index$" | search sourcetype="bitdefender-file-feed" | stats dc(md5) as count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Actors Distribution</title>
+      <chart>
+        <title>Actors</title>
+        <search>
+          <query>index="$selected_index$" | stats count by actor_name | sort -count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Threat Types Distribution</title>
+      <chart>
+        <title>Threat Types</title>
+        <search>
+          <query>index="$selected_index$" | stats count by threat_types{} | sort -count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>MITRE Attack Distribution</title>
+      <table>
+        <title>Mitre Attack</title>
+        <search>
+          <query>index="$selected_index$" | stats count by mitre_attack{} | eventstats sum(count) as total | eval percent=round((count/total)*100, 2)  . "%" | sort -count | rename mitre_attack{} as "Technique / Subtechnique", count as Occurrences, percent as Percent | fields "Technique / Subtechnique" Occurrences Percent</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Affected Countries</title>
+      <chart>
+        <search>
+          <query>index="$selected_index$" | spath path=affected_countries{}.country output=countries | search countries!=others | top 20 countries</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Affected Industries</title>
+      <chart>
+        <search>
+          <query>index="$selected_index$" | spath path=affected_industries{}.industry output=industries | search industries!=others | top 20 industries</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">0</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+</form>

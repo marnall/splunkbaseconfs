@@ -1,0 +1,156 @@
+<dashboard version="1.1" theme="dark">
+  <label>POA&amp;M Report</label>
+  <description>Plan of Action and Milestones - Open findings requiring remediation (shows latest checklist per host/STIG only)</description>
+
+  <!-- BASE SEARCH: runs once, all panels post-process from this -->
+  <search id="base_latest">
+    <query>`stig_latest` | fields *</query>
+    <earliest>0</earliest>
+    <latest>now</latest>
+  </search>
+
+  <fieldset submitButton="false">
+    <input type="dropdown" token="selected_host" searchWhenChanged="true">
+      <label>Host</label>
+      <choice value="*">All Hosts</choice>
+      <default>*</default>
+      <fieldForLabel>asset_host_name</fieldForLabel>
+      <fieldForValue>asset_host_name</fieldForValue>
+      <search base="base_latest">
+        <query>| dedup asset_host_name | sort asset_host_name | table asset_host_name</query>
+      </search>
+    </input>
+    <input type="dropdown" token="selected_stig" searchWhenChanged="true">
+      <label>STIG</label>
+      <choice value="*">All STIGs</choice>
+      <default>*</default>
+      <fieldForLabel>stig_title</fieldForLabel>
+      <fieldForValue>stig_title</fieldForValue>
+      <search base="base_latest">
+        <query>| dedup stig_title | sort stig_title | table stig_title</query>
+      </search>
+    </input>
+  </fieldset>
+
+  <!-- Summary Row -->
+  <row>
+    <panel>
+      <title>Total Open Findings</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xf7bc38","0xd93f3c"]</option>
+        <option name="rangeValues">[0,50]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CAT I (High) Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT I" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xd93f3c"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CAT II (Medium) Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT II" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0xf7bc38","0xd93f3c"]</option>
+        <option name="rangeValues">[0,25]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>CAT III (Low) Open</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT III" | stats count</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="useColors">1</option>
+        <option name="rangeColors">["0x65a637","0x6DB7C6"]</option>
+        <option name="rangeValues">[0]</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Affected Hosts</title>
+      <single>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" | stats dc(asset_host_name)</query>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- POA&M Table - CAT I -->
+  <row>
+    <panel>
+      <title>CAT I (High) - Requires Immediate Action</title>
+      <table>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT I"
+| eval POA_M_ID="POA&amp;M-".substr(md5(vuln_vuln_num.asset_host_name),1,8)
+| table POA_M_ID, asset_host_name, asset_host_ip, stig_title, vuln_vuln_num, vuln_rule_ver, vuln_rule_title, vuln_finding_details, vuln_comments
+| rename POA_M_ID AS "POA&amp;M ID", asset_host_name AS "Host", asset_host_ip AS "IP Address", stig_title AS "STIG", vuln_vuln_num AS "Vuln ID", vuln_rule_ver AS "Rule", vuln_rule_title AS "Weakness Description", vuln_finding_details AS "Finding Details", vuln_comments AS "Scheduled Completion/Milestones"
+| sort Host, "Vuln ID"</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">50</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- POA&M Table - CAT II -->
+  <row>
+    <panel>
+      <title>CAT II (Medium) - Requires Planned Remediation</title>
+      <table>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT II"
+| eval POA_M_ID="POA&amp;M-".substr(md5(vuln_vuln_num.asset_host_name),1,8)
+| table POA_M_ID, asset_host_name, asset_host_ip, stig_title, vuln_vuln_num, vuln_rule_ver, vuln_rule_title, vuln_finding_details, vuln_comments
+| rename POA_M_ID AS "POA&amp;M ID", asset_host_name AS "Host", asset_host_ip AS "IP Address", stig_title AS "STIG", vuln_vuln_num AS "Vuln ID", vuln_rule_ver AS "Rule", vuln_rule_title AS "Weakness Description", vuln_finding_details AS "Finding Details", vuln_comments AS "Scheduled Completion/Milestones"
+| sort Host, "Vuln ID"</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">50</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- POA&M Table - CAT III -->
+  <row>
+    <panel>
+      <title>CAT III (Low) - Scheduled Remediation</title>
+      <table>
+        <search base="base_latest">
+          <query>| search asset_host_name="$selected_host$" stig_title="$selected_stig$" vuln_status="Open" category="CAT III"
+| eval POA_M_ID="POA&amp;M-".substr(md5(vuln_vuln_num.asset_host_name),1,8)
+| table POA_M_ID, asset_host_name, asset_host_ip, stig_title, vuln_vuln_num, vuln_rule_ver, vuln_rule_title, vuln_finding_details, vuln_comments
+| rename POA_M_ID AS "POA&amp;M ID", asset_host_name AS "Host", asset_host_ip AS "IP Address", stig_title AS "STIG", vuln_vuln_num AS "Vuln ID", vuln_rule_ver AS "Rule", vuln_rule_title AS "Weakness Description", vuln_finding_details AS "Finding Details", vuln_comments AS "Scheduled Completion/Milestones"
+| sort Host, "Vuln ID"</query>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">50</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

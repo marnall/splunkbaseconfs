@@ -1,0 +1,313 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Cross-Site Comparison</label>
+  <description>Side-by-side metrics across all configured vhosts.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="metric_tok" searchWhenChanged="true">
+      <label>Sort table by</label>
+      <choice value="requests">Requests</choice>
+      <choice value="attacks">Attacks</choice>
+      <choice value="block_rate">Block rate</choice>
+      <choice value="error_rate">Error rate</choice>
+      <choice value="p95_ms">P95 latency</choice>
+      <default>requests</default>
+    </input>
+    <input type="dropdown" token="topn_tok" searchWhenChanged="true">
+      <label>Top N sites in charts</label>
+      <choice value="5">5</choice>
+      <choice value="10">10</choice>
+      <choice value="15">15</choice>
+      <choice value="25">25</choice>
+      <default>10</default>
+    </input>
+  </fieldset>
+
+  <!-- KPI summary -->
+  <row>
+    <panel>
+      <single>
+        <title>Total sites (vhosts)</title>
+        <search>
+          <query>`safeline_waf` site_url=* | stats dc(site_url)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Sites under attack</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1 | stats dc(site_url)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[1,5]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Sites with blocked traffic</title>
+        <search>
+          <query>`safeline_waf` site_url=* blocked=1 | stats dc(site_url)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Most-attacked site</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1
+| stats count by site_name | sort - count | head 1
+| eval s=site_name." (".count.")" | fields s</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Highest error-rate site</title>
+        <search>
+          <query>`safeline_waf` site_url=*
+| stats count count(eval(status_code&gt;=400)) AS errors by site_name
+| eval rate=round(errors/count*100,1)
+| where count&gt;=10
+| sort - rate | head 1
+| eval s=site_name." (".rate."%)" | fields s</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <!-- Time series comparison -->
+  <row>
+    <panel>
+      <chart>
+        <title>Requests over time, by site (top $topn_tok$)</title>
+        <search>
+          <query>`safeline_waf` site_url=* | timechart count by site_name useother=t limit=$topn_tok$</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attacks over time, by site (top $topn_tok$)</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1 | timechart count by site_name useother=t limit=$topn_tok$</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Bar comparisons -->
+  <row>
+    <panel>
+      <chart>
+        <title>Requests per site</title>
+        <search>
+          <query>`safeline_waf` site_url=* | top limit=$topn_tok$ site_name</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attacks per site</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1 | top limit=$topn_tok$ site_name</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Block rate (%) per site</title>
+        <search>
+          <query>`safeline_waf` site_url=*
+| stats count count(eval(blocked=1)) AS blocked by site_name
+| eval block_rate=round(blocked/count*100,2)
+| where count&gt;=10
+| sort - block_rate | head $topn_tok$
+| fields site_name block_rate</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Severity heatmap-style -->
+  <row>
+    <panel>
+      <chart>
+        <title>Attacks by site &amp; severity</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1
+| chart count over site_name by severity useother=f limit=$topn_tok$
+| sort - critical - high - medium - low</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"critical":0x9c1f1f,"high":0xdc4e41,"medium":0xf1813f,"low":0xf8be34,"informational":0x6db7c6}</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Attacks by site &amp; type (top $topn_tok$ types)</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1
+| chart count over site_name by attack_type useother=t limit=$topn_tok$</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Scatter: traffic vs attacks -->
+  <row>
+    <panel>
+      <chart>
+        <title>Traffic volume vs attack volume (per site)</title>
+        <search>
+          <query>`safeline_waf` site_url=*
+| stats count AS requests count(eval(is_attack=1)) AS attacks dc(src_ip) AS sources by site_name
+| eval attacks=if(isnull(attacks),0,attacks)
+| sort - requests
+| head 50
+| fields site_name requests attacks sources</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bubble</option>
+        <option name="charting.axisTitleX.text">Requests</option>
+        <option name="charting.axisTitleY.text">Attacks</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Latency (P95 ms) per site</title>
+        <search>
+          <query>`safeline_waf` site_url=* total_duration_ms=*
+| stats count perc95(total_duration_ms) AS p95 by site_name
+| where count&gt;=10
+| sort - p95 | head $topn_tok$
+| eval p95=round(p95,1)
+| fields site_name p95</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Master comparison table -->
+  <row>
+    <panel>
+      <table>
+        <title>Site (vhost) security &amp; performance scorecard</title>
+        <search>
+          <query>`safeline_waf` site_url=*
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        count(eval(severity=="critical")) AS critical
+        count(eval(severity=="high")) AS high
+        count(eval(status_code&gt;=400 AND status_code&lt;500)) AS errors_4xx
+        count(eval(status_code&gt;=500)) AS errors_5xx
+        avg(total_duration_ms) AS avg_ms
+        perc95(total_duration_ms) AS p95_ms
+        perc99(total_duration_ms) AS p99_ms
+        dc(src_ip) AS unique_sources
+        dc(src_country) AS countries
+        dc(urlpath) AS distinct_paths
+        dc(attack_type) AS distinct_attack_types
+        values(attack_type) AS attack_types
+        by site_name site_url site_uuid
+| eval block_rate = round(blocked/requests*100, 2)
+| eval attack_rate = round(attacks/requests*100, 2)
+| eval error_rate = round((errors_4xx+errors_5xx)/requests*100, 2)
+| eval avg_ms=round(avg_ms,1), p95_ms=round(p95_ms,1), p99_ms=round(p99_ms,1)
+| sort - $metric_tok$
+| fields site_name site_uuid requests attacks attack_rate critical high blocked block_rate errors_4xx errors_5xx error_rate avg_ms p95_ms p99_ms unique_sources countries distinct_paths distinct_attack_types attack_types site_url</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <format type="color" field="attack_rate">
+          <colorPalette type="minMidMax" maxColor="#dc4e41" midColor="#f1813f" minColor="#55c98f"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="2" maxType="number" maxValue="20"/>
+        </format>
+        <format type="color" field="block_rate">
+          <colorPalette type="minMidMax" maxColor="#dc4e41" midColor="#f1813f" minColor="#55c98f"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="5" maxType="number" maxValue="50"/>
+        </format>
+        <format type="color" field="error_rate">
+          <colorPalette type="minMidMax" maxColor="#dc4e41" midColor="#f8be34" minColor="#55c98f"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="5" maxType="number" maxValue="25"/>
+        </format>
+        <format type="color" field="critical">
+          <colorPalette type="list">[#55c98f,#9c1f1f]</colorPalette>
+          <scale type="threshold">1</scale>
+        </format>
+        <format type="color" field="p95_ms">
+          <colorPalette type="minMidMax" maxColor="#dc4e41" midColor="#f1813f" minColor="#55c98f"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="500" maxType="number" maxValue="2000"/>
+        </format>
+        <option name="drilldown">cell</option>
+        <drilldown>
+          <link target="_blank"><![CDATA[/app/safeline_ta/safeline_site_detail?form.site_tok=$row.site_name$&form.tr.earliest=$tr.earliest$&form.tr.latest=$tr.latest$]]></link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>Top attack types per site (matrix)</title>
+        <search>
+          <query>`safeline_waf` site_url=* is_attack=1
+| chart count over site_name by attack_type useother=t limit=10
+| sort - SUM
+| head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+</form>

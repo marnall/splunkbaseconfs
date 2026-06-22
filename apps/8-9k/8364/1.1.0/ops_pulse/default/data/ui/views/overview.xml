@@ -1,0 +1,88 @@
+<form theme="dark" version="1.1">
+  <label>Operational Overview</label>
+  <description>High-level operational health overview based on event volume, error rates, and baseline-driven anomaly detection.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Select the index containing operational log data.</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label>Select the time range for operational analysis.</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Overall Operational Health Score</title>
+      <single>
+        <title>Health score represents overall system health. It is calculated as 100 minus the percentage of error events detected in the selected time range.</title>
+        <search>
+          <query>`ops_pulse_health_score($index$)`
+| fields health_score</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="height">251</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x118832"]</option>
+        <option name="rangeValues">[30,70]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Operational Health</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Top Error-Contributing Hosts</title>
+      <chart>
+        <title>Hosts generating the highest number of error events, helping identify localized operational issues.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| stats count BY extracted_host
+| sort - count
+| head 10</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Event Volume Compared to Baseline</title>
+      <chart>
+        <title>Compares current event volume against historical baseline. Significant deviations may indicate abnormal behavior.</title>
+        <search>
+          <query>`ops_pulse_volume_spike($index$)`
+| eval upper=baseline + (2*sd), lower=baseline - (2*sd)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Error Rate Trend (%)</title>
+      <chart>
+        <title>Displays percentage of error events over time. Used to identify degradation or recurring failure patterns.</title>
+        <search>
+          <query>`ops_pulse_error_rate_ts($index$)`</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

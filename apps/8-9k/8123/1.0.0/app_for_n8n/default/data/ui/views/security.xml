@@ -1,0 +1,286 @@
+
+<dashboard version="2" theme="dark">
+    <label>Security</label>
+    <description></description>
+    <definition><![CDATA[
+{
+	"dataSources": {
+		"ds_FR6UFDVB": {
+			"type": "ds.search",
+			"options": {
+				"query": "`n8n_index` sourcetype::n8n:json eventName IN ($audit_event_types$) $search_filter$\n| rex mode=sed \"s/^n8n\\.audit\\.//g\" field=eventName \n| eval email = coalesce('payload._email','payload.userEmail') \n| table _time, eventName, email, payload.credentialType, payload.publicApi, payload.workflowName \n| rename payload.* AS * \n| rename eventName as Event, email as Email, _time as Time, credentialType as \"Credential Type\", publicApi AS \"Public API\", workflowName AS Workflow \n| sort - Time \n| convert ctime(Time) timeformat=\"%Y-%m-%d %H:%M:%S\"",
+				"queryParameters": {
+					"sampleRatio": 1,
+					"earliest": "$global_time.earliest$",
+					"latest": "$global_time.latest$"
+				}
+			},
+			"name": "Recent audit activity - Table search"
+		},
+		"ds_VvotyBPa": {
+			"type": "ds.search",
+			"options": {
+				"query": "`n8n_index` sourcetype::n8n:json eventName IN (n8n.audit.user.login.failed) | stats count"
+			},
+			"name": "recent_failed_logon_count"
+		},
+		"ds_PH4CSRiz": {
+			"type": "ds.search",
+			"options": {
+				"query": "`n8n_index` sourcetype::n8n:json eventName IN (*api*) | stats count"
+			},
+			"name": "recent_api_key_changes"
+		},
+		"ds_gi5mliBc": {
+			"type": "ds.search",
+			"options": {
+				"query": "`n8n_index` sourcetype::n8n:json eventName IN (n8n.audit.workflow.deleted) | stats count"
+			},
+			"name": "recent_workflow_deletions"
+		},
+		"ds_Dj2le5gv": {
+			"type": "ds.search",
+			"options": {
+				"query": "`n8n_index` sourcetype::n8n:json eventName IN (n8n.audit.user.credentials.*) | stats count"
+			},
+			"name": "recent_user_cred_changes"
+		}
+	},
+	"visualizations": {
+		"viz_utvcufnS": {
+			"type": "splunk.table",
+			"options": {
+				"dataOverlayMode": "none",
+				"drilldown": "none",
+				"showRowNumbers": false,
+				"showInternalFields": false,
+				"columnFormat": {
+					"Event": {
+						"data": "> table | seriesByName(\"Event\") | formatByType(EventColumnFormatEditorConfig)",
+						"align": "auto",
+						"headerAlign": "auto",
+						"textOverflow": "break-word",
+						"rowColors": "> table | seriesByName(\"Event\") | matchValue(EventRowColorsEditorConfig)"
+					}
+				}
+			},
+			"context": {
+				"EventColumnColorConfig": [
+					{
+						"match": ".*deleted.*",
+						"value": "#0099E0"
+					}
+				],
+				"EventColumnFormatEditorConfig": {
+					"string": {
+						"unitPosition": "after"
+					}
+				},
+				"EventRowColorsEditorConfig": [
+					{
+						"match": "*failed*",
+						"value": "#a81a45"
+					},
+					{
+						"match": "*deleted*",
+						"value": "#d24620"
+					},
+					{
+						"match": "*api*",
+						"value": "#cba700"
+					}
+				]
+			},
+			"dataSources": {
+				"primary": "ds_FR6UFDVB"
+			},
+			"title": "Recent audit activity"
+		},
+		"viz_VkrBI4kp": {
+			"type": "splunk.singlevalue",
+			"dataSources": {
+				"primary": "ds_VvotyBPa"
+			},
+			"title": "Failed Logons",
+			"options": {
+				"majorColor": "#f1813f"
+			}
+		},
+		"viz_p4gWcSoV": {
+			"type": "splunk.singlevalue",
+			"dataSources": {
+				"primary": "ds_PH4CSRiz"
+			},
+			"title": "API Key Changes",
+			"options": {
+				"majorColor": "#f8be34"
+			}
+		},
+		"viz_iUoEkcne": {
+			"type": "splunk.singlevalue",
+			"dataSources": {
+				"primary": "ds_gi5mliBc"
+			},
+			"title": "Workflow deletions",
+			"options": {
+				"majorColor": "#0877a6"
+			}
+		},
+		"viz_UIOkushP": {
+			"type": "splunk.singlevalue",
+			"dataSources": {
+				"primary": "ds_Dj2le5gv"
+			},
+			"title": "User credential changes",
+			"options": {
+				"majorColor": "#4fa484"
+			}
+		}
+	},
+	"applicationProperties": {
+		"hideEdit": false,
+		"hideExport": false
+	},
+	"inputs": {
+		"input_global_trp": {
+			"type": "input.timerange",
+			"options": {
+				"token": "global_time",
+				"defaultValue": "-24h@h,now"
+			},
+			"title": "Time"
+		},
+		"input_SL1WsPQ0": {
+			"options": {
+				"items": [
+					{
+						"label": "Default",
+						"value": "n8n.audit.user.login.failed, n8n.audit.user.signedup, n8n.audit.user.deleted,n8n.audit.user.api.created, n8n.audit.package.installed, n8n.audit.workflow.archived, n8n.audit.workflow.deleted, n8n.audit.user.credentials.*"
+					},
+					{
+						"label": "All",
+						"value": "*"
+					},
+					{
+						"label": "User",
+						"value": "*user*"
+					},
+					{
+						"label": "Workflow",
+						"value": "*workflow*"
+					}
+				],
+				"token": "audit_event_types",
+				"defaultValue": "n8n.audit.user.login.failed, n8n.audit.user.signedup, n8n.audit.user.deleted,n8n.audit.user.api.created, n8n.audit.package.installed, n8n.audit.workflow.archived, n8n.audit.workflow.deleted, n8n.audit.user.credentials.*"
+			},
+			"title": "Events",
+			"type": "input.dropdown"
+		},
+		"input_nMa5li8u": {
+			"options": {
+				"defaultValue": "*",
+				"token": "search_filter"
+			},
+			"title": "Search",
+			"type": "input.text"
+		}
+	},
+	"layout": {
+		"options": {},
+		"globalInputs": [
+			"input_global_trp",
+			"input_SL1WsPQ0",
+			"input_nMa5li8u"
+		],
+		"tabs": {
+			"items": [
+				{
+					"layoutId": "layout_1",
+					"label": "New tab"
+				}
+			]
+		},
+		"layoutDefinitions": {
+			"layout_1": {
+				"type": "grid",
+				"structure": [
+					{
+						"item": "viz_VkrBI4kp",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 0,
+							"w": 354,
+							"h": 156
+						}
+					},
+					{
+						"item": "viz_utvcufnS",
+						"type": "block",
+						"position": {
+							"x": 0,
+							"y": 156,
+							"w": 1440,
+							"h": 459
+						}
+					},
+					{
+						"item": "viz_p4gWcSoV",
+						"type": "block",
+						"position": {
+							"x": 354,
+							"y": 0,
+							"w": 355,
+							"h": 156
+						}
+					},
+					{
+						"item": "viz_iUoEkcne",
+						"type": "block",
+						"position": {
+							"x": 709,
+							"y": 0,
+							"w": 365,
+							"h": 156
+						}
+					},
+					{
+						"item": "viz_UIOkushP",
+						"type": "block",
+						"position": {
+							"x": 1074,
+							"y": 0,
+							"w": 366,
+							"h": 156
+						}
+					}
+				],
+				"options": {
+					"width": 1440,
+					"height": 960
+				}
+			}
+		}
+	},
+	"title": "Security",
+	"description": "",
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"latest": "$global_time.latest$",
+						"earliest": "$global_time.earliest$"
+					}
+				}
+			}
+		},
+		"visualizations": {
+			"global": {
+				"showProgressBar": true
+			}
+		}
+	}
+}
+    ]]></definition>
+</dashboard>

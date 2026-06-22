@@ -1,0 +1,180 @@
+<form version="1.1" theme="dark">
+  <label>RAG Analytics</label>
+  <description>Analyze RAG pipeline performance - retrieval quality, latency breakdown, and end-to-end metrics</description>
+  <!-- RAG KPIs -->
+  <!-- Latency Breakdown -->
+  <!-- Retrieval Quality -->
+  <!-- Vector Store Performance -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="vector_store_filter" searchWhenChanged="true">
+      <label>Vector Store</label>
+      <choice value="*">All</choice>
+      <default>*</default>
+      <search>
+        <query>`genai_retrieval_spans` | stats count by vector_store | sort - count</query>
+        <earliest>-7d</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>vector_store</fieldForLabel>
+      <fieldForValue>vector_store</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>RAG Requests</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=CHAIN</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x006d9c"]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Retrieval Time</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.duration_ms) as avg from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ | eval avg = round(avg, 0)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">ms</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[500,2000]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Docs Retrieved</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.documents_retrieved) as avg from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ | eval avg = round(avg, 1)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="rangeColors">["0x006d9c"]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Avg Relevance Score</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.relevance_score) as avg from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ | eval avg = round(avg * 100, 1)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">%</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x53a051"]</option>
+        <option name="rangeValues">[60,80]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>End-to-End Latency</title>
+      <single>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.duration_ms) as avg from datamodel=GenAI_Traces where GenAI_Span.span_type=CHAIN | eval avg = round(avg, 0)</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="unit">ms</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[3000,8000]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>RAG Latency Breakdown (Retrieval vs Generation)</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true avg(GenAI_Span.retrieval_latency) as "Retrieval" avg(GenAI_Span.embedding_latency) as "Embedding" avg(GenAI_Span.generation_latency) as "Generation" from datamodel=GenAI_Traces where GenAI_Span.vector_store=$vector_store_filter$ (GenAI_Span.span_type="RETRIEVER" OR GenAI_Span.span_type="LLM" OR GenAI_Span.span_type="EMBEDDING") | transpose | rename "row 1" as Value, "column" as Type</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Latency Components Over Time</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true avg(GenAI_Span.retrieval_latency) avg(GenAI_Span.generation_latency) from datamodel=GenAI_Traces where GenAI_Span.vector_store=$vector_store_filter$ (GenAI_Span.span_type="RETRIEVER" OR GenAI_Span.span_type="LLM") by _time span=1h | timechart span=1h avg(GenAI_Span.retrieval_latency) as "Retrieval" avg(GenAI_Span.generation_latency) as "Generation"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.axisTitleY.text">Latency (ms)</option>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Retrieval Quality Over Time</title>
+      <chart>
+        <search>
+          <query>| tstats prestats=t summariesonly=false allow_old_summaries=true avg(GenAI_Span.relevance_score) avg(GenAI_Span.documents_retrieved) from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ by _time span=1h | timechart span=1h avg(GenAI_Span.relevance_score) as "Relevance Score" avg(GenAI_Span.documents_retrieved) as "Docs Retrieved"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.overlayFields">"Docs Retrieved"</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Documents Retrieved Distribution</title>
+      <chart>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ by GenAI_Span.documents_retrieved | rename GenAI_Span.documents_retrieved as documents_retrieved | sort documents_retrieved</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Documents Retrieved</option>
+        <option name="charting.legend.placement">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Vector Store Performance Comparison</title>
+      <table>
+        <search>
+          <query>| tstats summariesonly=false allow_old_summaries=true count as queries avg(GenAI_Span.duration_ms) as avg_latency perc95(GenAI_Span.duration_ms) as p95_latency avg(GenAI_Span.documents_retrieved) as avg_docs avg(GenAI_Span.relevance_score) as avg_relevance sum(GenAI_Span.is_error) as errors from datamodel=GenAI_Traces where GenAI_Span.span_type=RETRIEVER GenAI_Span.vector_store=$vector_store_filter$ by GenAI_Span.vector_store GenAI_Span.embedding_model | rename GenAI_Span.* as * | eval error_rate = round((errors/queries)*100, 2) | eval avg_latency = round(avg_latency, 0) | eval p95_latency = round(p95_latency, 0) | eval avg_docs = round(avg_docs, 1) | eval avg_relevance = round(avg_relevance * 100, 1) | sort - queries | table vector_store, embedding_model, queries, avg_latency, p95_latency, avg_docs, avg_relevance, error_rate | rename vector_store as "Vector Store", embedding_model as "Embedding Model", queries as "Queries", avg_latency as "Avg Latency (ms)", p95_latency as "P95 (ms)", avg_docs as "Avg Docs", avg_relevance as "Relevance %", error_rate as "Error %"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+        <format type="color" field="Relevance %">
+          <colorPalette type="list">[#DC4E41,#F8BE34,#53A051]</colorPalette>
+          <scale type="threshold">60,80</scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

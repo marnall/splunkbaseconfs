@@ -1,0 +1,409 @@
+<dashboard version="1.1" hideSplunkBar="False" hideTitle="True" hideEdit="True" stylesheet="nutanix.css" script="nutanix.js">
+    <label>Cluster</label>
+    <init>
+        <set token="hosts">-</set>
+        <set token="block">-</set>
+        <set token="model">-</set>
+        <set token="hypervisorName">-</set>
+        <set token="hypervisorVersion">-</set>
+
+        <set token="pc_ip">$form.pc_ip$</set>
+        <condition match="isnotnull($form.cluster_name$)">
+            <set token="cluster_name">$form.cluster_name$</set>
+        </condition>
+    </init>
+
+    <search id="clusters_request" ref="Clusters"></search>
+
+    <search id="critical_base_part" ref="Critical base part"/>
+    <search id="warning_base_part" ref="Warning base part"/>
+    <search id="info_base_part" ref="Info base part"/>
+
+    <search id="events_base" ref="Events base"/>
+    <search id="hardware_summary" ref="Hardware Summary"/>
+    <search id="vm_summary" ref="VM Summary"/>
+
+    <search id="cluster_host_base" ref="Cluster Hosts Base"/>
+    <search id="cluster_performance_base" ref="Cluster Performance Base"/>
+    <search base="cluster_host_base">
+        <query>
+            | search clusterUUID=$cluster_name$ | stats dc(extId) AS Host
+        </query>
+        <progress>
+            <set token="hosts">-</set>
+        </progress>
+        <done>
+            <set token="hosts">$result.Host$</set>
+        </done>
+    </search>
+    <search base="cluster_host_base">
+        <query>
+            |search clusterUUID=$cluster_name$ | stats dc(blockSerial) AS blockSerial
+        </query>
+        <progress>
+            <set token="block">-</set>
+        </progress>
+        <done>
+            <set token="block">$result.blockSerial$</set>
+        </done>
+    </search>
+    <search base="cluster_host_base">
+        <query>
+            |search clusterUUID=$cluster_name$                         
+            | stats dc(blockModel) as Count by blockModel 
+            | fields - Count 
+            | mvcombine delim=", " blockModel 
+            | nomv blockModel
+        </query>
+        <progress>
+            <set token="model">-</set>
+        </progress>
+        <done>
+            <set token="model">$result.blockModel$</set>
+        </done>
+    </search>
+    <search base="hardware_summary">
+        <query>
+            | spath path=cluster.uuid output=clusterUUID
+            | search clusterUUID=$cluster_name$
+            | eval parts=split(hypervisorfullName," ")
+            | eval hypervisorName=mvindex(parts,0)
+            | eval hypervisorVersion=mvindex(parts,1)
+            | stats values(hypervisorType) as hypervisorName values(hypervisorVersion) as hypervisorVersion
+        </query>
+        <progress>
+            <set token="hypervisorName">-</set>
+            <set token="hypervisorVersion">-</set>
+        </progress>
+        <done>
+            <set token="hypervisorName">$result.hypervisorName$</set>
+            <set token="hypervisorVersion">$result.hypervisorVersion$</set>
+        </done>
+    </search>
+
+    <row id="cluster_pc_cluster_alerts">
+        <panel id="pc_panel">
+            <title>Prism Centrals</title>
+            <table id="PC">
+                <search ref="Prism Centrals">
+                    <done>
+                        <set token="pc_ip">$result.pc_ip$</set>
+                    </done>
+                </search>
+
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <option name="drilldown">cell</option>
+                <fields>Name</fields>
+                <drilldown>
+                    <set token="pc_ip">$row.pc_ip$</set>
+                </drilldown>
+            </table>
+        </panel>
+        <panel id="cluster_panel">
+            <title>Clusters</title>
+            <table id="Clusters">
+                <search base="clusters_request">
+                    <query>search pc_ip="$pc_ip$"</query>
+                    <done>
+                        <set token="cluster_name">$result.extId$</set>
+                    </done>
+                </search>
+                <option name="wrap">false</option>
+                <option name="rowNumbers">false</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">6</option>
+                <option name="drilldown">cell</option>
+                <fields>Name,Nodes,VMs,"Usage %"</fields>
+                <drilldown>
+                    <set token="cluster_name">$row.extId$</set>
+                </drilldown>
+            </table>
+        </panel>
+
+        <panel id="alerts_panel_wide">
+            <title>Alerts (last 24 hours)</title>
+            <single id="critical">
+                <title>Critical</title>
+                <search base="critical_base_part">
+                    <query>
+                        | search clusterUUID=$cluster_name$
+                        | timechart span=1h dc(extId) as value
+                    </query>
+                </search>
+
+                <option name="showSparkline">1</option>
+                <option name="showTrendIndicator">1</option>
+                <option name="trendDisplayMode">absolute</option>
+                <option name="trendInterval">auto</option>
+
+                <option name="colorBy">trend</option>
+                <option name="useColors">1</option>
+                <option name="rangeColors">["0x65a637","0x6db7c6","0xf7bc38","0xf58f39","0xd93f3c"]</option>
+                <option name="rangeValues">[0,30,70,100]</option>
+                <option name="useThousandSeparators">1</option>
+                <option name="drilldown">all</option>
+                <drilldown>
+                    <link> tabs_alerts?form.alert_type=critical&amp;form.cluster_name=$cluster_name$&amp;form.pc_ip=$pc_ip$
+                    </link>
+                </drilldown>
+            </single>
+            <single id="warning">
+                <title>Warning</title>
+                <search base="warning_base_part">
+                    <query>
+                        | search clusterUUID=$cluster_name$
+                        | timechart span=1h dc(extId) as value
+                    </query>
+                </search>
+
+
+                <option name="showSparkline">1</option>
+                <option name="showTrendIndicator">1</option>
+                <option name="trendDisplayMode">absolute</option>
+                <option name="trendInterval">auto</option>
+
+                <option name="colorBy">trend</option>
+                <option name="useColors">1</option>
+                <option name="rangeColors">["0x65a637","0x6db7c6","0xf7bc38","0xf58f39","0xd93f3c"]</option>
+                <option name="rangeValues">[0,30,70,100]</option>
+
+                <option name="useThousandSeparators">1</option>
+                <option name="drilldown">all</option>
+                <drilldown>
+                    <link> tabs_alerts?form.alert_type=warning&amp;form.cluster_name=$cluster_name$&amp;form.pc_ip=$pc_ip$
+                    </link>
+                </drilldown>
+            </single>
+            <single id="info">
+                <title>Info</title>
+                <search base="info_base_part">
+                    <query>
+                        | search clusterUUID=$cluster_name$
+                        | timechart span=1h dc(extId) as value
+                    </query>
+                </search>
+
+                <option name="showSparkline">1</option>
+                <option name="showTrendIndicator">1</option>
+                <option name="trendDisplayMode">absolute</option>
+                <option name="trendInterval">auto</option>
+
+                <option name="colorBy">trend</option>
+                <option name="useColors">1</option>
+                <option name="rangeColors">["0x65a637","0x6db7c6","0xf7bc38","0xf58f39","0xd93f3c"]</option>
+                <option name="rangeValues">[0,30,70,100]</option>
+
+                <option name="useThousandSeparators">1</option>
+                <option name="drilldown">all</option>
+                <drilldown>
+                    <link> tabs_alerts?form.alert_type=info&amp;form.cluster_name=$cluster_name$&amp;form.pc_ip=$pc_ip$
+                    </link>
+                </drilldown>
+            </single>
+        </panel>
+    </row>
+    <row id="events_summary_row">
+        <panel>
+            <title>Events (last 24h)</title>
+            <single>
+                <search base="events_base">
+                    <query>
+                        | search clusterUUID=$cluster_name$
+                        | stats dc(extId) as value, latest(timestamp_epoch) as last_time
+                        | eval hours_ago = round((now() - last_time) / 3600, 0)
+                        | eval underLabel = "Last event: " . hours_ago . " hours ago"
+                    </query>
+                    <progress>
+                        <set token="events_under_label">-</set>
+                    </progress>
+                    <done>
+                        <set token="events_under_label">$result.underLabel$</set>
+                    </done>
+                </search>
+
+                <option name="height">130</option>
+                <option name="useThousandSeparators">1</option>
+                <option name="drilldown">all</option>
+                <drilldown>
+                    <link> tabs_events?form.cluster_name=$cluster_name$&amp;form.pc_ip=$pc_ip$
+                    </link>
+                </drilldown>
+                <option name="underLabel">$events_under_label$</option>
+            </single>
+        </panel>
+        <panel>
+            <title>Hypervisor Summary</title>
+            <html>
+                <div class="hypervisor_summary">
+                    <div class="hypervisorName">$hypervisorName$</div>
+                    <div class="hypervisorVersion">$hypervisorVersion$</div>
+                </div>
+            </html>
+        </panel>
+        <panel>
+            <title>VM Summary</title>
+            <table id="VM">
+                <search base="vm_summary">
+                    <query>| search clusterUUID=$cluster_name$ </query>
+                </search>
+                <option name="wrap">true</option>
+                <option name="rowNumbers">false</option>
+                <option name="drilldown">none</option>
+                <option name="dataOverlayMode">none</option>
+                <option name="count">2</option>
+                <fields>State, "VM(s)"</fields>
+            </table>
+        </panel>
+        <panel id="hardware_summary_panel">
+            <title>Hardware Summary</title>
+            <html>
+                <div class="hardware-summary">
+                    <div class="block-host-info">
+                        <div class="item">
+                            <div class="value">$hosts$</div>
+                            <div class="label">HOSTS</div>
+                        </div>
+
+                        <div class="item">
+                            <div class="value">$block$</div>
+                            <div class="label">BLOCK</div>
+                        </div>
+                    </div>
+
+                    <div class="model-info">
+                        <div class="item">
+                            <div class="value">$model$</div>
+                            <div class="label">MODEL</div>
+                        </div>
+                    </div>
+                </div>
+            </html>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Cluster Storage Usage</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | stats latest(storagePercent) AS value
+                    </query>
+                </search>
+
+                <option name="charting.chart">markerGauge</option>
+                <option name="charting.chart.orientation">x</option>
+
+                <option name="charting.chart.showLabels">true</option>
+                <option name="charting.chart.showMajorTicks">true</option>
+                <option name="charting.chart.showMinorTicks">true</option>
+                <option name="charting.chart.showValue">true</option>
+                <option name="charting.chart.showRangeBand">true</option>
+
+                <option name="charting.chart.style">minimal</option>
+                <option name="charting.chart.majorUnit">10</option>
+
+                <option name="charting.chart.rangeValues">[0,70,90,100]</option>
+                <option name="charting.gaugeColors">[0x76EA73,0xF5B53F,0xDF564D]</option>
+
+                <option name="charting.chart.usePercentageValue">true</option>
+                <option name="charting.chart.usePercentageRange">true</option>
+
+            </chart>
+        </panel>
+        <panel>
+            <title>Cluster CPU Usage</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | timechart eval(round(avg(hypervisorCpuUsagePpm),2)) AS hypervisorCpuUsagePpm by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">CPU Usage (%)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.axisY.minimumNumber">0</option>
+                <option name="charting.axisY.maximumNumber">100</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>Cluster Memory Usage</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | timechart eval(round(avg(overallMemoryUsageBytes),2)) AS overallMemoryUsageBytes by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">Memory Usage (TB)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>IOPS</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | timechart eval(round(avg(controllerNumIops),2)) AS controllerNumIops by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IOPS</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+    <row>
+        <panel>
+            <title>IO Bandwidth</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | timechart eval(round(avg(ioBandwidthMBps),2)) AS "IO Bandwidth" by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Bandwidth (MB/s)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+        <panel>
+            <title>IO Latency</title>
+            <chart>
+                <search base="cluster_performance_base">
+                    <query>
+                        | search extId=$cluster_name$
+                        | timechart eval(round(avg(controllerAvgIoLatencyUsecs),2)) AS "controllerAvgIoLatencyUsecs" by name
+                    </query>
+                </search>
+
+                <option name="charting.chart">line</option>
+                <option name="charting.axisTitleX.text">Time</option>
+                <option name="charting.axisTitleY.text">IO Latency (ms)</option>
+                <option name="charting.legend.placement">none</option>
+                <option name="charting.lineWidth">2</option>
+            </chart>
+        </panel>
+    </row>
+</dashboard>

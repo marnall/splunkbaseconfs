@@ -1,0 +1,1 @@
+[sendresults_alert]

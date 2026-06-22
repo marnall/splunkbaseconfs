@@ -1,0 +1,139 @@
+<form version="1.1">
+  <label>Unidentified Inventory Details</label>
+  <!-- Hidden panel: Base search that captures SID into $BASE$ -->
+  <!-- Visible panels using loadjob -->
+  <fieldset submitButton="false" autoRun="false">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1" searchWhenChanged="true">
+      <label>Date and Time</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$never$">
+    <panel>
+      <title>$BASE$</title>
+      <table>
+        <search id="base_search">
+          <done>
+            <set token="BASE">$job.sid$</set>
+          </done>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:uirdetails
+| table collectorName, lastUpdatedTimestamp, seenByManagedDeviceName, timestamp, unidentifiedDeviceIpAddress, unidentifiedDeviceName, unidentifiedDevicePlatform, unidentifiedDeviceScore, unidentifiedDeviceSource, unidentifiedDeviceStatus 
+| dedup seenByManagedDeviceName 
+| rename seenByManagedDeviceName as deviceName 
+| rex field=deviceName mode=sed "s/ \(.*//g" 
+| lookup `cisco_oi_device_lookup($cpyKey$)` deviceName OUTPUT deviceId 
+| $singleLineGroupSelector$ 
+| where LIKE(unidentifiedDevicePlatform, "%cisco%") OR LIKE(unidentifiedDevicePlatform, "%Cisco%")
+    OR LIKE(unidentifiedDevicePlatform, "%sns%") OR LIKE(unidentifiedDevicePlatform, "%SNS%")
+    OR LIKE(unidentifiedDevicePlatform, "%ucs%") OR LIKE(unidentifiedDevicePlatform, "%UCS%")
+    OR LIKE(unidentifiedDevicePlatform, "%ise%") OR LIKE(unidentifiedDevicePlatform, "%ISE%")
+    OR LIKE(unidentifiedDevicePlatform, "%WS-C%-%")
+    OR LIKE(unidentifiedDevicePlatform, "%N%-C%")
+    OR LIKE(unidentifiedDevicePlatform, "%AIR-%")
+    OR LIKE(unidentifiedDevicePlatform, "%C9%00%")
+    OR LIKE(unidentifiedDevicePlatform, "%C68%")
+    OR LIKE(unidentifiedDevicePlatform, "%DS-C%") 
+| fields - groupName uirNceComments uirFilter timeStamp 
+| search unidentifiedDevicePlatform!=*AIR* AND unidentifiedDevicePlatform!=*91*AX* AND unidentifiedDevicePlatform!=*cw91* AND unidentifiedDevicePlatform!=*C9136*</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Unidentified Inventory Count</title>
+      <single>
+        <title>UI devices</title>
+        <search>
+          <query>| loadjob $BASE$
+| stats count as UIdevices</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="colorMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="height">200</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[15,30]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Top 10 Unidentified Inventory by Platform</title>
+      <chart>
+        <search>
+          <query>| loadjob $BASE$
+| stats count as Devices by unidentifiedDevicePlatform
+| sort -Devices
+| head 10</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">collapsed</option>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Unidentified Inventory  Details</title>
+      <table>
+        <search>
+          <query>| loadjob $BASE$</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">false</option>
+      </table>
+    </panel>
+  </row>
+</form>

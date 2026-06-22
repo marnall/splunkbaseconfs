@@ -1,0 +1,211 @@
+<dashboard version="2" theme="dark">
+  <label>Live Monitor</label>
+  <description>Real-time event stream from Event Builder For Splunk desktop application. Uses Splunk real-time search (rt). Refresh every 10 seconds.</description>
+  <definition><![CDATA[
+{
+  "title": "Live Monitor -- Event Builder For Splunk",
+  "description": "Real-time event stream. All panels use rt (real-time) search and auto-refresh every 10 seconds.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1300,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_rt_eps",         "type": "block", "position": { "x": 0,    "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_rt_total",       "type": "block", "position": { "x": 360,  "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_rt_indexes",     "type": "block", "position": { "x": 720,  "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_rt_alerts",      "type": "block", "position": { "x": 1080, "y": 0,   "w": 360,  "h": 200 } },
+      { "item": "viz_rt_timeline",    "type": "block", "position": { "x": 0,    "y": 200, "w": 1440, "h": 300 } },
+      { "item": "viz_rt_by_index",    "type": "block", "position": { "x": 0,    "y": 500, "w": 480,  "h": 350 } },
+      { "item": "viz_rt_by_srctype",  "type": "block", "position": { "x": 480,  "y": 500, "w": 480,  "h": 350 } },
+      { "item": "viz_rt_ids_edr",     "type": "block", "position": { "x": 960,  "y": 500, "w": 480,  "h": 350 } },
+      { "item": "viz_rt_stream",      "type": "block", "position": { "x": 0,    "y": 850, "w": 1440, "h": 450 } }
+    ]
+  },
+  "dataSources": {
+    "ds_rt_eps": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | eval eps=round(count/60, 2) | table eps",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_total": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | stats sum(count) as total",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_indexes": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | stats dc(index) as active_indexes",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_alerts": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=ids sourcetype=suricata) OR (index=edr (sourcetype=crowdstrike:falcon:json OR sourcetype=ms:defender:atp OR sourcetype=sentinelone:activity)) | eval sev=lower(coalesce(alert.severity, severity, Severity, \"low\")) | where sev IN (\"1\", \"2\", \"critical\", \"high\") | stats count as alert_count",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_timeline": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) PRESTATS=true BY _time span=10s | timechart span=10s sum(count) as events",
+        "queryParameters": { "earliest": "rt-5m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_by_index": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY index | sort -count",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_by_srctype": {
+      "type": "ds.search",
+      "options": {
+        "query": "| tstats count WHERE (index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) BY sourcetype | sort -count | head 15",
+        "queryParameters": { "earliest": "rt-1m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_ids_edr": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=ids sourcetype=suricata) OR (index=edr (sourcetype=crowdstrike:falcon:json OR sourcetype=ms:defender:atp OR sourcetype=sentinelone:activity)) | eval sig=coalesce(alert.signature, Technique, event_type, \"unknown\") | eval sev=coalesce(alert.severity, severity, Severity, \"unknown\") | stats count BY sig, sev | sort -count | head 10",
+        "queryParameters": { "earliest": "rt-5m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    },
+    "ds_rt_stream": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=web OR index=network OR index=linux OR index=windows OR index=dns OR index=vpn OR index=aws OR index=gcp OR index=ids OR index=email OR index=o365 OR index=database OR index=proxy OR index=kubernetes OR index=edr OR index=identity OR index=virtualization OR index=saas OR index=monitoring OR index=itsm OR index=pam) | eval src=coalesce(src_ip, clientip, Source_Network_Address, client.ipAddress, \"-\") | eval user=coalesce(user, Account_Name, actor.alternateId, UserId, \"-\") | eval msg=substr(_raw, 1, 120) | table _time, index, sourcetype, host, src, user, msg | sort -_time | head 100",
+        "queryParameters": { "earliest": "rt-2m", "latest": "rt" },
+        "refresh": 10,
+        "refreshType": "delay"
+      }
+    }
+  },
+  "visualizations": {
+    "viz_rt_eps": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_rt_eps" },
+      "options": {
+        "majorField": "eps",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#00FF88",
+        "unit": " EPS",
+        "unitPosition": "after"
+      },
+      "title": "Live EPS (last 60s)"
+    },
+    "viz_rt_total": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_rt_total" },
+      "options": {
+        "majorField": "total",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#00B5F5"
+      },
+      "title": "Events (last 60s)"
+    },
+    "viz_rt_indexes": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_rt_indexes" },
+      "options": {
+        "majorField": "active_indexes",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#7AB8F5"
+      },
+      "title": "Active Indexes (last 60s)"
+    },
+    "viz_rt_alerts": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_rt_alerts" },
+      "options": {
+        "majorField": "alert_count",
+        "backgroundColor": "transparent",
+        "majorFontSize": 48,
+        "majorColor": "#FF2B2B"
+      },
+      "title": "Critical/High Alerts (last 60s)"
+    },
+    "viz_rt_timeline": {
+      "type": "viz.line",
+      "dataSources": { "primary": "ds_rt_timeline" },
+      "options": {
+        "xAxisTitleText": "Time",
+        "yAxisTitleText": "Events / 10s",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Real-Time Event Rate (10-second buckets, last 5 min)"
+    },
+    "viz_rt_by_index": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_rt_by_index" },
+      "options": {
+        "xAxisTitleText": "Index",
+        "yAxisTitleText": "Events",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Events by Index (last 60s)"
+    },
+    "viz_rt_by_srctype": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_rt_by_srctype" },
+      "options": {
+        "xAxisTitleText": "Sourcetype",
+        "yAxisTitleText": "Events",
+        "legendDisplay": "off",
+        "backgroundColor": "transparent"
+      },
+      "title": "Top Sourcetypes (last 60s)"
+    },
+    "viz_rt_ids_edr": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_rt_ids_edr" },
+      "options": {
+        "backgroundColor": "transparent",
+        "count": 10
+      },
+      "title": "IDS / EDR Detections (last 5 min)"
+    },
+    "viz_rt_stream": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_rt_stream" },
+      "options": {
+        "backgroundColor": "transparent",
+        "count": 30
+      },
+      "title": "Live Event Stream (last 2 min, newest first)"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

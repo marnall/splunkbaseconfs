@@ -1,0 +1,153 @@
+<dashboard version="1.1">
+  <label>MITRE Lookup Editor</label>
+  <description>Add, update, or delete Suricata signature mappings in the MITRE ATT&amp;CK lookup.</description>
+
+  <init>
+    <set token="lookup_refresh">initial</set>
+  </init>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="radio" token="editor_mode" searchWhenChanged="true">
+      <label>Mode:</label>
+      <choice value="filter">Filter Only</choice>
+      <choice value="edit">Edit Lookup</choice>
+      <default>filter</default>
+      <initialValue>filter</initialValue>
+      <change>
+        <condition value="filter">
+          <unset token="show_editor"></unset>
+          <unset token="signature"></unset>
+          <unset token="form.signature"></unset>
+          <unset token="form.delete_mapping"></unset>
+          <set token="form.technique_id">-</set>
+          <set token="form.technique_name">-</set>
+          <set token="form.tactic">-</set>
+          <set token="form.description">-</set>
+        </condition>
+        <condition value="edit">
+          <set token="show_editor">1</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="lookup_filter" searchWhenChanged="true">
+      <label>Filter Lookup Table</label>
+      <default>*</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="text" token="signature" depends="$show_editor$">
+      <label>Signature</label>
+    </input>
+    <input type="text" token="technique_id" depends="$show_editor$">
+      <label>Technique ID</label>
+      <default>-</default>
+      <initialValue>-</initialValue>
+    </input>
+    <input type="text" token="technique_name" depends="$show_editor$">
+      <label>Technique Name</label>
+      <default>-</default>
+      <initialValue>-</initialValue>
+    </input>
+    <input type="text" token="tactic" depends="$show_editor$">
+      <label>Tactic</label>
+      <default>-</default>
+      <initialValue>-</initialValue>
+    </input>
+    <input type="text" token="description" depends="$show_editor$">
+      <label>Description</label>
+      <default>-</default>
+      <initialValue>-</initialValue>
+    </input>
+    <input type="checkbox" token="delete_mapping" depends="$show_editor$">
+      <label>Delete Mapping</label>
+      <choice value="1">Delete this signature</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+      <delimiter></delimiter>
+    </input>
+    <input type="link" token="reset_form" searchWhenChanged="true">
+      <label>Clear</label>
+      <choice value="1">Clear fields</choice>
+      <change>
+        <condition value="1">
+          <unset token="signature"></unset>
+          <unset token="form.signature"></unset>
+          <unset token="delete_mapping"></unset>
+          <unset token="form.delete_mapping"></unset>
+          <set token="lookup_filter">*</set>
+          <set token="form.lookup_filter">*</set>
+          <set token="technique_id">-</set>
+          <set token="form.technique_id">-</set>
+          <set token="technique_name">-</set>
+          <set token="form.technique_name">-</set>
+          <set token="tactic">-</set>
+          <set token="form.tactic">-</set>
+          <set token="description">-</set>
+          <set token="form.description">-</set>
+          <unset token="reset_form"></unset>
+          <unset token="form.reset_form"></unset>
+        </condition>
+      </change>
+    </input>
+  </fieldset>
+
+  <row depends="$show_editor$,$signature$">
+    <panel>
+      <title>Save Result</title>
+      <table>
+        <search>
+          <query>
+            | inputlookup suricata_mitre.csv
+            | where signature!=$signature|s$
+            | append [
+                | makeresults
+                | eval signature=$signature|s$
+                | eval technique_id=if($technique_id|s$="-", "", $technique_id|s$)
+                | eval technique_name=if($technique_name|s$="-", "", $technique_name|s$)
+                | eval tactic=if($tactic|s$="-", "", $tactic|s$)
+                | eval description=if($description|s$="-", "", $description|s$)
+                | where "$delete_mapping$"!="1" AND len(signature)&gt;0
+              ]
+            | fields signature technique_id technique_name tactic description
+            | sort signature
+            | outputlookup suricata_mitre.csv
+            | stats count as updated_lookup_rows
+            | eval status=if("$delete_mapping$"=="1", "Deleted mapping", "Saved mapping")
+            | eval saved_signature=$signature|s$
+            | table status saved_signature updated_lookup_rows
+          </query>
+          <done>
+            <set token="lookup_refresh">$job.sid$</set>
+          </done>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Current Lookup Entries</title>
+      <table>
+        <search>
+          <query>
+            | inputlookup suricata_mitre.csv
+            | eval lookup_refresh="$lookup_refresh$"
+            | search signature=$lookup_filter|s$ OR technique_id=$lookup_filter|s$ OR technique_name=$lookup_filter|s$ OR tactic=$lookup_filter|s$ OR description=$lookup_filter|s$
+            | fields - lookup_refresh
+            | sort signature
+            | table signature technique_id technique_name tactic description
+          </query>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="form.signature">$row.signature$</set>
+          <set token="form.technique_id">$row.technique_id$</set>
+          <set token="form.technique_name">$row.technique_name$</set>
+          <set token="form.tactic">$row.tactic$</set>
+          <set token="form.description">$row.description$</set>
+          <unset token="form.delete_mapping"></unset>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+</dashboard>

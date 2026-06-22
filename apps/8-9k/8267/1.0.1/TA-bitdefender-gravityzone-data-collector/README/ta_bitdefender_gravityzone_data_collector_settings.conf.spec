@@ -1,0 +1,11 @@
+[logging]
+loglevel = 
+
+[additional_parameters]
+gravityzone_api_url = 
+gravityzone_api_key = 
+enable_proxy = 
+proxy_url = 
+proxy_port = 
+proxy_username = 
+proxy_password = 

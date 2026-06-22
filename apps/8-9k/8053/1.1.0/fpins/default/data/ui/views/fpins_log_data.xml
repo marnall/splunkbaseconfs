@@ -1,0 +1,299 @@
+<form theme="dark"
+      version="1.1">
+  <label>DLP Actions and File Analysis</label>
+  <!-- First row of a single comment -->
+  <!-- Second row of 2 panels -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="selectedsourcetype" searchWhenChanged="true">
+      <label>Log Type</label>
+      <choice value="*">Any</choice>
+      <choice value="SWG">SWG</choice>
+      <choice value="Admin">Admin</choice>
+      <choice value="CASBAPI">CASBAPI</choice>
+      <choice value="CASBInline">CASBInline</choice>
+      <choice value="DLP">DLP</choice>
+      <choice value="Health">Health</choice>
+      <choice value="ZTNA">ZTNA</choice>
+      <default>Any</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="time" token="selectedtime" searchWhenChanged="true">
+      <label>Time selector</label>
+      <default>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+
+    <panel>
+      <title>Top 10 DLP Patterns  - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ allpatterns=* | search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter] | stats count by allpatterns | sort - count | head 10</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>DLP Patterns over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ allpatterns=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand allpatterns
+| timechart count by allpatterns</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Policy ID over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ policyid=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| mvexpand policyid
+| timechart count by policyid</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Events by type</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type!=stats | stats count by type</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Unique detected users per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| stats count by userfullname, _time
+| stats count by _time</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Unique detected filenames per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND (file=* OR filename=*)
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| stats count by file,filename, _time
+| stats count by _time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 10 logged activity for type $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE activity=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| top activity
+| fields activity, count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top 10 logged applications for type $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE applicationname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| top applicationname
+| fields applicationname, count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+<!-- TODO -->
+<!--  <row>-->
+<!--    <panel>-->
+<!--      <title>Geo spread</title>-->
+<!--      <map>-->
+<!--        <search>-->
+<!--          <query>source=fpins ppcode=SSE location=* -->
+<!--| lookup countries countrycode AS CountryISO -->
+<!--| geostats latfield=latitude longfield=longitude count</query>-->
+<!--          <earliest>$selectedtime.earliest$</earliest>-->
+<!--          <latest>$selectedtime.latest$</latest>-->
+<!--        </search>-->
+<!--        <option name="drilldown">none</option>-->
+<!--        <option name="mapping.type">marker</option>-->
+<!--        <option name="refresh.display">progressbar</option>-->
+<!--      </map>-->
+<!--    </panel>-->
+<!--    <panel>-->
+<!--      <title>Top 10 files</title>-->
+<!--      <chart>-->
+<!--        <search>-->
+<!--          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND (file=* OR filename=*) -->
+<!--| eval FILE=if(isnotnull(filename), filename, file) -->
+<!--| stats count by FILE -->
+<!--| sort - count -->
+<!--| head 10</query>-->
+<!--          <earliest>$selectedtime.earliest$</earliest>-->
+<!--          <latest>$selectedtime.latest$</latest>-->
+<!--        </search>-->
+<!--        <option name="charting.chart">bar</option>-->
+<!--        <option name="charting.drilldown">none</option>-->
+<!--        <option name="refresh.display">progressbar</option>-->
+<!--      </chart>-->
+<!--    </panel>-->
+<!--  </row>-->
+
+  <row>
+    <panel>
+      <title>Total file events of type $selectedsourcetype$</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type!=bitglass2 type=$selectedsourcetype$ AND (file=* OR filename=*)| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter] | stats count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Maximum occurrence of one file per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type!=bitglass2 type=$selectedsourcetype$ (file=* OR filename=*)
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval FILE=if(isnotnull(filename), filename, file)
+| stats count by FILE, _time
+| eventstats MAX(count) AS COUNT by _time
+| eval maxer=if(COUNT==count,"True","False")
+| search maxer=True
+| dedup _time
+| timechart values(COUNT) AS OCCURRANCES span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Actions over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND (file=* OR filename=*) AND action=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| timechart count by action</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top file sizes over time</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND filename=* AND (filesize=* OR bytesreceived=*)
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval SIZE=coalesce(filesize, bytesreceived)
+| stats MAX(SIZE) AS SIZE by _time</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <!-- <panel>
+      <title>Unique detected filenames per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$  file=*
+| bin _time span=1d
+| stats count by file, _time
+| stats count by _time</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel> -->
+  </row>
+
+</form>

@@ -1,0 +1,255 @@
+<form version="1.1" theme="dark">
+  <label>SafeLine — Bot &amp; JA4 Analysis</label>
+  <description>TLS fingerprint analysis (JA4), bot detection, automated traffic identification.</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="tr">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="site_tok" searchWhenChanged="true">
+      <label>Site (vhost)</label>
+      <choice value="*">All sites</choice>
+      <default>*</default>
+      <prefix>site_url=</prefix>
+      <fieldForLabel>site_name</fieldForLabel>
+      <fieldForValue>site_url</fieldForValue>
+      <search>
+        <query>`safeline_waf` site_url=* | stats count by site_url site_name | sort - count</query>
+        <earliest>$tr.earliest$</earliest>
+        <latest>$tr.latest$</latest>
+      </search>
+    </input>
+  </fieldset>
+
+  <!-- KPIs -->
+  <row>
+    <panel>
+      <single>
+        <title>Distinct JA4 fingerprints</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ ja4_fingerprint=* | stats dc(ja4_fingerprint)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Distinct user agents</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=* | stats dc(user_agent)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Bot/scanner UAs</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| where match(lower(user_agent),"bot|crawler|spider|scraper|scan|nikto|sqlmap|nmap|wget|curl|python|go-http|java/")
+| stats dc(user_agent)</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="rangeColors">["0x55c98f","0xf1813f"]</option>
+        <option name="rangeValues">[1]</option>
+        <option name="useColors">1</option>
+        <option name="colorMode">block</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Bot requests</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| where match(lower(user_agent),"bot|crawler|spider|scraper|scan|nikto|sqlmap|nmap|wget|curl|python|go-http|java/")
+| stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Rare JA4 (single use)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ ja4_fingerprint=*
+| stats count by ja4_fingerprint
+| where count=1
+| stats count</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </single>
+    </panel>
+  </row>
+
+  <!-- JA4 distribution -->
+  <row>
+    <panel>
+      <chart>
+        <title>Top JA4 fingerprint families</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ tls_ja4_family=* | top limit=15 tls_ja4_family</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top user agent strings</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| eval ua_short = substr(user_agent,1,80)
+| top limit=15 ua_short</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Suspicious patterns -->
+  <row>
+    <panel>
+      <table>
+        <title>Suspicious JA4 fingerprints (low volume + attacks)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ ja4_fingerprint=*
+| stats count AS hits
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        dc(src_ip) AS sources
+        dc(user_agent) AS distinct_uas
+        values(user_agent) AS user_agents
+        values(attack_type) AS attack_types
+        by ja4_fingerprint tls_ja4_family
+| where hits&lt;=50 AND (attacks&gt;0 OR distinct_uas&gt;1)
+| sort - attacks - hits
+| head 50</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <format type="color" field="attacks">
+          <colorPalette type="minMidMax" minColor="#55c98f" midColor="#f1813f" maxColor="#dc4e41"/>
+          <scale type="minMidMax" minType="number" minValue="0" midType="number" midValue="5" maxType="number" maxValue="50"/>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Bot tables -->
+  <row>
+    <panel>
+      <table>
+        <title>Top bot / scanner user agents</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| where match(lower(user_agent),"bot|crawler|spider|scraper|scan|nikto|sqlmap|nmap|wget|curl|python|go-http|java/")
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        count(eval(blocked=1)) AS blocked
+        dc(src_ip) AS sources
+        dc(site_url) AS sites_hit
+        values(attack_type) AS attack_types
+        latest(_time) AS last_seen
+        by user_agent
+| eval last_seen = strftime(last_seen,"%F %T")
+| sort - requests
+| head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <title>UA / JA4 mismatch (single UA, many JA4 — possible spoofing)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=* ja4_fingerprint=*
+| stats dc(ja4_fingerprint) AS ja4_count
+        dc(src_ip) AS sources
+        count AS requests
+        values(ja4_fingerprint) AS fingerprints
+        by user_agent
+| where ja4_count&gt;=3 AND sources&lt;=10
+| sort - ja4_count - requests
+| head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <table>
+        <title>JA4 / UA mismatch (one JA4, many UAs)</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=* ja4_fingerprint=*
+| stats dc(user_agent) AS ua_count
+        dc(src_ip) AS sources
+        count AS requests
+        values(user_agent) AS user_agents
+        by ja4_fingerprint
+| where ua_count&gt;=5 AND sources&lt;=20
+| sort - ua_count
+| head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Empty UA / null JA4 = highly suspicious -->
+  <row>
+    <panel>
+      <table>
+        <title>Empty / missing user agent</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ (NOT user_agent=* OR user_agent="")
+| stats count AS requests
+        count(eval(is_attack=1)) AS attacks
+        dc(urlpath) AS paths
+        values(method) AS methods
+        latest(_time) AS last_seen
+        by src_ip src_country
+| eval last_seen=strftime(last_seen,"%F %T")
+| sort - attacks - requests
+| head 25</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <chart>
+        <title>Bot vs human traffic over time</title>
+        <search>
+          <query>`safeline_waf` $site_tok$ user_agent=*
+| eval class = case(
+    match(lower(user_agent),"bot|crawler|spider|scraper|scan|nikto|sqlmap|nmap|wget|curl|python|go-http|java/"), "bot",
+    true(), "human")
+| timechart count by class</query>
+          <earliest>$tr.earliest$</earliest>
+          <latest>$tr.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"bot":0xf1813f,"human":0x55c98f}</option>
+      </chart>
+    </panel>
+  </row>
+
+</form>

@@ -1,0 +1,109 @@
+<form version="1.1" refresh="900">
+  <label>ClearPass Licensing</label>
+  <description></description>
+
+  <fieldset autoRun="true" submitButton="false">
+    <input type="time" searchWhenChanged="true">
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+
+    <input type="checkbox" token="servers" searchWhenChanged="true">
+      <label>ClearPass Servers</label>
+      <delimiter> OR </delimiter>
+      <valuePrefix>node_ip=</valuePrefix>
+      <prefix>(</prefix>
+      <suffix>)</suffix>
+      <fieldForValue>node_ip</fieldForValue>
+      <fieldForLabel>node_ip</fieldForLabel>
+      <default>*</default>
+      <search>
+        <query><![CDATA[eventtype=cppm-licensing | stats count by node_ip]]></query>
+      </search>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>eventtype=cppm-licensing $servers$ | bin _time span=15m | dedup _time node_ip app_name timestamp | timechart span=15m sum(used_count) </query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="underLabel">Used Licenses</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>eventtype=cppm-licensing $servers$ | bin _time span=15m | dedup _time node_ip app_name timestamp | eval available_licenses = (total_count - used_count) | timechart span=15m sum(available_licenses)</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="rangeColors">["0xdc4e41","0xf1813f","0xf8be34","0x006d9c","0x53a051"]</option>
+        <option name="rangeValues">[0,10,100,1000]</option>
+        <option name="underLabel">Available Licenses</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>eventtype=cppm-licensing | where used_count > total_count | eval overage = abs(total_count - used_count) | bin span=15m _time | dedup _time app_name node_ip timestamp | timechart span=15m sum(overage) as overage</query>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="rangeColors">["0x555","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">License Overages</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <table>
+        <search>
+          <query> 
+          eventtype=cppm-licensing $servers$ | dedup node_ip, app_name | eval available_licenses = (total_count - used_count) | table node_ip, app_name, total_count, used_count, available_licenses | sort node_ip, app_name 
+          </query>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>License Usage Over Time</title>
+        <search>
+          <query>eventtype=cppm-licensing $servers$ | bin span=15m _time | dedup _time node_ip app_name timestamp | timechart span=15m max(used_count) by app_name</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>License Overages Over Time</title>
+        <search>
+          <query>eventtype=cppm-licensing $servers$ | where used_count > total_count | eval overage = abs(total_count - used_count) | bin span=15m _time | dedup _time node_ip app_name timestamp | timechart span=15m sum(overage) as overage</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

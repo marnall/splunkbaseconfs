@@ -1,0 +1,172 @@
+<form theme="dark"
+      version="1.1">
+  <label>User Analysis</label>
+  <!-- First row of a single comment -->
+  <!-- Second row of 2 panels -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="selectedsourcetype" searchWhenChanged="true">
+      <label>Log Type</label>
+      <choice value="*">Any</choice>
+      <choice value="SWG">SWG</choice>
+      <choice value="Admin">Admin</choice>
+      <choice value="CASBAPI">CASBAPI</choice>
+      <choice value="CASBInline">CASBInline</choice>
+      <choice value="DLP">DLP</choice>
+      <choice value="Health">Health</choice>
+      <choice value="ZTNA">ZTNA</choice>   
+      <default>Any</default>
+      <initialValue>*</initialValue>
+    </input>
+    <input type="time" token="selectedtime" searchWhenChanged="true">
+      <label>Time selector</label>
+      <default>
+        <earliest>-30d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Number of owners in $selectedsourcetype$</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| stats count by userfullname
+| stats count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Total email addresses in $selectedsourcetype$ over time</title>
+      <single>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ username=* 
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d |stats count by username, _time
+| timechart span=1d count</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="drilldown">all</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+<!-- TODO -->
+<!--    <panel>-->
+<!--      <title>Top 10 high risk score users- $selectedsourcetype$</title>-->
+<!--      <table>-->
+<!--        <search>-->
+<!--          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ status=* user=* PENALTY=*    -->
+<!--| lookup bgpenalty PENALTY  -->
+<!--| stats sum(risk) AS RISK by user -->
+<!--| sort - RISK -->
+<!--| head 10</query>-->
+<!--          <earliest>$selectedtime.earliest$</earliest>-->
+<!--          <latest>$selectedtime.latest$</latest>-->
+<!--        </search>-->
+<!--        <option name="drilldown">cell</option>-->
+<!--        <option name="refresh.display">progressbar</option>-->
+<!--      </table>-->
+<!--    </panel>-->
+    <panel>
+      <title>Newly detected users this month - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@mon"), "DISAPPEARED","NEW")
+| dedup userfullname
+| eventstats count AS FOUND by userfullname
+| table userfullname, MARKER, FOUND
+| search MARKER=NEW AND FOUND=1
+| fields userfullname</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Disappeared users this month - $selectedsourcetype$</title>
+      <table>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| eval MARKER = if (_time &lt; relative_time(now(), "@mon"), "DISAPPEARED","NEW")
+| dedup userfullname
+| eventstats count AS FOUND by userfullname
+| table userfullname, MARKER, FOUND
+| search MARKER=DISAPPEARED AND FOUND=1
+| fields userfullname, MARKER</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>User events over time - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ AND userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| timechart count  span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorUnit">1</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">all</option>
+        <option name="charting.legend.labelStyle.overflowMode">ellipsisEnd</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Events per userfullname - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| stats count by userfullname</query>
+          <earliest>0</earliest>
+          <latest></latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Number of unique users per day - $selectedsourcetype$</title>
+      <chart>
+        <search>
+          <query>source=fpins ppcode=SSE type=$selectedsourcetype$ userfullname=*
+| search [| makeresults | eval filter=if("$selectedsourcetype$"="DLP","proxytype!=SWG","") | return $filter]
+| bin _time span=1d
+| stats count by userfullname ,_time
+| timechart count span=1d</query>
+          <earliest>$selectedtime.earliest$</earliest>
+          <latest>$selectedtime.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

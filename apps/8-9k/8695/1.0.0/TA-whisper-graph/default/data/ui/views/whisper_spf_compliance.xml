@@ -1,0 +1,253 @@
+<dashboard version="2">
+  <label>Whisper - SPF Compliance</label>
+  <description>SPF record status, include chain depth, and RFC 7208 10-lookup limit compliance for organizational domains.</description>
+  <definition><![CDATA[
+
+
+{
+  "title": "Whisper - SPF Compliance",
+  "description": "SPF record status, include chain depth, and RFC 7208 10-lookup limit compliance for organizational domains.",
+  "dataSources": {
+    "ds_domain_list": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" | dedup domain | sort domain | eval label=domain | table label, domain",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_spf_adoption": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:attack_surface\" record_type=\"A\" | stats dc(domain) AS total_domains | appendcols [search `whisper_index` sourcetype=\"whisper:spf_compliance\" | where spf_exists=\"true\" | stats dc(domain) AS spf_domains] | eval percentage=round((spf_domains/total_domains)*100, 1) | eval display=percentage.\"%\" | fields display",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_exceeds_limit": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" exceeds_limit=\"true\" | stats dc(domain) AS count",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_total_ips": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" | stats sum(authorized_ip_count) AS total_ips, count AS _event_count | eval total_ips=if(_event_count=0 OR isnull(total_ips), 0, total_ips) | fields total_ips",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_spf_table": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" domain=$domain_filter$ | dedup domain sortby -_time | eval status=case(spf_exists=\"false\", \"Missing\", exceeds_limit=\"true\", \"Non-Compliant\", include_count>7, \"Warning\", 1=1, \"Compliant\") | eval status_icon=case(status=\"Compliant\", \"pass\", status=\"Warning\", \"warning\", status=\"Non-Compliant\", \"fail\", status=\"Missing\", \"fail\") | table domain, status_icon, status, spf_exists, include_count, authorized_ip_count, exceeds_limit, last_checked | sort status",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_spf_chain": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" domain=$selected_domain$ | dedup domain sortby -_time | mvexpand spf_chain | table spf_chain",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    },
+    "ds_authorized_ips": {
+      "type": "ds.search",
+      "options": {
+        "query": "`whisper_index` sourcetype=\"whisper:spf_compliance\" domain=$selected_domain$ | dedup domain sortby -_time | mvexpand authorized_ips | table authorized_ips",
+        "queryParameters": {
+          "earliest": "$time_range.earliest$",
+          "latest": "$time_range.latest$"
+        }
+      }
+    }
+  },
+  "defaults": {},
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {
+        "token": "time_range",
+        "defaultValue": "-24h@h,now"
+      },
+      "title": "Time Range"
+    },
+    "input_domain_filter": {
+      "type": "input.text",
+      "options": {
+        "token": "domain_filter",
+        "defaultValue": "*"
+      },
+      "title": "Domain Filter"
+    },
+    "input_selected_domain": {
+      "type": "input.dropdown",
+      "options": {
+        "items": [],
+        "token": "selected_domain",
+        "defaultValue": "*"
+      },
+      "dataSources": {
+        "primary": "ds_domain_list"
+      },
+      "title": "Domain Detail"
+    }
+  },
+  "layout": {
+    "type": "grid",
+    "globalInputs": [
+      "input_time_range",
+      "input_domain_filter",
+      "input_selected_domain"
+    ],
+    "structure": [
+      {
+        "item": "viz_spf_adoption",
+        "position": {
+          "x": 0,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_exceeds_limit",
+        "position": {
+          "x": 400,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_total_ips",
+        "position": {
+          "x": 800,
+          "y": 0,
+          "w": 400,
+          "h": 100
+        }
+      },
+      {
+        "item": "viz_spf_table",
+        "position": {
+          "x": 0,
+          "y": 100,
+          "w": 1200,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_spf_chain",
+        "position": {
+          "x": 0,
+          "y": 400,
+          "w": 600,
+          "h": 300
+        }
+      },
+      {
+        "item": "viz_authorized_ips",
+        "position": {
+          "x": 600,
+          "y": 400,
+          "w": 600,
+          "h": 300
+        }
+      }
+    ]
+  },
+  "visualizations": {
+    "viz_spf_adoption": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_spf_adoption"
+      },
+      "title": "Domains with SPF",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#65a637",
+        "nullValueDisplay": "N/A"
+      }
+    },
+    "viz_exceeds_limit": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_exceeds_limit"
+      },
+      "title": "Exceeds 10-Lookup Limit",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#d41f1c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_total_ips": {
+      "type": "viz.singlevalue",
+      "dataSources": {
+        "primary": "ds_total_ips"
+      },
+      "title": "Total Authorized IPs",
+      "options": {
+        "majorFontSize": 36,
+        "majorColor": "#006d9c",
+        "nullValueDisplay": "0"
+      }
+    },
+    "viz_spf_table": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_spf_table"
+      },
+      "title": "SPF Compliance Status by Domain",
+      "eventHandlers": [
+        {
+          "type": "drilldown.setToken",
+          "event": "table.cellClick",
+          "actions": [
+            {
+              "type": "eval",
+              "token": "selected_domain",
+              "value": "$row.domain$"
+            }
+          ]
+        }
+      ]
+    },
+    "viz_spf_chain": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_spf_chain"
+      },
+      "title": "SPF Include Chain"
+    },
+    "viz_authorized_ips": {
+      "type": "viz.table",
+      "dataSources": {
+        "primary": "ds_authorized_ips"
+      },
+      "title": "Authorized Sending IPs"
+    }
+  }
+}
+
+
+  ]]></definition>
+</dashboard>

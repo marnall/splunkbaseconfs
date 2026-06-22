@@ -1,0 +1,92 @@
+<form version="1.1">
+  <label>Edge Security</label>
+  <description>Traffic anomalies, sources, and status code patterns.</description>
+  <fieldset submitButton="false">
+    <input type="time" token="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="project" searchWhenChanged="true">
+      <label>Project</label>
+      <choice value="*">All</choice>
+      <search>
+        <query>`vercel_web` | stats count by projectName | sort -count</query>
+      </search>
+      <fieldForLabel>projectName</fieldForLabel>
+      <fieldForValue>projectName</fieldForValue>
+      <default>*</default>
+    </input>
+    <eval token="project_filter">if("$project$"="*" OR "$project$"="", "", "projectName=\"$project$\"")</eval>
+  </fieldset>
+
+  <search id="baseWeb">
+    <query>`vercel_web` $project_filter$</query>
+    <earliest>$time.earliest$</earliest>
+    <latest>$time.latest$</latest>
+  </search>
+
+  <row>
+    <panel>
+      <title>Requests per minute</title>
+      <chart>
+        <search base="baseWeb">
+          <query>| timechart span=1m count as requests</query>
+        </search>
+        <option name="charting.chart">line</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Status code distribution</title>
+      <chart>
+        <search base="baseWeb">
+          <query>| stats count by status</query>
+        </search>
+        <option name="charting.chart">pie</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top source IPs</title>
+      <table>
+        <search base="baseWeb">
+          <query>| stats count as requests by src_ip | sort - requests | head 20</query>
+        </search>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Geo distribution</title>
+      <map>
+        <search base="baseWeb">
+          <query>| iplocation src_ip | geostats count</query>
+        </search>
+      </map>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Top 4xx/5xx paths</title>
+      <table>
+        <search base="baseWeb">
+          <query>| where status&gt;=400 | stats count as errors by uri_path | sort - errors | head 15</query>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>Top user agents (errors)</title>
+      <table>
+        <search base="baseWeb">
+          <query>| where status&gt;=400 | stats count as errors by http_user_agent | sort - errors | head 10</query>
+        </search>
+      </table>
+    </panel>
+  </row>
+</form>

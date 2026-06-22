@@ -1,0 +1,414 @@
+<!-- Copyright (C) 2022-2026 Sideview LLC.  All Rights Reserved. -->
+<view isVisible="false" stylesheet="custom.css">
+  <label>Home</label>
+
+  <pattern name="nav" layoutPanel="appHeader" />
+
+  <module name="URLLoader" layoutPanel="viewHeader">
+    <param name="keepURLUpdated">True</param>
+
+    <module name="Search">
+      <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-app splunk_server=local
+| rename eai:acl.app as app
+| search app="$sideview.currentApp$"
+| stats last(build) as build last(version) as version last(description) as description
+| appendcols [
+  | rest /services/apps/local splunk_server=local
+  | search title="cisco_cdr"
+  | stats count
+  | eval cisco_cdr_installed=if("$test_cisco_cdr_not_installed$_foo"=="1_foo" OR count=0,"cisco_cdr_not_installed","cisco_cdr_is_installed")
+  | table cisco_cdr_installed
+]
+
+      ]]></param>
+
+      <module name="ResultsValueSetter" layoutPanel="viewHeader">
+        <param name="fields">cisco_cdr_installed, version</param>
+
+
+
+        <module name="Button">
+          <param name="label">About this app</param>
+          <param name="float">right</param>
+
+          <module name="Layer">
+            <module name="HTML">
+              <param name="html"><![CDATA[
+
+              <h3>How do we use this app?</h3>
+
+              <p>
+                Start with the <a href="https://sideviewapps.com/documentation/webex-calling-and-webex-meetings" target="_blank">setup documentation</a> for this app if you haven't already.  One spoiler is that the actual ingestion of your Webex data ends up being handled by a separate TA developed by Cisco.
+              </p>
+              <p>
+                This app then serves as an adapter, allowing the webex data to be pulled into Sideview's commercial app <a href="https://sideviewapps.com/products/cisco-cdr-reporting" target="_blank">Cisco CDR Reporting and Analytics</a>.
+              </p>
+
+              <p>
+                In practical terms that means you and your team can investigate and chart your way through the webex data in a sophisticated user interface, covering a much wider range of functionality, but without ever having to learn or even see the Splunk search language, aka SPL.
+              </p>
+
+              ]]></param>
+            </module>
+
+            <module name="Switcher">
+              <param name="selectedGroup">$cisco_cdr_installed$</param>
+
+              <module name="HTML" group="cisco_cdr_not_installed">
+                <param name="html"><![CDATA[
+
+
+                <p>
+                  The Cisco CDR Reporting and Analytics app is not currently installed here,  but you can <a href="https://sideviewapps.com/products/cisco-cdr-reporting">learn more about it on our website</a>. It is available as a free trial and can be set up quite easily <a href="https://sideviewapps.com/documentation/cisco-cdr-reporting-analytics-installation" target="_blank">following these steps</a>.
+                </p>
+                <p>
+                  No matter your situation, hopefully you are talking to us and you can always reach us at <a href="mailto:info@sideviewapps.com">info@sideviewapps.com</a>.
+                </p>
+
+
+                ]]></param>
+              </module>
+
+
+            </module>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+
+              <p>(hit Escape to close, or click the little X at the top right here).</p>
+
+              ]]></param>
+            </module>
+
+
+          </module>
+
+
+
+
+
+
+
+        </module>
+
+        <module name="HTML">
+          <param name="html"><![CDATA[
+          <h2>Welcome to Sideview's Supporting App for Webex $version$</h2>
+
+          ]]></param>
+        </module>
+
+
+
+
+
+        <module name="Search" layoutPanel="panel_row1_col1">
+          <param name="search"><![CDATA[
+| rest /servicesNS/-/-/configs/conf-checklist splunk_server=local
+| rename eai:appName as app search as searchToRun
+| search app="$sideview.currentApp$"
+| fields app title searchToRun drilldown
+| search title="critical_*"
+| eval drilldownLabel=if(isnull(drilldown),"see health check results","run troubleshooting search")
+| eval drilldown=if(isnull(drilldown),searchToRun,drilldown)
+          ]]></param>
+
+
+
+          <module name="HTML">
+            <param name="html"><![CDATA[
+              <strong>One or more critical health checks have failed and should be addressed as soon as possible:</strong>
+            ]]></param>
+          </module>
+
+          <module name="Pager">
+
+            <module name="Multiplexer">
+              <param name="fields">app,searchToRun,drilldown,drilldownLabel</param>
+
+              <module name="Search">
+                <param name="search">$searchToRun.rawValue$ | sort - severity_level |  table severity_level metric</param>
+
+                <module name="ProgressIndicator" />
+
+                <module name="HTML">
+                  <param name="html"><![CDATA[
+                   <p class="checklistConfSeverity$results[0].severity_level$" style="margin-bottom:0px;">
+                      $results[0].metric$
+                    </p>
+                  ]]></param>
+                  <param name="customBehavior">setPageStateIfCriticalHealthCheckFailed</param>
+                </module>
+              </module>
+            </module>
+          </module>
+
+
+
+          <module name="HTML">
+            <param name="html">
+              If you need more detail or help fixing these issues, contact us at <a href="mailto:support@sideviewapps.com">support@sideviewapps.com</a>
+            </param>
+          </module>
+
+        </module>
+
+
+
+        <module name="TimePicker" layoutPanel="mainSearchControls">
+          <param name="default">Last 24 hours</param>
+
+          <module name="Search" layoutPanel="panel_row3_col1">
+            <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings")
+| eval clientType = lower(clientType) + if(match(lower(clientType),"_client"), "s", "_clients")
+| eval {type}_call_id = call_id
+| eval {clientType}_call_id = call_id
+``` hardwareType  serverRegion  ```
+| eval {activity}_call_id = call_id
+| eval osType = lower(osType) + "_os"
+| eval {osType}_call_id = call_id
+| fields *_call_id call_id
+| stats dc(call_call_id) as calls dc(meeting_call_id) as meetings dc(*_call_id) as *
+| fields calls meetings *_clients *_os *
+| rename total as "total calls"
+
+            ]]></param>
+
+            <module name="Pager">
+              <module name="Table"/>
+            </module>
+
+            <module name="Switcher">
+              <param name="selectedGroup">$cisco_cdr_installed$</param>
+
+              <module name="HTML" group="cisco_cdr_not_installed">
+                <param name="html"><![CDATA[
+
+                  WARNING: The Cisco CDR Reporting and Analytics app is not currently installed.   Drilldowns on this page will only include links to the generic Splunk Search UI using raw SPL.
+                ]]></param>
+              </module>
+
+              <module name="Link" group="cisco_cdr_is_installed">
+                <param name="label">Investigate these calls in the Cisco CDR Reporting and Analytics app</param>
+
+                <module name="Redirector">
+                  <param name="url">../cisco_cdr/calls</param>
+                  <param name="arg.earliest">$search.timeRange.earliest$</param>
+                  <param name="arg.latest">$search.timeRange.latest$</param>
+                  <param name="arg.data_type">webex</param>
+                </module>
+              </module>
+
+            </module>
+
+
+          </module>
+
+          <module name="Search" layoutPanel="panel_row4_col1">
+            <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings")
+| eval endTime = _time + duration
+| stats min(_time) as _time max(endTime) as end values(type) as type by call_id
+| eval type = type + "s"
+| eval duration=end - _time
+``` inline version of the Cisco CDR apps get_concurrency macro, the complex version with a split-by ```
+| eval increment = if(duration>0,mvappend("1","-1"),"0")
+| mvexpand type
+| mvexpand increment
+| eval _time = if(increment==1, _time, _time + duration)
+| sort 0 + _time
+| fillnull type value="NULL"
+| streamstats sum(increment) as post_concurrency by type
+| eval concurrency = if(increment==-1, post_concurrency+1, post_concurrency)
+``` inline version of the Cisco CDR apps timechart_for_concurrency macro, the complex version with split-by and bins```
+| timechart fixedrange=false bins=400 max(concurrency) as max_concurrency last(post_concurrency) as last_concurrency by type limit=60
+| filldown last_concurrency*
+| foreach "max_concurrency:*" [eval <<MATCHSTR>>=coalesce('max_concurrency:<<MATCHSTR>>','last_concurrency:<<MATCHSTR>>')]
+| fields - last_concurrency* max_concurrency*
+| fillnull
+            ]]></param>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                <h3>Max Concurrent calls/meetings</h3>
+              ]]></param>
+            </module>
+
+            <module name="ValueSetter">
+              <param name="arg.charting.chart">line</param>
+              <module name="Chart" >
+                <param name="height">400px</param>
+              </module>
+            </module>
+          </module>
+
+
+          <module name="Search" layoutPanel="panel_row5_col1">
+            <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings")
+| chart dc(call_id) as calls over callingPartyName
+| sort 0 calls desc
+| head 20
+            ]]></param>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                <h3>Top 20 Calling Parties</h3>
+              ]]></param>
+            </module>
+
+            <module name="ValueSetter">
+              <param name="arg.charting.chart">bar</param>
+              <module name="Chart" >
+                <param name="height">400px</param>
+
+
+                <module name="Layer">
+                  <param name="cssClass">menu</param>
+
+                  <module name="Switcher">
+                    <param name="selectedGroup">$cisco_cdr_installed$</param>
+
+                    <module name="Link"  group="cisco_cdr_is_installed">
+                      <param name="cssClass">menuItem</param>
+                      <param name="label">investigate calls with $chart.xValue$</param>
+
+                      <module name="Redirector">
+                        <param name="url">../cisco_cdr/calls</param>
+                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                        <param name="arg.latest">$search.timeRange.latest$</param>
+                        <param name="arg.data_type">webex</param>
+                        <param name="arg.searchterms">$chart.xTerm$</param>
+                      </module>
+                    </module>
+                    <module name="Link"  group="cisco_cdr_is_installed">
+                      <param name="cssClass">menuItem</param>
+                      <param name="label">chart calls with $chart.xValue$ over time</param>
+
+                      <module name="Redirector">
+                        <param name="url">../cisco_cdr/calls</param>
+                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                        <param name="arg.latest">$search.timeRange.latest$</param>
+                        <param name="arg.data_type">webex</param>
+                        <param name="arg.mode">chart</param>
+                        <param name="arg.searchterms">$chart.xTerm$</param>
+                      </module>
+                    </module>
+
+
+                    <module name="HTML"  group="cisco_cdr_not_installed">
+                      <param name="cssClass">menuLinkDisabled</param>
+                      <param name="html">investigate calls with $chart.xValue$ (cisco_cdr not installed)</param>
+                    </module>
+                    <module name="HTML"  group="cisco_cdr_not_installed">
+                      <param name="cssClass">menuLinkDisabled</param>
+                      <param name="html">chart calls with $chart.xValue$ over time (cisco_cdr not installed)</param>
+                    </module>
+
+
+                  </module>
+
+                  <module name="Link">
+                    <param name="cssClass">menuItem</param>
+                    <param name="label">view raw CSV events in Splunk</param>
+
+                    <module name="Redirector">
+                      <param name="url">search</param>
+                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                      <param name="arg.latest">$search.timeRange.latest$</param>
+                      <param name="arg.q">`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings") $chart.searchTerms$</param>
+                    </module>
+                  </module>
+                </module>
+
+              </module>
+            </module>
+          </module>
+
+          <module name="Search" layoutPanel="panel_row5_col2">
+            <param name="search"><![CDATA[
+`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings")
+| chart dc(call_id) over hour_of_day by day_of_week
+            ]]></param>
+            <module name="HTML">
+              <param name="html"><![CDATA[
+                <h3>Intraday call volume</h3>
+              ]]></param>
+            </module>
+
+            <module name="ValueSetter">
+              <param name="arg.charting.chart">line</param>
+              <module name="Chart" >
+                <param name="height">400px</param>
+
+                <module name="Layer">
+                  <param name="cssClass">menu</param>
+
+                  <module name="Switcher">
+                    <param name="selectedGroup">$cisco_cdr_installed$</param>
+
+                    <module name="Link"  group="cisco_cdr_is_installed">
+                      <param name="cssClass">menuItem</param>
+                      <param name="label">investigate calls with $chart.searchTerms$</param>
+
+                      <module name="Redirector">
+                        <param name="url">../cisco_cdr/calls</param>
+                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                        <param name="arg.latest">$search.timeRange.latest$</param>
+                        <param name="arg.data_type">webex</param>
+                        <param name="arg.searchterms">$chart.searchTerms$</param>
+                      </module>
+                    </module>
+
+                    <module name="Link"  group="cisco_cdr_is_installed">
+                      <param name="cssClass">menuItem</param>
+                      <param name="label">chart top callingPartyNames for $chart.searchTerms$</param>
+
+                      <module name="Redirector">
+                        <param name="url">../cisco_cdr/calls</param>
+                        <param name="arg.earliest">$search.timeRange.earliest$</param>
+                        <param name="arg.latest">$search.timeRange.latest$</param>
+                        <param name="arg.data_type">webex</param>
+                        <param name="arg.searchterms">$chart.searchTerms$</param>
+                        <param name="arg.mode">chart</param>
+                        <param name="arg.xField">callingPartyName</param>
+                      </module>
+                    </module>
+
+
+
+                    <module name="HTML"  group="cisco_cdr_not_installed">
+                      <param name="cssClass">menuLinkDisabled</param>
+                      <param name="html">investigate calls with $chart.searchTerms$ (cisco_cdr not installed)</param>
+                    </module>
+                    <module name="HTML"  group="cisco_cdr_not_installed">
+                      <param name="cssClass">menuLinkDisabled</param>
+                      <param name="html">chart top callingPartyNames for $chart.searchTerms$ (cisco_cdr not installed)</param>
+                    </module>
+
+
+
+                  </module>
+
+                  <module name="Link">
+                    <param name="cssClass">menuItem</param>
+                    <param name="label">view raw CSV events in Splunk</param>
+
+                    <module name="Redirector">
+                      <param name="url">search</param>
+                      <param name="arg.earliest">$search.timeRange.earliest$</param>
+                      <param name="arg.latest">$search.timeRange.latest$</param>
+                      <param name="arg.q">`custom_index` (sourcetype="cisco:webex:call:detailed_history" OR sourcetype="cisco:webex:meeting:qualities" OR sourcetype="cisco:webex:meetings") $chart.searchTerms$</param>
+                    </module>
+                  </module>
+                </module>
+
+
+              </module>
+            </module>
+          </module>
+        </module>
+
+      </module>
+    </module>
+  </module>
+</view>

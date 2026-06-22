@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form version="1.1">
+  <label>Airia Platform - DLP Policy Monitoring</label>
+  <description>Monitor Data Loss Prevention policy triggers, blocked content, and policy performance</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_picker">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>Total DLP Blocks</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| where is_dlp_blocked="true"
+| stats count as blocked_count</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Policy Violations</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,20]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>Total API Calls</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| stats count as total_calls</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="underLabel">Total Executions</option>
+      </single>
+    </panel>
+
+    <panel>
+      <title>DLP Block Rate</title>
+      <single>
+        <search>
+          <query>`airia_base_with_fields`
+| stats
+    count(eval(is_dlp_blocked="true")) as blocked
+    count as total
+| eval block_rate=round((blocked/total)*100, 2)
+| eval display=block_rate."%"
+| table display</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="colorMode">block</option>
+        <option name="underLabel">Percentage Blocked</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,10]</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>DLP Blocks Over Time</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where is_dlp_blocked="true"
+| timechart span=1h count as "Blocked Requests"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Blocked Count</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.seriesColors">[0xD93F3C]</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Blocked vs Allowed Over Time</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| eval status=if(is_dlp_blocked="true", "Blocked", "Allowed")
+| timechart span=1h count by status</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.axisTitleX.text">Time</option>
+        <option name="charting.axisTitleY.text">Count</option>
+        <option name="charting.legend.placement">bottom</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.fieldColors">{"Blocked": 0xD93F3C, "Allowed": 0x65A637}</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>DLP Blocks by Model</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where is_dlp_blocked="true"
+| stats count by model_display
+| sort -count</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Blocked Count</option>
+        <option name="charting.axisTitleY.text">AI Model</option>
+        <option name="charting.seriesColors">[0xF58F39]</option>
+      </chart>
+    </panel>
+
+    <panel>
+      <title>Policy Execution Time</title>
+      <chart>
+        <search>
+          <query>`airia_base_with_fields`
+| where policies_duration_seconds > 0
+| stats avg(policies_duration_seconds) as avg_seconds by model_display
+| eval avg_seconds=round(avg_seconds, 3)
+| sort -avg_seconds</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Avg Seconds</option>
+        <option name="charting.axisTitleY.text">Model</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Blocked User Inputs (What Was Blocked)</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where is_dlp_blocked="true" AND isnotnull(user_input) AND user_input!="null" AND user_input!=""
+| stats
+    count as "Block Count"
+    latest(_time) as "Last Blocked"
+    by user_input
+| eval "Last Blocked"=strftime('Last Blocked', "%Y-%m-%d %H:%M:%S")
+| rename user_input as "User Input"
+| sort -"Block Count"</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <format type="color" field="Block Count">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Recent DLP Blocks - Detailed View</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where is_dlp_blocked="true"
+| table _time user_input model_display execution_id policies_duration
+| eval _time=strftime(_time, "%Y-%m-%d %H:%M:%S")
+| rename
+    _time as "Time"
+    user_input as "Blocked Input"
+    model_display as "Model"
+    execution_id as "Execution ID"
+    policies_duration as "Policy Check Time"
+| sort -"Time"
+| head 50</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Policy Performance Statistics</title>
+      <table>
+        <search>
+          <query>`airia_base_with_fields`
+| where policies_duration_seconds > 0
+| stats
+    count as "Total Checks"
+    count(eval(is_dlp_blocked="true")) as "Blocks"
+    avg(policies_duration_seconds) as "Avg Policy Time (sec)"
+    max(policies_duration_seconds) as "Max Policy Time (sec)"
+    by model_display
+| eval "Block Rate"=round((Blocks/'Total Checks')*100, 2)."%"
+| eval "Avg Policy Time (sec)"=round('Avg Policy Time (sec)', 3)
+| eval "Max Policy Time (sec)"=round('Max Policy Time (sec)', 3)
+| rename model_display as "Model"
+| sort -Blocks</query>
+          <earliest>$time_picker.earliest$</earliest>
+          <latest>$time_picker.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="wrap">true</option>
+        <option name="rowNumbers">true</option>
+        <format type="color" field="Blocks">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+</form>

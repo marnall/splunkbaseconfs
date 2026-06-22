@@ -1,0 +1,4 @@
+[<name>]
+password = 
+servers = 
+username = 

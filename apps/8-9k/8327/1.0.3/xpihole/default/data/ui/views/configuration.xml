@@ -1,0 +1,192 @@
+<form version="1.1" script="configuration.js" stylesheet="configuration.css">
+  <label>Configuration</label>
+  <description>xPi-Hole app configuration - update index and sourcetype settings</description>
+
+  <fieldset submitButton="false" autoRun="true">
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>App Settings</title>
+      <html>
+        <div class="configuration-panel">
+          <div class="config-section">
+            <h3>Index Configuration</h3>
+            <p class="help-text">Specify the Splunk index where your Pi-Hole logs are stored.</p>
+            <div class="form-group">
+              <label for="index">Index Name</label>
+              <input type="text" id="index" class="form-control" placeholder="main" />
+              <span class="help-inline">e.g., main, pihole, network</span>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Sourcetype Configuration</h3>
+            <p class="help-text">Configure the sourcetypes for different Pi-Hole log types.</p>
+
+            <div class="form-group">
+              <label for="sourcetype_log">DNS Query Log Sourcetype</label>
+              <input type="text" id="sourcetype_log" class="form-control" placeholder="pihole:log" />
+              <span class="help-inline">Main Pi-Hole DNS query log (pihole.log)</span>
+            </div>
+
+            <div class="form-group">
+              <label for="sourcetype_ftl">FTL Log Sourcetype</label>
+              <input type="text" id="sourcetype_ftl" class="form-control" placeholder="pihole:ftl" />
+              <span class="help-inline">FTL daemon log (pihole-FTL.log)</span>
+            </div>
+
+            <div class="form-group">
+              <label for="sourcetype_gravity">Gravity Update Sourcetype</label>
+              <input type="text" id="sourcetype_gravity" class="form-control" placeholder="pihole:updateGravity" />
+              <span class="help-inline">Gravity database update log</span>
+            </div>
+
+            <div class="form-group">
+              <label for="sourcetype_web">Web Interface Sourcetype</label>
+              <input type="text" id="sourcetype_web" class="form-control" placeholder="pihole:web" />
+              <span class="help-inline">Web interface access log</span>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button id="save-config" class="btn btn-primary">Save Configuration</button>
+            <button id="reset-defaults" class="btn btn-secondary">Reset to Defaults</button>
+          </div>
+
+          <div id="save-status" class="status-message"></div>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <title>Search Preview</title>
+      <html>
+        <div class="preview-panel">
+          <h4>Base Search</h4>
+          <p>Your dashboards will use this search:</p>
+          <div class="code-preview">
+            <code id="search-preview">index=main sourcetype="pihole:log"</code>
+          </div>
+        </div>
+      </html>
+      <html>
+        <div class="help-panel" style="margin-top: 20px;">
+          <h4>Quick Help</h4>
+          <ul>
+            <li>Settings are saved to Splunk macros</li>
+            <li>Changes take effect immediately</li>
+            <li>Refresh dashboards to see updated data</li>
+            <li>Use the Test Search below to verify</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Current Configuration</title>
+      <table>
+        <title>Active Macro Settings</title>
+        <search>
+          <query>| rest /servicesNS/nobody/xpihole/configs/conf-macros splunk_server=local
+| search title IN ("pihole_index", "pihole_sourcetype", "pihole_base", "pihole_ftl_sourcetype", "pihole_gravity_sourcetype", "pihole_web_sourcetype")
+| table title, definition
+| rename title as "Macro Name", definition as "Current Definition"</query>
+          <earliest>-1m</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">10</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Data Input Setup</title>
+      <html>
+        <div style="padding: 15px;">
+          <h3>Setting Up Data Inputs</h3>
+          <p>Configure your Pi-Hole server to forward logs to Splunk using a Universal Forwarder or HEC:</p>
+
+          <h4>Universal Forwarder inputs.conf:</h4>
+          <pre style="background: #2d2d2d; color: #f8f8f2; padding: 15px; border-radius: 4px; overflow-x: auto;">
+[monitor:///var/log/pihole.log]
+sourcetype = pihole:log
+index = pihole
+
+[monitor:///var/log/pihole-FTL.log]
+sourcetype = pihole:ftl
+index = pihole
+
+[monitor:///var/log/pihole/pihole_updateGravity.log]
+sourcetype = pihole:updateGravity
+index = pihole
+          </pre>
+
+          <h4>Supported Sourcetypes:</h4>
+          <ul>
+            <li><strong>pihole:log</strong> - Main DNS query log (required)</li>
+            <li><strong>pihole:ftl</strong> - FTL daemon log</li>
+            <li><strong>pihole:updateGravity</strong> - Gravity database updates</li>
+            <li><strong>pihole:web</strong> - Web interface access log</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+    <panel>
+      <title>Test Your Configuration</title>
+      <html>
+        <div style="padding: 15px;">
+          <h3>Verify Data is Flowing</h3>
+          <p>Click the button below to run a test search and verify your Pi-Hole data is being indexed:</p>
+          <p style="margin-top: 15px;">
+            <a href="../search?q=search%20%60pihole_base%60%20%7C%20head%2020&amp;earliest=-24h&amp;latest=now" class="btn btn-primary" target="_blank" style="background: #5cc05c; border: none; padding: 10px 20px; color: white; text-decoration: none; border-radius: 4px;">Run Test Search</a>
+          </p>
+
+          <h4 style="margin-top: 20px;">Manual Test Search:</h4>
+          <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">`pihole_base` | head 20</pre>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>Help and Support</title>
+      <html>
+        <div style="padding: 15px;">
+          <h3>Resources</h3>
+          <ul>
+            <li><a href="https://github.com/xTechnix/xPi-Hole" target="_blank">GitHub Repository</a></li>
+            <li><a href="https://github.com/xTechnix/xPi-Hole/issues" target="_blank">Report an Issue</a></li>
+            <li><a href="https://docs.pi-hole.net/" target="_blank">Pi-Hole Documentation</a></li>
+          </ul>
+
+          <h3 style="margin-top: 20px;">About</h3>
+          <p>xPi-Hole is a comprehensive Splunk app for Pi-Hole DNS and Ad Blocker analytics.</p>
+          <p>Features include:</p>
+          <ul>
+            <li>Real-time DNS query monitoring</li>
+            <li>Ad blocking effectiveness analysis</li>
+            <li>Client behavior tracking</li>
+            <li>Geographic destination mapping</li>
+            <li>CIM and OCSF compliance</li>
+          </ul>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <html>
+        <div style="text-align: center; padding: 10px; color: #999; font-size: 12px;">
+          <p>xPi-Hole for Splunk | Copyright 2024-2025 <a href="https://xtechnix.com" target="_blank" style="color: #5cc05c;">xTechnix Inc.</a> | All Rights Reserved</p>
+        </div>
+      </html>
+    </panel>
+  </row>
+</form>

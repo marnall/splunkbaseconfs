@@ -1,0 +1,199 @@
+<form version="1.1" theme="dark">
+  <label>Trace Explorer</label>
+  <description>Deep dive into individual traces and spans - debug issues and analyze request flows</description>
+  <!-- Trace List -->
+  <!-- Selected Trace Details -->
+  <!-- Trace Waterfall Visualization -->
+  <!-- Selected Span Details -->
+  <!-- Prompt & Response (if available) -->
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-1h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="trace_id_search" searchWhenChanged="false">
+      <label>Trace ID</label>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="span_type_filter" searchWhenChanged="true">
+      <label>Span Type</label>
+      <choice value="*">All Types</choice>
+      <choice value="LLM">LLM</choice>
+      <choice value="RETRIEVER">Retriever</choice>
+      <choice value="EMBEDDING">Embedding</choice>
+      <choice value="AGENT">Agent</choice>
+      <choice value="TOOL">Tool</choice>
+      <choice value="CHAIN">Chain</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="status_filter" searchWhenChanged="true">
+      <label>Status</label>
+      <choice value="*">All</choice>
+      <choice value="OK">OK</choice>
+      <choice value="ERROR">Error</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="workflow_filter" searchWhenChanged="true">
+      <label>Workflow</label>
+      <choice value="*">All Workflows</choice>
+      <default>*</default>
+      <search>
+        <query>`genai_traces_index` | stats count by workflow_name | sort - count</query>
+        <earliest>-24h</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>workflow_name</fieldForLabel>
+      <fieldForValue>workflow_name</fieldForValue>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Trace List</title>
+      <table>
+        <search>
+          <query>`genai_traces_index` trace_id=$trace_id_search$ span_type=$span_type_filter$ status=$status_filter$ workflow_name=$workflow_filter$
+| stats earliest(_time) as start_time, 
+       latest(_time) as end_time,
+       count as span_count,
+       sum(duration_ms) as total_duration,
+       sum(is_error) as errors,
+       sum(input_tokens) as total_input_tokens,
+       sum(output_tokens) as total_output_tokens,
+       values(span_type) as span_types,
+       values(model_name) as models,
+       first(workflow_name) as workflow
+       by trace_id
+| eval status = if(errors &gt; 0, "ERROR", "OK")
+| eval total_tokens = total_input_tokens + total_output_tokens
+| sort - start_time
+| head 100
+| table start_time, trace_id, workflow, status, span_count, total_duration, total_tokens, models, span_types
+| rename start_time as "Time", trace_id as "Trace ID", workflow as "Workflow", status as "Status", span_count as "Spans", total_duration as "Duration (ms)", total_tokens as "Tokens", models as "Models", span_types as "Span Types"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">row</option>
+        <drilldown>
+          <set token="selected_trace_id">$row.Trace ID$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_trace_id$">
+    <panel>
+      <title>Trace Timeline: $selected_trace_id$</title>
+      <html>
+        <style>
+          .trace-timeline { font-family: monospace; }
+          .span-row { padding: 5px 0; border-bottom: 1px solid #333; }
+          .span-llm { color: #53A051; }
+          .span-retriever { color: #006D9C; }
+          .span-tool { color: #F8BE34; }
+          .span-error { color: #DC4E41; }
+        </style>
+      </html>
+      <table>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$"
+| sort _time
+| eval indent = ""
+| eval display_name = name
+| table _time, span_id, display_name, span_type, model_name, duration_ms, input_tokens, output_tokens, status_icon
+| rename _time as "Time", span_id as "Span ID", display_name as "Operation", span_type as "Type", model_name as "Model", duration_ms as "Duration (ms)", input_tokens as "Input Tokens", output_tokens as "Output Tokens", status_icon as "Status"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">row</option>
+        <option name="count">50</option>
+        <drilldown>
+          <set token="selected_span_id">$row.Span ID$</set>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_trace_id$">
+    <panel>
+      <title>Span Waterfall</title>
+      <chart>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$"
+| eval span_start = _time
+| eval span_end = _time + (duration_ms/1000)
+| eval display = name." (".span_type.")"
+| chart values(duration_ms) as Duration by display
+| sort - Duration</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.axisTitleX.text">Duration (ms)</option>
+        <option name="charting.axisTitleY.visibility">collapsed</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.chart.showDataLabels">all</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Trace Cost Breakdown</title>
+      <chart>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$" span_type="LLM"
+| `genai_cost_lookup`
+| `genai_calculate_cost`
+| stats sum(estimated_cost) as cost by model_name</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.legend.placement">right</option>
+      </chart>
+    </panel>
+  </row>
+  <row depends="$selected_span_id$">
+    <panel>
+      <title>Span Details: $selected_span_id$</title>
+      <table>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$" span_id="$selected_span_id$"
+| transpose
+| rename column as "Field", "row 1" as "Value"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">50</option>
+      </table>
+    </panel>
+  </row>
+  <row depends="$selected_span_id$">
+    <panel>
+      <title>Prompt Text</title>
+      <html>
+        <div id="prompt-container" style="background: #1a1a1a; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto;">
+        </div>
+      </html>
+      <table>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$" span_id="$selected_span_id$" | table prompt_text | head 1</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Response Text</title>
+      <table>
+        <search>
+          <query>`genai_traces_index` trace_id="$selected_trace_id$" span_id="$selected_span_id$" | table response_text | head 1</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+      </table>
+    </panel>
+  </row>
+</form>

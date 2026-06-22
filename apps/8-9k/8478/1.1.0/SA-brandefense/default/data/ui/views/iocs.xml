@@ -1,0 +1,75 @@
+<form version="1.1">
+  <label>IOCs</label>
+  <description>Brandefense Indicators of Compromise</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_range" searchWhenChanged="true">
+      <label>Time Range</label>
+      <default>
+        <earliest>-30d@d</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="ioc_type_filter" searchWhenChanged="true">
+      <label>IOC Type</label>
+      <choice value="*">All</choice>
+      <choice value="ip_address">IP Address</choice>
+      <choice value="domain">Domain</choice>
+      <choice value="hash">Hash</choice>
+      <choice value="url">URL</choice>
+      <default>*</default>
+    </input>
+    <input type="dropdown" token="ioc_severity_filter" searchWhenChanged="true">
+      <label>Severity</label>
+      <choice value="*">All</choice>
+      <choice value="CRITICAL">Critical</choice>
+      <choice value="HIGH">High</choice>
+      <choice value="MEDIUM">Medium</choice>
+      <choice value="LOW">Low</choice>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <row>
+    <panel>
+      <title>IOC Count by Type</title>
+      <chart>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:iocs" type=$ioc_type_filter$ severity=$ioc_severity_filter$ | stats dc(data) as count by type | sort - count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>IOCs by Source Module</title>
+      <chart>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:iocs" type=$ioc_type_filter$ severity=$ioc_severity_filter$ | stats dc(data) as count by module | sort - count</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>IOC Details</title>
+      <table>
+        <search>
+          <query>index=brandefense sourcetype="brandefense:iocs" type=$ioc_type_filter$ severity=$ioc_severity_filter$ | dedup data | sort - _time | table _time data type severity category module first_seen last_seen | rename data as "IOC Value", type as "Type", severity as "Severity", category as "Category", module as "Module", first_seen as "First Seen", last_seen as "Last Seen"</query>
+          <earliest>$time_range.earliest$</earliest>
+          <latest>$time_range.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="count">20</option>
+      </table>
+    </panel>
+  </row>
+</form>

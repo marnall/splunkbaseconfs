@@ -1,0 +1,128 @@
+<form theme="dark" version="1.1">
+  <label>Root Signal &amp; Behavior Analysis</label>
+  <description>Analyze underlying failure signals and behavioral shifts to understand why errors occur, where they originate, and how system behavior evolves over time.</description>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Select the index containing log data.</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label>Analysis Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+    <input type="text" token="error_keywords">
+      <label>Error Types ( "|" separated )</label>
+      <default>timeout|connection|permission|memory|disk|network|authentication</default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Error Signal Type Distribution</title>
+      <chart>
+        <title>Breaks down dominant failure signals by categorizing error messages into human-readable types such as timeout, network, or authentication.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| rex field=raw "(?&lt;error_type&gt;$error_keywords$)"
+| eval error_type = coalesce(error_type, "other")
+| stats count AS error_count BY error_type
+| sort - error_count</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.axisTitleX.visibility">visible</option>
+        <option name="charting.axisTitleY.visibility">visible</option>
+        <option name="charting.axisTitleY2.visibility">visible</option>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.splitBy">_aggregation</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Service-Level Error Rate</title>
+      <table>
+        <title>Highlights services experiencing elevated error rates, helping isolate components contributing most to operational risk.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| stats sum(is_error) AS errors count AS total BY service
+| eval error_rate = round((errors/total)*100, 2)
+| sort - error_rate</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Density by Host</title>
+      <chart>
+        <title>Reveals hosts generating a disproportionate share of failures, indicating potential unhealthy nodes or configuration issues.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| stats count AS error_count BY extracted_host
+| sort - error_count
+| head 10</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">290</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Service-to-Error Signal Correlation</title>
+      <table>
+        <title>Correlates services with dominant error types to accelerate root cause identification and triage.</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| rex field=raw "(?&lt;error_type&gt;$error_keywords$)"
+| eval error_type = coalesce(error_type, "other")
+| stats count AS error_count BY service error_type
+| sort - error_count
+| head 20</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Behavioral Shift Timeline</title>
+      <chart>
+        <title>Visualizes shifts in log severity distribution over time (for example, INFO or WARN transitioning into ERROR), indicating changes in system behavior.</title>
+        <search>
+          <query>index=$index$
+| timechart span=1h count BY severity</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+        <option name="height">329</option>
+      </chart>
+    </panel>
+  </row>
+</form>

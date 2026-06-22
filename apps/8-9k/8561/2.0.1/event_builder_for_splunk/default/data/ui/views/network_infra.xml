@@ -1,0 +1,200 @@
+<dashboard version="2" theme="dark">
+  <label>Network &amp; Infrastructure</label>
+  <description>Firewall allow/deny trends, DNS queries, proxy blocks, email, monitoring alerts, and ITSM events.</description>
+  <definition><![CDATA[
+{
+  "title": "Network & Infrastructure — Event Builder For Splunk",
+  "description": "Firewall traffic, DNS queries, proxy blocks, email gateway, and monitoring alerts.",
+  "layout": {
+    "type": "grid",
+    "options": {
+      "width": 1440,
+      "height": 1300,
+      "backgroundColor": "#171D21"
+    },
+    "structure": [
+      { "item": "viz_fw_allow_kpi",    "type": "block", "position": { "x": 0,    "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_fw_deny_kpi",     "type": "block", "position": { "x": 360,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_dns_kpi",         "type": "block", "position": { "x": 720,  "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_proxy_block_kpi", "type": "block", "position": { "x": 1080, "y": 0,   "w": 360, "h": 200 } },
+      { "item": "viz_fw_trend",        "type": "block", "position": { "x": 0,    "y": 200, "w": 960, "h": 300 } },
+      { "item": "viz_top_deny_dst",    "type": "block", "position": { "x": 960,  "y": 200, "w": 480, "h": 300 } },
+      { "item": "viz_dns_queries",     "type": "block", "position": { "x": 0,    "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_proxy_blocks",    "type": "block", "position": { "x": 480,  "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_monitoring_alerts","type": "block", "position": { "x": 960,  "y": 500, "w": 480, "h": 300 } },
+      { "item": "viz_email_summary",   "type": "block", "position": { "x": 0,    "y": 800, "w": 720, "h": 300 } },
+      { "item": "viz_itsm_incidents",  "type": "block", "position": { "x": 720,  "y": 800, "w": 720, "h": 300 } },
+      { "item": "viz_network_detail",  "type": "block", "position": { "x": 0,    "y": 1100,"w": 1440,"h": 200 } }
+    ],
+    "globalInputs": ["input_time_range"]
+  },
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": { "token": "time_range", "defaultValue": "-60m,now" },
+      "title": "Time Range"
+    }
+  },
+  "dataSources": {
+    "ds_fw_allow_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network sourcetype=pan:traffic OR sourcetype=fgt_traffic OR sourcetype=cisco:asa OR sourcetype=cp_log) | eval action=lower(coalesce(action, \"\")) | where action=\"allow\" OR action=\"permit\" OR action=\"built\" | stats count as allow_count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_fw_deny_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network sourcetype=pan:traffic OR sourcetype=fgt_traffic OR sourcetype=cisco:asa OR sourcetype=cp_log) | eval action=lower(coalesce(action, \"\")) | where action=\"deny\" OR action=\"drop\" OR action=\"block\" OR action=\"denied\" | stats count as deny_count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_dns_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=dns (sourcetype=named OR sourcetype=microsoft:dns) | stats count as dns_queries",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_proxy_block_kpi": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=proxy (sourcetype=squid OR sourcetype=zscalernss-web) | eval action=coalesce(action, result_code) | where match(action, \"DENIED|block|BLOCK\") | stats count as blocked_requests",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_fw_trend": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network (sourcetype=pan:traffic OR sourcetype=fgt_traffic OR sourcetype=cisco:asa OR sourcetype=cp_log OR sourcetype=cisco:meraki)) | eval action=lower(coalesce(action, \"unknown\")) | eval fw_action=case(action IN (\"allow\",\"permit\",\"built\",\"allowed\"), \"Allow\", action IN (\"deny\",\"drop\",\"block\",\"denied\",\"teardown\"), \"Deny\", true(), \"Other\") | timechart span=5m count BY fw_action",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_top_deny_dst": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network (sourcetype=pan:traffic OR sourcetype=fgt_traffic OR sourcetype=cisco:asa OR sourcetype=cp_log)) | eval action=lower(coalesce(action, \"\")) | where action IN (\"deny\",\"drop\",\"block\",\"denied\") | eval dst=coalesce(dest_ip, dst, \"Unknown\") | top limit=15 dst",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_dns_queries": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=dns (sourcetype=named OR sourcetype=microsoft:dns) | eval qtype=coalesce(query_type, record_type, \"Unknown\") | stats count BY qtype | sort -count | head 10",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_proxy_blocks": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=proxy (sourcetype=squid OR sourcetype=zscalernss-web) | eval category=coalesce(url_category, urlcategory, \"Unknown\") | stats count BY category | sort -count | head 10",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_monitoring_alerts": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=monitoring (sourcetype=zabbix:alerts OR sourcetype=elasticsearch:log) | eval sev=coalesce(severity, level, \"Unknown\") | stats count BY sev | sort -count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_email_summary": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=email sourcetype=postfix:syslog | eval status=coalesce(status, \"unknown\") | stats count BY status | sort -count",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_itsm_incidents": {
+      "type": "ds.search",
+      "options": {
+        "query": "index=itsm sourcetype=snow:incident | eval priority=coalesce(priority, \"Unknown\") | eval state=coalesce(state, \"Unknown\") | stats count BY priority, state | sort -count | head 20",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    },
+    "ds_network_detail": {
+      "type": "ds.search",
+      "options": {
+        "query": "(index=network OR index=dns OR index=proxy) | eval src=coalesce(src_ip, clientip, \"Unknown\") | eval dst=coalesce(dest_ip, server_ip, \"Unknown\") | eval action=coalesce(action, result_code, \"Unknown\") | table _time, sourcetype, src, dst, action, bytes, protocol | sort -_time | head 50",
+        "queryParameters": { "earliest": "$time_range.earliest$", "latest": "$time_range.latest$" }
+      }
+    }
+  },
+  "visualizations": {
+    "viz_fw_allow_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_fw_allow_kpi" },
+      "options": { "majorField": "allow_count", "majorColor": "#00CC66", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Firewall Allowed"
+    },
+    "viz_fw_deny_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_fw_deny_kpi" },
+      "options": { "majorField": "deny_count", "majorColor": "#FF4444", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Firewall Denied"
+    },
+    "viz_dns_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_dns_kpi" },
+      "options": { "majorField": "dns_queries", "majorColor": "#8A2BE2", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "DNS Queries"
+    },
+    "viz_proxy_block_kpi": {
+      "type": "viz.singlevalue",
+      "dataSources": { "primary": "ds_proxy_block_kpi" },
+      "options": { "majorField": "blocked_requests", "majorColor": "#FF8C00", "backgroundColor": "transparent", "majorFontSize": 48 },
+      "title": "Proxy Blocks"
+    },
+    "viz_fw_trend": {
+      "type": "viz.area",
+      "dataSources": { "primary": "ds_fw_trend" },
+      "options": { "xAxisTitleText": "Time", "yAxisTitleText": "Firewall Events", "legendDisplay": "bottom", "backgroundColor": "transparent" },
+      "title": "Firewall Allow vs Deny Trend"
+    },
+    "viz_top_deny_dst": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_top_deny_dst" },
+      "options": { "xAxisTitleText": "Destination IP", "yAxisTitleText": "Denials", "legendDisplay": "off", "backgroundColor": "transparent" },
+      "title": "Top Denied Destinations"
+    },
+    "viz_dns_queries": {
+      "type": "viz.pie",
+      "dataSources": { "primary": "ds_dns_queries" },
+      "options": { "labelField": "qtype", "valueField": "count", "backgroundColor": "transparent" },
+      "title": "DNS Query Types"
+    },
+    "viz_proxy_blocks": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_proxy_blocks" },
+      "options": { "xAxisTitleText": "Category", "yAxisTitleText": "Blocks", "legendDisplay": "off", "backgroundColor": "transparent" },
+      "title": "Proxy Blocks by URL Category"
+    },
+    "viz_monitoring_alerts": {
+      "type": "viz.pie",
+      "dataSources": { "primary": "ds_monitoring_alerts" },
+      "options": { "labelField": "sev", "valueField": "count", "backgroundColor": "transparent" },
+      "title": "Monitoring Alerts by Severity"
+    },
+    "viz_email_summary": {
+      "type": "viz.bar",
+      "dataSources": { "primary": "ds_email_summary" },
+      "options": { "xAxisTitleText": "Status", "yAxisTitleText": "Messages", "legendDisplay": "off", "backgroundColor": "transparent" },
+      "title": "Email Delivery Status"
+    },
+    "viz_itsm_incidents": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_itsm_incidents" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "ITSM Incidents by Priority & State"
+    },
+    "viz_network_detail": {
+      "type": "viz.table",
+      "dataSources": { "primary": "ds_network_detail" },
+      "options": { "backgroundColor": "transparent", "count": 15 },
+      "title": "Network Event Details"
+    }
+  }
+}
+  ]]></definition>
+</dashboard>

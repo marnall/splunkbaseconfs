@@ -1,0 +1,190 @@
+<form version="1.1" theme="light">
+  <label>Software Diversity Outliers</label>
+  <description>Optimized.</description>
+<init>
+  <set token="cpyKey">0</set>
+</init>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="field1">
+      <label>Timeframe:</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel depends="$HideThis$">
+      <table>
+        <title>Key Tracks CSV search</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvLookupFound">$result.lookupFound$</set>
+            </condition>
+          </finalized>
+          <query>| rest/servicesNS/-/-/data/lookup-table-files 
+| search eai:appName=custom_insights title="Key_Tracks-$cpyKey$.csv" 
+| table title</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel depends="$HideThis$">
+      <table>
+        <title>Base: Device Software Version</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:device 
+| stats values(deviceName) as deviceName
+    by deviceId productFamily softwareVersion 
+| $singleLineGroupSelector$
+| stats count as Devices by softwareVersion</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+          <done>
+            <set token="pull_data_Device_Software_Version_sid">$job.sid$</set>
+          </done>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize 
+| eval title="Software Diversity - Outliers"
+| table title</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>SW Diversity: Number of Software Verions - Enterprise</title>
+      <single>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:device 
+| stats values(deviceName) as deviceName
+    by deviceId productFamily softwareVersion productId 
+| search productId!=null 
+| $singleLineGroupSelector$
+| stats dc(softwareVersion) as "SW Versions"</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">100</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[30,60]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 30-60 &lt; Red</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Devices by Software Version -- Bottom 40 ("Tail of the Diversity Snake")</title>
+      <chart>
+        <search>
+          <query>| loadjob $pull_data_Device_Software_Version_sid$
+| sort -Devices 
+| tail 40 
+| sort -Devices</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Move these devices to more prevalent versions already in production</title>
+      <single>
+        <title>Universions: Versions of code running on a single device</title>
+        <search>
+          <query>| loadjob $pull_data_Device_Software_Version_sid$
+| search Devices=1
+| stats count as Universions</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">125</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[25,50]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Green &lt; Yellow: 25-50 &lt; Red</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Universion Details</title>
+      <table>
+        <title>Universions: Devices running unique versions of code</title>
+        <search>
+          <query>`cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:device 
+| stats values(deviceName) as deviceName
+    by deviceId productFamily productId softwareVersion 
+| $singleLineGroupSelector$
+| eventstats count as Devices by softwareVersion 
+| search Devices=1 
+| table deviceName, productId, productFamily, softwareVersion</query>
+          <earliest>$field1.earliest$</earliest>
+          <latest>$field1.latest$</latest>
+        </search>
+        <option name="count">3</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+</form>

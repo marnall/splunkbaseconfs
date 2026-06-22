@@ -1,0 +1,834 @@
+<!-- 
+  # ========================================================================================================================
+  #   Hardware End of Life Details, Version 2.0:
+  #   Version History:
+  #     TBD
+  #   Credits:
+  #     Developers: Russell Byrne (rubyrne)
+  # ========================================================================================================================
+-->
+<form version="1.1">
+  <init>
+    <set token="kvNotAnnouncedCost">0</set>
+    <set token="kvAnnouncedCost">0</set>
+    <set token="kvEoSaleCost">0</set>
+    <set token="kvEoSWMCost">0</set>
+    <set token="kvEoRFACost">0</set>
+    <set token="kvEoVSSCost">0</set>
+    <set token="kvEoSCRCost">0</set>
+    <set token="kvLDoSCost">0</set>
+    <set token="DontShowPanel">1</set>
+    <set token="kvDevices">0</set>
+  </init>
+  <label>Hardware End of Life Details</label>
+  <description>Promoting base searches to hidden panels with loadjob, optimizing &lt;init&gt;</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName 
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match( value, &quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="dropdown" token="typeSelector">
+      <label>Physical Type</label>
+      <choice value="physicalAssetType=Chassis">Chassis</choice>
+      <choice value="physicalAssetType=Chassis OR assetType=Module">Chassis &amp; Module</choice>
+      <choice value="physicalAssetType=*">Chassis, Module, Fan, PwrSply</choice>
+      <choice value="physicalAssetType=Fan">Fan</choice>
+      <choice value="physicalAssetType=Module">Module</choice>
+      <choice value="physicalAssetType=&quot;Power Supply&quot;">Power Supply</choice>
+      <initialValue>physicalAssetType=Chassis</initialValue>
+      <default>physicalAssetType=Chassis</default>
+    </input>
+    <input type="dropdown" token="productCategory">
+      <label>Not EoX Zoom</label>
+      <choice value="productFamily">Product Family</choice>
+      <choice value="productType">Product Type</choice>
+      <default>productFamily</default>
+      <initialValue>productFamily</initialValue>
+    </input>
+    <input type="dropdown" token="eoxRollup">
+      <label>EoX Zoom</label>
+      <choice value="productId, replacementPid">PID, Replacement</choice>
+      <choice value="productFamily">Product Family</choice>
+      <choice value="productType">ProductType</choice>
+      <default>productId, replacementPid</default>
+      <initialValue>productId, replacementPid</initialValue>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Date &amp; Time Range</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row depends="$NEVER_SHOW$">
+    <panel>
+      <title>ANNOUNCED_BASE_SEARCH</title>
+      <table>
+        <search>
+          <query>
+((`cisco_oi_index("$cpyKey$")` sourcetype=cisco:bcs:asset ($typeSelector$)) OR (`cisco_oi_index("$cpyKey$")` sourcetype=cisco:bcs:hardwareendoflife ($typeSelector$))) deviceId IN (*)
+| stats values(deviceName) as deviceName values(hardwareEndOfLifeId) as hardwareEndOfLifeId values(productFamily) as productFamily values(productType) as productType values(currentEndOfLifeMilestone) as currentEndOfLifeMilestone by deviceId physicalAssetId productId 
+| dedup physicalAssetId 
+| $singleLineGroupSelector$
+| eval currentEndOfLifeMilestone = if(like(currentEndOfLifeMilestone, "EoRFA%"), "EoRFA", currentEndOfLifeMilestone) 
+| eval currentEndOfLifeMilestone = if(like(currentEndOfLifeMilestone, "EoSWM%"), "EoSWM", currentEndOfLifeMilestone)
+          </query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <done>
+            <set token="ANNOUNCED_BASE_SEARCH">$job.sid$</set>
+          </done>
+        </search>
+      </table>
+    </panel>
+    <panel>
+      <title>NOT_ANNOUNCED_BASE_SEARCH</title>
+      <table>
+        <search>
+          <query>
+((`cisco_oi_index("$cpyKey$")` sourcetype=cisco:bcs:asset ($typeSelector$)) OR (`cisco_oi_index("$cpyKey$")` sourcetype=cisco:bcs:hardwareendoflife ($typeSelector$))) deviceId IN (*)
+| stats values(deviceName) as deviceName values(hardwareEndOfLifeId) as hardwareEndOfLifeId values(productFamily) as productFamily values(productType) as productType values(currentEndOfLifeMilestone) as currentEndOfLifeMilestone by deviceId physicalAssetId productId 
+| dedup physicalAssetId 
+| fillnull value=0 hardwareEndOfLifeId
+| search hardwareEndOfLifeId=0
+| $singleLineGroupSelector$
+| eval currentEndOfLifeMilestone = if(like(currentEndOfLifeMilestone, "EoRFA%"), "EoRFA", currentEndOfLifeMilestone) 
+| eval currentEndOfLifeMilestone = if(like(currentEndOfLifeMilestone, "EoSWM%"), "EoSWM", currentEndOfLifeMilestone)
+          </query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+          <done>
+            <set token="NOT_ANNOUNCED_BASE_SEARCH">$job.sid$</set>
+          </done>
+        </search>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel rejects="$DontShowPanel$">
+      <title>Components in Selected Group and Physical Type</title>
+      <viz type="horseshoe_meter_app.horseshoe_meter">
+        <title># Components in current filter</title>
+        <search>
+          <finalized>
+            <condition match=" 'job.resultCount' != 0">
+              <set token="kvDevices">$result.Devices$</set>
+            </condition>
+          </finalized>
+          <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:asset
+| search $typeSelector$
+| fields deviceId, physicalAssetId 
+| dedup physicalAssetId 
+| $singleLineGroupSelector$
+| stats dc(physicalAssetId) as Devices</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="height">150</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.backgroundColor">#FFF</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.caption">Components</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.dialColor">#d0d5d9</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.maxRangeColor">#b44441</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.maxRangeThreshold">80</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.maxValue">100</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.midRangeColor">#fbcd2f</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.midRangeThreshold">55</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.minRangeColor">#3fc77a</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.minValue">0</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.thresholdStyle">percentage</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.useRangemap">false</option>
+        <option name="horseshoe_meter_app.horseshoe_meter.valueColor">#555</option>
+        <option name="refresh.display">preview</option>
+      </viz>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="Not Announced"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">none</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="Announced"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_details_1x1?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.hwEoxMilestone=Announced</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="End of Sale"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_details_1x1?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.hwEoxMilestone=EoSale</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="End of SW Maintenance"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_details_1x1?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.hwEoxMilestone=EoSWM</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $NOT_ANNOUNCED_BASE_SEARCH$ | stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $NOT_ANNOUNCED_BASE_SEARCH$ | stats dc(physicalAssetId) as Components
+| eval percNotAnnounced = round(100 * Components/$kvDevices$)
+| table percNotAnnounced</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x53a051"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=Announced
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x8ab453","0x8ab453"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=Announced
+| stats dc(physicalAssetId) as Components
+| eval percAnnounced = round(100 * Components/$kvDevices$)
+| table percAnnounced</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x8ab453","0x8ab453"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSale
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xc0c856","0xc0c856"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSale
+| stats dc(physicalAssetId) as Components
+| eval percEoSale = round(100 * Components/$kvDevices$)
+| table percEoSale</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xc0c856","0xc0c856"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSWM*
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf7dc58","0xf7dc58"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSWM*
+| stats dc(physicalAssetId) as Components
+| eval percEoSWM = round(100 * Components/$kvDevices$)
+| table percEoSWM</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf7dc58","0xf7dc58"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Not Announced by $productCategory$</title>
+      <table>
+        <search>
+          <query>| loadjob $NOT_ANNOUNCED_BASE_SEARCH$ | stats count as Devices by $productCategory$
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Announced by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=Announced 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$ 
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">none</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+    <panel>
+      <title>End of Sale by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSale 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+    <panel>
+      <title>End of Software Maintenance by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSWM* 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$ 
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="End of RFA"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_details_1x1?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.hwEoxMilestone=EoRFA</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="End of VSS"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_planning?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.triggerMilestone=EoVSS</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="End of SCR"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_planning?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.triggerMilestone=EoSCR</link>
+        </drilldown>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Init
+| eval label="Last Date of Support"
+| table label</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="useColors">1</option>
+        <drilldown>
+          <link target="_blank">/app/custom_insights/hardware_end_of_life_planning?form.groupIdSelected=$groupIdSelected$&amp;form.field1.earliest=$field1.earliest$&amp;form.field1.latest=$field1.latest$&amp;form.cpyKey=$cpyKey$&amp;form.customer=$customer$&amp;form.triggerMilestone=LDoS</link>
+        </drilldown>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoRFA*
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf7bc38","0xf7bc38"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoRFA*
+| stats dc(physicalAssetId) as Components
+| eval percEoRFA = round(100 * Components/$kvDevices$)
+| table percEoRFA</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf7bc38","0xf7bc38"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoVSS
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf6a639","0xf6a639"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoVSS
+| stats dc(physicalAssetId) as Components
+| eval percEoSVS = round(100 * Components/$kvDevices$)
+| table percEoSVS</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf6a639","0xf6a639"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSCR
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf58f39","0xf58f39"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSCR
+| stats dc(physicalAssetId) as Components
+| eval percEoSCR = round(100 * Components/$kvDevices$)
+| table percEoSCR</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xf58f39","0xf58f39"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=LDoS
+| stats dc(physicalAssetId) as Components</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xd93f3c","0xd93f3c"]</option>
+        <option name="rangeValues">[10000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="underLabel">Components</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=LDoS
+| stats dc(physicalAssetId) as Components
+| eval percLDoS = round(100 * Components/$kvDevices$)
+| table percLDoS</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="colorMode">block</option>
+        <option name="drilldown">all</option>
+        <option name="height">50</option>
+        <option name="rangeColors">["0xd93f3c","0xd93f3c"]</option>
+        <option name="rangeValues">[100000]</option>
+        <option name="refresh.display">preview</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>End of Routine Failure Analysis by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoRFA* 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+    <panel>
+      <title>End of Vulnerability Software Support by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoVSS 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">preview</option>
+      </table>
+    </panel>
+    <panel>
+      <title>End of Service Contract Renewal by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=EoSCR 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$ 
+| sort -Devices 
+| appendpipe 
+    [ stats count
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Last Day of Support by $eoxRollup$</title>
+      <table>
+        <search>
+          <query>| loadjob $ANNOUNCED_BASE_SEARCH$ | search currentEndOfLifeMilestone=LDoS 
+| lookup local=true bu_replacement_pids bulletinProductId as productId OUTPUT replacementProductId as replacementPid 
+| fields deviceName physicalAssetId hwEoxId productId replacementPid productFamily productType
+| fillnull value="null" replacementPid 
+| table deviceName physicalAssetId productId replacementPid productFamily productType
+| stats count as Devices by $eoxRollup$ 
+| sort -Devices 
+| appendpipe 
+    [ stats count 
+    | where count=0]</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">preview</option>
+        <option name="totalsRow">false</option>
+      </table>
+    </panel>
+  </row>
+</form>

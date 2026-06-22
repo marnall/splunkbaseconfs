@@ -1,0 +1,305 @@
+<form version="1.1">
+  <label>SMARTnet Coverage</label>
+  <description>Version 1.2: Fixed using Sparing Policy Alignment coding techniques.</description>
+  <search>
+    <done>
+      <set token="base_smartnet_coverage_sid">$job.sid$</set>
+    </done>
+    <query>`cisco_oi_index(0)` sourcetype::cisco:bcs:contractserial
+| lookup `cisco_oi_asset_lookup(0)` serialNumber OUTPUT physicalAssetId, physicalAssetType, deviceId, deviceName, chassisName, productFamily
+| table deviceId, deviceName, chassisName, baseProductIdList{}.baseProductId, productFamily, contractSiteAddress, contractSiteCity, contractSiteCountry, contractSiteCustomerName, contractSiteStateProvince, coveredProductLineEndDate, index, isCovered, linecount, orderableProductIdList{}.itemDescription, orderableProductIdList{}.itemPosition, orderableProductIdList{}.itemType, orderableProductIdList{}.orderableProductId, orderableProductIdList{}.pillarCode, parentSerialNumber, serialNumber, serviceContractNumber, serviceLineDescription, splunk_server, timestamp, warrantyEndDate, warrantyType, warrantyTypeDescription
+| rename baseProductIdList{}.baseProductId as productId, orderableProductIdList{}.itemType as physicalAssetType
+| mvexpand deviceId
+| $singleLineGroupSelector$</query>
+    <earliest>$inputTimeRange.earliest$</earliest>
+    <latest>$inputTimeRange.latest$</latest>
+  </search>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="cpyKey" depends="$HideThis$">
+      <label>Hidden Customer</label>
+      <choice value="0">Default</choice>
+      <default>0</default>
+      <initialValue>0</initialValue>
+    </input>
+    <input type="dropdown" token="groupIdSelected" searchWhenChanged="true">
+      <label>GROUP</label>
+      <search>
+        <query>`cisco_oi_index("$cpyKey$")` sourcetype::cisco:bcs:devicegroup
+| mvexpand groupName
+| dedup groupName
+| table groupName
+| sort groupName</query>
+        <earliest>-1w@w</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>groupName</fieldForLabel>
+      <fieldForValue>groupName</fieldForValue>
+      <change>
+        <condition match="match(value,&quot;_default_&quot;)">
+          <set token="groupSelector"></set>
+          <set token="singleLineGroupSelector">where 1=1</set>
+        </condition>
+        <condition>
+          <set token="groupSelector">[| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+          <set token="singleLineGroupSelector">search [| tstats values(deviceId) as deviceId WHERE ( `cisco_oi_index($cpyKey$)` sourcetype::cisco:bcs:devicegroupmember groupName="$groupIdSelected$")]</set>
+        </condition>
+      </change>
+      <choice value="_default_">No group filtering</choice>
+      <default>_default_</default>
+      <initialValue>_default_</initialValue>
+    </input>
+    <input type="time" token="inputTimeRange">
+      <label>Data Collection Timeframe</label>
+      <default>
+        <earliest>-7d@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval Heading="No Current SMARTnet Coverage"
+| table Heading</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Not Covered by Product Family</title>
+      <chart>
+        <title>Chassis, Modules, Power Supplies, Fans</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered="false" 
+| $singleLineGroupSelector$
+| stats count as Chassis by productFamily
+| sort -Chassis</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Not Covered Chassis by PID</title>
+      <chart>
+        <title>Top 10 Uncovered Chassis by PID</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered="false" AND physicalAssetType=Chassis 
+| $singleLineGroupSelector$
+| stats count as Chassis by productId
+| sort -Chassis
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval Heading="SMARTnet Coverage Ends in 1-90 Days"
+| table Heading</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Coverage Ends in 90 Days by Product Family</title>
+      <chart>
+        <title>Chassis, Modules, Power Supplies, Fans</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (dateToday &lt; EndDate) AND (EndDate &lt; relative_time(now(),"+90d@d"))
+| stats count by productFamily</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis Coverage Ends in 90 Days by PID</title>
+      <chart>
+        <title>Chassis</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false AND physicalAssetType=Chassis 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (dateToday &lt; EndDate) AND (EndDate &lt; relative_time(now(),"+90d@d"))
+| stats count as Chassis by productId
+| sort -Chassis</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval Heading="SMARTnet Coverage Ends in 91-180 Days"
+| table Heading</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Coverage Ends in 91-180 Days by Product Family</title>
+      <chart>
+        <title>Chassis, Modules, Power Supplies, Fans</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (EndDate &gt; relative_time(now(),"+90d@d")) AND (EndDate &lt; relative_time(now(),"+180d@d"))
+| stats count by productFamily</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis Coverage Ends in 91-180 Days by PID</title>
+      <chart>
+        <title>Chassis</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false AND physicalAssetType=Chassis 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (EndDate &gt; relative_time(now(),"+90d@d")) AND (EndDate &lt; relative_time(now(),"+180d@d"))
+| stats count as Chassis by productId
+| sort -Chassis</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <search>
+          <query>| stats count as Initialize
+| eval Heading="SMARTnet Coverage Ends in 181-365 Days"
+| table Heading</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="height">75</option>
+        <option name="rangeColors">["0x53a051","0x0877a6","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="refresh.display">progressbar</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Coverage Ends in 181-365 Days by Product Family</title>
+      <chart>
+        <title>Chassis, Modules, Power Supplies, Fans</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (EndDate &gt; relative_time(now(),"+181d@d")) AND (EndDate &lt; relative_time(now(),"+365d@d"))
+| stats count by productFamily</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Chassis Coverage Ends in 181-365 Days by PID</title>
+      <chart>
+        <title>Chassis</title>
+        <search>
+          <query>| loadjob $base_smartnet_coverage_sid$
+| search isCovered!=false AND physicalAssetType=Chassis 
+| $singleLineGroupSelector$
+| eval EndDate = strptime(coveredProductLineEndDate, "%Y-%m-%d")
+| eval dateToday = now()
+| where (EndDate &gt; relative_time(now(),"+181d@d")) AND (EndDate &lt; relative_time(now(),"+365d@d"))
+| stats count as Chassis by productId
+| sort -Chassis
+| head 10</query>
+          <earliest>$inputTimeRange.earliest$</earliest>
+          <latest>$inputTimeRange.latest$</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>

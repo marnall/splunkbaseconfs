@@ -1,0 +1,96 @@
+<dashboard version="1.1">
+  <label>TLS Certificates</label>
+  <description>TLS certs expiring soon and servers with insecure ciphers</description>
+  <search>
+    <query>
+      sourcetype="apex"  index="*" | where field_name = "Days Until Expiration" or field_name="New Connections"  |stats latest(_time) as _time by apex_dashboard   |  sort 0 - _time | head 1 | table apex_dashboard | rename apex_dashboard as url_token
+    </query>
+    <earliest>-24h</earliest>
+    <latest>now</latest>
+    <done>
+      <set token="url_token">$result.url_token$</set>
+    </done>
+  </search>
+  <row depends="$url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <a href="$url_token$" target="_blank">Click here to visit the Apex dashboard</a>
+      </html>
+    </panel>
+  </row>
+  <row depends="$!url_token$">
+    <panel>
+      <title>Apex Dashboard</title>
+      <html>
+        <div style="color: #ff6b35; padding: 10px; border-left: 4px solid #ff6b35;">
+          <strong>No Apex Dashboard Available</strong><br/>
+          No events received in the last 24 hours. Check your Apex configuration and ensure events are being sent to Splunk.
+          <br/><br/>
+          <a href="/en-US/app/TA-viavi-apex-addon/apex_setup_page">Configure Add-on Settings</a>
+        </div>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Cipher Suite Sessions Over Last 24 Hours</title>
+        <search>
+          <query>sourcetype="apex" index="*" field_name="New Connections" | where  isnotnull(tls_cipher_suite) | timechart span=5m avg(current_value) by tls_cipher_suite</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisTitleY.text">New Connections</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">connect</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Certificates Expiring Soon Found in Last 24 Hours</title>
+      <table>
+        <search>
+          <query>sourcetype="apex" index="*" field_name = "Days Until Expiration" | where isnotnull(ip_address_server) AND isnotnull(tls_serial_number) | rename 
+            ip_address_server AS "Server IP" tls_subject AS "TLS Subject" tls_serial_number AS "TLS Serial Number"  | dedup "Server IP" "TLS Serial Number" | eval current_value=round(current_value,0) | rename current_value as "Days Until Expiration" |
+            table "Server IP" application "Days Until Expiration" "TLS Subject" "TLS Serial Number" | sort - "Days Until Expiration"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Servers Using Insecure Ciphers in the Last 24 Hours</title>
+      <table>
+        <search>
+          <query>sourcetype = "apex"  index="*" field_name = "New Connections" | where isnotnull(ip_address_server) AND isnotnull(tls_cipher_suite) | stats sum(current_value)  AS new_connections_sum by ip_address_server, tls_cipher_suite| eval new_connections_sum=round(new_connections_sum, 0) | eval "New Connections"=tostring(new_connections_sum, "commas") |rename  ip_address_server AS "Server IP" tls_cipher_suite AS "TLS Cipher Suite" | sort - new_connections_sum | table "Server IP" "New Connections" "TLS Cipher Suite"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="count">20</option>
+        <option name="dataOverlayMode">none</option>
+        <option name="drilldown">none</option>
+        <option name="percentagesRow">false</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">false</option>
+        <option name="totalsRow">false</option>
+        <option name="wrap">true</option>
+      </table>
+    </panel>
+  </row>
+</dashboard>

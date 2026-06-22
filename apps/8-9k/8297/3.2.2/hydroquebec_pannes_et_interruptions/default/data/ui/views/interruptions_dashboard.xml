@@ -1,0 +1,325 @@
+<form version="1.1" theme="dark">
+  <label>Interruptions prévues</label>
+  <description>Surveillance des interruptions de service planifiées au Québec</description>
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="region_filter">
+      <label>Région</label>
+      <choice value="*">Toutes les régions</choice>
+      <default>*</default>
+      <fieldForLabel>region</fieldForLabel>
+      <fieldForValue>region</fieldForValue>
+      <search>
+        <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie
+| stats latest(aip_timestamp) as derniere_collecte by region
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| table region
+| sort region</query>
+        <earliest>-7d@d</earliest>
+        <latest>+7d@d</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="municipalite_filter">
+      <label>Municipalité</label>
+      <choice value="*">Toutes les municipalités</choice>
+      <default>*</default>
+      <fieldForLabel>municipalite</fieldForLabel>
+      <fieldForValue>municipalite</fieldForValue>
+      <search>
+        <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$"
+| stats latest(aip_timestamp) as derniere_collecte by municipalite
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| table municipalite
+| sort municipalite</query>
+        <earliest>-7d@d</earliest>
+        <latest>+7d@d</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Interruptions à venir</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now()
+| stats count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,5,15]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Interruptions prévues</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Clients qui seront affectés</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(nombre_clients) as clients, latest(date_debut_prevue) as debut by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now()
+| stats sum(clients) as total_clients</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,500,2000]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Clients qui seront affectés</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Interruptions prochaines 24h</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now() AND debut_timestamp &lt; (now() + 86400)
+| stats count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,3,10]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Dans les 24 prochaines heures</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+    <panel>
+      <title>Interruptions en cours</title>
+      <single>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut, latest(date_fin_prevue) as fin by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| eval fin_timestamp = strptime(fin, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &lt; now() AND fin_timestamp &gt; now()
+| stats count</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x65A637","0xF7BC38","0xF58F39","0xD93F3C"]</option>
+        <option name="rangeValues">[0,2,5]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">En cours maintenant</option>
+        <option name="useColors">1</option>
+        <option name="useThousandSeparators">1</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Interruptions par jour à venir  (prochains 14 jours)</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now() AND debut_timestamp &lt; (now() + (86400 * 14))
+| eval jour = strftime(debut_timestamp, "%Y-%m-%d")
+| stats count as interruptions by jour
+| sort jour</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Nombre d'interruptions</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Clients affectés à venir par Jour</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut, latest(nombre_clients) as clients by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now() AND debut_timestamp &lt; (now() + (86400 * 14))
+| eval jour = strftime(debut_timestamp, "%Y-%m-%d")
+| stats sum(clients) as total_clients by jour
+| sort jour</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.axisTitleX.text">Date</option>
+        <option name="charting.axisTitleY.text">Clients affectés</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Top 5 - Régions avec plus d'interruptions prévues</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+    [search index=hydroquebec sourcetype=hydroquebec:interruption_planifie | stats latest(aip_id) as aip_id | return aip_id]
+| dedup id_interruption
+| eval debut_timestamp = strptime(date_debut_prevue, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now()
+| stats count as interruptions by region
+| sort - interruptions
+| head 5
+| rename region as "Région", interruptions as "Interruptions"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Région</option>
+        <option name="charting.axisTitleY.text">Nombre d'interruptions</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="charting.fieldColors">{"Interruptions": 0xF7BC38}</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Top 5 - Municipalités avec plus d'interruptions prévues</title>
+      <chart>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(date_debut_prevue) as debut by id_interruption, municipalite
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now()
+| stats count as interruptions by municipalite
+| sort - interruptions
+| head 5</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.axisTitleX.text">Municipalité</option>
+        <option name="charting.axisTitleY.text">Nombre d'interruptions</option>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="charting.axisLabelsX.majorLabelStyle.rotation">-45</option>
+        <option name="charting.chart.showDataLabels">all</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Interruptions prévues - prochaines 48 heures</title>
+      <table>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(municipalite) as municipalite, latest(adresse) as adresse, latest(nombre_clients) as clients, latest(date_debut_prevue) as debut_prevu, latest(date_fin_prevue) as fin_prevue, latest(cause_desc) as cause, latest(statut) as statut, latest(latitude) as lat, latest(longitude) as lon by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut_prevu, "%Y-%m-%d %H:%M:%S")
+| eval fin_timestamp = strptime(fin_prevue, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now() AND debut_timestamp &lt; (now() + (86400 * 2))
+| eval duree_heures = round((fin_timestamp - debut_timestamp) / 3600, 1)
+| eval coords = lat . ", " . lon
+| eval temps_avant = round((debut_timestamp - now()) / 3600, 1)
+| table debut_prevu fin_prevue municipalite adresse clients cause duree_heures temps_avant coords
+| rename debut_prevu as "Début prévu", fin_prevue as "Fin prévue", municipalite as "Municipalité", adresse as "Adresse", clients as "Clients", cause as "Cause", duree_heures as "Durée (h)", temps_avant as "Dans (h)", coords as "Coordonnées"
+| sort "Dans (h)"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">true</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Clients">
+          <colorPalette type="minMidMax" maxColor="#F58F39" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+        <format type="color" field="Dans (h)">
+          <colorPalette type="minMidMax" maxColor="#D93F3C" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Toutes les interruptions planifiées à venir</title>
+      <table>
+        <search>
+          <query>index=hydroquebec sourcetype=hydroquebec:interruption_planifie region="$region_filter$" municipalite="$municipalite_filter$"
+| stats latest(aip_timestamp) as derniere_collecte, latest(municipalite) as municipalite, latest(adresse) as adresse, latest(nombre_clients) as clients, latest(date_debut_prevue) as debut_prevu, latest(date_fin_prevue) as fin_prevue, latest(cause_desc) as cause, latest(statut) as statut by id_interruption
+| where derniere_collecte &gt; relative_time(now(), "-2h")
+| eval debut_timestamp = strptime(debut_prevu, "%Y-%m-%d %H:%M:%S")
+| eval fin_timestamp = strptime(fin_prevue, "%Y-%m-%d %H:%M:%S")
+| where debut_timestamp &gt; now()
+| eval duree_heures = round((fin_timestamp - debut_timestamp) / 3600, 1)
+| table debut_prevu fin_prevue municipalite adresse clients cause statut duree_heures
+| rename debut_prevu as "Début prévu", fin_prevue as "Fin prévue", municipalite as "Municipalité", adresse as "Adresse", clients as "Clients", cause as "Cause", statut as "Statut", duree_heures as "Durée (h)"
+| sort "Début prévu"</query>
+          <earliest>-60m@m</earliest>
+          <latest>now</latest>
+          <refresh>5m</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="rowNumbers">true</option>
+        <option name="wrap">true</option>
+        <format type="color" field="Clients">
+          <colorPalette type="minMidMax" maxColor="#F58F39" midColor="#F7BC38" minColor="#65A637"></colorPalette>
+          <scale type="minMidMax" midType="percent" midValue="50"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

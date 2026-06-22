@@ -1,0 +1,726 @@
+<form version="1.1" theme="dark" script="crytica_alert_workflow.js">
+  <label>Threat Alert Dashboard</label>
+  <description>Crytica Security threat alert investigation dashboard</description>
+
+  <init>
+    <set token="threat_alert_count">Loading</set>
+    <set token="performance_alert_count">Loading</set>
+    <set token="threat_alert_state">is-idle</set>
+    <set token="performance_alert_state">is-idle</set>
+    <set token="threat_context_state">is-hidden</set>
+    <set token="performance_context_state">is-hidden</set>
+    <set token="threat_device">--</set>
+    <set token="threat_severity">--</set>
+    <set token="threat_element_change">--</set>
+    <set token="threat_subject">--</set>
+    <set token="performance_device">--</set>
+    <set token="performance_severity">--</set>
+    <set token="performance_element_change">--</set>
+    <set token="performance_subject">--</set>
+    <set token="threat_focus_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+    <set token="threat_device_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+    <set token="threat_current_row_style">background:inherit!important;color:#F2F2F2!important</set>
+    <set token="dashboard_refresh">30s</set>
+    <set token="queue_page_size">20</set>
+    <set token="queue_earliest">-30d@d</set>
+  </init>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="dropdown" token="refresh_preset" searchWhenChanged="true">
+      <label>Refresh</label>
+      <choice value="5s">Realtime</choice>
+      <choice value="15s">15 seconds</choice>
+      <choice value="30s">30 seconds</choice>
+      <choice value="60s">60 seconds</choice>
+      <choice value="custom">Custom</choice>
+      <default>30s</default>
+      <change>
+        <condition value="custom">
+          <set token="show_custom_refresh">true</set>
+          <set token="dashboard_refresh">$refresh_seconds$s</set>
+        </condition>
+        <condition>
+          <unset token="show_custom_refresh"></unset>
+          <set token="dashboard_refresh">$value$</set>
+        </condition>
+      </change>
+    </input>
+    <input type="text" token="refresh_seconds" depends="$show_custom_refresh$" searchWhenChanged="true">
+      <label>Custom seconds</label>
+      <default>30</default>
+      <change>
+        <set token="dashboard_refresh">$value$s</set>
+      </change>
+    </input>
+    <input type="dropdown" token="queue_earliest" searchWhenChanged="true">
+      <label>Queue timeframe</label>
+      <choice value="-24h@h">1 day</choice>
+      <choice value="-7d@d">7 days</choice>
+      <choice value="-30d@d">30 days</choice>
+      <choice value="-90d@d">90 days</choice>
+      <choice value="-180d@d">180 days</choice>
+      <choice value="-365d@d">1 year</choice>
+      <choice value="0">All time</choice>
+      <default>-30d@d</default>
+    </input>
+    <input type="dropdown" token="queue_page_size" searchWhenChanged="true">
+      <label>Queue rows</label>
+      <choice value="10">10</choice>
+      <choice value="20">20</choice>
+      <choice value="50">50</choice>
+      <choice value="100">100</choice>
+      <default>20</default>
+    </input>
+  </fieldset>
+
+  <search id="threat_alert_count_search">
+    <query><![CDATA[
+index=* sourcetype="crytica:alert" earliest=0 latest=now
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| spath path=alert_id output=root_alert_id
+| spath path=event.alert_id output=wrapped_alert_id
+| spath path=id output=root_id
+| spath path=event.id output=wrapped_id
+| spath path=source output=root_source
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=device_name output=root_device_name
+| spath path=event.device_name output=wrapped_device_name
+| spath path=severity output=root_severity
+| spath path=event.severity output=wrapped_severity
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=description output=root_description
+| spath path=event.description output=wrapped_description
+| spath path=alert_event_timestamp output=root_flat_alert_time
+| spath path=event.alert_event_timestamp output=wrapped_flat_alert_time
+| rex field=_raw "\"alert_event_timestamp\"\s*:\s*\"?(?<raw_alert_event_timestamp>\d+)"
+| eval raw_event_time=tonumber(coalesce(alert_event_timestamp,root_flat_alert_time,wrapped_flat_alert_time,raw_alert_event_timestamp,_time))
+| eval normalized_event_time=case(isnull(raw_event_time),_time,raw_event_time>9999999999,round(raw_event_time/1000,0),true(),raw_event_time)
+| eval alert_id=tostring(mvindex(coalesce(alert_id,root_alert_id,wrapped_alert_id,id,root_id,wrapped_id,source,root_source,"Unknown"),0))
+| where alert_id!="Unknown" AND alert_id!=""
+| join type=left alert_id [ | inputlookup crytica_alert_state_lookup | eval alert_id=coalesce(alert_id,_key) | rename state AS workflow_state | fields alert_id workflow_state ]
+| eval workflow_state=mvindex(coalesce(workflow_state,"open"),0)
+| where workflow_state!="resolved"
+| eval device=mvindex(coalesce(dest,root_dest,wrapped_dest,device_name,root_device_name,wrapped_device_name,host,"Unknown"),0)
+| eval severity=lower(mvindex(coalesce(severity,root_severity,wrapped_severity,"unknown"),0))
+| eval subject=mvindex(coalesce(subject,root_subject,wrapped_subject,description,root_description,wrapped_description,"Unknown"),0)
+| eval element_change=mvindex(coalesce(signature,root_signature,wrapped_signature,"Other/Unclassified"),0)
+| stats latest(normalized_event_time) AS normalized_event_time latest(device) AS device latest(severity) AS severity latest(element_change) AS element_change latest(subject) AS subject latest(workflow_state) AS workflow_state BY alert_id
+| sort 0 normalized_event_time
+| eval is_new_threat=if(workflow_state="open",1,0)
+| eval new_device=if(is_new_threat=1,device,null())
+| eval new_severity=if(is_new_threat=1,severity,null())
+| eval new_element_change=if(is_new_threat=1,element_change,null())
+| eval new_subject=if(is_new_threat=1,subject,null())
+| stats count AS threat_alerts sum(is_new_threat) AS new_threat_alerts latest(new_device) AS threat_device latest(new_severity) AS threat_severity latest(new_element_change) AS threat_element_change latest(new_subject) AS threat_subject
+| eval threat_alerts=coalesce(threat_alerts,0), new_threat_alerts=coalesce(new_threat_alerts,0), threat_device=coalesce(threat_device,"--"), threat_severity=coalesce(threat_severity,"--"), threat_element_change=coalesce(threat_element_change,"--"), threat_subject=coalesce(threat_subject,"--")
+    ]]></query>
+    <refresh>$dashboard_refresh$</refresh>
+    <refreshType>delay</refreshType>
+    <done>
+      <condition match="$result.new_threat_alerts$&gt;0">
+        <set token="threat_alert_count">$result.threat_alerts$</set>
+        <set token="threat_alert_state">is-active</set>
+        <set token="threat_context_state">is-visible</set>
+        <set token="threat_device">$result.threat_device$</set>
+        <set token="threat_severity">$result.threat_severity$</set>
+        <set token="threat_element_change">$result.threat_element_change$</set>
+        <set token="threat_subject">$result.threat_subject$</set>
+        <set token="threat_focus_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+        <set token="threat_device_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+        <set token="threat_current_row_style">background:#064756!important;color:#FFFFFF!important;border-top:1px solid #44C3AF!important;border-bottom:1px solid #44C3AF!important;box-shadow:inset 4px 0 0 #44C3AF!important</set>
+      </condition>
+      <condition>
+        <set token="threat_alert_count">$result.threat_alerts$</set>
+        <set token="threat_alert_state">is-idle</set>
+        <set token="threat_context_state">is-hidden</set>
+        <set token="threat_device">--</set>
+        <set token="threat_severity">--</set>
+        <set token="threat_element_change">--</set>
+        <set token="threat_subject">--</set>
+        <set token="threat_focus_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+        <set token="threat_device_panel_style">border:2px solid #257BFE!important;box-shadow:0 0 16px rgba(37,123,254,.35)!important</set>
+        <set token="threat_current_row_style">background:inherit!important;color:#F2F2F2!important</set>
+      </condition>
+    </done>
+  </search>
+
+  <search id="performance_alert_count_search">
+    <query><![CDATA[
+index=* sourcetype="crytica:alert" earliest=0 latest=now
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="20" OR alert_category_name="Crytica Performance Alerts" OR alert_category_name="Protected Device Performance"
+| spath path=alert_id output=root_alert_id
+| spath path=event.alert_id output=wrapped_alert_id
+| spath path=id output=root_id
+| spath path=event.id output=wrapped_id
+| spath path=source output=root_source
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=device_name output=root_device_name
+| spath path=event.device_name output=wrapped_device_name
+| spath path=severity output=root_severity
+| spath path=event.severity output=wrapped_severity
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=description output=root_description
+| spath path=event.description output=wrapped_description
+| spath path=alert_event_timestamp output=root_flat_alert_time
+| spath path=event.alert_event_timestamp output=wrapped_flat_alert_time
+| rex field=_raw "\"alert_event_timestamp\"\s*:\s*\"?(?<raw_alert_event_timestamp>\d+)"
+| eval raw_event_time=tonumber(coalesce(alert_event_timestamp,root_flat_alert_time,wrapped_flat_alert_time,raw_alert_event_timestamp,_time))
+| eval normalized_event_time=case(isnull(raw_event_time),_time,raw_event_time>9999999999,round(raw_event_time/1000,0),true(),raw_event_time)
+| eval alert_id=tostring(mvindex(coalesce(alert_id,root_alert_id,wrapped_alert_id,id,root_id,wrapped_id,source,root_source,"Unknown"),0))
+| where alert_id!="Unknown" AND alert_id!=""
+| join type=left alert_id [ | inputlookup crytica_alert_state_lookup | eval alert_id=coalesce(alert_id,_key) | rename state AS workflow_state | fields alert_id workflow_state ]
+| eval workflow_state=mvindex(coalesce(workflow_state,"open"),0)
+| where workflow_state!="resolved"
+| eval device=mvindex(coalesce(dest,root_dest,wrapped_dest,device_name,root_device_name,wrapped_device_name,host,"Unknown"),0)
+| eval severity=lower(mvindex(coalesce(severity,root_severity,wrapped_severity,"unknown"),0))
+| eval subject=mvindex(coalesce(subject,root_subject,wrapped_subject,description,root_description,wrapped_description,"Unknown"),0)
+| eval element_change=mvindex(coalesce(signature,root_signature,wrapped_signature,"Performance Alert"),0)
+| stats latest(normalized_event_time) AS normalized_event_time latest(device) AS device latest(severity) AS severity latest(element_change) AS element_change latest(subject) AS subject latest(workflow_state) AS workflow_state BY alert_id
+| sort 0 normalized_event_time
+| eval is_new_performance=if(workflow_state="open",1,0)
+| eval new_device=if(is_new_performance=1,device,null())
+| eval new_severity=if(is_new_performance=1,severity,null())
+| eval new_element_change=if(is_new_performance=1,element_change,null())
+| eval new_subject=if(is_new_performance=1,subject,null())
+| stats count AS performance_alerts sum(is_new_performance) AS new_performance_alerts latest(new_device) AS performance_device latest(new_severity) AS performance_severity latest(new_element_change) AS performance_element_change latest(new_subject) AS performance_subject
+| eval performance_alerts=coalesce(performance_alerts,0), new_performance_alerts=coalesce(new_performance_alerts,0), performance_device=coalesce(performance_device,"--"), performance_severity=coalesce(performance_severity,"--"), performance_element_change=coalesce(performance_element_change,"--"), performance_subject=coalesce(performance_subject,"--")
+    ]]></query>
+    <refresh>$dashboard_refresh$</refresh>
+    <refreshType>delay</refreshType>
+    <done>
+      <condition match="$result.new_performance_alerts$&gt;0">
+        <set token="performance_alert_count">$result.performance_alerts$</set>
+        <set token="performance_alert_state">is-active</set>
+        <set token="performance_context_state">is-visible</set>
+        <set token="performance_device">$result.performance_device$</set>
+        <set token="performance_severity">$result.performance_severity$</set>
+        <set token="performance_element_change">$result.performance_element_change$</set>
+        <set token="performance_subject">$result.performance_subject$</set>
+      </condition>
+      <condition>
+        <set token="performance_alert_count">$result.performance_alerts$</set>
+        <set token="performance_alert_state">is-idle</set>
+        <set token="performance_context_state">is-hidden</set>
+        <set token="performance_device">--</set>
+        <set token="performance_severity">--</set>
+        <set token="performance_element_change">--</set>
+        <set token="performance_subject">--</set>
+      </condition>
+    </done>
+  </search>
+
+  <row>
+    <panel id="crytica_command_panel">
+      <html>
+        <style>
+          body,.dashboard-body{background-color:#010101!important;background-image:linear-gradient(rgba(1,1,1,.72),rgba(1,1,1,.72)),url('/static/app/TA-crytica-app-for-alerting/Crytica_WAVE_middle.png')!important;background-size:cover!important;background-position:center center!important;background-repeat:no-repeat!important;background-attachment:fixed!important;color:#F2F2F2!important;font-family:Raleway,Arial,sans-serif!important}
+          .dashboard-row,.dashboard-cell,.dashboard-panel,.dashboard-element,.dashboard-layout-panel,.panel-body,.panel-element-row{background:transparent!important}
+          .dashboard-header h2{color:#FFFFFF!important;font-family:Michroma,Raleway,Arial,sans-serif!important;letter-spacing:1px;text-transform:uppercase}
+          .dashboard-form,.dashboard-form.hide,.dashboard-form.hidden,.dashboard-form-controls,.dashboard-form-controls.hide,.dashboard-form-controls.hidden,.dashboard-form-fieldset,.dashboard-form-fieldset.hide,.dashboard-form-fieldset.hidden,.fieldset,.fieldset.hide,.fieldset.hidden{display:block!important;visibility:visible!important;opacity:1!important;height:auto!important;min-height:52px!important;overflow:visible!important;background:transparent!important;border-bottom:0!important;padding:10px 16px!important;position:relative!important;z-index:10!important}
+          .dashboard-form-fieldset .input,.fieldset .input{vertical-align:top!important;margin-right:18px!important}
+          #crytica_command_panel,#crytica_command_panel .dashboard-cell,#crytica_command_panel .dashboard-panel,#crytica_command_panel .dashboard-element,#crytica_command_panel .panel-body,#crytica_command_panel .panel-element-row{background:transparent!important;border:0!important;border-top:0!important;border-bottom:0!important;box-shadow:none!important}
+          #crytica_command_panel:before,#crytica_command_panel:after,#crytica_command_panel .dashboard-panel:before,#crytica_command_panel .dashboard-panel:after{display:none!important;border:0!important}
+          .panel-body.html{padding:0!important}
+          .crytica-main-shell{max-width:1180px;margin:28px auto 0 auto;color:#F2F2F2;filter:drop-shadow(0 0 6px rgba(0,47,134,.85)) drop-shadow(0 0 18px rgba(0,47,134,.45)) drop-shadow(0 18px 34px rgba(0,0,0,.45))}
+          .crytica-command-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-areas:"brand brand" "threat performance" "history history";border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
+          .crytica-brand-tile,.crytica-alert-tile,.crytica-history-tile{background:radial-gradient(circle at 50% 35%,#2F86FF 0%,#0A47B5 48%,#002F86 100%);border:0;min-height:124px;display:flex;align-items:center;justify-content:center;text-align:center}
+          .crytica-brand-tile{grid-area:brand;min-height:122px;border-bottom:1px solid rgba(255,255,255,.18);border-radius:18px 18px 0 0}
+          .crytica-brand-title{font-family:Michroma,Raleway,Arial,sans-serif;font-size:28px;line-height:1.2;font-weight:700;letter-spacing:.5px;color:#FFFFFF}
+          .crytica-brand-title,.crytica-tile-label,.crytica-tile-number,.crytica-history-tile{text-shadow:0 2px 3px rgba(0,0,0,.85),0 0 2px #010101;-webkit-text-stroke:.35px rgba(1,1,1,.75)}
+          .crytica-alert-tile{position:relative;flex-direction:column;gap:8px;min-height:166px;text-decoration:none;color:#FFFFFF}
+          .crytica-threat-tile{grid-area:threat;border-right:1px solid rgba(255,255,255,.12);border-radius:0 0 0 18px}
+          .crytica-performance-tile{grid-area:performance;border-radius:0 0 18px 0}
+          .crytica-history-tile{grid-area:history;justify-self:center;width:50%;min-height:86px;text-decoration:none;color:#FFFFFF;font-size:24px;font-weight:700;letter-spacing:.2px;border-radius:0 0 16px 16px;box-shadow:0 12px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.14)}
+          .crytica-tile-label{font-size:25px;font-weight:700;line-height:1.2;color:#FFFFFF}
+          .crytica-tile-number{display:inline-flex;min-width:60px;min-height:48px;align-items:center;justify-content:center;color:#FFFFFF;text-decoration:none;font-size:34px;font-weight:800;line-height:1;border-radius:6px;padding:0 10px;max-width:170px;white-space:nowrap}
+          .crytica-alert-context{display:none;width:min(92%,480px);grid-template-columns:1fr 1fr;gap:5px 12px;margin-top:6px;padding:9px 11px;border-radius:6px;background:rgba(1,1,1,.30);border:1px solid rgba(255,255,255,.22);text-align:left;font-size:12px;line-height:1.25}
+          .crytica-alert-context.is-visible{display:grid}
+          .crytica-alert-context span{display:block;color:rgba(255,255,255,.86);font-size:12px;text-transform:uppercase;letter-spacing:.6px}
+          .crytica-alert-context strong{display:block;color:#FFFFFF;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+          .crytica-alert-context .crytica-context-wide{grid-column:1 / -1}
+           .crytica-brand-tile:hover,.crytica-alert-tile:hover,.crytica-tile-number:hover,.crytica-history-tile:hover{color:#FFFFFF;text-decoration:none;filter:brightness(1.08)}
+          .crytica-alert-tile.is-idle{background:radial-gradient(circle at 50% 35%,#2F86FF 0%,#0B3F98 54%,#002F86 100%)}
+          .crytica-threat-tile.is-active{background:radial-gradient(circle at 50% 35%,#FF4D5E 0%,#E0001B 42%,#8B0000 100%);border-color:#FF6B6B;animation:cryticaThreatPulse 1.1s ease-in-out infinite}
+          .crytica-performance-tile.is-active{background:radial-gradient(circle at 50% 35%,#FFF2B0 0%,#FFBA26 46%,#D99812 100%);border-color:#FFF2B0;animation:cryticaPerformancePulse 1.1s ease-in-out infinite}
+          .crytica-alert-tile.is-active .crytica-tile-number{background:rgba(1,1,1,.24);box-shadow:0 0 16px rgba(255,255,255,.52)}
+          .crytica-performance-tile.is-active .crytica-tile-label,.crytica-performance-tile.is-active .crytica-tile-number{color:#010101}
+          .crytica-alert-tile.is-active:after{content:"ACTIVE";position:absolute;right:18px;top:14px;font-size:11px;font-weight:800;letter-spacing:1.4px;color:#FFFFFF;background:rgba(1,1,1,.35);border:1px solid rgba(255,255,255,.35);border-radius:4px;padding:5px 8px}
+          @keyframes cryticaThreatPulse{0%,100%{box-shadow:inset 0 0 0 0 rgba(255,107,107,.08),0 0 12px rgba(224,0,27,.5)}50%{box-shadow:inset 0 0 0 4px rgba(255,107,107,.45),0 0 30px rgba(224,0,27,.95)}}
+          @keyframes cryticaPerformancePulse{0%,100%{box-shadow:inset 0 0 0 0 rgba(255,242,176,.08),0 0 12px rgba(255,186,38,.48)}50%{box-shadow:inset 0 0 0 4px rgba(255,242,176,.55),0 0 30px rgba(255,186,38,.92)}}
+          #crytica_threat_dash_threat_tile.is-active{background:#B00020!important;background-image:radial-gradient(circle at 50% 35%,#FF4D5E 0%,#D71920 44%,#7A0014 100%)!important;border-color:#FF4D5E!important;animation:cryticaThreatPulse 1.1s ease-in-out infinite!important}
+          #crytica_threat_dash_performance_tile.is-active{background:#FFBA26!important;background-image:radial-gradient(circle at 50% 35%,#FFF2B0 0%,#FFCA3A 44%,#E7A90A 100%)!important;border-color:#FFF2B0!important;animation:cryticaPerformancePulse 1.1s ease-in-out infinite!important}
+          #crytica_threat_dash_performance_tile.is-active .crytica-tile-label,#crytica_threat_dash_performance_tile.is-active .crytica-tile-number{color:#010101!important}
+          #crytica_threat_dash_performance_tile.is-active .crytica-alert-context{background:rgba(1,1,1,.18);border-color:rgba(1,1,1,.30)}
+          #crytica_threat_dash_performance_tile.is-active .crytica-alert-context span,#crytica_threat_dash_performance_tile.is-active .crytica-alert-context strong{color:#010101!important}
+          @media (prefers-reduced-motion: reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.crytica-alert-tile.is-active{box-shadow:inset 0 0 0 3px #FFFFFF!important}}
+          @media(max-width:760px){.crytica-main-shell{margin:14px 8px 0 8px}.crytica-command-grid{grid-template-columns:1fr;grid-template-areas:"brand" "threat" "performance" "history"}.crytica-brand-title{font-size:23px}.crytica-tile-label{font-size:22px}.crytica-history-tile{width:100%;font-size:22px;border-radius:0 0 14px 14px}.crytica-brand-tile{border-radius:14px 14px 0 0}.crytica-threat-tile{border-right:0;border-bottom:1px solid rgba(255,255,255,.12);border-radius:0}.crytica-performance-tile{border-radius:0}}
+        </style>
+
+        <div class="crytica-main-shell">
+          <div class="crytica-command-grid">
+            <a class="crytica-brand-tile" href="./home" target="_self" aria-label="Open Crytica Security RDAi main dashboard"><div class="crytica-brand-title">Crytica Security RDAi</div></a>
+
+            <a id="crytica_threat_dash_threat_tile" class="crytica-alert-tile crytica-threat-tile $threat_alert_state$" href="./threat_alert_dashboard" target="_self" aria-label="Open threat alert dashboard">
+              <div class="crytica-tile-label">Threat Alerts</div>
+              <span class="crytica-tile-number">$threat_alert_count$</span>
+              <div class="crytica-alert-context $threat_context_state$">
+                <div><span>Device</span><strong>$threat_device$</strong></div>
+                <div><span>Severity</span><strong>$threat_severity$</strong></div>
+                <div><span>Element Change</span><strong>$threat_element_change$</strong></div>
+                <div class="crytica-context-wide"><span>Subject</span><strong>$threat_subject$</strong></div>
+              </div>
+            </a>
+
+            <a id="crytica_threat_dash_performance_tile" class="crytica-alert-tile crytica-performance-tile $performance_alert_state$" href="./performance_alert_dashboard" target="_self" aria-label="Open performance alert dashboard">
+              <div class="crytica-tile-label">Performance Alerts</div>
+              <span class="crytica-tile-number">$performance_alert_count$</span>
+              <div class="crytica-alert-context $performance_context_state$">
+                <div><span>Device</span><strong>$performance_device$</strong></div>
+                <div><span>Severity</span><strong>$performance_severity$</strong></div>
+                <div><span>Element Change</span><strong>$performance_element_change$</strong></div>
+                <div class="crytica-context-wide"><span>Subject</span><strong>$performance_subject$</strong></div>
+              </div>
+            </a>
+
+            <a class="crytica-history-tile" href="./alert_history" target="_self" aria-label="Open alert history dashboard">Alert History</a>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel id="current_threat_alert">
+      <table>
+        <title>Current Threat Alert - Immediate Investigation</title>
+        <search>
+          <query><![CDATA[
+index=* sourcetype="crytica:alert"
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=device_name output=root_device_name
+| spath path=event.device_name output=wrapped_device_name
+| spath path=severity output=root_severity
+| spath path=event.severity output=wrapped_severity
+| spath path=priority output=root_priority
+| spath path=event.priority output=wrapped_priority
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=description output=root_description
+| spath path=event.description output=wrapped_description
+| spath path=object_path output=root_object_path
+| spath path=event.object_path output=wrapped_object_path
+| spath path=file_path output=root_file_path
+| spath path=event.file_path output=wrapped_file_path
+| spath path=alert_id output=root_alert_id
+| spath path=event.alert_id output=wrapped_alert_id
+| spath path=id output=root_id
+| spath path=event.id output=wrapped_id
+| spath path=source output=root_source
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=alert_event_timestamp output=root_flat_alert_time
+| spath path=event.alert_event_timestamp output=wrapped_flat_alert_time
+| rex field=_raw "\"alert_event_timestamp\"\s*:\s*\"?(?<raw_alert_event_timestamp>\d+)"
+| spath path=scan_date output=root_scan_time
+| spath path=fields.scan_date output=root_fields_scan_time
+| spath path=event.fields.scan_date output=wrapped_fields_scan_time
+| rex field=_raw "\"scan_date\"\s*:\s*\"?(?<raw_scan_date>\d+)"
+| eval raw_event_time=tonumber(coalesce(alert_event_timestamp,root_flat_alert_time,wrapped_flat_alert_time,raw_alert_event_timestamp,scan_date,root_scan_time,root_fields_scan_time,wrapped_fields_scan_time,raw_scan_date))
+| eval normalized_event_time=case(isnull(raw_event_time),_time,raw_event_time>9999999999,round(raw_event_time/1000,0),true(),raw_event_time)
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| eval device=mvindex(coalesce(dest,root_dest,wrapped_dest,device_name,root_device_name,wrapped_device_name,host,"Unknown"),0)
+| eval severity=lower(mvindex(coalesce(severity,root_severity,wrapped_severity,"unknown"),0))
+| eval priority=lower(mvindex(coalesce(priority,root_priority,wrapped_priority,"unknown"),0))
+| eval signature=mvindex(coalesce(signature,root_signature,wrapped_signature,"Unknown"),0)
+| eval subject=mvindex(coalesce(subject,root_subject,wrapped_subject,description,root_description,wrapped_description,"Unknown"),0)
+| eval object_path=mvindex(coalesce(object_path,root_object_path,wrapped_object_path,file_path,root_file_path,wrapped_file_path,"Unknown"),0)
+| eval alert_id=tostring(mvindex(coalesce(alert_id,root_alert_id,wrapped_alert_id,id,root_id,wrapped_id,source,"Unknown"),0))
+| eval source=mvindex(coalesce(source,root_source,"Unknown"),0)
+| join type=left alert_id [ | inputlookup crytica_alert_state_lookup | eval alert_id=coalesce(alert_id,_key) | rename state AS workflow_state | fields alert_id workflow_state acknowledged_by acknowledged_at resolved_by resolved_at ]
+| eval workflow_state=mvindex(coalesce(workflow_state,"open"),0)
+| where workflow_state!="resolved"
+| eval severity_score=case(severity="critical",50,severity="high",40,severity="medium",25,severity="low",10,true(),5)
+| eval priority_score=case(priority="critical",25,priority="high",20,priority="medium",12,priority="low",6,true(),3)
+| eval element_change=signature
+| eval risk=severity_score+25+priority_score
+| eval _time=normalized_event_time
+| stats latest(normalized_event_time) AS normalized_event_time latest(risk) AS risk latest(device) AS device latest(severity) AS severity latest(priority) AS priority latest(workflow_state) AS workflow_state latest(acknowledged_by) AS acknowledged_by latest(acknowledged_at) AS acknowledged_at latest(resolved_by) AS resolved_by latest(resolved_at) AS resolved_at latest(element_change) AS element_change latest(subject) AS subject latest(object_path) AS object_path latest(source) AS source BY alert_id
+| eval age_minutes=round((now()-normalized_event_time)/60,1)
+| eval event_time=strftime(normalized_event_time,"%Y-%m-%d %H:%M:%S")
+| eval acknowledged_by=coalesce(acknowledged_by,"--"), acknowledged_time=if(tonumber(acknowledged_at)>0,strftime(tonumber(acknowledged_at),"%Y-%m-%d %H:%M:%S"),"--"), resolved_by=coalesce(resolved_by,"--"), resolved_time=if(tonumber(resolved_at)>0,strftime(tonumber(resolved_at),"%Y-%m-%d %H:%M:%S"),"--")
+| eval investigation_pivot="device=" . device . " alert_id=" . alert_id . " object=" . object_path
+| sort 0 - normalized_event_time
+| head 1
+| table alert_id risk event_time age_minutes device severity priority workflow_state acknowledged_by acknowledged_time resolved_by resolved_time element_change subject object_path source investigation_pivot
+| rename alert_id AS "Alert ID" risk AS "Risk" event_time AS "Time" age_minutes AS "Age Min" device AS "Device" severity AS "Severity" priority AS "Priority" workflow_state AS "Workflow State" acknowledged_by AS "Acknowledged By" acknowledged_time AS "Acknowledged Time" resolved_by AS "Resolved By" resolved_time AS "Resolved Time" element_change AS "Element Change" subject AS "Subject" object_path AS "Object" source AS "Source" investigation_pivot AS "Investigation Pivot"
+          ]]></query>
+          <refresh>$dashboard_refresh$</refresh>
+          <refreshType>delay</refreshType>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">1</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel id="current_threat_device">
+      <table>
+        <title>Current Threat Device Context</title>
+        <search>
+          <query><![CDATA[
+index=* sourcetype="crytica:alert"
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=device_name output=root_device_name
+| spath path=event.device_name output=wrapped_device_name
+| spath path=severity output=root_severity
+| spath path=event.severity output=wrapped_severity
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=object_path output=root_object_path
+| spath path=event.object_path output=wrapped_object_path
+| spath path=file_path output=root_file_path
+| spath path=event.file_path output=wrapped_file_path
+| spath path=alert_id output=root_alert_id
+| spath path=event.alert_id output=wrapped_alert_id
+| spath path=id output=root_id
+| spath path=event.id output=wrapped_id
+| spath path=source output=root_source
+| spath path=crytica_details.device_info.device_os_type_name output=root_os
+| spath path=event.crytica_details.device_info.device_os_type_name output=wrapped_os
+| spath path=device_os_type_name output=root_flat_os
+| spath path=event.device_os_type_name output=wrapped_flat_os
+| spath path=crytica_details.module_info.module_name output=root_module
+| spath path=event.crytica_details.module_info.module_name output=wrapped_module
+| spath path=fields.module_name output=fields_module
+| spath path=event.fields.module_name output=wrapped_fields_module
+| spath path=crytica_details.scan_details.scan_scope output=root_scope
+| spath path=event.crytica_details.scan_details.scan_scope output=wrapped_scope
+| spath path=fields.scan_scope output=fields_scope
+| spath path=event.fields.scan_scope output=wrapped_fields_scope
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| spath path=alert_event_timestamp output=root_flat_alert_time
+| spath path=event.alert_event_timestamp output=wrapped_flat_alert_time
+| rex field=_raw "\"alert_event_timestamp\"\s*:\s*\"?(?<raw_alert_event_timestamp>\d+)"
+| spath path=scan_date output=root_scan_time
+| spath path=fields.scan_date output=root_fields_scan_time
+| spath path=event.fields.scan_date output=wrapped_fields_scan_time
+| rex field=_raw "\"scan_date\"\s*:\s*\"?(?<raw_scan_date>\d+)"
+| eval raw_event_time=tonumber(coalesce(alert_event_timestamp,root_flat_alert_time,wrapped_flat_alert_time,raw_alert_event_timestamp,scan_date,root_scan_time,root_fields_scan_time,wrapped_fields_scan_time,raw_scan_date))
+| eval normalized_event_time=case(isnull(raw_event_time),_time,raw_event_time>9999999999,round(raw_event_time/1000,0),true(),raw_event_time)
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| eval device=mvindex(coalesce(dest,root_dest,wrapped_dest,device_name,root_device_name,wrapped_device_name,host,"Unknown"),0)
+| eval alert_id=tostring(mvindex(coalesce(alert_id,root_alert_id,wrapped_alert_id,id,root_id,wrapped_id,source,root_source,"Unknown"),0))
+| join type=left alert_id [ | inputlookup crytica_alert_state_lookup | eval alert_id=coalesce(alert_id,_key) | rename state AS workflow_state | fields alert_id workflow_state acknowledged_by acknowledged_at resolved_by resolved_at ]
+| eval workflow_state=mvindex(coalesce(workflow_state,"open"),0)
+| where workflow_state!="resolved"
+| eventstats latest(device) AS latest_device latest(normalized_event_time) AS latest_time
+| where device=latest_device
+| eval severity=lower(mvindex(coalesce(severity,root_severity,wrapped_severity,"unknown"),0))
+| eval severity_score=case(severity="critical",50,severity="high",40,severity="medium",25,severity="low",10,true(),5)
+| eval signature=mvindex(coalesce(signature,root_signature,wrapped_signature,"Unknown"),0)
+| eval subject=mvindex(coalesce(subject,root_subject,wrapped_subject,"Unknown"),0)
+| eval object_path=mvindex(coalesce(object_path,root_object_path,wrapped_object_path,file_path,root_file_path,wrapped_file_path,"Unknown"),0)
+| eval os=mvindex(coalesce(device_os_type_name,root_flat_os,wrapped_flat_os,root_os,wrapped_os,"Unknown"),0)
+| eval module=mvindex(coalesce(module_name,fields_module,wrapped_fields_module,root_module,wrapped_module,"Unknown"),0)
+| eval scan_scope=mvindex(coalesce(scan_scope,fields_scope,wrapped_fields_scope,root_scope,wrapped_scope,"Unknown"),0)
+| stats dc(alert_id) AS alerts dc(signature) AS unique_signatures max(severity_score) AS peak_severity_score values(signature) AS signatures latest(subject) AS latest_subject values(object_path) AS objects values(os) AS os values(module) AS modules values(scan_scope) AS scan_scopes latest(normalized_event_time) AS last_seen BY device
+| eval peak_severity=case(peak_severity_score>=50,"critical",peak_severity_score>=40,"high",peak_severity_score>=25,"medium",peak_severity_score>=10,"low",true(),"unknown")
+| eval last_seen=strftime(last_seen,"%Y-%m-%d %H:%M:%S")
+| rename device AS "Device" alerts AS "Threat Alerts" unique_signatures AS "Unique Signatures" peak_severity AS "Peak Severity" signatures AS "Signatures" latest_subject AS "Latest Subject" objects AS "Objects" os AS "OS" modules AS "Modules" scan_scopes AS "Scan Scopes" last_seen AS "Last Seen"
+| table Device "Threat Alerts" "Unique Signatures" "Peak Severity" "Last Seen" "Latest Subject" Signatures Objects OS Modules "Scan Scopes"
+          ]]></query>
+          <refresh>$dashboard_refresh$</refresh>
+          <refreshType>delay</refreshType>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">5</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel id="bulk_threat_resolve_panel">
+      <html>
+        <style>
+          #bulk_threat_resolve_panel,#bulk_threat_resolve_panel .dashboard-cell,#bulk_threat_resolve_panel .dashboard-panel{display:inline-block!important;width:auto!important;max-width:max-content!important;background:transparent!important;border:0!important;box-shadow:none!important}
+          #bulk_threat_resolve_panel .panel-body,#bulk_threat_resolve_panel .panel-element-row{padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}
+          .crytica-queue-workbench{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+          .crytica-bulk-resolve{display:inline-grid;grid-template-columns:auto 112px 126px minmax(150px,1fr);grid-template-areas:"title title title title" "spacer ageLabel unitLabel status" "action age unit status";align-items:center;gap:4px 10px;width:auto;max-width:max-content;padding:9px 11px;background:#0f1724;border:1px solid #257BFE;border-radius:4px;box-shadow:0 0 12px rgba(37,123,254,.20)}
+          .crytica-bulk-title{grid-area:title;color:#FFFFFF;font-weight:800;font-size:13px;line-height:1.1}
+          .crytica-bulk-field{display:contents;color:#F2F2F2;font-size:12px;font-weight:800;line-height:1.1}
+          .crytica-bulk-field:first-of-type span{grid-area:ageLabel}
+          .crytica-bulk-field:last-of-type span{grid-area:unitLabel}
+          .crytica-bulk-field:first-of-type input{grid-area:age}
+          .crytica-bulk-field:last-of-type select{grid-area:unit}
+          .crytica-bulk-field input,.crytica-bulk-field select{box-sizing:border-box;width:100%;height:28px;margin:0;background:#1f2933;color:#FFFFFF;border:1px solid #64748B;border-radius:3px;padding:3px 8px;line-height:20px}
+          .crytica-bulk-field input:focus,.crytica-bulk-field select:focus{outline:0;border-color:#44C3AF;box-shadow:0 0 0 2px rgba(68,195,175,.20)}
+          .crytica-bulk-resolve-button{box-sizing:border-box;display:inline-flex;height:28px;margin:0;align-items:center;justify-content:center;padding:0 12px;border:1px solid #44C3AF;border-radius:3px;background:#002F86;color:#FFFFFF!important;text-decoration:none!important;font-weight:800;line-height:28px;cursor:pointer;white-space:nowrap}
+          .crytica-bulk-resolve-button:focus-visible{outline:3px solid #FFFFFF!important;outline-offset:3px!important;box-shadow:0 0 0 5px rgba(68,195,175,.85)!important}
+          .crytica-bulk-resolve-button:hover{background:#257BFE}
+          .crytica-bulk-resolve-button.is-disabled{opacity:.45;cursor:not-allowed}
+          .crytica-bulk-resolve-button{grid-area:action;align-self:center;position:relative;top:-1px}
+          .crytica-bulk-status{grid-area:status;align-self:center;min-width:150px;min-height:15px;color:#44C3AF;font-size:12px;font-weight:800;line-height:1.25}
+          .crytica-bulk-status.is-processing:before{content:"";display:inline-block;width:10px;height:10px;margin-right:6px;border:2px solid rgba(68,195,175,.35);border-top-color:#44C3AF;border-radius:50%;vertical-align:-2px;animation:cryticaSpin .9s linear infinite}
+          .crytica-bulk-status.is-complete{color:#44C3AF}
+          .crytica-bulk-status.is-error{color:#DB6412}
+          @keyframes cryticaSpin{to{transform:rotate(360deg)}}
+        </style>
+        <div class="crytica-queue-workbench">
+          <div class="crytica-bulk-resolve" data-category="threat">
+            <div class="crytica-bulk-title">Bulk Threat Workflow</div>
+            <label class="crytica-bulk-field">
+              <span>Older than</span>
+              <input type="number" min="1" step="1" class="crytica-bulk-age" aria-label="Threat alert age value" />
+            </label>
+            <label class="crytica-bulk-field">
+              <span>Unit</span>
+              <select class="crytica-bulk-unit" aria-label="Threat alert age unit">
+                <option value="">Select unit</option>
+                <option value="minutes">Minutes</option>
+                <option value="hours">Hours</option>
+                <option value="days">Days</option>
+                <option value="weeks">Weeks</option>
+                <option value="months">Months</option>
+              </select>
+            </label>
+            <button type="button" class="crytica-bulk-resolve-button">Resolve Alerts Older Than</button>
+            <div class="crytica-bulk-status" role="status"></div>
+          </div>
+        </div>
+      </html>
+    </panel>
+  </row>
+
+  <row>
+    <panel id="recent_threat_alert_queue">
+      <table id="recent_threat_alert_queue_table">
+        <title>Recent Threat Alert Queue</title>
+        <search>
+          <query><![CDATA[
+index=* sourcetype="crytica:alert"
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=severity output=root_severity
+| spath path=event.severity output=wrapped_severity
+| spath path=priority output=root_priority
+| spath path=event.priority output=wrapped_priority
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=object_path output=root_object_path
+| spath path=event.object_path output=wrapped_object_path
+| spath path=file_path output=root_file_path
+| spath path=event.file_path output=wrapped_file_path
+| spath path=alert_id output=root_alert_id
+| spath path=event.alert_id output=wrapped_alert_id
+| spath path=id output=root_id
+| spath path=event.id output=wrapped_id
+| spath path=source output=root_source
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| spath path=alert_event_timestamp output=root_flat_alert_time
+| spath path=event.alert_event_timestamp output=wrapped_flat_alert_time
+| rex field=_raw "\"alert_event_timestamp\"\s*:\s*\"?(?<raw_alert_event_timestamp>\d+)"
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| eval raw_event_time=tonumber(coalesce(alert_event_timestamp,root_flat_alert_time,wrapped_flat_alert_time,raw_alert_event_timestamp,_time))
+| eval normalized_event_time=case(isnull(raw_event_time),_time,raw_event_time>9999999999,round(raw_event_time/1000,0),true(),raw_event_time)
+| eval event_time=strftime(normalized_event_time,"%Y-%m-%d %H:%M:%S")
+| eval device=mvindex(coalesce(dest,root_dest,wrapped_dest,host,"Unknown"),0)
+| eval severity=lower(mvindex(coalesce(severity,root_severity,wrapped_severity,"unknown"),0))
+| eval priority=lower(mvindex(coalesce(priority,root_priority,wrapped_priority,"unknown"),0))
+| eval signature=mvindex(coalesce(signature,root_signature,wrapped_signature,"Unknown"),0)
+| eval subject=mvindex(coalesce(subject,root_subject,wrapped_subject,"Unknown"),0)
+| eval object_path=mvindex(coalesce(object_path,root_object_path,wrapped_object_path,file_path,root_file_path,wrapped_file_path,"Unknown"),0)
+| eval alert_id=tostring(mvindex(coalesce(alert_id,root_alert_id,wrapped_alert_id,id,root_id,wrapped_id,source,root_source,"Unknown"),0))
+| join type=left alert_id [ | inputlookup crytica_alert_state_lookup | eval alert_id=coalesce(alert_id,_key) | rename state AS workflow_state | fields alert_id workflow_state acknowledged_by acknowledged_at resolved_by resolved_at ]
+| eval workflow_state=mvindex(coalesce(workflow_state,"open"),0)
+| eval _time=normalized_event_time
+| stats latest(event_time) AS event_time latest(device) AS device latest(severity) AS severity latest(priority) AS priority latest(workflow_state) AS workflow_state latest(acknowledged_by) AS acknowledged_by latest(acknowledged_at) AS acknowledged_at latest(resolved_by) AS resolved_by latest(resolved_at) AS resolved_at latest(signature) AS signature latest(subject) AS subject latest(object_path) AS object_path BY alert_id
+| eval acknowledged_by=coalesce(acknowledged_by,"--"), acknowledged_time=if(tonumber(acknowledged_at)>0,strftime(tonumber(acknowledged_at),"%Y-%m-%d %H:%M:%S"),"--"), resolved_by=coalesce(resolved_by,"--"), resolved_time=if(tonumber(resolved_at)>0,strftime(tonumber(resolved_at),"%Y-%m-%d %H:%M:%S"),"--")
+| rename event_time AS "Time" device AS "Device" severity AS "Severity" priority AS "Priority" workflow_state AS "Workflow State" acknowledged_by AS "Acknowledged By" acknowledged_time AS "Acknowledged Time" resolved_by AS "Resolved By" resolved_time AS "Resolved Time" signature AS "Signature" subject AS "Subject" object_path AS "Object" alert_id AS "Alert ID"
+| table "Alert ID" Time Device Severity Priority "Workflow State" "Acknowledged By" "Acknowledged Time" "Resolved By" "Resolved Time" Signature Subject Object
+| sort 0 - Time
+          ]]></query>
+          <refresh>$dashboard_refresh$</refresh>
+          <refreshType>delay</refreshType>
+          <earliest>$queue_earliest$</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="count">$queue_page_size$</option>
+        <option name="drilldown">row</option>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <chart>
+        <title>Threat Alerts by Device</title>
+        <search>
+          <query><![CDATA[
+index=* sourcetype="crytica:alert"
+| spath path=dest output=root_dest
+| spath path=event.dest output=wrapped_dest
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| eval device=coalesce(dest,root_dest,wrapped_dest,host,"Unknown")
+| stats count BY device
+| sort - count
+| head 10
+          ]]></query>
+          <refresh>$dashboard_refresh$</refresh>
+          <refreshType>delay</refreshType>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.seriesColors">[0xDB6412]</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Threat Element Change Mix</title>
+        <search>
+          <query><![CDATA[
+index=* sourcetype="crytica:alert"
+| spath path=signature output=root_signature
+| spath path=event.signature output=wrapped_signature
+| spath path=subject output=root_subject
+| spath path=event.subject output=wrapped_subject
+| spath path=alert_type_name output=root_flat_alert_type_name
+| spath path=event.alert_type_name output=wrapped_flat_alert_type_name
+| spath path=crytica_details.alert_core.alert_type output=root_alert_type
+| spath path=event.crytica_details.alert_core.alert_type output=wrapped_alert_type
+| spath path=crytica_details.alert_core.alert_type_name output=root_alert_type_name
+| spath path=event.crytica_details.alert_core.alert_type_name output=wrapped_alert_type_name
+| spath path=alert_category_id output=root_flat_category_id
+| spath path=event.alert_category_id output=wrapped_flat_category_id
+| spath path=crytica_details.alert_core.alert_category_id output=root_category_id
+| spath path=event.crytica_details.alert_core.alert_category_id output=wrapped_category_id
+| spath path=crytica_details.alert_core.alert_category_name output=root_category_name
+| spath path=event.crytica_details.alert_core.alert_category_name output=wrapped_category_name
+| spath path=alert_category_name output=root_flat_category_name
+| spath path=event.alert_category_name output=wrapped_flat_category_name
+| spath path=category output=root_category
+| spath path=event.category output=wrapped_category
+| rex field=_raw "\"alert_category_id\"\s*:\s*\"?(?<raw_alert_category_id>\d+)"
+| rex field=_raw "\"alert_category_name\"\s*:\s*\"(?<raw_alert_category_name>[^\"]+)"
+| eval alert_category_id=tostring(coalesce(alert_category_id,root_flat_category_id,wrapped_flat_category_id,root_category_id,wrapped_category_id,raw_alert_category_id,""))
+| eval alert_category_name=coalesce(alert_category_name,root_flat_category_name,wrapped_flat_category_name,root_category_name,wrapped_category_name,category,root_category,wrapped_category,raw_alert_category_name,"")
+| where alert_category_id="10" OR alert_category_name="Crytica Threat Alerts" OR alert_category_name="Protected Device Integrity"
+| eval signature=coalesce(signature,root_signature,wrapped_signature,"")
+| eval subject=coalesce(subject,root_subject,wrapped_subject,"")
+| eval alert_fingerprint=upper(coalesce(alert_type,root_alert_type,wrapped_alert_type,alert_type_name,root_flat_alert_type_name,wrapped_flat_alert_type_name,root_alert_type_name,wrapped_alert_type_name,signature,subject,""))
+| eval element_change=case(match(alert_fingerprint,"MOD_PERM|PERMISSION|PERMISSIONS"),"Permissions Modified",match(alert_fingerprint,"MOD_OWNER|OWNER|GROUP"),"Owner Or Group Modified",match(alert_fingerprint,"MOD_MTIME|MTIME|MODIFICATION TIME"),"Modification Time Changed",match(alert_fingerprint,"MOD_CONTENT|CONTENT|HASH|CHECKSUM|SIZE|MODIFIED"),"Content Modified",match(alert_fingerprint,"ELEMENT_DELETED|DELETED|REMOVED|REMOVE"),"Element Deleted",match(alert_fingerprint,"ELEMENT_ADDED|ADDED|CREATE|CREATED|NEW"),"Element Added",true(),"Other/Unclassified")
+| stats count BY element_change
+| sort - count
+          ]]></query>
+          <refresh>$dashboard_refresh$</refresh>
+          <refreshType>delay</refreshType>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.seriesColors">[0xDB6412,0xFFBA26,0x257BFE,0x44C3AF,0x002F86,0x9EA1A2]</option>
+      </chart>
+    </panel>
+  </row>
+</form>

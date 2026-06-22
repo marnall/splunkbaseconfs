@@ -1,0 +1,88 @@
+<form theme="dark" version="1.1">
+  <label>Operational Overview</label>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>ops_pulse_test</default>
+    </input>
+    <input type="time">
+      <label></label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Health Score</title>
+      <single>
+        <search>
+          <query>`ops_base_search($index$)`
+| stats count AS total_events sum(is_error) AS error_events
+| eval error_events = coalesce(error_events, 0)
+| eval error_rate = round((error_events / total_events) * 100, 2)
+| eval health_score = round(100 - error_rate, 2)
+| fields health_score</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="numberPrecision">0.00</option>
+        <option name="rangeColors">["0xdc4e41","0xf8be34","0x118832"]</option>
+        <option name="rangeValues">[30,70]</option>
+        <option name="refresh.display">progressbar</option>
+        <option name="underLabel">Health Score</option>
+        <option name="unit">%</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <chart>
+        <title>Top Error Hosts</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| where is_error=1
+| stats count BY extracted_host
+| sort - count
+| head 10</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <title>Event Volume vs Baseline</title>
+        <search>
+          <query>index=$index$
+| timechart span=1h count AS events
+| eventstats avg(events) AS baseline stdev(events) AS sd
+| eval upper=baseline + (2*sd), lower=baseline - (2*sd)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+    <panel>
+      <chart>
+        <title>Error Rate Trend (%)</title>
+        <search>
+          <query>`ops_base_search($index$)`
+| timechart span=1h sum(is_error) AS errors count AS total
+| eval error_rate = round((errors / total) * 100, 2)</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+</form>

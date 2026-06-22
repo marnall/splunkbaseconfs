@@ -1,0 +1,133 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "rest_api_url",
+        "token",
+        "max_events_to_pull",
+        "marker",
+	"marker_obj"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{marker}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_marker"
+                    }
+                ]
+            },
+            "request": {
+                "url": "{{rest_api_url}}?maxRows={{max_events_to_pull}}&marker={{marker}}",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "{{token}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.[0].alert.id"
+                        ],
+                        "method": "json_path",
+                        "output": "marker_obj"
+                    },
+		    {
+		        "input": [
+		            "{{marker_obj}}",
+        		    "$.value"
+			],
+		        "method": "json_path",
+                        "output": "marker"
+		    },	
+                    {
+                        "input": [
+                            "{{marker != ''}}",
+                            "The value of token 'marker' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{marker == _raw_marker}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{marker}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_marker"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.[*]"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "marker": "{{_raw_marker}}"
+                }
+            }
+        }
+    ]
+}

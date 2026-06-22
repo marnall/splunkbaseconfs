@@ -1,0 +1,121 @@
+<form theme="dark" version="1.1">
+  <label>Instability Detection</label>
+  <fieldset submitButton="false">
+    <input type="text" token="index">
+      <label>Index</label>
+      <default>service_reliability_test</default>
+    </input>
+    <input type="time">
+      <label>Time Range</label>
+      <default>
+        <earliest>0</earliest>
+        <latest></latest>
+      </default>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <title>Service Instability Timeline</title>
+      <chart>
+        <title>Time-based view of statistically abnormal failure spikes. Each bar represents detected instability events.</title>
+        <search>
+          <query>`svc_instability($index$)`
+            | where unstable=1
+            | timechart span=15m count BY service</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">277</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Error Burst Intensity by Service</title>
+      <viz type="Splunk_ML_Toolkit.HeatmapViz">
+        <title>Heatmap showing concentration of failure bursts across services and time. Darker colors indicate</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+            | timechart span=10m sum(is_failure) BY service</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="Splunk_ML_Toolkit.HeatmapViz.highlightDiagonals">false</option>
+        <option name="drilldown">none</option>
+        <option name="height">473</option>
+        <option name="refresh.display">progressbar</option>
+      </viz>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Service Recovery Events</title>
+      <table>
+        <title>Counts of detected recovery transitions where services returned to normal operation after failures.</title>
+        <search>
+          <query>`svc_recovery_patterns($index$)`
+            | sort - recovery_events</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Failure vs Recovery Trend</title>
+      <chart>
+        <title>Comparison of failure events versus recovery events over time. A widening gap indicates     worsening instability without sufficient recovery.</title>
+        <search>
+          <query>`svc_failure_detect($index$)`
+| sort service _time
+| streamstats current=f last(is_failure) AS prev_failure BY service
+| eval recovered = if(prev_failure=1 AND is_failure=0, 1, 0)
+| timechart span=30m sum(is_failure) AS failures sum(recovered) AS recoveries</query>
+          <earliest>$earliest$</earliest>
+          <latest>$latest$</latest>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+  <panel>
+    <title>Understanding Instability &amp; Flapping Signals</title>
+    <html>
+      <div>
+        <h3>What Is Service Flapping?</h3>
+        <p>
+          Flapping refers to repeated short outages where a service fails and recovers frequently.
+          These issues are often hidden in logs and may not trigger traditional alerts.
+        </p>
+
+        <h3>How Instability Is Detected</h3>
+        <ul>
+          <li>Failure counts are compared against each service’s historical baseline.</li>
+          <li>Spikes beyond normal variation are flagged as instability.</li>
+        </ul>
+
+        <h3>How to Interpret Panels</h3>
+        <ul>
+          <li><b>Instability Timeline</b> – Repeating spikes indicate flapping behavior.</li>
+          <li><b>Error Burst Heatmap</b> – Darker regions represent concentrated failures.</li>
+          <li><b>Recovery Events</b> – High recovery counts suggest restart loops or auto-healing.</li>
+        </ul>
+
+        <h3>Recommended Actions</h3>
+        <ul>
+          <li>Investigate recent deployments or configuration changes.</li>
+          <li>Check retry logic, circuit breakers, and dependency stability.</li>
+        </ul>
+      </div>
+    </html>
+  </panel>
+</row>
+</form>

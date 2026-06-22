@@ -1,0 +1,66 @@
+<dashboard version="2" theme="dark">
+    <label>Endpoint Monitor</label>
+    <description>Monitor endpoint health, agent connectivity, and compliance status</description>
+    <definition><![CDATA[
+{
+  "title": "Endpoint Monitor",
+  "inputs": {
+    "input_time_range": {
+      "type": "input.timerange",
+      "options": {"token": "time_range", "defaultValue": "-24h@h,now"},
+      "title": "Time Range"
+    }
+  },
+  "defaults": {
+    "dataSources": {
+      "ds.search": {
+        "options": {"queryParameters": {"earliest": "$time_range.earliest$", "latest": "$time_range.latest$"}}
+      }
+    }
+  },
+  "visualizations": {
+    "viz_total_endpoints": {"type": "splunk.singlevalue", "title": "Total Endpoints", "dataSources": {"primary": "ds_total_endpoints"}, "options": {"backgroundColor": "transparent", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_healthy_endpoints": {"type": "splunk.singlevalue", "title": "Healthy Endpoints", "dataSources": {"primary": "ds_healthy_endpoints"}, "options": {"backgroundColor": "#2ECC71", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_warning_endpoints": {"type": "splunk.singlevalue", "title": "Warning Endpoints", "dataSources": {"primary": "ds_warning_endpoints"}, "options": {"backgroundColor": "#F39C12", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_offline_endpoints": {"type": "splunk.singlevalue", "title": "Offline Endpoints", "dataSources": {"primary": "ds_offline_endpoints"}, "options": {"backgroundColor": "#E74C3C", "numberPrecision": 0, "majorFontSize": 48}},
+    "viz_os_distribution": {"type": "splunk.pie", "title": "OS Distribution", "dataSources": {"primary": "ds_os_distribution"}, "options": {"showDonutHole": true, "backgroundColor": "transparent"}},
+    "viz_endpoint_type_distribution": {"type": "splunk.pie", "title": "Endpoint Type Distribution", "dataSources": {"primary": "ds_endpoint_type_distribution"}, "options": {"showDonutHole": true, "backgroundColor": "transparent"}},
+    "viz_forwarder_connectivity": {"type": "splunk.table", "title": "Forwarder Connectivity Status", "dataSources": {"primary": "ds_forwarder_connectivity"}, "options": {"count": 20}},
+    "viz_agent_health_status": {"type": "splunk.table", "title": "Security Agent Health", "dataSources": {"primary": "ds_agent_health"}, "options": {"count": 20}},
+    "viz_offline_endpoints_list": {"type": "splunk.table", "title": "Offline/Disconnected Endpoints", "dataSources": {"primary": "ds_offline_endpoints_list"}, "options": {"count": 20}},
+    "viz_endpoint_activity_trend": {"type": "splunk.line", "title": "Endpoint Activity Trend (24 Hours)", "dataSources": {"primary": "ds_endpoint_activity_trend"}, "options": {"backgroundColor": "transparent", "lineWidth": 2, "yAxisTitleText": "Active Endpoints"}},
+    "viz_compliance_status": {"type": "splunk.table", "title": "Compliance Status by Endpoint", "dataSources": {"primary": "ds_compliance_status"}, "options": {"count": 20}}
+  },
+  "dataSources": {
+    "ds_total_endpoints": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | dedup host | stats count"}},
+    "ds_healthy_endpoints": {"type": "ds.search", "options": {"query": "| `endpoint_forwarder_health` | where status=\"connected\" | dedup host | stats count"}},
+    "ds_warning_endpoints": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | stats latest(_time) as last_seen by host | eval time_diff=now()-last_seen | where time_diff>3600 AND time_diff<7200 | stats count"}},
+    "ds_offline_endpoints": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | stats latest(_time) as last_seen by host | eval time_diff=now()-last_seen | where time_diff>7200 | stats count"}},
+    "ds_os_distribution": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | dedup host | stats count by os_type | sort -count"}},
+    "ds_endpoint_type_distribution": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | dedup host | stats count by endpoint_type | sort -count"}},
+    "ds_forwarder_connectivity": {"type": "ds.search", "options": {"query": "| `endpoint_forwarder_health` | stats latest(status) as Status, latest(_time) as \"Last Seen\" by hostname | eval \"Last Seen\"=strftime('Last Seen', \"%Y-%m-%d %H:%M:%S\") | rename hostname as \"Hostname\" | sort Status"}},
+    "ds_agent_health": {"type": "ds.search", "options": {"query": "| `endpoint_agent_health` | stats latest(agent_status) as \"Agent Status\" by host | rename host as \"Host\" | sort \"Agent Status\""}},
+    "ds_offline_endpoints_list": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | stats latest(_time) as last_seen, latest(os_type) as os_type by host | eval time_diff=now()-last_seen | where time_diff>7200 | eval \"Last Seen\"=strftime(last_seen, \"%Y-%m-%d %H:%M:%S\"), \"Hours Offline\"=round(time_diff/3600, 1) | sort -time_diff | table host, os_type, \"Last Seen\", \"Hours Offline\" | rename host as \"Host\", os_type as \"OS\"", "queryParameters": {"earliest": "-7d", "latest": "now"}}},
+    "ds_endpoint_activity_trend": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | bin _time span=1h | stats dc(host) as \"Active Endpoints\" by _time | timechart span=1h avg(\"Active Endpoints\") as \"Active Endpoints\""}},
+    "ds_compliance_status": {"type": "ds.search", "options": {"query": "| `endpoint_health_data` | stats latest(_time) as last_seen by host, os_type | eval status=case(now()-last_seen<3600, \"Compliant\", now()-last_seen<7200, \"Warning\", 1=1, \"Non-Compliant\"), \"Last Check\"=strftime(last_seen, \"%Y-%m-%d %H:%M:%S\") | table host, os_type, status, \"Last Check\" | rename host as \"Host\", os_type as \"OS\", status as \"Status\" | sort Status"}}
+  },
+  "layout": {
+    "type": "grid",
+    "structure": [
+      {"item": "viz_total_endpoints", "type": "block", "position": {"x": 0, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_healthy_endpoints", "type": "block", "position": {"x": 300, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_warning_endpoints", "type": "block", "position": {"x": 600, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_offline_endpoints", "type": "block", "position": {"x": 900, "y": 0, "w": 300, "h": 150}},
+      {"item": "viz_os_distribution", "type": "block", "position": {"x": 0, "y": 150, "w": 600, "h": 350}},
+      {"item": "viz_endpoint_type_distribution", "type": "block", "position": {"x": 600, "y": 150, "w": 600, "h": 350}},
+      {"item": "viz_endpoint_activity_trend", "type": "block", "position": {"x": 0, "y": 500, "w": 1200, "h": 300}},
+      {"item": "viz_forwarder_connectivity", "type": "block", "position": {"x": 0, "y": 800, "w": 600, "h": 400}},
+      {"item": "viz_agent_health_status", "type": "block", "position": {"x": 600, "y": 800, "w": 600, "h": 400}},
+      {"item": "viz_offline_endpoints_list", "type": "block", "position": {"x": 0, "y": 1200, "w": 600, "h": 400}},
+      {"item": "viz_compliance_status", "type": "block", "position": {"x": 600, "y": 1200, "w": 600, "h": 400}}
+    ],
+    "globalInputs": ["input_time_range"]
+  }
+}
+    ]]></definition>
+</dashboard>
