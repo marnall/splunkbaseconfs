@@ -1,0 +1,2 @@
+[hetrix://<name>]
+key=<string>

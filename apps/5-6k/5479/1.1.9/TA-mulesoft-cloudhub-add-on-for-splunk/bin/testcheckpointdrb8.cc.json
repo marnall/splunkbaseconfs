@@ -1,0 +1,127 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "org_id",
+        "env_id",
+        "global_account.username",
+        "global_account.password",
+        "startDate"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{startDate}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_startDate"
+                    },
+                    {
+                        "input": [
+                            "{{startDate}}",
+                            "%Y-%m-%d %H:%M:%S",
+                            "%Y-%m-%d %H:%M:%S"
+                        ],
+                        "method": "time_str2str",
+                        "output": "startDate"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://anypoint.mulesoft.com/cloudhub/api/v2/applications/myfirstprojectamm2021/dashboardStats?statistics=diskreadbytes&startDate=2021-03-01T08:00:00.000&endDate=2021-03-01T10:00:00.000&interval=60",
+                "method": "GET",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "X-ANYPNT-ENV-ID": "{{env_id}}"
+                },
+                "auth": {
+                    "type": "basic_auth",
+                    "options": {
+                        "username": "{{global_account.username}}",
+                        "password": "{{global_account.password}}"
+                    }
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.workerstatistics.statistics['testfield']"
+                        ],
+                        "method": "json_path",
+                        "output": "startDate"
+                    },
+                    {
+                        "input": [
+                            "{{startDate != ''}}",
+                            "The value of token 'startDate' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{startDate == _raw_startDate}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{startDate}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_startDate"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": []
+            },
+            "checkpoint": {
+                "content": {
+                    "startDate": "{{_raw_startDate}}"
+                }
+            }
+        }
+    ]
+}

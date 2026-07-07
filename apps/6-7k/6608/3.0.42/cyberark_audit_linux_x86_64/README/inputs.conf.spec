@@ -1,0 +1,19 @@
+[cyberark_audit_linux_x86_64://<name>]
+python.version = python3
+python.required = 3.13
+auth_endpoint = <value>
+api_endpoint = <value>
+api_region = <value>
+device_name = <value>
+services_filter = <value>
+initial_minutes_back_start = <value>
+index_name = <value>
+sourcetype = <value>
+host = <value>
+integration_display_name = <value>
+enabled = <value>
+page_size = <value>
+proxy_enabled = <value>
+proxy_host = <value>
+proxy_port = <value>
+proxy_verify_ssl = <value>

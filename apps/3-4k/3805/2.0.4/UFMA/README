@@ -1,0 +1,140 @@
+Unified Forwarder Monitoring and Alerting App For Splunk (UFMA)
+
+Overview
+##################################################################################################
+The UMFA App for Splunk is a forwarder monitoring app bringing together and enhancing multiple 
+disjointed monitoring functions already in use in Splunk. This monitoring tool will provide details on 
+any system that has sent an event to your indexer(s) including reporting on full instances of Splunk, 
+Universal Forwarders, Heavy Forwarders, and even independent Stream forwarders. It also brings deployment
+server information to your forwarder monitoring. At the click of a button see volume and connection stats,
+find out exactly which apps and server classes are deployed to a forwarder, or see if there are inactive 
+apps or server classes that may be cleaned from a deployment server. This app aims to be a one stop shop
+for your forwarder monitoring needs.
+
+Support
+----------------------
+Questions or feature requests may be sent to Madison.Moss@jhuapl.edu. Hours are typically 8:00AM-5:00PM EST
+and support may depend on availability. Support is to only include bug fixes in the case any feature or 
+process does not work as described within documentation. In this case I will work to resolve the issue and 
+update the app with the fix in place. Feature requests may be sent but are not guaranteed in any future 
+releases of the app.
+
+Installation
+----------------------
+The UFMA App for Splunk is an app that provides searches and visualizations and should be installed on a 
+search head. The app will work in a standalone, distributed, or clustered environment. On a standalone 
+search head place the app in $SPLUNK_HOME/etc/apps/ and refresh Splunk
+(https://<your_searchHead>:8000/en-US/debug/refresh)  or install from file directly from the web GUI. In 
+a clustered environement place the app in $SPLUNK_HOME/etc/shcluster/apps/ on the Deployer and apply 
+the cluster bundle to the search head cluster (splunk apply shcluster-bundle -target <shcluster-captain>:8089).
+After installation it is recommended to manually run "Rebuild Asset Table" under All Configurations to get
+an initial table of forwarders.
+
+Requirements
+----------------------
+Users of UFMA must have permissions to view _internal index and access to REST capabilities. The recommended
+role is "admin". In order to enrich your data with deployment server information your deployment server(s)
+must be added as search peers on the search head where UFMA will be run. This is not required for forwarder
+alerting but for functionality is recommended. Follow Splunk recommended requirements for OS and hardware
+guidelines.
+
+App Components
+##################################################################################################
+Many components in the app have customized drilldowns for filtering and provide quicker deep dives.
+
+Forwarders - Forwarder Summary
+----------------------
+The Forwarder Summary dashboard is a complete overview of everything forwarding in your environment. It
+will provide everything from a total count of forwarders to event stats and sending volume for individual
+forwarders for the time range selected. This view may help you identify your most active forwarders, if your 
+forwarders are load balancing properly, or if a once active forwarder is not active at all.  It will also tell 
+you exactly where your forwarders are checking into if you use multiple deployment servers. Please note any 
+deployment server information will appear as "N/A" if a forwarder is not configured to use a deployment server 
+or the deployment server it is checking into has not been added as a search peer. Other information may appear 
+as "N/A" if no data has been received for the forwarder within the selected time range.
+
+Forwarders - Forwarder Detail
+----------------------
+The Forwarder Detail dashboard is a deep dive into a single forwarder in your environment. It will provide
+forwarding statistics for a forwarder for the selected time range as well as provide deployment server details
+as to exactly which apps and server classes are on the forwarder. Please note, if an app has been deployed
+directly to the forwarder and not through a deployment server the app will not appear in this information. It
+also provides and overview of which sourcetypes the forwarder has sent over the selected time range. New in 2.0.0
+there is now a hidden panel that will appear if _introspection has been enabled for the selected forwarder. This
+will provide a deep dive into how Splunk is utilizing system resources and allow you to optimize forwarder
+performance. Look for things like if entire CPU cores are consumed by Splunk and see whether those resources are
+going to scripted input, registry monitoring (baselining can be CPU intensive), or other Splunk actions. Details
+on how to enable this additional monitoring are available on the Forwarder Resource Usage Dashboard.
+
+Forwarders - Forwarder Resource Usage
+----------------------
+The Forwarder Resource Usage dashboard adds even more granularity into monitoring your forwarders. It dives into
+resource usage of different Splunk components and helps enable you to look for anomalous systems that Splunk
+may be consuming more CPU or RAM on for whatever reason. Drill down into different systems and it will direct you
+to the Forwarder Detail dashboard for more details on a specific system. 
+
+Deployment Server Summary
+----------------------
+The Deployment Server Summary provides details on apps, server classes, and every forwarder checking into your
+deployment server(s). See what apps or server classes are deployed and which ones are inactive and might be able
+to be cleaned from the deployment server. Also quickly be able to tell which forwarder and app or server class 
+is deployed to.
+
+All Configurations - Rebuild Asset Table
+----------------------
+Tired of having to completely rebuild your asset table in the Monitoring Console and losing missing forwarders
+that may still be important? Now you have the option to selectively remove missing forwarders from your asset
+table while retaining your alerting for other missing forwarders. Select the default "All" to completely rebuild
+the table or use the multiselect to pick missing forwarders to remove from the current list. Please note if a
+selected forwarder has recorded activity within that timerange selected it will still appear in the table.
+
+All Configurations - Reports
+----------------------
+A collection of all saved reports for UFMA. By default there is a single scheduled search, "UFMA - Complete Asset 
+List",set to run every 5 minutes to update the forwarder asset table. You may adjust these settings to your 
+environment's needs. Larger environments may want to reduce the frequency in which the report runs.
+
+All Configurations - Alerts
+----------------------
+A collection of all alerts for UFMA. By default there is a single alert, "UFMA - ALERT - Missing Forwarders",
+checking for any missing forwarder set to run every 5 minutes. The alert action is currently set to list in 
+triggered alerts. You may update this to your needs such as email alerting. This alert corresponds with the 
+scheduled report "UFMA - Complete Asset List". A forwarder is considered missing if it has not connected to an 
+indexer in the last 15 minutes. Using this combination of search and alert you should know if a forwarder is 
+offline in about 20 minutes or less from the time the forwarder stops connecting. You may adjust this time by 
+changing the "900" seconds used in "UFMA - Complete Asset List" to alter the 15 minute missing classification and 
+may change the run frequency of the scheduled search and alert to reduce or increase the additional up to 5 minutes 
+of lag in reporting. Please do take into account the "UFMA - Complete Asset List" search can be an intensive search 
+and may need to be adjusted to work well depending the size of your environment. You may customize your forwarder 
+alerting further by filtering what you want to report on. Some examples below will help layout how to exclude 
+specific forwarder hostnames or forwarders checking into specific deployment servers from alerting on missing
+forwarders. You may disable the default alert and create your own or modify the existing alert to insert your
+environment details.
+
+Custom Alert - Exclude Deployment Server(s)
+| inputlookup ufma_asset_list 
+| search status="missing" deployment_server!=<deploymentServer> ... deployment_server!=<deploymentServerN>
+| eval last_connected = strftime(last_connected, "%m/%d/%Y %H:%M:%S %z") 
+| fields hostname forwarder_type version last_connected deployment_server
+
+Custom Alert - Exclude Hostname(s)
+| inputlookup ufma_asset_list
+| search status="missing" hostname!=<hostname1> hostname!=<hostname2> ... hostname!=<hostnameN>
+| eval last_connected = strftime(last_connected, "%m/%d/%Y %H:%M:%S %z")
+| fields hostname forwarder_type version last_connected deployment_server
+
+All Configurations - Dashboards
+----------------------
+A collection of all view containing in UFMA
+
+Search
+----------------------
+A basic search function to use within the UFMA context
+
+Macros
+----------------------
+If you look at the macros contained within UFMA you will see a variety of macros used to drive the app. One macro
+called "exclude_hosts" contains some dummy hosts by default but can be editted if you would like to exclude certain
+hosts from being populated in your asset table. A use case for this may be where certain VMs are continuously spun
+up and destroyed. Rather than having a quickly growing asset table that needs to be rebuilt to remove these system
+they can be called out in this macro to exclude them from the start.

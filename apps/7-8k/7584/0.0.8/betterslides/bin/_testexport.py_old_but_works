@@ -1,0 +1,236 @@
+from __future__ import absolute_import, division, print_function, unicode_literals
+
+import sys, os, requests
+
+#load own libs from ../lib
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+
+# Import modules from ../lib
+import splunklib.client as client
+import splunklib.binding as binding
+from splunklib.searchcommands import dispatch, GeneratingCommand, Configuration, Option
+
+COMMAND_NAME = "spreadsheetcommand"
+
+def pixels_to_emu(pixels):
+    return int(pixels * 914400 / 96)
+
+def is_background_or_black(pixel, bg_color, bg_tolerance=10, black_tolerance=30):
+    """
+    Check if a pixel is close to the background color or black-ish within given tolerances.
+    """
+    is_bg = all(abs(pixel[i] - bg_color[i]) <= bg_tolerance for i in range(3))
+    is_blackish = all(pixel[i] <= black_tolerance for i in range(3))
+    return is_bg or is_blackish
+
+def find_content_bounding_box(image, bg_color, bg_tolerance=10, black_tolerance=30):
+    """Find the bounding box of the content area, excluding background and black-ish colors."""
+    width, height = image.size
+    left, top, right, bottom = width, height, 0, 0
+
+    # Find top by checking only the 5th column
+    for y in range(height):
+        if not is_background_or_black(image.getpixel((4, y)), bg_color, bg_tolerance, black_tolerance):
+            top = y
+            break
+
+    # Find bottom (search from bottom up)
+    for y in range(height - 1, top - 1, -1):
+        for x in range(width):
+            if not is_background_or_black(image.getpixel((x, y)), bg_color, bg_tolerance, black_tolerance):
+                bottom = y
+                break
+        if bottom > top:
+            break
+
+    # Find left
+    for x in range(width):
+        for y in range(top, bottom + 1):
+            if not is_background_or_black(image.getpixel((x, y)), bg_color, bg_tolerance, black_tolerance):
+                left = x
+                break
+        if left < width:
+            break
+
+    # Find right (search from right to left)
+    for x in range(width - 1, left - 1, -1):
+        for y in range(top, bottom + 1):
+            if not is_background_or_black(image.getpixel((x, y)), bg_color, bg_tolerance, black_tolerance):
+                right = x
+                break
+        if right > left:
+            break
+
+            break 
+    print(f"image dimensions {left}:{top}-{right}:{bottom}", file=sys.stderr)
+    return (left, top, right + 1, bottom + 1)
+
+@Configuration(distributed=False, type="reporting")
+class spreadsheetcommand(GeneratingCommand):
+
+    earliest = Option(require=False)
+    latest = Option(require=False)
+    dashboards = Option(require=True)
+
+    def __init__(self):
+        GeneratingCommand.__init__(self)
+
+    def generate(self):
+        try:
+            self.username = self._metadata.searchinfo.username if hasattr(self._metadata.searchinfo, "username") else False
+            self.session_key = self._metadata.searchinfo.session_key if hasattr(self._metadata.searchinfo, "session_key") else False
+
+            if self.username and self.session_key:
+                #user_service = UserService(client=client, session_key=self.session_key, uuid=self._uuid)
+
+                #r = requests.get(url, verify=verify, headers = { 'Authorization': ('Splunk %s' self.session_key)})
+                # Define the endpoint URL
+                api_host="localhost"
+                api_port=8089
+                dashboard_name=self.dashboards #"testexport2"
+                url = f"https://{api_host}:{api_port}/services/pdfgen/render?type=png&input-dashboard={dashboard_name}"
+                headers={ 'Authorization': f'Splunk {self.session_key}'}
+                # Make the POST request to the pdfgen/render endpoint
+                r = requests.post(url, headers=headers, verify=False)
+                print( str(r.status_code) , file=sys.stderr)
+                #logger.info( str(r.status_code) )
+                filecontent = r.content
+                #filename = title
+
+                tmpfilename = os.path.join(os.path.dirname(__file__), dashboard_name+".png")
+                # Save the response content to the file
+                with open( tmpfilename, 'wb') as file:
+                    file.write(r.content)
+
+                
+                from PIL import Image
+                # Open the image file
+                image = Image.open(tmpfilename)
+                
+                # Get the dimensions of the image
+                width, height = image.size
+                print(f"image dimensions {width}:{height}", file=sys.stderr)
+                
+                # Define the target color to trim (e.g., white)
+                #target_color = (242, 244, 245)  # RGB for white
+                #tolerance = 10  # Tolerance for color matching
+
+                # Find the bounding box that does not contain the target color
+                #bbox = find_bounding_box(image, target_color, tolerance)
+                #bbox = find_bounding_box(image)
+
+                # Determine background color (assuming top-left pixel is background)
+                bg_color = image.getpixel((0, 0))
+                
+                # Find the bounding box of the content
+                bbox = find_content_bounding_box(image, bg_color)
+
+                # Crop the image using the determined bounding box
+                cropped_image = image.crop(bbox)
+                
+                # Save the cropped image
+                cropped_image.save(tmpfilename)
+                
+                
+                from pptx import Presentation
+                from pptx.util import Inches
+
+                # Set the slide dimensions in pixels
+                width_px = 1920  # Width in pixels
+                height_px = 1080  # Height in pixels
+
+                # Convert pixels to EMUs
+                width_emu = pixels_to_emu(width_px)
+                height_emu = pixels_to_emu(height_px)
+                
+                # Create a new presentation
+                presentation = Presentation()
+                
+                # Set the slide dimensions
+                presentation.slide_width = width_emu
+                presentation.slide_height = height_emu
+                
+                # Get the slide layout for a blank slide
+                empty_slide = presentation.slide_layouts[6]  # 6 is usually the layout index for a blank slide
+                # Add a slide
+                slide = presentation.slides.add_slide(presentation.slide_layouts[1])  # Index 1 corresponds to a blank slide layout
+
+                # Get the slide dimensions
+                slide_width = presentation.slide_width
+                slide_height = presentation.slide_height
+                
+                # Add the picture to the slide
+                # left and top are set to 0 to start at the top-left corner
+                # width and height are set to slide dimensions to fill the entire slide
+                pic = slide.shapes.add_picture(tmpfilename, 0, 0, width=slide_width, height=slide_height)
+                
+                
+                # Save the presentation
+                presentation.save(os.path.join(os.path.dirname(__file__), dashboard_name+'.pptx'))
+
+                event = {"_raw":"exported"}
+
+                yield event
+
+            if not self.username:
+                self.write_error(f"[{COMMAND_NAME}]: Lookup failed. No username or session_key found.")
+            else:
+                self.write_info(f"[{COMMAND_NAME}]: Successfully read lookup")
+
+        except Exception as e:
+            import traceback
+
+            # Get the current exception information
+            exc_type, exc_value, exc_traceback = sys.exc_info()
+            
+            # Format the exception and traceback
+            exception_details = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            
+            # Print the formatted exception and traceback to stderr
+            print("An exception occurred:", file=sys.stderr)
+            print("".join(exception_details), file=sys.stderr)
+
+
+dispatch(spreadsheetcommand, sys.argv, sys.stdin, sys.stdout, __name__)
+
+
+"""
+# Define the endpoint URL
+url = f"https://{api_host}:{api_port}/services/pdfgen/render?type=png&input-dashboard={dashboard_name}"
+
+# Make the POST request to the pdfgen/render endpoint
+response = requests.post(url, auth=HTTPBasicAuth(username, password), verify=False)
+
+# Check if the request was successful
+if response.status_code == 200:
+    # Save the response content as a PNG file
+    with open("dashboard.png", "wb") as file:
+        file.write(response.content)
+    print("Dashboard image saved as 'dashboard.png'")
+else:
+    print(f"Failed to retrieve dashboard. Status code: {response.status_code}")
+    print(f"Response: {response.text}")
+"""
+
+"""
+from PIL import Image
+
+# Open the image file
+image = Image.open('path_to_your_image.png')
+
+# Get the dimensions of the image
+width, height = image.size
+
+# Define the cropping box (left, upper, right, lower)
+# This will get the lower 1280 pixels
+if height > 1280:
+    box = (0, height - 1280, width, height)
+else:
+    box = (0, 0, width, height)
+
+# Crop the image using the defined box
+cropped_image = image.crop(box)
+
+# Save the cropped image
+cropped_image.save('path_to_save_cropped_image.png')
+"""

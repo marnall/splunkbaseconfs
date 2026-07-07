@@ -1,0 +1,2 @@
+[threatsecureaddon://default]
+Port = <value>

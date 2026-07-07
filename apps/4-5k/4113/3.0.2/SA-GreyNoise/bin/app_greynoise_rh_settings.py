@@ -1,0 +1,89 @@
+from greynoise_account_validation import (
+    EnableCachingHandler,
+    GreyNoiseAPIValidation,
+    GreyNoiseFeedConfiguration,
+    GreyNoiseScanDeployment,
+    GreyNoiseESAppValidation,
+    PurgeHandler,
+    TtlHandler,
+)
+from splunktaucclib.rest_handler import admin_external, util
+from splunktaucclib.rest_handler.endpoint import (
+    MultipleModel,
+    RestModel,
+    field,
+    validator,
+)
+from splunktaucclib.splunk_aoblib.rest_migration import ConfigMigrationHandler
+
+util.remove_http_proxy_env_vars()
+
+fields_logging = [field.RestField("loglevel", required=False, encrypted=False, default="INFO", validator=None)]
+model_logging = RestModel(fields_logging, name="logging")
+
+
+fields_parameters = [
+    field.RestField("api_key", required=True, encrypted=True, default=None, validator=GreyNoiseAPIValidation())
+]
+model_parameters = RestModel(fields_parameters, name="parameters")
+
+fields_caching = [
+    field.RestField("enable_caching", required=False, encrypted=False, validator=EnableCachingHandler()),
+    field.RestField("ttl", required=False, encrypted=False, default="24", validator=TtlHandler()),
+    field.RestField("purge_cache", required=False, encrypted=False, validator=PurgeHandler()),
+]
+model_caching = RestModel(fields_caching, name="caching")
+
+fields_feed_configuration = [
+    field.RestField("feed_selection", required=False, encrypted=False, validator=None),
+    field.RestField("enable_feed_import", required=False, encrypted=False, validator=GreyNoiseFeedConfiguration()),
+    field.RestField("force_enable_ss", required=False, encrypted=False, default=None, validator=None),
+    field.RestField("ingest_feed_to_index", required=False, encrypted=False, default="0", validator=None),
+    field.RestField("feed_index", required=True, encrypted=False, default="main", validator=None),
+]
+model_feed_configuration = RestModel(fields_feed_configuration, name="feed_configuration")
+
+fields_scan_deployment = [
+    field.RestField(
+        "ip_indexes",
+        required=True,
+        encrypted=False,
+        default="main",
+        validator=validator.String(
+            min_len=1,
+            max_len=8192,
+        ),
+    ),
+    field.RestField(
+        "cim_ip_fields",
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            min_len=1,
+            max_len=8192,
+        ),
+    ),
+    field.RestField("update_risk_score_to_splunk_es", required=False, encrypted=False, default=None, validator=GreyNoiseESAppValidation()),
+    field.RestField("malicious_score", required=True, encrypted=False, default="80", validator=None),
+    field.RestField("suspicious_score", required=True, encrypted=False, default="50", validator=None),
+    field.RestField("unknown_score", required=True, encrypted=False, default="30", validator=None),
+    field.RestField("benign_score", required=True, encrypted=False, default="10", validator=None),
+    field.RestField("enable_ss", required=False, encrypted=False, default=None, validator=GreyNoiseScanDeployment()),
+    field.RestField("other_ip_fields", required=False, encrypted=False, default=None, validator=None),
+    field.RestField("scan_start_time", required=True, encrypted=False, default=None, validator=None),
+    field.RestField("force_enable_ss", required=False, encrypted=False, default=None, validator=None),
+]
+model_scan_deployment = RestModel(fields_scan_deployment, name="scan_deployment")
+
+endpoint = MultipleModel(
+    "app_greynoise_settings",
+    models=[model_logging, model_parameters, model_scan_deployment, model_feed_configuration, model_caching],
+)
+
+
+if __name__ == "__main__":
+    admin_external.handle(
+        endpoint,
+        handler=ConfigMigrationHandler,
+    )

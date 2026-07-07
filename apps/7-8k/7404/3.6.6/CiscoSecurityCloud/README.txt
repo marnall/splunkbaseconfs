@@ -1,0 +1,3 @@
+# Binary File Declaration
+lib/charset_normalizer/md.cpython-37m-x86_64-linux-gnu.so: This binary file is created during running ucc-gen build inside of Docker container, it's specific for architecture of the container
+lib/charset_normalizer/md__mypyc.cpython-37m-x86_64-linux-gnu.so: This binary file is created during running ucc-gen build inside of Docker container, it's specific for architecture of the container

@@ -1,0 +1,78 @@
+import sys
+import time
+
+from splunklib.searchcommands import Configuration
+from splunklib.searchcommands import dispatch
+from splunklib.searchcommands import GeneratingCommand
+import log
+import environment
+from polyswarm_api.api import *
+from polyswarm_api import *
+
+logger = log.get_logger(__file__)
+
+@Configuration(type='reporting', streaming=False)
+class polytest(GeneratingCommand):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ps_env = None
+        self.eventkeys=[]
+        self.eventvalue=[]
+    
+    def process_data(self,data, parent_key=""):
+        """
+        Recursively processes the JSON data to extract keys and values.
+        Args:
+        data:  A dictionary or a value.
+        parent_key: The key of the parent dictionary (used for nested structures).
+        """
+        if isinstance(data, dict):
+            for key, value in data.items():
+                new_key = f"{parent_key}.{key}" if parent_key else key
+                self.process_data(value,new_key)  # Recursive call for nested structures
+        elif isinstance(data, list):
+            for i, item in enumerate(data):
+                new_key = f"{parent_key}[{i}]"  # Represent list indices in keys
+                self.process_data(item,new_key)
+        else:
+            if str(parent_key) !=  "id":
+                self.eventkeys.append(str(parent_key))
+                self.eventvalue.append(str(data))
+        return
+
+    def generate(self):
+        self.ps_env = environment.psEnv(self._metadata.searchinfo.session_key)
+        added_objects = []
+        try:
+            self.ps_env.api_key
+            global_api_key=self.ps_env.api_key
+        except Exception as error:
+            logger.error('%s: %s', error.code, error.message)
+            return
+        try:
+            community_name='default'
+            polyapi = PolyswarmAPI(key=global_api_key,community=community_name)
+        except Exception as error:
+            #logger.error('%s',error.message)
+            datecheck=[{'_time':time.time(),'error':type(error).__name__ ,'name':'Error in setting up Polyswarm Connection'}]
+            yield from datacheck
+            return
+        try:
+            gettags = polyapi.tag_list()
+            for g in gettags:
+                self.eventkeys=[]
+                self.eventvalue=[]
+                self.process_data(g.json)
+                dataload=[]
+                dataload.append(dict(zip(self.eventkeys,self.eventvalue)))
+                for r in dataload:
+                    yield r
+        except Exception as error:
+            #logger.error('%s',error.message)
+            datacheck=[{'_time':time.time(),'error':type(error).__name__,'name':'Error in Getting Tags Details'}]
+            yield from datacheck
+            return
+
+        logger.info('Command polyapitest executed successfully')
+
+dispatch(polytest, sys.argv, sys.stdin, sys.stdout, __name__)

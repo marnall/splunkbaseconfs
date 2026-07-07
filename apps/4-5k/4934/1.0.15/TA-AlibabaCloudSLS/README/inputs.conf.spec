@@ -1,0 +1,23 @@
+[sls_datainput://<name>]
+sls_accesskey = This AccessKey is used by pairing an AccessKey ID and an AccessKey Secret. The username and password configured in the "global account setting" correspond to the AccessKey ID and AccessKey Secret.
+sls_endpoint = SLS service endpoint.
+sls_project = The project in Log Service.
+sls_logstore = The logstore in Log Service.
+sls_cg = A consumer goup name that's used to consume the logstore. To scale, multiple inputs could be configured with the same consumer group name.
+sls_cursor_start_time = The start time from which data is consumed.This parameter is valid only when the consumer group is created for the first time. logs will be consumed from the saving point for other times.
+sls_heartbeat_interval = The heartbeat interval in seconds between consumer and SLS server.
+sls_data_fetch_interval = If the coming data is not so frequent, please don't configure it too small.
+sls_max_fetch_log_group_size = Fetch size in each request, normally use default. Maximum is 1000, could be lower. The lower the size, the memory efficiency might be better.
+topic_filter = The topic filter string with the ";" separator.The logs with a topic that is in this topic filter string, will be ignored to send to Splunk.
+unfolded_fields = A JSON format string which mapa topic to a field list.{"topicA": ["field_nameA1", "field_nameA2", ...], "topicB": ["field_nameB1", "field_nameB2", ...], ...}
+event_source = The source of an event in Splunk.
+event_sourcetype = The source type of an event in Splunk.
+event_retry_times = 0 means infinite retransmission.
+protocol = Event sending protocol For Splunk. If the private protocol is selected, the below parameters can be ignored.
+hec_host = The host of HEC.
+hec_port = The port of HEC.
+hec_token = The token of HEC.
+hec_timeout = The timeout of HEC in seconds.
+use_linux_x86_64_processor = If running on linux x86_64 platform, set this to true will increase the process performance, up to 30x.
+consume_processor = The consume processor which contains SPL, such as consume-processor-1, you should create it in your project first, only supported on linux x86_64.
+exclude_fields = Field names to exclude from log, fields are separated by comma.

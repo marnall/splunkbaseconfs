@@ -1,0 +1,131 @@
+{
+    "tokens": [
+        "__settings__.logging.loglevel", 
+        "slack_audit_log_api_token", 
+        "oldest"
+    ], 
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    }, 
+    "meta": {
+        "apiVersion": "1.0.0"
+    }, 
+    "requests": [
+        {
+            "checkpoint": {
+                "content": {
+                    "oldest": "{{_raw_oldest}}"
+                }
+            }, 
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.entries[*]"
+                        ]
+                    }
+                ], 
+                "pipeline": [
+                    {
+                        "method": "json_path", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.entries[0].date_create"
+                        ], 
+                        "output": "oldest"
+                    }, 
+                    {
+                        "method": "assert_true", 
+                        "input": [
+                            "{{oldest != ''}}", 
+                            "The value of token 'oldest' extracted from response cannot be empty!"
+                        ]
+                    }, 
+                    {
+                        "method": "exit_if_true", 
+                        "input": [
+                            "{{oldest == _raw_oldest}}"
+                        ]
+                    }, 
+                    {
+                        "method": "set_var", 
+                        "input": [
+                            "{{oldest}}"
+                        ], 
+                        "output": "_raw_oldest"
+                    }, 
+                    {
+                        "method": "json_path", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.entries[*]"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "splunk_xml", 
+                        "input": [
+                            "{{__stdout__}}", 
+                            "", 
+                            "{{index}}", 
+                            "{{host}}", 
+                            "{{source}}", 
+                            "{{sourcetype}}"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "std_output", 
+                        "input": [
+                            "{{__stdout__}}"
+                        ]
+                    }
+                ]
+            }, 
+            "iteration_mode": {
+                "iteration_count": "100", 
+                "stop_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.entries[*]"
+                        ]
+                    }
+                ]
+            }, 
+            "pre_process": {
+                "skip_conditions": [], 
+                "pipeline": [
+                    {
+                        "method": "set_var", 
+                        "input": [
+                            "{{oldest}}"
+                        ], 
+                        "output": "_raw_oldest"
+                    }, 
+                    {
+                        "method": "time_str2str", 
+                        "input": [
+                            "{{oldest}}", 
+                            "%s", 
+                            "%s"
+                        ], 
+                        "output": "oldest"
+                    }
+                ]
+            }, 
+            "request": {
+                "method": "GET", 
+                "headers": {
+                    "Authorization": "Bearer{{slack_audit_log_api_token}}"
+                }, 
+                "url": "https://api.slack.com/audit/v1/logs?limit=0000&oldest={{oldest}}"
+            }
+        }
+    ]
+}

@@ -1,0 +1,113 @@
+
+# encoding = utf-8
+
+import os
+import sys
+import time
+import datetime
+import json
+import base64
+
+'''
+    IMPORTANT
+    Edit only the validate_input and collect_events functions.
+    Do not edit any other part in this file.
+    This file is generated only once when creating the modular input.
+'''
+'''
+# For advanced users, if you want to create single instance mod input, uncomment this method.
+def use_single_instance_mode():
+    return True
+'''
+
+def validate_input(helper, definition):
+    """Implement your own validation logic to validate the input stanza configurations"""
+    # This example accesses the modular input variable
+    # priority = definition.parameters.get('priority', None)
+    # rating = definition.parameters.get('rating', None)
+    # asset_tags = definition.parameters.get('asset_tags', None)
+    pass
+
+def tw_transform_issue_event(issue):
+    # Cleanup unwanted fields
+    pass
+    
+def collect_events(helper, ew):
+
+    # get user provided values
+    opt_asset_tags = helper.get_arg('asset_tags')
+    if opt_asset_tags is None:
+        opt_asset_tags = ""
+    opt_asset_tags_match_criteria = helper.get_arg('asset_tags_match_criteria')
+    opt_rating = helper.get_arg('rating')
+    if opt_rating == ['[]']:
+        # In Test mode, we get list, but in actual deployed run we get list as string
+        opt_rating = []
+
+    helper.log_debug("Started new run to ingest Misconfigurations")
+    helper.log_debug("User provided Rating: %s" % opt_rating)
+    helper.log_debug("User provided Asset Tags: %s" % opt_asset_tags)
+    helper.log_debug("User provided Asset Tag Match Criteria: %s" % opt_asset_tags_match_criteria)
+
+    """
+    # get proxy setting configuration
+    proxy_settings = helper.get_proxy()
+
+    # get account credentials as dictionary
+    account = helper.get_user_credential_by_username("username")
+    account = helper.get_user_credential_by_id("account id")
+    """
+    # get global variable configuration
+    global_threatworx_instance = helper.get_global_setting("threatworx_instance")
+    global_threatworx_handle = helper.get_global_setting("threatworx_handle")
+    global_threatworx_api_key = helper.get_global_setting("threatworx_api_key")
+    
+    # Make API call to TW to get filtered misconfigurations
+    url = "https://" + global_threatworx_instance + "/api/v1/assets/issues/?"
+    bearer_auth = "Bearer " + global_threatworx_api_key
+    method = "POST"
+    payload = { }
+    payload['status'] = ['open', 'resolved', 'ignored']
+    payload['filters'] = ['recent']
+    payload['issue_types'] = ['__ALL__']
+    # Note since we are using 'recent' filter we don't need to move/update offset progressively
+    payload['offset'] = 0
+    payload['limit'] = 100
+
+    if len(opt_rating) > 0:
+        payload["ratings"] = opt_rating
+    if len(opt_asset_tags) > 0:
+        asset_tags = []
+        for tag in opt_asset_tags.split(','):
+            asset_tags.append(tag.strip())
+        payload["tags"] = asset_tags
+        payload["tags_condition"] = opt_asset_tags_match_criteria
+
+    helper.log_debug("API payload: %s" % payload)
+    total_issues = 0    
+    while True:
+        response = helper.send_http_request(url, method, parameters=None, payload=payload,
+                                        headers={"Content-Type": "application/json", "Authorization": bearer_auth}, cookies=None, verify=True, cert=None,
+                                        timeout=300, use_proxy=True)
+        helper.log_debug("API response status code: %s" % response.status_code)
+        if response.status_code != 200:
+            helper.log_debug("API response text: %s" % response.text)
+            # check the response status, if the status is not sucessful, raise requests.HTTPError
+            response.raise_for_status()
+
+        r_json = response.json()
+        helper.log_debug("Number of misconfigurations in API response: %s" % len(r_json["issues"]))
+
+        issues = r_json["issues"]
+        for issue in issues:
+            tw_transform_issue_event(issue)
+            # Always create a new event in Splunk
+            event = helper.new_event(data=json.dumps(issue), time=None, host=None, index=helper.get_output_index(), source="ThreatWorx", sourcetype="threatworx:misconfiguration", done=True, unbroken=True)
+            ew.write_event(event)
+            
+        total_issues = total_issues + len(r_json['issues'])
+        if len(r_json["issues"]) != payload['limit']:
+            helper.log_debug("Processed total [%s] misconfigurations. Run completed." % total_issues)
+            # last page processed, so break from the while loop
+            break
+

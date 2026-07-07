@@ -1,0 +1,111 @@
+_time,user,category,entry,desc,view,id,link
+1615586448,admin,Admin,"DSA Splunk Searches
+
+Please run the searches below (just copy and paste them from here and put them in your Splunk search bar). Once they have completed you will need to export the results as a csv or text file. There is an icon just below the search bar to the right that allows you to do this.
+
+Please let me know if you have any questions. hutch@splunk.com
+
+Searches to run on search head.
+
+| metadata type=sourcetypes index=* NOT _internal
+
+/*__________________________*/
+| eventcount summarize=false index=* | dedup index | fields index count
+
+/*__________________________*/
+| metadata type=hosts index=* NOT _internal
+
+/*__________________________*/
+| metadata type=source index=* NOT _internal
+
+/*__________________________*/
+| metadata type=sourcetypes index=* NOT _internal
+
+/*__________________________*/
+index=* | stats count by sourcetypes
+
+Searches to run on licensing manager.
+
+index=_internal source=*license_usage.log type=""Usage""
+| eval h=if(len(h)=0 OR isnull(h),""(SQUASHED)"",h)
+| eval s=if(len(s)=0 OR isnull(s),""(SQUASHED)"",s)
+| eval idx=if(len(idx)=0 OR isnull(idx),""(UNKNOWN)"",idx)
+| bin _time span=1d
+| stats sum(b) as b by _time, pool, s, st, h, idx
+| sort by st, -b
+
+/*__________________________*/
+
+sourcetype=*
+| eval esize=len(_raw) 
+| stats dc(host) AS Host_Count, count As Example_Count, p10(esize) AS ten_perc_bytes, avg(esize) AS avg_bytes, p90(esize) AS ninety_perc_bytes by sourcetype 
+| eval cntfc=tonumber(Example_Count)
+| eval avg_bytes=round(avg_bytes, 0)
+| eval est_t_bytes_ninety= (ninety_perc_bytes*cntfc)
+| eval est_t_bytes_avg= (avg_bytes*cntfc)
+| eval est_t_gb_ninety=round((ninety_perc_bytes*cntfc)/1024/1024/1024,4)
+| eval est_t_gb_avg=round((avg_bytes*cntfc)/1024/1024/1024,4) 
+| eval est_t_mb_ninety=round((ninety_perc_bytes*cntfc)/1024/1024,2)
+| eval est_t_mb_avg=round((avg_bytes*cntfc)/1024/1024,2) 
+| eval Source_DataSet_Details=""Total Events Sampled ("".tostring(cntfc).""), Total Hosts Sampled ("".tostring(Host_Count)."")""
+| eval Average_Details=""Average event byte size ("".tostring(avg_bytes).""), Sum of Average bytes ("".tostring(est_t_bytes_avg).""), Estimated Daily MB using Average ("".tostring(est_t_mb_avg).""), Estimated Daily GB using Average ("".tostring(est_t_gb_avg)."")""
+| eval 90_Percent_Details=""90 percent event byte size ("".tostring(ninety_perc_bytes).""), Sum of 90 percent bytes ("".tostring(est_t_bytes_ninety).""), Estimated Daily MB using 90 percent ("".tostring(est_t_mb_ninety).""), Estimated Daily GB using 90 percent ("".tostring(est_t_gb_ninety)."")""
+| makemv delim="","" Average_Details
+| makemv delim="","" 90_Percent_Details
+| makemv delim="","" Source_DataSet_Details
+| join sourcetype [search index=_internal source=*license_usage.log type=Usage st=* 
+| stats sum(b) as sbytes by st 
+| eval sgb=round(sbytes/1024/1024/1024,4)
+| eval smb=round(sbytes/1024/1024,2)
+| eval Actual_Indexed_Size=""Total MB Indexed ("".tostring(smb).""), Total GB Indexed ("".tostring(sgb)."")""
+| rename st as sourcetype 
+| table sourcetype, Actual_Indexed_Size]
+| makemv delim="","" Actual_Indexed_Size
+| table sourcetype, Source_DataSet_Details, Average_Details, 90_Percent_Details,  Actual_Indexed_Size
+
+/*__________________________*/
+
+index=_internal type=Usage source=""*license_usage.log"" (idx=*) h!=DATA h!=CHANGE (h!=""All_Hosts_Base"") (s!=""All_Sources_Base"") 
+| stats values(h) AS hostnames dc(h) AS host_count sum(b) AS host_volume by s date_mday 
+| eval source_volume_MB=(host_volume/1024/1024) 
+| fields - host_volume 
+| stats avg(source_volume_MB) AS avg_source_volume_MB values(hostnames) AS hostnames by s 
+| eval avg_source_volume_MB=round(avg_source_volume_MB,3) 
+| appendcols 
+    [ search index=_internal type=Usage source=""*license_usage.log"" (idx=*) h!=DATA h!=CHANGE (h!=""All_Hosts_Base"") (s!=""All_Sources_Base"") 
+    | stats dc(h) AS host_count, sum(b) AS host_volume by s date_mday 
+    | stats avg(host_count) AS avg_host_count by s 
+    | eval avg_host_count=round(avg_host_count,2)] 
+| eval avg_host_source_volume_MB=round(avg_source_volume_MB/avg_host_count,3) 
+| table s avg_host_count hostnames avg_source_volume_MB avg_host_source_volume_MB 
+| sort - avg_host_source_volume_MB 
+| rename s AS Source, h AS Host, hostnames AS ""Host name(s)"", host_volume_avg_MB AS ""Host Volume Avg (MB)"", avg_host_count AS ""Avg Host Count"", avg_source_volume_MB AS ""Avg daily Source Volume (MB)"", avg_host_source_volume_MB AS ""Avg daily Source Volume by Host (MB)""
+
+/*__________________________*/
+
+index=_internal source=*license_usage.log type=""Usage"" earliest=-7d@d latest=@d
+
+| fields b, st, h, _time, date_wday
+
+| eval h=if(len(h)=0 OR isnull(h),""(SQUASHED)"",h)
+
+| bin _time span=1d
+
+| stats sum(b) AS b, dc(h) AS h by st date_wday
+
+| stats avg(b) as avg_b, avg(h) AS Host_Count_per_Day by st
+
+| eval Avg_MB_per_Day=round(avg_b/1024/1024,2)
+
+| eval Avg_GB_per_Day=round(avg_b/1024/1024/1024,2)
+
+| eval Avg_MB_per_Host=round(Avg_MB_per_Day/Host_Count_per_Day,2)
+
+| eval Host_Count_per_Day=round(Host_Count_per_Day,0)
+
+| rename st AS Sourcetype
+
+| table Sourcetype, Avg_MB_per_Day, Avg_GB_per_Day, Host_Count_per_Day, Avg_MB_per_Host
+
+| sort Sourcetype",DSA,splk_pad,645fb0488851ab80c2047acd4a429b96f53889bd,http://khutchinson-mbp-ef7e4:6790/en-US/app/spgt_splunkpad/splk_pad?form.category=*&form.filter_search=*
+1683813499,admin,All,Bug fixes for Splunkpad so it works correctly in Splunk version 9.x.,Sample entry for Splunkpad.,splk_pad,b91540c5060ed9b3a655cf70af45deb27aa25663,http://localhost:6790/en-US/app/spgt_splunkpad/splk_pad?form.category=*&form.filter_search=*

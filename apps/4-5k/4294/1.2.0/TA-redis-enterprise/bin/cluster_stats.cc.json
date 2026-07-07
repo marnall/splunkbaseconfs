@@ -1,0 +1,141 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "account.username",
+        "account.password",
+        "protocol",
+        "fqdn",
+        "port",
+        "stats_interval",
+        "stime"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{stime}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_stime"
+                    },
+                    {
+                        "input": [
+                            "{{stime}}",
+                            "%Y-%m-%dT%H:%M:%SZ",
+                            "%Y-%m-%dT%H:%M:%SZ"
+                        ],
+                        "method": "time_str2str",
+                        "output": "stime"
+                    }
+                ]
+            },
+            "request": {
+                "url": "{{protocol}}://{{fqdn}}:{{port}}/v1/cluster/stats?interval={{stats_interval}}&stime={{stime}}",
+                "method": "GET",
+                "headers": {},
+                "auth": {
+                    "type": "basic_auth",
+                    "options": {
+                        "username": "{{account.username}}",
+                        "password": "{{account.password}}"
+                    }
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.intervals[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.intervals[0].stime"
+                        ],
+                        "method": "json_path",
+                        "output": "stime"
+                    },
+                    {
+                        "input": [
+                            "{{stime != ''}}",
+                            "The value of token 'stime' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{stime == _raw_stime}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{stime}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_stime"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.intervals[*]"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.intervals[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "stime": "{{_raw_stime}}"
+                }
+            }
+        }
+    ]
+}

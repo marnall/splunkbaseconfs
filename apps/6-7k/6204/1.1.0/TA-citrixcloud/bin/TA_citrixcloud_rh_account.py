@@ -1,0 +1,71 @@
+
+import import_declare_test
+
+from splunktaucclib.rest_handler.endpoint import (
+    field,
+    validator,
+    RestModel,
+    SingleModel,
+)
+from splunktaucclib.rest_handler import admin_external, util
+from splunktaucclib.rest_handler.admin_external import AdminExternalHandler
+import logging
+
+util.remove_http_proxy_env_vars()
+
+
+fields = [
+    field.RestField(
+        'customerid',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=8192, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'clientid',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=8192, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'clientsecret',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=8192, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'authtype',
+        required=True,
+        encrypted=False,
+        default='OAuth',
+        validator=None
+    )
+]
+model = RestModel(fields, name=None)
+
+
+endpoint = SingleModel(
+    'ta_citrixcloud_account',
+    model,
+    config_name='account'
+)
+
+
+if __name__ == '__main__':
+    logging.getLogger().addHandler(logging.NullHandler())
+    admin_external.handle(
+        endpoint,
+        handler=AdminExternalHandler,
+    )

@@ -1,0 +1,29 @@
+
+## Threat - Pwnage Detected - Rule breakdown
+## This example illustrates the creation of risk modifiers
+## based on haveibeenpwned events
+## 1  - search index=haveibeenpwned
+## 2  - set up risk_object and risk_object_type fields
+## 2a - set risk_object as query_parameter
+## 2b - set risk_object_type based on sourcetype
+## 3  - perform a count based on orig_sid,orig_rid,risk_object,risk_object_type
+## 3a - persisting orig_sid/orig_rid allows us to link the risk and haveibeenpwned
+##      invocations
+## 4  - calculate risk score based on 10x the number of events
+## 5  - ditch any other fields we don't need
+[Threat - Pwnage Detected - Rule]
+action.risk                         = 1
+## action.risk.param._risk attributes are irrelevent here
+## since we are using the search language to set these fields
+action.risk.param._risk_score       = 1
+action.risk.param._risk_object      = nosuchfield
+action.risk.param._risk_object_type = other
+action.risk.param.verbose           = 0
+alert.suppress                      = 0
+alert.track                         = 0
+cron_schedule                       = */30 * * * *
+dispatch.earliest_time              = -35m@m
+dispatch.latest_time                = -5m@m
+dispatch.rt_backfill                = 1
+enableSched                         = 1
+search                              = index="haveibeenpwned" | eval risk_object=query_parameter,risk_object_type=if(sourcetype LIKE "%account","user","system") | stats count by orig_sid,orig_rid,risk_object,risk_object_type | eval risk_score=count*10 | fields risk*,orig_sid,orig_rid

@@ -1,0 +1,20 @@
+[securityscorecard://<name>]
+diff_override_own_factor = Do you want to log events to Splunk when the factor level scores for yourself do not change?
+diff_override_own_overall = Do you want to log events to Splunk when overall score for yourself does not change?
+diff_override_portfolio_factor = Do you want to log events to Splunk when the factor level scores for 3rd parties do not change?
+diff_override_portfolio_overall = Do you want to log events to Splunk when the overall level scores for 3rd parties do not change?
+domain = Please enter your own scorecard's domain to monitor your own scorecard. This is a mandatory field.
+fetch_company_factors = Do you want to monitor the factor level score for your own scorecard?
+fetch_company_issues = Do you want to monitor for issue level events for your own scorecard?
+fetch_issue_level_data = Do you want to log issue level details to splunk?
+fetch_portfolio_factors = Do you want to monitor the factor level score for 3rd party scorecards?
+fetch_portfolio_issues = Do you want to monitor for issue level events for 3rd party scorecards?
+fetch_portfolio_overall = Do you want to monitor the overall score for 3rd party scorecards?
+global_account = 
+index = (Default: default)
+interval = Time interval of input in seconds. (Default: 86400)
+level_factor_change = Specify the severity level to be used when logging factor score changes to Splunk. i.e. high, medium, low, info or positive
+level_new_issue_change = Specify the severity level to be used when logging changes in the scorecard event log. i.e. high, medium, low, info or positive
+level_overall_change = Specify the severity level to be used when logging overall score changes to Splunk. i.e. high, medium, low, info or positive
+portfolio_ids = To monitor all portfolio ids, please enter 'all'. If you want to monitor specific portfolio ids, then please enter comma separate list of portfolio ids
+securityscorecard_api_url = Enter the SecurityScorecard API URL.Url should contain https. (Default: https://api.securityscorecard.io)

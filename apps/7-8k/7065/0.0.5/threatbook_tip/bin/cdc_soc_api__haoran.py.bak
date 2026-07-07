@@ -1,0 +1,61 @@
+# -*- coding: utf-8 -*-
+# @File  : eventingcsc.py.py
+# @Date  : 2023/4/12
+# @Desc  :
+from pkgutil import read_code
+import sys
+import re
+from lib.soc_adpter import SOCAdpter
+# sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from splunklib.searchcommands import dispatch, EventingCommand, Configuration, Option
+
+
+@Configuration()
+class EventingCSC(EventingCommand):
+    """
+    The eventingcsc command filters records from the events stream returning only those for which the status is same
+    as search query.
+
+    Example:
+
+    ``index="_internal" | head 4000 | eventingcsc status=200``
+
+    Returns records having status 200 as mentioned in search query.
+    """
+
+    mod = Option(
+        doc='''Module Name (e.g.: LDAP_UI_GetUserInfo)''',
+        require=True)
+
+    apiurl = Option(
+        doc_domain='http://192.168.91.54:8090/tip_api/v4/dns',
+        doc_ip='http://192.168.91.54:8090/tip_api/v4/ip',
+        require=False)
+    apikey='889af9e4705d4ed18961342002209a32'
+
+    def transform(self, records):
+        # To connect with Splunk, use the instantiated service object which is created using the server-uri and
+        # other meta details and can be accessed as shown below
+        # Example:-
+        #    service = self.service
+        #    info = service.info //access the Splunk Server info
+
+        for record in records:
+            temp_args = record.copy()
+            temp_args.update({"modulename": self.mod})
+            try:
+                result = SOCAdpter.apimodule(temp_args, self.apiurl)
+                record.update(result)
+            except Exception as E:
+                self.logger.exception(E)
+                raise E
+            yield record
+
+    def isIP(IPaddr):
+        p = re.compile('^((25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(25[0-5]|2[0-4]\d|[01]?\d\d?)$')
+        
+
+
+
+
+dispatch(EventingCSC, sys.argv, sys.stdin, sys.stdout, __name__)

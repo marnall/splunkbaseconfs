@@ -1,0 +1,146 @@
+*** The following steps describe setting up the Report to AbuseIPDB for Splunk app on a CentOS 7 server. If you
+    are using a Debian based server please refer to the DEBIAN NOTE at the bottom of this document.
+
+Step 1)  Configure a Splunk® forwarder to monitor the /var/log directory.
+
+Step 2)  Configure a Splunk® receiver to accept data from the port you configured the forwarder to send data to.
+
+Step 3)  Click on the “Report to Abuseipdb for Splunk” app icon and verify that there is a flow of data by clicking
+	 on the Data Summary button.
+
+	*Note* During testing, we noticed that following the documentation for configuring a forwarder through CLI
+	 caused a “TailReader Error”.  At this point, Splunk was not receiving data either. The issue was resolved
+ 	 by Going to Settings>Forwarding and Receiving and deleting both the forwarder and receiver.
+
+Step 4)  Once the data is flowing in, the next step is to add your AbuseIPDB APIv2 key to the alert_actions.conf
+         file. This file is located in /opt/splunk/etc/apps/abuseipdb/default
+
+ 	 Locate the line: # Enter your AbuseIPDB APIv2 key below.
+	 Under that line, there should be param.key = Paste your API key to the right of the equal sign then save
+	 the file.
+
+	 If you do not have an Abuseipdb Key, you can create one by going to
+ 		https://www.abuseipdb.com/account/api and clicking Create Key.
+
+	 If you do not have an Abuseipdb account, the API is free to use, but you have to create an account at
+		https://www.abuseipdb.com/register
+
+Step 5)  From /opt/splunk/etc/apps/abuseipdb/default open the savedsearches.conf file and locate the following
+	 line under the [Messages Log Report] stanza:
+		search = host=YOUR_HOST_NAME "SRC=*" SRC!="YOUR_IP_HERE”
+		source="/var/log/messages”
+
+	 Replace YOUR_HOST_NAME with the host name of your server, and YOUR_IP_HERE with your IP. You can exclude
+	 other IPs you would not like reported in the same manner by adding “ SRC!="YOUR_IP_HERE” again to this line.
+
+Step 6)  Locate the following line under the [Secure Log Report] stanza:
+		search = host=YOUR_HOST_NAME  source="/var/log/secure" ip="*" NOT "YOUR_IP_HERE”
+
+	 Replace YOUR_HOST_NAME with the host name of your server, and YOUR_IP_HERE with your IP. You can exclude
+	 other IPs you would not like reported in the same manner by adding NOT “YOUR_IP_HERE” or
+	 ip!= “YOUR_IP_HERE”  again to this line and save the file.
+
+Step 7)  Move to the data/models directory.
+
+	 Locate the following line in Messages_Alert.json:
+		"search": "host=YOUR_HOSTNAME \"SRC=*\" SRC!=\"YOUR_IP_HERE$
+
+	 Replace YOUR_HOST_NAME with the host name of your server, and YOUR_IP_HERE with your IP. You can exclude
+	 other IPs you would not like reported in the same manner by adding SRC!="YOUR_IP_HERE” again to this line
+	 and save the file.
+
+Step 8)  From the data/models directory, Locate the following line in Secure_Alert.json:
+		"search": "host=YOUR_HOST_NAME  source=\"/var/log/secure\" ip=\"*\" NOT \"YOUR_IP_HERE\""
+
+	 Replace YOUR_HOST_NAME with the host name of your server, and YOUR_IP_HERE with your IP. You can exclude
+	 other IPs you would not like reported in the same manner by adding NOT “YOUR_IP_HERE” or
+	 ip!= “YOUR_IP_HERE”  again to this line and save the file.
+
+Step 9) From /opt/splunk/etc/apps/abuseipdb/bin, open report.py. On line 32, replace the words "YOUR_IP_HERE" with the IP of your server, or any IPs that you would like to not be reported.
+
+Step 10)  Navigate to the /opt/splunk/bin directory and restart splunk by entering:
+		./splunk restart into the terminal
+
+Step 11) Verify that everything is working properly:
+    	     1. Check the AbuseIPDB dashboard and verify that it is showing data
+    	     2. Check that the alerts are triggering when they are supposed to:
+        	   a. The secure log alert triggers anytime there is an invalid/failed login attempt recorded to the
+		   secure log file.
+        	   b. The messages log alert triggers anytime the kernel blocks an incoming IP with the firewall
+		        **If you messages log does not currently have any port scanning data, there will not be a
+			  SRC field and therefor no results for this search. The search and alert will begin working
+			  on their own once this data is introduced.
+        	   c. Both of these alerts will appear in the Activity>Triggered Alerts tab of Splunk® Web
+    	     3. Ensure that the report script is running properly by monitoring your AbuseIPDB report page at
+		https://www.abuseipdb.com/account/reports
+        	   a. If successful, each time a log event occurs on either /var/log/messages or /var/log/secure
+		      there should be a report logged to your account on our website.
+        	   b. If reports are not showing up, but your alerts are triggering, make sure you added your API
+		      Key to the alert_action.conf file
+
+*****Optional - Steps for creating your own custom alert to report to AbuseIPDB*****
+
+Step 1)  Determine which log file you would like to monitor
+
+	 In the Report to AbuseIPDB for Splunk search bar type: source="PATH_TO_YOUR_LOG_FILE" and run your search
+
+Step 2)  Check the list of Fields located on the left of your search results. If you see an ip or SRC field continue
+	 to step 3.
+
+	 If you do not see one of these two fields you will need to extract your own by following these steps:
+             1. Click extract new fields
+	     2. Select a sample event by clicking a line in your search results and then clicking next
+	        on the progress bar at the top of the page.
+     	     3. Click I prefer to write the Regular Expression myself.
+	     4. Enter the following regex and click preview:
+	           (?<ip>\d+\.\d+\.\d+\.\d+)  **This is for IPv4. If you need IPv6 you will need to modify it.
+	     5. Click Save to continue to next step.
+	     6. Set permissions to app, everyone can read and admin can write
+	     7. Ensure that the extraction name is ip and then click finish
+
+Step 3)  Find and click either the ip or SRC field and then click events with this field
+
+Step 4)  In the search bar following the existing search type NOT "YOUR_IP_HERE" making sure to fill in your ip
+	 address and then run the search
+
+Step 5)  Click Save As then select Alert
+
+Step 6)  Enter a title and description of your choosing and enter an expiration that suits your needs
+
+Step 7)  Set permissions to Shared in App
+
+Step 8)  Set Alert type to Real Time
+
+Step 9)  Make sure that the trigger alert when setting is per-result
+
+Step 10) Under trigger actions click add actions and then click Add to triggered alerts with a severity of your
+	 choosing.
+
+	 Click add actions again and click the report action which has the AbuseIPDB logo with a category and
+	 comment of your choosing - please make the comment relateable to the type of attack and click save
+
+Step 11) In the directory /opt/splunk/etc/apps/abuseipdb/bin open the file report.py so that you can edit it
+
+Step 12) **The following code will be inserted directly above the initialization of the url variable**
+
+	 elif data["result"]["source"] == PATH_TO_YOUR_FILE:
+       	      logfile = A_FILE_OF_YOUR_CHOOSING_TO_RECORD_SERVER_RESPONSE
+              ip = data["result"]["NAME_OF_YOUR_IP_FIELD_IN_ALERT"]
+
+	 Replace your file names before saving the code
+
+Step 13) Restart Splunk by going to /opt/splunk/bin and running ./splunk restart
+
+
+*****DEBIAN NOTE*****
+
+Due to a diffent file naming system you will need to update your file paths.
+
+Anywhere that we use /var/log/secure your will need to replace it with /var/log/auth.log
+Anywhere that we use /var/log/messages you will need to replace it with /var/log/syslog
+
+Files where you will need to make these changes are:
+	/opt/splunk/etc/apps/abuseipdb/default/savedsearchs.conf
+	/opt/splunk/etc/apps/abuseipdb/default/data/models/Messages_Alert.json
+	/opt/splunk/etc/apps/abuseipdb/default/data/models/Secure_Alert.json
+	/opt/splunk/etc/apps/abuseipdb/bin/report.py

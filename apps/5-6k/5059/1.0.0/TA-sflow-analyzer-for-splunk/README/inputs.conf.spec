@@ -1,0 +1,2 @@
+[sflowsample://<name>]
+interface = Network interface where sFlow packets will be received. Its IP address must match the receiver IP address configured on the network device. Use "tshark -D" to list interface names.

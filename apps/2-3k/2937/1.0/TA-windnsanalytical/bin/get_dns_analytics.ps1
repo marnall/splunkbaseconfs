@@ -1,0 +1,1 @@
+Get-WinEvent -Oldest -LogName "Microsoft-Windows-DNSServer/Analytical" -FilterXPath "*[System[EventID!=280 and TimeCreated[timediff(@SystemTime) <= 60000]]]" | fl

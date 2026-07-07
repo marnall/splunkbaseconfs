@@ -1,0 +1,9 @@
+[infoblox_gridmanager://<name>]
+domain=<string>
+usessl=<boolean>
+verifyssl=<boolean>
+username=<string>
+password=<string>
+version=<string>
+limit=<number>
+fields=<string>

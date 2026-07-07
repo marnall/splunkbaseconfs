@@ -1,0 +1,62 @@
+<configuration>
+    <!-- Need to add this status listener, or it will print some status info to stdout -->
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
+
+    <property name="LOG_HOME" value="${SPLUNK_HOME}/var/log/splunk"/>
+
+    <appender name="DBX_COMMANDS" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- daily rollover -->
+            <fileNamePattern>
+                ${SPLUNK_HOME}/var/log/splunk/splunk_app_db_connect_commands.%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+            <!-- only keep few days log, splunk will index these data -->
+            <!-- We keep few days only for customer cases analysis -->
+            <maxHistory>5</maxHistory>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} Trace-Id=%X{trace.id} [%thread] %-5level %logger{50} - %msg%n
+            </pattern>
+        </encoder>
+        <!-- This mode support multi-process logging to one file -->
+        <prudent>true</prudent>
+
+    </appender>
+
+    <appender name="DBX_COMMANDS_AUDIT" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- daily rollover -->
+            <fileNamePattern>
+                ${SPLUNK_HOME}/var/log/splunk/splunk_app_db_connect_commands_audit.%d{yyyy-MM-dd}.log
+            </fileNamePattern>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+            <!-- only keep few days log, splunk will index these data -->
+            <!-- We keep few days only for customer cases analysis -->
+            <maxHistory>5</maxHistory>
+        </rollingPolicy>
+
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} Trace-Id=%X{trace.id} [%thread] %-5level %logger{50} - operation=%X{operation} connection_name=%X{connection} title=%X{title} %msg%n
+            </pattern>
+        </encoder>
+        <!-- This mode support multi-process logging to one file -->
+        <prudent>true</prudent>
+    </appender>
+
+    <logger name="com.splunk.dbx.connector.logger.AuditLogger" level="DEBUG" additivity="false">
+        <appender-ref ref="DBX_COMMANDS_AUDIT"/>
+    </logger>
+
+    <!-- also print other dbx package log -->
+    <logger name="com.splunk.dbx" level="${DBX_COMMAND_LOG_LEVEL:-INFO}" additivity="false">
+        <appender-ref ref="DBX_COMMANDS"/>
+    </logger>
+
+    <!-- had better print warning message from third party library -->
+    <root level="WARN">
+        <appender-ref ref="DBX_COMMANDS"/>
+    </root>
+
+</configuration>

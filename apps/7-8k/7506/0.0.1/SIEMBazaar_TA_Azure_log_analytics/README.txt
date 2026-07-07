@@ -1,0 +1,1 @@
+Follow the installation and configuration guide available on the Splunkbase app page.

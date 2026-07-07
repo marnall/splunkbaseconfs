@@ -1,0 +1,19 @@
+[<name>]
+account_name = 
+account_password = 
+description = 
+destinationapp = 
+encodedStub = 
+help = 
+host = 
+interval = 
+jmx_url = 
+jmxport = 
+lookupPath = 
+pid = 
+pidCommand = 
+pidFile = 
+protocol = 
+server_name = 
+stubSource = 
+content = 

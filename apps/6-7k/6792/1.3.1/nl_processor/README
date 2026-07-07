@@ -1,0 +1,165 @@
+# About
+
+With this app, you can now perform Natural Language Processing tasks directly within Splunk using the powerful [Hugging Face](https://huggingface.co/) or [OpenAI](https://openai.com/) APIs.
+Hugging Face is a leading provider of state-of-the-art Natural Language Processing (NLP) models and has been at the forefront of NLP research and development.
+This app allows you to leverage the power of Hugging Face's NLP models to analyze unstructured text data within Splunk. You can perform tasks such as sentiment analysis, named entity recognition, and text classification, among others, to gain insights into your data.
+Hugging Face provides also over [20k datasets](https://huggingface.co/datasets) which can be easily loaded into Splunk as testdata using this app.
+The [OpenAI Embedding API](https://platform.openai.com/docs/guides/embeddings) can be used for generating high-quality vector representations of text, enabling tasks such as semantic similarity, clustering and text classification.
+The [OpenAI Completion API](https://platform.openai.com/docs/guides/completion) can be used for generating text completion, summarization, question answering, translation, and other text generation tasks.
+
+# Usage
+
+Before running any of the commands, please make sure to get an [API token from Hugging Face](http://hf.co/settings/tokens) and configure it in the [setup page](/app/nl_processor/setup).
+If you want to use OpenAI embeddings, please get an [API key from OpenAI](https://platform.openai.com/account/api-keys) and configure it also in the [setup page](/app/nl_processor/setup). Note that using the OpenAI API requires a paid account.
+
+## Inference
+
+The `hflookup` command runs the [Hugging Face AI Inference API](https://huggingface.co/inference-api) for each input event by passing the event's `payload` parameter and returns a new event for each result of the API call.
+
+The parameter `model` specifies the ID of the [Hugging Face model](https://huggingface.co/models) to use, e.g. [`mschiesser/ner-bert-german`](https://huggingface.co/mschiesser/ner-bert-german).
+If you want to limit the amount of API calls, you can specify a maximum number of calls with the parameter `maxcalls`. The default value is `100`. To disable the limit, set `maxcalls=0`.
+If you want to continue on errors, you can specify the parameter `continue_on_errors=true`.
+
+## Loading Datasets
+
+The `hfdataset` command runs the [Hugging Face Datasets API](https://huggingface.co/docs/datasets-server/index) to retrieve test data from the [datasets from Hugging Face](https://huggingface.co/datasets).
+The parameter `dataset` specifies the name of the dataset to download, e.g. [`yelp_review_full`](https://huggingface.co/datasets/yelp_review_full).
+Per default, the `train` split of the dataset is used. If you want to set another split (e.g. the `test` split), use the `split` parameter.
+
+## OpenAI
+
+The `openai` command runs the OpenAI API for each input event. Depending on its `type` parameter either the [OpenAI Embeddings API](https://platform.openai.com/docs/guides/embeddings) (value `embeddings`) or
+the [OpenAI Completion API](https://platform.openai.com/docs/guides/completion) (value `completions`) is called. Default is to call the Embeddings API.
+The parameter `input` defines the name of the field that contains the text for which an inference should be calculated. The inferred value is stored in the field defined by the `output` parameter (defaults to `result`) for each event.
+If you want to add just one inference for all events, you can specify the text used for the inference in the parameter `input_text`. In this case, the `input` parameter is ignored. This is usual for semantic search (see example below), where you want to calculate the embedding for the search query only once.
+If you want to limit the amount of API calls, you can specify a maximum number of calls with the parameter `maxcalls`. The default value is `100`. To disable the limit, set `maxcalls=0`.
+If you want to continue on errors, you can specify the parameter `continue_on_errors=true`.
+
+# Examples
+
+Note that some models in Hugging Face are not often used and therefore loaded on-demand. If you're getting a `Model ... is currently loading` error, please try again after half a minute.
+
+## Text Completion
+
+Here we're using the OpenAI text completion to generate an explanation for an error message.
+First we generate a lookup table for prompt templates which can be reused:
+
+    | makeresults
+    | eval id="error",prompt="You are a '''{COMPONENT}''' expert. This is an error message: '''{ERROR}''' Here is a list of steps a person with average IT knowledge could do to fix the error:"
+    | outputlookup prompts.csv
+
+This lookup table contains just a single prompt template with the id `error`.
+
+We can use this prompt template to let OpenAI generate an explanation for an error message. We just fill the `COMPONENT` and `ERROR` placeholders with the values from the error event and call the OpenAI API with the generated prompt:
+
+    | makeresults
+    | eval component="splunk",error="SearchMessage orig_component=SearchOperator:inputcsv sid= message_key=INPUT_CSV:INVALID_LOOKUP_TABLE_TYPE__%s message=The lookup table 'airlines_reviews_pos.csv' requires a .csv or KV store lookup definition."
+    | eval id="error"
+    | lookup prompts.csv id output prompt
+    | eval prompt=replace(replace(prompt,"{COMPONENT}",component),"{ERROR}",error)
+    | openai type=completions input=prompt output=explanation max_tokens=100 temperature=0
+
+## Named Entity Recognition
+
+The following example is using [named-entity recognition](https://en.wikipedia.org/wiki/Named-entity_recognition), to extract the location, names, and organizations of the string given as `payload`:
+
+    | makeresults
+    | eval payload="My name is Marcus and I live in Bangkok, Thailand and I am writing Splunk apps."
+    | hflookup model="Jean-Baptiste/roberta-large-ner-english"
+
+You can also try another model, to do named-entity recognition in German:
+
+    | makeresults
+    | eval payload="in München gibt es viele Unternehmen, z.b. BMW und Siemens."
+    | hflookup model="mschiesser/ner-bert-german"
+
+## Sentiment Analysis
+
+The following example is using [sentiment analysis](https://en.wikipedia.org/wiki/Sentiment_analysis), to extract the sentiment of the sentence given as `payload`:
+
+    | makeresults
+    | eval payload="Covid cases are increasing fast!"
+    | hflookup model="cardiffnlp/twitter-roberta-base-sentiment-latest"
+
+## Embeddings
+
+The following example is generating an [embedding](https://en.wikipedia.org/wiki/Word_embedding) for the text in the field `input`:
+
+    | makeresults
+    | eval input="Covid cases are increasing fast!"
+    | openai input=input output=embedding
+
+Embeddings can be used for tasks such as semantic search, clustering and text classification.
+
+## Semantic Search
+
+The following example is using embeddings, to find the movie in the [dataset `movies-small`](https://huggingface.co/datasets/mfumanelli/movies-small) whose plot best matches a given input text.
+
+Let's first load the movie dataset and store the embeddings in a lookup table:
+
+    | hfdataset dataset=mfumanelli/movies-small
+    | openai input=plot_synopsis output=embedding
+    | outputlookup movies.csv
+
+_Note_: Using a lookup table is not necessary, but that way we can reuse the embeddings for multiple queries.
+
+Now we can use the `dotproduct` command to calculate the [cosine similarity](https://en.wikipedia.org/wiki/Cosine_similarity) between the embedding of the input text and the embeddings of each movie plot:
+
+    | inputlookup movies.csv
+    | openai input_text="sci-fi movie with rebels" output=search
+    | dotproduct vector1=embedding vector2=search output=similarities
+    | sort - similarities
+    | table title, plot_synopsis, similarities
+
+## Recommendations
+
+Using the `movies.csv` lookup from the example above, it's also easy to find similar movies to a given movie as a recommendation. We just need to calculate the cosine similarity between the embedding of the movie (here _Star Wars_) and the embeddings of all other movies:
+
+    | inputlookup movies.csv
+    | eval search_title="star wars"
+    | lookup movies.csv title as search_title output embedding as search
+    | dotproduct vector1=embedding vector2=search output=similarities
+    | sort - similarities
+    | table title, plot_synopsis, similarities
+
+## Classification
+
+The task is to classify reviews for airlines as positive and negative ones. To do so, first, calculate the embeddings of the reviews:
+
+    | hfdataset dataset=Alisairlines/Airlines_Reviews_Neuronet
+    | openai maxcalls=0 input=Sentence output=embedding
+    | outputlookup airlines_reviews.csv
+
+Then create a lookup table for the embeddings of the two classification labels (`positive` and `negative`):
+
+    | makeresults count=2
+    | streamstats count as id
+    | eval label=case(id==1, "positive", id==2, "negative")
+    | openai input="label" output=embedding
+    | outputlookup labels.csv
+
+Finally, calculate the cosine similarity between review embeddings and label embeddings, predict the label, and aggregate the results by airline:
+
+    | inputlookup airlines_reviews.csv
+    | eval label="positive" | lookup labels.csv label output embedding as label_a
+    | eval label="negative" | lookup labels.csv label output embedding as label_b
+    | dotproduct vector1=embedding vector2=label_a output=similarities_a
+    | dotproduct vector1=embedding vector2=label_b output=similarities_b
+    | eval prediction=similarities_a-similarities_b
+    | eval positive=if(prediction>0,1,null()), negative=if(prediction<=0,1,null())
+    | stats count(positive) as Positive, count(negative) as Negative by Airline
+
+# Contact
+
+To run the command in production, you might want to:
+
+1. Cache the results to limit the number of API calls
+2. Run the inference in your own cloud or data center for security reasons
+3. Train new AI models fitting the needs of your use cases
+4. Set up a [MLOps](https://en.wikipedia.org/wiki/MLOps) pipeline for Splunk to update your AI models during run-time.
+
+Feel free to [contact me](mailto:mail@marcusschiesser.de) for any of these problems. My team and I are glad to help.
+
+# Binary File Declaration
+
+This app is using the Python bindings for the binary library [snappy](https://github.com/google/snappy), [python-snappy](https://github.com/andrix/python-snappy/tree/0.6.1) in version 0.6.1, to read compressed [parquet](https://parquet.apache.org/) files from Hugging Face.

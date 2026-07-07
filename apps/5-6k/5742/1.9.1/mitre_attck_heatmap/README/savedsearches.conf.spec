@@ -1,0 +1,15 @@
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.startColor = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.midColor = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.endColor = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.sortKey = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.sortOrder = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.startVal = <float>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.endVal = <float>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.legendTitle = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.display = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.theme = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.hideNull = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.matrix = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.showSubTechniques = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.animate = <string>
+display.visualizations.custom.mitre_attck_heatmap.mitre_attck_heatmap.duration = <float>

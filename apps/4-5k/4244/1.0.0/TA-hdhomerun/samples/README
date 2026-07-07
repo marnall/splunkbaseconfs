@@ -1,0 +1,39 @@
+##
+
+Below is the script I used at time of writing to download the log.html file from my HDHomerun Connect
+The downloaded file needs be parsed to remove non-log items, and to add only the new log items to the
+file monitored by Splunk.  I run this script with cron at a 5-15 minute interval
+
+There is likely a much better way to collect this data but it is my first attempt at gathering data from an HTTP source
+
+Please use this as a starting point for your data collection or contact me on slack @ dpotter with a better way to get the data
+
+
+
+##
+
+
+ #!/bin/bash
+## This script will request the log from your HDHomerun
+##      output to /var/log/hdhomerun/hdhomerun.tmp
+##      This file will be processed by grepping for the actual log lines and discarding the rest
+##      and output to /var/log/hdhomerun/hdhomerun.log
+## Script should be run with cronjob to execute as the splunk user
+
+### VARS ###
+
+LOG_HOST="http://192.168.1.245"
+LOG_PATH="/var/log/hdhomerun"
+
+##* Need to add test if file exists for the first run.
+cp $LOG_PATH/hdhomerun.log $LOG_PATH/hdhomerun.log.old
+
+## download the log as hdhomerun.tmp
+curl $LOG_HOST/log.html > $LOG_PATH/hdhomerun.tmp
+
+## grep to parse the relevant log lines and save as hdhomerun.log.tmp
+grep 'System:\|Tuner:\|HTTP:' $LOG_PATH/hdhomerun.tmp > $LOG_PATH/hdhomerun.log.tmp
+
+##
+diff -u $LOG_PATH/hdhomerun.log.old $LOG_PATH/hdhomerun.log.tmp |grep -E "^\+" |sed 's/+//' | sed 's/^++//' >> $LOG_PATH/hdhomerun.log
+

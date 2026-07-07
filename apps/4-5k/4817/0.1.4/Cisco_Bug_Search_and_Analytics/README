@@ -1,0 +1,334 @@
+   About
+
+   This App searches and analyzes Cisco Bugs that helps to mitigate risks and allows to make well-considered upgrade and migration decisions. The software addresses a critical need in
+   cybersecurity, streamlining bug and vulnerability analysis for Cisco products, saving time and providing valuable insights. This app targeting Cisco users (CTOs, admins) who prioritize efficient
+   bug analysis and seek comprehensive solutions for cybersecurity.
+
+   This app takes an CSV or JSON (prefered) export from Cisco Bug Search (https://bst.cloudapps.cisco.com/bugsearch/).
+
+  Requirements
+
+     * Cisco Login (customers or partners) to access Cisco Bug Search (https://bst.cloudapps.cisco.com/bugsearch/).
+     * For JSON: jq CLI tool, available for Linux. For Windows, download jq from https://jqlang.github.io/jq/download/. Alternatively, use Notepad++ with a JSON Viewer plugin.
+     * For CSV: Excel to convert XLS to CSV.
+     * Splunk Enterprise (free trial will be enough) or Splunk Cloud.
+
+  Installation and configuration
+
+   Retrieving the bug data can be tricky (timeouts etc.), sometimes you have to try several times. Contact me if you need assistance to get it running.
+
+     * Install Splunk Enterprise or use Splunk Cloud
+     * Login in Splunk and install this App (click on the dropdown list of apps top left > Manage Apps > Install app from file or Apps > Find more Apps)
+     * Login to Cisco Bug Search (https://bst.cloudapps.cisco.com/bugsearch/)
+     * Select your product or technology using a link "select from list" on the right side, e.g. Products > Security > Web Security, do not apply any filters.
+
+          * Option A (prefered, as json has more fields): Export results in JSON format (HOWTO - Youtube link):
+
+              1. In a browser (Edge, Chrome, Firefox) press the F12 key on the keyboard to open the "Browser Developer Tools" - this will open a new panel with a several tabs, click on the
+                 "network" tab.
+              2. Press the blue "Search" button in the Cisco Bug Search web site - you'll see several new line appearing in the network tab of the Developer Tools. Each line represent a web
+                 request.
+              3. Notice a number of found bugs on the result page, e.g. "3653 Results"
+              4. Find a line that looks like "search?pf=prdNm..."
+              5. Download this json file using one of these methods:
+
+                    * Option A1 (using CLI, recommended, faster):
+
+                        a. Right click on this line and choose Copy > Copy as cURL (bash).
+                        b. Open a Bash terminal and paste the curl command from the clipboard.
+                        c. Add an -o option (save as ..) with a target filename, e.g. WebSec_07.06.24.txt.
+                        d. Modify the value of the URL parameter rpp from default 20 to number of results from the step above (e.g. 3653), the resulting url should look similar to this
+                           https://bst.cloudapps.cisco.com/api/get/search?pf=prdNm&kw=*&bt=custV&sb=anfr&rpp=3653&pageNum=0&prdNam=Web%20Security&random=0.0123456789&observe=response
+                        e. Use jq command line tool to format json: jq .bugSearchResults[] WebSec_07.06.24.txt > WebSec_07.06.24.json
+                        f. The resulting file must be in format: [Product]_[Day.Month.Year].json, e.g. WebSec_07.06.24.json. This format is used to sort sources properly.
+
+                    * Option A2 (using UI, this method can fail for large number of results on the page):
+
+                        a. Right click on this line and choose "Open in new tab".
+                        b. Switch to this new tab, you'll see a lot of text - these are results in JSON format.
+                        c. Modify the value of the URL parameter rpp from default 20 to number of results from the step above (e.g. 3653), the resulting url should look similar to this
+                           https://bst.cloudapps.cisco.com/api/get/search?pf=prdNm&kw=*&bt=custV&sb=anfr&rpp=3653&pageNum=0&prdNam=Web%20Security&random=0.0123456789&observe=response .(Next time
+                           you can re-use this url again, without steps 1-7, only a login is required).
+                        d. Press ENTER to download and save it locally.
+                        e. Rename the file to something like WebSec_07.06.24.txt - it will be easy to work with the App if the source file name is short and descriptive.
+                        f. Format to "pretty-print":
+
+                              * Open it with Notepad++, Plugins > JSON Viewer (must be installed!) > Format JSON, and save it.
+                              * Alternatively, use jq command line tool to format json: jq .bugSearchResults[] WebSec_07.06.24.txt > WebSec_07.06.24.json
+
+              6. Launch this app (select "Cisco Bug Search and Analytics" in the dropdown list)
+              7. Import the JSON file:
+
+                   a. Click Setting (in a very top Splunk menu) > Add Data > Upload > Select File > Next
+                   b. Select sourcetype "cisco:bugs:json" from the dropdown list of sourcetypes
+                   c. Check that the parsing is correct (no warnings on the right side pane)
+                   d. Click Next > Next > Review > Submit > Start Searching
+
+              8. Optional: To be able to import large events in JSON format, you have to modify limits.conf:
+
+                    * Splunk Enterprise: create a file named limits.conf in $SPLUNK_HOME/etc/apps/Cisco_Bug_Search_and_Analytics/local/ with this content and restart Splunk:
+
+ [kv]
+ limit = 0
+ indexed_kv_limit = 0
+ maxcols = 100000
+ maxchars = 1500000
+ [search]
+ # Default: 100000000 (100MB)
+ max_rawsize_perchunk=1000000000
+
+                    * Splunk Cloud: contact support to rise limits.
+
+          * Option B (fallback, not recommended, as CSV export missing some important fields.): Export results to Excel and convert them to CSV:
+
+              1. In the Bug Search Tool press "Export Results to Excel". If you get an error "the list exceeds the maximum of 10,000 results" then apply some filters or exports them in parts (for
+                 example first Fixed, then Open, Terminated and Other).
+              2. Open the bugsearch.xls file in Excel and export it in CSV UTF-8 format. Do it for every XLS and merge all CSV into one file (Linux bash: cat bugsearch_Open.csv bugsearch_Fixed.csv
+                 > ASA_07.06.24.csv, Windows CMD: type ASA_Open.csv ASA_Fixed.csv > ASA_07.06.24.csv). The name of the file will be used later in the filtering, supported name convention:
+                 [Product]_[Day.Month.Year].csv, e.g. ASA_07.06.24.csv
+              3. Launch this app (select "Cisco Bug Search and Analytics" in the dropdown list)
+              4. Import the CSV file:
+
+                   a. Click Setting (in a very top Splunk menu) > Add Data > Upload > Select File > Next
+                   b. Select sourcetype "cisco:bugs:csv" from the dropdown list of sourcetypes
+                   c. Check that the parsing is correct (no warnings on the right side pane)
+                   d. Click Next > Next > Review > Submit > Start Searching
+
+     * You can import several CSV/JSON files for various products and switch between them anytime using the source dropdown.
+
+  Deleting old results
+
+   If you want to delete old results Before importing new results into Splunk, delete old data (you need "delete events" permissions): ( sourcetype=cisco:bugs:csv OR sourcetype=cisco:bugs:json )
+   source="<your_old_source>" | delete
+
+   Starting with the version 0.1.2 deleting old results not required anymore. A specific search macro is used to filter all sources and show only recent sourcetypes in the input source field. This
+   function relays on the name of the source being in a specific naming format: [Product]_[Day.Month.Year].[suffix] (e.g. ASA_07.06.24.json or ASA_07.06.24.csv).
+
+  Working with Cisco Bug Search and Analysis App
+
+     * Use the "Source" dropdown to choose your source.
+     * Use a free search input field and Status/Severity filters to find a particular infomation that you need.
+     * Choose Column to build a table of results with required information. You can set order of columns and sorting.
+     * Drilldown: click on a row in a table:
+
+          * bugId - opens a bug site (https://bst.cloudapps.cisco.com/bugsearch/bug/CSXXXXXX)
+          * cve - opens a CVE page (https://www.cvedetails.com/cve/CVE-XXXXX)
+          * cvss_link - opens a cisco's CVSS calculator (http://tools.cisco.com/security/center/cvssCalculator.x?version=2.0&vector=AV:N/AC:M/Au:N/C:C/I:C/A:C/E:U/RL:OF/RC:C)
+          * any other column - open a bug in a Splunk search
+
+       Press "Ctrl" to open a link in a new browser tab.
+
+  General Suggestions
+
+     * Try to find a workaround for a similar issue in old releases.
+     * If you're looking to make your systems more stable and secure, check if there are any components or conditions which are responsible for a large portion of problems. For example disabling
+       not critical components or reducing the load can help avoid some kinds of bugs.
+     * Some software packages/component are notoriously insecure and have bad historical records.
+     * Complexity is bad: complex code is buggy more often, and buggy code is often insecure. (Thinking Security by Steven M. Bellovin)
+
+  Available Fields
+
+   Most fields are explained in the Bug Search Help Bug Search Tool Help.
+
+   +------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+   | JSON-field                | CSV-field         | Comment                                                                                                                                        |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | averageRneRating          | n/a               | content quality information which will be an average of all rating information provided by customers, AKA "Was the description about this Bug  |
+   |                           |                   | Helpful?"-rating, on a scale from 0 to 5 (stars).                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | behaviorChangedFlag       | n/a               | Whether a bug changes the behaviour of the product.                                                                                            |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | bugId                     | BugId             | A unique identifier (ID) of the Bug in format CSCxxNNNNN, where x is any letter (a-z) and N is any number (0-9).                               |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | bugLastModifiedDate       | Last_Modified     | the last time the bug details were changed                                                                                                     |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | bugVisiblity              | n/a               | Customer Visible                                                                                                                               |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | component                 | n/a               | Software component related to a bug: e.g. amp, logging, tls, dns, etc.                                                                         |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | createDate                | n/a               | Date/Time when a bug entry was created.                                                                                                        |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | deManagerUserId           | n/a               |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | duplicateOfBugId          | n/a               | Duplicate Bugs (status="D") have a reference to the BugId that they are duplicate of.                                                          |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | engineerUserId            | n/a               |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | headLine                  | headLine          | One line (max 100 characters) summary (or Title) of a bug.                                                                                     |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | id                        | BugId             | see BugId                                                                                                                                      |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | knownAffectedReleases     | Affected_Releases | This field displays the software releases known to be impacted by this bug.                                                                    |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | knownAffectedReleasesSds  | n/a               | ?                                                                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | knownFixedReleases        | Fixed_Releases    | This field displays the software releases known to contain a fix for this bug.                                                                 |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | knownFixedReleasesSds     | n/a               | ?                                                                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | mdfConceptId              |                   | ?                                                                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | mdfConceptName            |                   |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | mdfConcepts               |                   |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | mdfSeriesNames            |                   |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | mdfSoftwareFamilies       |                   |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | product                   | n/a               | This represents the Cisco Product name or Software in which the bug occurs, e.g. wsa, esa.                                                     |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | project                   | n/a               | ?                                                                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | projectExcludedStatus     | n/a               | ?                                                                                                                                              |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | psirtCves                 | CVE               | List of CVEs.                                                                                                                                  |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | releaseNoteText           | releaseNoteText   | Symptom, Conditions and Workaround                                                                                                             |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | rneRatingCount            | n/a               | How many users have rated the bug.                                                                                                             |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | securityStatus            | n/a               | Released                                                                                                                                       |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | severityCode              | severityCode      | Numeric representation of the bug severity, from 1 (catastrophic) to 6 (enhancement).                                                          |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | severityName              | severityName      | Bug severity: Enhancement, Cosmetic, Minor, Moderate, Severe, Catastrophic                                                                     |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | status                    | n/a               | short (one letter) version of statusName field                                                                                                 |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | statusGroup               | statusGroup       | Open - The bug has not been fixed. Fixed - The bug has been fixed. Other - The bug is a duplicate of another bug. Terminated - A decision was  |
+   |                           |                   | made not to fix the bug. Duplicate. Unreproducible                                                                                             |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | statusGroups              | n/a               | see statusGroup                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | statusName                | n/a               | Provides detailed internal case status: Closed (C), Duplicate (D), Held (H), Info_req (I), Junked (J), More (M), New (N), Open (O), Opened     |
+   |                           |                   | (O), Postponed (P), Resolved (R), Unreproducible (U), Verified (V), Wait (W)                                                                   |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | submitterUserId           | n/a               |                                                                                                                                                |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | troubleTicketNumbersCount | n/a               | Number of opened tickes related to this BugId.                                                                                                 |
+   |---------------------------+-------------------+------------------------------------------------------------------------------------------------------------------------------------------------|
+   | troubleTicketNumbers      | n/a               | Tickets IDs related to this BugId.                                                                                                             |
+   +------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+   Additionally, further fields extracted of build based on the bug description (releaseNoteText):
+
+   +---------------------------------------+
+   | field                       | Comment |
+   |-----------------------------+---------|
+   | CVE                         |         |
+   |-----------------------------+---------|
+   | CVSS                        |         |
+   |-----------------------------+---------|
+   | CVSS link                   |         |
+   |-----------------------------+---------|
+   | pre symptom text            |         |
+   |-----------------------------+---------|
+   | is_vulnerability            |         |
+   |-----------------------------+---------|
+   | Symptom                     |         |
+   |-----------------------------+---------|
+   | Conditions                  |         |
+   |-----------------------------+---------|
+   | Workaround                  |         |
+   |-----------------------------+---------|
+   | Further Problem Description |         |
+   |-----------------------------+---------|
+   | PSIRT_Evaluation            |         |
+   |-----------------------------+---------|
+   | URL                         |         |
+   +---------------------------------------+
+
+   Following Common Information Model (CIM) fields for Vulnerabilities event datasets are extracted:
+
+   +--------------------------+
+   | field          | Comment |
+   |----------------+---------|
+   | cve            |         |
+   |----------------+---------|
+   | cvss           |         |
+   |----------------+---------|
+   | severity       |         |
+   |----------------+---------|
+   | severity_id    |         |
+   |----------------+---------|
+   | vendor_product |         |
+   +--------------------------+
+
+  FAQ
+
+     * Q: CSV exports contains more Bugs than shown in the table. A: CSV file can contain duplicate entries. The app removes duplicates with dedup command
+     * Q: How to show when a bug was introduced? A: The "Create_Date" field is available only in JSON export, if you need this kind of information use the recommended method "A" (JSON).
+     * Q: Can the bug open-to-fixed duration be calculated? A: No, it's not directly possible. The date when the bug was fixed isn't included. The last_modified field is unreliable for this purpose
+       as it can reflect updates to the bug description long after the bug is resolved. But you can collect data over prolonged period of time (e.g. daily) and catch a Last_Modified date when the
+       Status changed to Fixed. The Bug Tracking view allows exactly this.
+     * Q: Bug Severity meaning: A: explained here: https://www.cisco.com/c/en/us/support/web/tools/bst/bsthelp/index.html
+
+          * 1 - Catastrophic
+          * 2 - Severe
+          * 3 - Moderate
+          * 4 - Minor
+          * 5 - Cosmetic
+          * 6 - Enhancement
+
+     * Q: Bug Status meaing: A: Other - The bug is a duplicate of another bug, Terminated - A decision was made not to fix the bug. More at
+       https://www.cisco.com/c/en/us/support/web/tools/bst/bsthelp/index.html
+     * Q: Release Terminology: what is FCS/ED/GD/LD/MD/HP? A: Release terminology explained: https://docs.ces.cisco.com/docs/release-terminology
+
+          * FCS - First Customer Ship (old name for ED)
+          * ED - Early Deployment
+          * GD - General Deployment
+          * LD - Limited Deployment
+          * MD - Maintenance Deployment
+          * HP - Hot Patch
+
+     * Q: Are there any restrictions to access the Cisco Bug Search Tool? A: Anyone who has a valid Cisco.com account can access Bug Search online, but only customers and partners can utilize its
+       advanced features. Registered users can view up to 200 bugs per month without a service contract using a Bug ID. Customers and partners who have a valid service contract can leverage advance
+       features like Product, keyword, and release-based searches. https://www.cisco.com/web/applicat/cbsshelp/help.html
+     * Q: How to normalize various version formats (1.2.3, 1.2.3.423, 001.002(000.123), 1.2(0.123) etc.)? A: Open it in search and add a rex, for example:
+
+       +----------------------------------------------------------------------------------------------------------------------------------------+
+       |                            Regex                            |                                 Meaning                                  |
+       |-------------------------------------------------------------+--------------------------------------------------------------------------|
+       | | rex mode=sed field=Affected_Releases "s/\(0+\.?/(/g")     | Remove leading zeros in brackets: 123(002) -> 123(2)                     |
+       |-------------------------------------------------------------+--------------------------------------------------------------------------|
+       | | rex mode=sed field=Affected_Releases "s/^0+/_/g"          | Remove leading zeros: 001.123 -> 1.123                                   |
+       |-------------------------------------------------------------+--------------------------------------------------------------------------|
+       | | rex mode=sed field=Affected_Releases "s/-HP\d+-/-/g"      | Remove Hot Patch labels: 123-HP3-456 -> 123-456                          |
+       |-------------------------------------------------------------+--------------------------------------------------------------------------|
+       | | rex mode=sed field=Affected_Releases "s/\([a-zA-Z]+\)//g" | Remove internal names enclosed in brackets: 123(SomeText)-456 -> 123-456 |
+       +----------------------------------------------------------------------------------------------------------------------------------------+
+
+     * Q:What this error means: Events might not be returned in sub-second order due to search memory limits. See search.log for more information. Increase the value of the following limits.conf
+       setting:[search]:max_rawsize_perchunk A: This error shouldn't have any impact on results but can slow down your searches. You can increase limits as suggested if you have enough memory
+       available.
+
+  Compatibility
+
+   This app should work with Splunk 7.x/8.x/9.x on Windows and Linux platforms.
+
+  Disclamer
+
+   All what you do with this app is on your own responsibility!
+
+  Version History
+
+     * 0.1.4 - Bug Tracking now shows what has been changed (e.g. added CVE, Workaround or change in the Symptom description).
+     * 0.1.3 - Multiselect input for sources retains now only recent entries, facilitating tracking of changes while preserving older sources. Introduced a new 'Bug Tracking' view enabling
+       estimation of Fixed_Date and TimeToFix.
+     * 0.1.2 - Improved Inventory view.
+     * 0.1.1 - Fixed minor UI bugs.
+     * 0.1.0 - Improved UI layout. Added multiselect of sources. Added a new view "Inventory" to correlate bug data to list of devices from a lookup.
+     * 0.0.9 - Added a Use Cases view with step by step HOWTOs and examples.
+     * 0.0.8 - most fields are normalized based on the JSON format, minor corrections, better documentation.
+     * 0.0.7 - added support for JSON import from the Bug Search website. The JSON format provides more fields (e.g. Create_Date, component, etc.) and has no restriction on the number of events,
+       unlike export via Excel, that can export only 10.000 bugs maximum.
+     * 0.0.6 - better search and filtering
+     * 0.0.5 - applied required changes to keep compatibility with Splunk Cloud (use jquery 3.5)
+     * 0.0.4 - timeline filtering (min/max version)
+     * 0.0.3 - new bug timeline view
+     * 0.0.2 - easier configuration by using single sourcetype (cisco:bugs:csv). Changing between products by choosing source instead of sourcetype. Added a new view "vulnerabilities", removed "top
+       bugs", "analytics" and "bug tagging". Still a beta release.
+     * 0.0.1 - first public release (beta)
+
+   Contact: splunk@compek.net

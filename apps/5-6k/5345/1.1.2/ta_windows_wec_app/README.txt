@@ -1,0 +1,1 @@
+https://github.com/darizotas/ta_windows_wec_app# Binary File Declaration

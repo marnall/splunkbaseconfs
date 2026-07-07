@@ -1,0 +1,139 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.proxy.proxy_enabled",
+        "__settings__.proxy.proxy_url",
+        "__settings__.proxy.proxy_port",
+        "__settings__.proxy.proxy_type",
+        "__settings__.proxy.proxy_username",
+        "__settings__.proxy.proxy_rdns",
+        "__settings__.proxy.proxy_password",
+        "banyan_url",
+        "api_key",
+        "last_created_at"
+    ],
+    "global_settings": {
+        "proxy": {
+            "enabled": "{{__settings__.proxy.proxy_enabled}}",
+            "host": "{{__settings__.proxy.proxy_url}}",
+            "port": "{{__settings__.proxy.proxy_port}}",
+            "username": "{{__settings__.proxy.proxy_username}}",
+            "password": "{{__settings__.proxy.proxy_password}}",
+            "rdns": "{{__settings__.proxy.proxy_rdns}}",
+            "type": "{{__settings__.proxy.proxy_type}}"
+        },
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{last_created_at}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_last_created_at"
+                    }
+                ]
+            },
+            "request": {
+                "url": "{{banyan_url}}/api/v1/events?limit=1000&after={{last_created_at}}&order=DESC",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "Bearer {{api_key}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data[0].created_at"
+                        ],
+                        "method": "json_path",
+                        "output": "last_created_at"
+                    },
+                    {
+                        "input": [
+                            "{{last_created_at != ''}}",
+                            "The value of token 'last_created_at' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{last_created_at == _raw_last_created_at}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{last_created_at}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_last_created_at"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data[*]"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "last_created_at": "{{_raw_last_created_at}}"
+                }
+            }
+        }
+    ]
+}

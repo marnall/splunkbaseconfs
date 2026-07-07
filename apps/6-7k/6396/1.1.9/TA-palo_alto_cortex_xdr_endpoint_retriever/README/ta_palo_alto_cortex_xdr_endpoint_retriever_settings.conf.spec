@@ -1,0 +1,9 @@
+[logging]
+loglevel = 
+
+[additional_parameters]
+fqdn = 
+org_region = 
+api_key_id = 
+api_key = 
+use_advanced_authentication = 

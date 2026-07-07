@@ -1,0 +1,87 @@
+{
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    }, 
+    "tokens": [
+        "__settings__.logging.loglevel", 
+        "global_account.username", 
+        "global_account.password", 
+        "rubrik_node"
+    ], 
+    "requests": [
+        {
+            "request": {
+                "method": "GET", 
+                "auth": {
+                    "type": "basic_auth", 
+                    "options": {
+                        "username": "{{global_account.username}}", 
+                        "password": "{{global_account.password}}"
+                    }
+                }, 
+                "url": "https://{{rubrik_node}}/api/internal/event", 
+                "headers": {}
+            }, 
+            "pre_process": {
+                "skip_conditions": [], 
+                "pipeline": []
+            }, 
+            "iteration_mode": {
+                "stop_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.data"
+                        ]
+                    }
+                ], 
+                "iteration_count": "1"
+            }, 
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.data"
+                        ]
+                    }
+                ], 
+                "pipeline": [
+                    {
+                        "method": "json_path", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.data"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "splunk_xml", 
+                        "input": [
+                            "{{__stdout__}}", 
+                            "", 
+                            "{{index}}", 
+                            "{{host}}", 
+                            "{{source}}", 
+                            "{{sourcetype}}"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "std_output", 
+                        "input": [
+                            "{{__stdout__}}"
+                        ]
+                    }
+                ]
+            }
+        }
+    ], 
+    "meta": {
+        "apiVersion": "1.0.0"
+    }
+}

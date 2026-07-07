@@ -1,0 +1,50 @@
+[Threat - Memory Injection Detection - Rule]
+action.correlationsearch.annotations = {}
+action.keyindicator.invert = 0
+action.makestreams.param.verbose = 0
+action.nbtstat.param.verbose = 0
+action.notable.param.rule_description = A memory injection attempt has been $action$ on $dest$ for $process_path$.  Harpoon Security monitors for memory injection attempts and reports them to the Windows Event Log.
+action.nslookup.param.verbose = 0
+action.ping.param.verbose = 0
+action.risk.forceCsvResults = 1
+action.risk.param._risk = [{"risk_object_field":"","risk_object_type":"","risk_score":1}]
+action.risk.param._risk_score = 0
+action.risk.param.verbose = 0
+action.send2uba.param.verbose = 0
+action.threat_add.param.verbose = 0
+schedule_window = auto
+search = | tstats summariesonly=true allow_old_summaries=true count values(Processes.process) as process max(_time) as lastTime from datamodel=Endpoint.Processes where (source="XmlWinEventLog:Harpoon-Security" OR sourcetype="XmlWinEventLog:Harpoon Security") by _time Processes.process_path Processes.process_name Processes.dest Processes.user Processes.action, source\
+| rename "Processes.*" as * \
+| lookup injection.csv process_name AS process_name dest as dest user as user OUTPUTNEW storedTime as storedTime \
+| fillnull storedTime value=0\
+| mvexpand storedTime\
+| sort - lastTime,storedTime \
+| dedup process_path,process_name,dest,user\
+| where lastTime>storedTime\
+| rename lastTime as storedTime\
+| fields - lastTime\
+| outputlookup injection.csv append=t
+
+#[Endpoint - Memory Injection Attacks Clone - Rule]
+#action.keyindicator.invert = 0
+#action.makestreams.param.verbose = 0
+#action.nbtstat.param.verbose = 0
+#action.notable = 1
+#action.notable.param.verbose = 0
+#action.nslookup.param.verbose = 0
+#action.ping.param.verbose = 0
+#action.risk.forceCsvResults = 1
+#action.risk.param.verbose = 0
+#action.send2uba.param.verbose = 0
+#action.threat_add.param.verbose = 0
+#alert.suppress = 0
+#alert.track = 1
+#counttype = number of events
+#cron_schedule = */5 * * * *
+#description = This correlation search identified memory injection attack events from Harpoon Security agent.
+#enableSched = 1
+#quantity = 0
+#relation = greater than
+#search = | tstats summariesonly=true allow_old_summaries=true dc("Malware_Attacks.dest") as dest_count FROM datamodel=Malware where (source="XmlWinEventLog:Harpoon-Security" OR sourcetype="XmlWinEventLog:Harpoon Security") BY "Malware_Attacks.signature" \
+#| rename "Malware_Attacks.*" as "*"
+#disabled = 1

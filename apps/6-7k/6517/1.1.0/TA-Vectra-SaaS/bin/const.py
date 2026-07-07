@@ -1,0 +1,11 @@
+# Vectra SaaS API
+API_RETRY = 3
+API_BACKOFF_FACTOR = 10
+VECTRA_SAAS_API_VERSION = 'api/v3'
+VERIFY_SSL = True
+
+# Account Scoring and Account Detecton Input
+PAGE_LIMIT = 1000
+SINCE = 0
+MAX_SINCE = 10000000
+LOOKBACK_EVENTS = 101

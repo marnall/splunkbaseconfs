@@ -1,0 +1,14 @@
+# Tolstoy Target
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.log = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.show_axis_lines = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.show_legend = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.color_blind = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.target_size = <integer>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.axis_label_size = <string>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.axis_target_health_column = <string>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.axis_target_size_column = <string>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.axis_target_label_column = <string>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.target_interactive = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.show_extra_points = <boolean>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.trellis_override = <integer>
+display.visualizations.custom.aplura_viz_tolstoy_target.tolstoy_target.graph_mode = <string>

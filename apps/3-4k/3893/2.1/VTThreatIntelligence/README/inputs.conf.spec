@@ -1,0 +1,2 @@
+[VTThreatIntelligence://<name>]
+api = <value>

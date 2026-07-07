@@ -1,0 +1,280 @@
+{% extends 'widgets/widget_template.html' %}
+{% load custom_template %}
+{% block custom_title_prop %}
+  {% if title_logo %}
+    style="background-size: auto 60%; background-position: 50%;
+    background-repeat: no-repeat; background-image: url('/app_resource/{{ title_logo }}');"
+  {% endif %}
+{% endblock %}
+{% block widget_content %}
+  <!-- File: reversinglabs_ip_reputation.html
+  Copyright (c) ReversingLabs, 2023-2025
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed under
+the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. See the License for the specific language governing permissions
+and limitations under the License.
+-->
+  <style>
+    .widget-container {
+        width: 1170px !important;
+        height: 600px;
+    }
+
+    .c-app-run-widget {
+        height: 680px;
+        width: 100%;
+        position: relative;
+    }
+
+    .rl-table {
+        line-break: auto;
+        table-layout: fixed;
+    }
+
+    .rl-table thead th {
+        text-align: center;
+        font-size: 1.4rem;
+    }
+
+    .rl-table td {
+        padding: 7px;
+        width: 33%;
+    }
+
+    .rl-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #rl-target {
+        padding-top: 0.5rem;
+        text-transform: initial;
+        font-size: 1.4rem;
+        font-weight: bold;
+        -moz-user-select: text;
+        -khtml-user-select: text;
+        -webkit-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+    }
+
+    .rl-table .td-header{
+        color: #6c818b;
+        text-transform: uppercase;
+        font-weight: 500;
+        white-space: nowrap;
+        padding-left: 0.8rem;
+        padding-right: 2rem;
+    }
+
+    .charts {
+        display: flex;
+    }
+
+    .chartjs {
+        width: 49%;
+        height: 250px;
+        padding: 25px;
+    }
+
+  </style>
+  <script src="/app_resource/{{ summary.directory }}/chart-4-2-1.js"></script>
+  <div class="rl-content">
+    {% if data == None %}
+      There is no data in response JSON.
+    {% else %}
+      <div class="charts">
+        <div class="pad30 chartjs">
+          <canvas id="myChartBar-reputation"></canvas>
+        </div>
+        <div class="pad30 chartjs">
+          <canvas id="myChartBar-file-statistics"></canvas>
+        </div>
+      </div>
+      <table class="rl-table">
+        <thead>
+          <tr>
+            <th colspan="3">
+              ReversingLabs A1000 IP reputation for
+              <div id="rl-target" class="main-grid">{{ data.requested_ip }}</div>
+            </th>
+          </tr>
+        </thead>
+        {% if data.downloaded_files_statistics != None %}
+          <thead>
+            <tr>
+              <th colspan="3">Downloaded Files Statistics</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="td-header">
+                <span style="color:green;">GOODWARE</span>
+              </td>
+              <td colspan="2">{{ data.downloaded_files_statistics.goodware }}</td>
+            </tr>
+            <tr>
+              <td class="td-header">
+                <span style="color:orange;">SUSPICIOUS</span>
+              </td>
+              <td colspan="2">{{ data.downloaded_files_statistics.suspicious }}</td>
+            </tr>
+            <tr>
+              <td class="td-header">
+                <span style="color:red;">MALICIOUS</span>
+              </td>
+              <td colspan="2">{{ data.downloaded_files_statistics.malicious }}</td>
+            </tr>
+            <td>
+              <b>UNKNOWN</b>
+            </td>
+            <td colspan="2">{{ data.downloaded_files_statistics.unknown }}</td>
+          </tr>
+          <tr>
+            <td class="td-header">TOTAL</td>
+            <td colspan="2">{{ data.downloaded_files_statistics.total }}</td>
+          </tr>
+        </tbody>
+      {% endif %}
+      {% if data.top_threats|length > 0 %}
+        <thead>
+          <tr>
+            <th colspan="3">Top Threats</th>
+          </tr>
+          <tr>
+            <th>Threat name</th>
+            <th>Risk Score</th>
+            <th>File Count</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for x in data.top_threats %}
+            <tr>
+              <td>
+                <a href="javascript:;"
+                   onclick="context_menu(this, [{'contains': ['search query'], 'value': 'threatname:{{ x.threat_name }}' }], 0, {{ container.id }}, null, false);">
+                  {{ x.threat_name }}&nbsp;
+                  <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+                </a>
+              </td>
+              <td>
+                <a href="javascript:;"
+                   onclick="context_menu(this, [{'contains': ['search query'], 'value': 'riskscore:{{ x.risk_score }}' }], 0, {{ container.id }}, null, false);">
+                  {{ x.risk_score }}&nbsp;
+                  <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+                </a>
+              </td>
+              <td>{{ x.files_count }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      {% endif %}
+      {% if data.third_party_reputations.sources|length > 0 %}
+        <thead>
+          <tr>
+            <th colspan="3">Third party reputations</th>
+          </tr>
+          <tr>
+            <th>Source</th>
+            <th>Detection</th>
+            <th>Update time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for x in data.third_party_reputations.sources %}
+            <tr>
+              <td>{{ x.source }}</td>
+              <td>{{ x.detection }}</td>
+              <td>{{ x.update_time }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+  {% endif %}
+</div>
+<script>
+
+var endpoint = window.location.href;
+
+// Third Party Reputations
+var ReputationTotal = {{data.third_party_reputations.statistics.total}};
+var ReputationClean = {{data.third_party_reputations.statistics.clean}};
+var ReputationMalicious = {{data.third_party_reputations.statistics.malicious}};
+var ReputationUndetected = {{data.third_party_reputations.statistics.undetected}};
+var RepData = [ReputationTotal, ReputationClean, ReputationMalicious, ReputationUndetected];
+var titleRep = "Third Party Reputations"
+var chartLabelsRep = ['Total', 'Clean', 'Malicious', 'Undetected']
+
+$.ajax({
+  method: "GET",
+  url: endpoint,
+  success: function(data) {
+    drawBarGraph(data, 'myChartBar-reputation', titleRep, RepData, chartLabelsRep);
+  },
+  error: function(error_data) {
+    console.log(error_data);
+  }
+})
+
+// Download File Statistics
+var FileStatsTotal = {{data.downloaded_files_statistics.total}};
+var FileStatsGoodware = {{data.downloaded_files_statistics.goodware}};
+var FileStatsUnknown = {{data.downloaded_files_statistics.unknown}};
+var FileStatsMalicious = {{data.downloaded_files_statistics.malicious}};
+var FileStatsSuspicious = {{data.downloaded_files_statistics.suspicious}};
+var StatData = [FileStatsTotal, FileStatsGoodware, FileStatsMalicious, FileStatsUnknown, FileStatsSuspicious];
+var titleStat = "Download Files Statistics"
+var chartLabelsStat = ['Total', 'Goodware', 'Malicious', 'Unknown', 'Suspicious']
+
+$.ajax({
+  method: "GET",
+  url: endpoint,
+  success: function(data) {
+    drawBarGraph(data, 'myChartBar-file-statistics', titleStat, StatData, chartLabelsStat);
+  },
+  error: function(error_data) {
+    console.log(error_data);
+  }
+})
+
+
+function drawBarGraph(data, id, title, stats, chartLabels) {
+  var ctx = document.getElementById(id).getContext('2d');
+  var myChart{{ forloop.counter }} = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: title,
+        data: stats,
+        borderColor: [
+          '#afc7d7',
+          '#83ffa0',
+          '#f6143f',
+          '#afc7d7',
+          '#ffde83'
+        ],
+        backgroundColor: [
+          '#afc7d7',
+          '#83ffa0',
+          '#f6143f',
+          '#afc7d7',
+          '#ffde83'
+        ],
+        borderWidth: 1
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      responsive: true,
+      offset: false
+    }
+  });
+}
+</script>
+{% endblock %}

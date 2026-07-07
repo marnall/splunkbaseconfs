@@ -1,0 +1,133 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.username",
+        "__settings__.additional_parameters.password",
+        "__settings__.additional_parameters.client_id",
+        "__settings__.additional_parameters.client_secret",
+        "channelids",
+        "messagecreatedate"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{messagecreatedate}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_messagecreatedate"
+                    },
+                    {
+                        "input": [
+                            "{{messagecreatedate}}",
+                            "%s%3N",
+                            "%s%3N"
+                        ],
+                        "method": "time_str2str",
+                        "output": "messagecreatedate"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://uat.safeguardcyber.app/safeguard/api/v1/violation?access_token=fedfe15a-a0dc-4a58-b620-2ce397fc8036&channelIds={{channelids}}",
+                "method": "GET",
+                "headers": {}
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.values"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.values.[0].messageCreateDate"
+                        ],
+                        "method": "json_path",
+                        "output": "messagecreatedate"
+                    },
+                    {
+                        "input": [
+                            "{{messagecreatedate != ''}}",
+                            "The value of token 'messagecreatedate' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{messagecreatedate == _raw_messagecreatedate}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{messagecreatedate}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_messagecreatedate"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.values"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.values"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "messagecreatedate": "{{_raw_messagecreatedate}}"
+                }
+            }
+        }
+    ]
+}

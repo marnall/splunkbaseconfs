@@ -1,0 +1,77 @@
+The AWS_Trusted_Advisor_for_Splunk app allows you to pull in your AWS Trusted Advisor data into Splunk.
+
+### Version Support: ###
+- Splunk 7.0, 7.1
+
+
+### Setup: ###
+1. Once the app is installed, go to the app manager screen, find the AWS_Trusted_Advisor_for_Splunk app and click 'Set Up'
+2. On the setup screen fill in your AWS 'Access Key', 'Secret Key', and 'Region'. All fields are required.
+3. The IAM user associated with your AWS connection must have access to 'AWS Support' [https://aws.amazon.com/premiumsupport/]
+in AWS in order to pull in the Trusted Advisor data.
+4. You may force run the input by restarting Splunk. Once restart has completed, you should see data by searching
+sourcetype="trusted_advisor"
+
+
+### How it works: ###
+- The scripted input runs at 12:30am nightly to pull in your AWS Trusted Advisor information.
+    Note: AWS Trusted Advisor sends out a weekly report, so you most likely won't be receiving data more frequently than
+    every 7 days.
+- The data goes into a sourcetype called 'trusted_advisor'.
+- A saved search called 'Trusted Advisor Checks Lookup Populator' populates a lookup called 'trusted_advisor_checks.csv'.
+This lookup can be used to enrich the 'trusted_advisor' Sourcetype, which only provides the Check's ID by default
+
+
+### Knowledge Objects: ###
+#Saved Searches: #
+- Trusted Advisor Checks Lookup Populator: Scheduled to run the 1st of every month. Is meant to populate Trusted Advisor Checks
+information into 'trusted_advisor_checks.csv'. This lookup will run automatically for the first time once you have provided
+your AWS credentials in the setup page.
+
+# Dashboard: #
+- Trusted Advisor dashboard provides a high level overview of all your Trusted Advisor checks. You can drill-down into
+the Overview panel to view specific Resource information.
+
+# Lookups #
+- trusted_advisor_checks.csv - pulls in Check information using the | getchecks custom command. See below for more info.
+- ta_categories.csv - maps underscored category names with 'clean' category names. For use on the 'Trusted Advisor' dashboard.
+
+
+### Custom Commands ###
+- The `| getchecks` command is a generating command that pulls in Trusted Advisor Checks information.
+- The following information is pulled about a specific check:
+            'id': 'string',
+            'name': 'string',
+            'description': 'string',
+            'category': 'string',
+            'metadata': [
+                'string',
+            ]
+- This custom command is used in the 'Trusted Advisor Checks Lookup Populator' described above.
+
+
+### Example Searches:
+`sourcetype=trusted_advisor | lookup trusted_advisor_checks.csv`
+
+
+### Debugging Issues: ###
+- If the app encounters any errors when attempting to authenticate with AWS they will show up in the Messages dropdown.
+- Dashboard is still empty after configuring the app:
+    - Make sure that the AWS credentials you provided are valid and that your credentials have access to pull data
+    from AWS' Premium Support. This would be configured through AWS' IAM settings.
+    - Check the 'Messages' dropdown in the top black bar in Splunk to see if any error messages were thrown.
+    - Check the 'trusted_advisor_checks.csv' lookup to see if it contains any data. If not:
+        - Try populating the lookup manually by running `| getchecks | outputlookup trusted_advisor_checks.csv`
+        - If that fails, then your credentials are most likely incorrect or do not have access to AWS Premium Support.
+
+
+### Release Notes: ###
+# v. 1.0.0 #
+- Initial release.
+- Scripted inputs runs on setup completion. Scheduled to run nightly at 12:30am.
+- Populates trusted_advisor_checks.csv for additional data enrichment.
+- Central dashboard to view Trusted Advisor checks (Searches over last 7 days)
+
+### Support: ###
+Send email to splunk@hurricanelabs.com
+Support is not guaranteed and will be provided on a best effort basis.

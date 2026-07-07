@@ -1,0 +1,21 @@
+(index=* message_type=CASE("response")) DIRECTIVES(REQUIRED_TAGS(tags="dns,network,resolution")) 
+| where ((((tag == "network") AND ((tag == "dns") OR (tag == "resolution"))) AND (dns_response_type_name = "A")) AND (true() XOR searchmatch("(TCP of out packet state)"))) 
+| eval slot=strftime(('_time' - (strptime(strftime('_time',"%Y-%m-%dT%H:%M:%SZ"),"%Y-%m-%dT%H:%M:%S%Z") - strptime(strftime('_time',"%Y-%m-%dT%H:%M:%S"),"%Y-%m-%dT%H:%M:%S"))),"%Y%m%d%H"), agg_first=strftime(('_time' - (strptime(strftime('_time',"%Y-%m-%dT%H:%M:%SZ"),"%Y-%m-%dT%H:%M:%S%Z") - strptime(strftime('_time',"%Y-%m-%dT%H:%M:%S"),"%Y-%m-%dT%H:%M:%S"))),"%H:%M:%S"), agg_last=agg_first, agg_length=len('_raw') 
+| fields - _*
+| eval net_src_ip=case(isnotnull(dns_response_client_ip),dns_response_client_ip,((true() XOR isnull(src)) AND cidrmatch("0.0.0.0/0",src)),src,((true() XOR isnull(src_resp)) AND cidrmatch("0.0.0.0/0",src_resp)),src_resp,true(),"NA") 
+| where ((((cidrmatch("10.0.0.0/8",net_src_ip) OR cidrmatch("10.100.12.0/8",net_src_ip)) OR cidrmatch("127.0.0.0/8",net_src_ip)) OR cidrmatch("172.16.0.0/12",net_src_ip)) OR (cidrmatch("172.16.69.0/8",net_src_ip) OR cidrmatch("192.168.0.0/16",net_src_ip))) 
+| eval net_src_ip_rdomain=case(isnotnull(src_nt_host),src_nt_host,isnotnull(src_host),src_host,((true() XOR isnull(src)) AND (true() XOR cidrmatch("0.0.0.0/0",src))),src,true(),"NA"), net_src_user=coalesce(user,"NA") 
+| mvexpand dns_rdata
+| rex field=dns_rdata "(?<net_dst_ip>[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})$"
+| where net_dst_ip != ""
+| eval net_dst_ip=case((isnotnull(net_dst_ip) AND cidrmatch("0.0.0.0/0",net_dst_ip)),net_dst_ip,true(),"NA") 
+| where (true() XOR ((((cidrmatch("10.0.0.0/8",net_dst_ip) OR cidrmatch("10.100.12.0/8",net_dst_ip)) OR cidrmatch("127.0.0.0/8",net_dst_ip)) OR cidrmatch("172.16.0.0/12",net_dst_ip)) OR (cidrmatch("172.16.69.0/8",net_dst_ip) OR cidrmatch("192.168.0.0/16",net_dst_ip)))) 
+| eval net_dst_domain=case(isnotnull(dns_response_queried_domain),dns_response_queried_domain,isnotnull(query),query,true(),"NA")
+
+| where (((net_dst_domain != "NA") OR (net_dst_ip != "NA")) AND (true() XOR ((net_dst_domain == "verizon.com") OR like(net_dst_domain,"%.verizon.com"))))
+| eval dns_flags=coalesce(dns_response_flags,"NA"), dns_protocol=case(isnotnull(dns_response_protocol),dns_response_protocol,isnotnull(transport),transport,true(),"NA"), dns_rcode=case(isnotnull(dns_response_rcode),dns_response_rcode,isnotnull(reply_code),reply_code,true(),"NA"), dns_type=case(isnotnull(dns_type),dns_type,true(),"NA"), dns_type_name=case(isnotnull(dns_response_type_name),dns_response_type_name,isnotnull(record_type_resp),record_type_resp,isnotnull(dns_type),dns_type,true(),"NA"), dns_rdata=coalesce(dns_rdata,"NA"), dns_record=coalesce(dns_record,"NA"), dns_answer_name=case(isnotnull(dns_answer_name),dns_answer_name,isnotnull(answer),answer,true(),"NA"), net_app=coalesce(app,"NA"), net_blocked=case(isnull(action),"NA",match(action,"(?i)block|drop|den(y|ied)|reset"),"TRUE",true(),"FALSE"),net_device_ip=case(isnotnull(dvc_ip),dvc_ip,((true() XOR isnull(dvc)) AND cidrmatch("0.0.0.0/0",dvc)),dvc,isnotnull(server_ip), server_ip, true(),"NA"),net_device_id=coalesce(dvc,dvc_ip, server_ip,"NA"), net_device_types="recursive-dns", net_device_vendor=coalesce(vendor_product,vendor,"NA") 
+
+| fields agg_first, agg_last, agg_length, slot, net_src_ip, net_src_ip_rdomain, net_src_user, net_dst_ip, net_dst_domain, dns_flags, dns_protocol, dns_rcode, dns_type_name, dns_rdata, net_app, net_blocked, net_device_ip, net_device_id, net_device_types, net_device_vendor 
+| eval net_src_user="NA", agg_count=max(1,coalesce(agg_count,1)) 
+
+| stats min(agg_count) as agg_count, min(agg_first) as agg_first, max(agg_last) as agg_last, max(agg_length) as agg_length by slot, net_src_ip, net_src_ip_rdomain, net_src_user, net_dst_ip, net_dst_domain, dns_flags, dns_protocol, dns_rcode, dns_type_name, dns_rdata, net_app, net_blocked, net_device_ip, net_device_id, net_device_types, net_device_vendor

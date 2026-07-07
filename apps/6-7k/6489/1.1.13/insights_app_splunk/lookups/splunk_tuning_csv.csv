@@ -1,0 +1,1276 @@
+Tier,Config,Section,Stanza,Property,Default_Value,New_Value,Unit,Notes,Description,Info
+ANY,app.conf,,[install],state,enabled,enabled,,,,
+ANY,app.conf,,[package],check_for_updates,false,false,,,,
+ANY,app.conf,,[ui],is_manageable,false,false,,,,
+ANY,app.conf,,[ui],is_visible,false,false,,,,
+ANY,local.meta,,[],access,"read : [ * ], write : [ admin ]","read : [ * ], write : [ admin ]",,,,
+ANY,local.meta,,[],export,system,system,,,,
+Cluster Managers,inputs.conf,,[monitor://$SPLUNK_HOME/etc/manager-apps/.../*.conf],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new\nwhitelist = (default-mode.conf|limits.conf|distsearch.conf|authentication.conf|serverclass.conf|authorize.conf|server.conf|web.conf|outputs.conf|indexes.conf|props.conf|inputs.conf|transforms.conf),,,# Enable this input on every Cluster Manager instance,
+Cluster Managers,server.conf,,[clustering],heartbeat_timeout,60,120-300,s,Value of 300 is recommended by support.,"The amount of time, in seconds, that the captain considers a member down.
+ After a member is down, the captain initiates fixup steps to replicate
+ artifacts from the dead member to its peers.
+This heartbeat exchanges data between the captain and members, which helps in
+ maintaining the in-memory centralized state for all the cluster members.
+Note that this heartbeat is different from the Raft heartbeat described
+ in the 'election_timeout_2_hb_ratio' setting.
+Default: 60 (1 minute)",SeeConfigurations for a large indexer cluster (>100k buckets). Specifies how long before an Indexer is considered Down when no heartbeats comes in. 300 for classic OFF for S2 - changed 9/4/18 to
+Cluster Managers,server.conf,,[clustering],max_fixup_time_ms,1000,2000,ms,Review against Cloudworks,"Only valid for 'mode=manager'.
+Specifies, in milliseconds, how long each fixup level runs before
+ short circuiting to continue to the next fixup level. This
+ introduces an upper-bound on each service level, and likewise
+ introduces an upper bound on the full service() call.
+This setting is useful for larger clusters that have lots of
+ buckets, where service() calls can consume a significant amount
+ of time blocking other operations.
+0 denotes that there is no max fixup timer.
+Default: 1000",helped with fixup from 50 days to 2 days in raymond james
+Cluster Managers,server.conf,,[clustering],max_peer_rep_load,5,,integer,Review against Cloudworks,"This is the maximum number of concurrent replications that a
+ member can take part in as a target.
+Default: 5",helps with index clustering
+Cluster Managers,server.conf,,[clustering],rebalance_newgen_propagation_timeout,60,120,s,,"Valid only for 'mode=manager'.
+Valid only for 'searchable_rebalance=true'.
+The amount of time, in seconds, that the manager waits for the search heads to
+ get the newly committed generation after the discarded buckets' primacy has
+ been reassigned.
+Default: 60 (1 minute)",
+Cluster Managers,server.conf,,[clustering],rebalance_primary_failover_timeout,75,150,s,,"Valid only for 'mode=manager'.
+Valid only for 'searchable_rebalance=true'.
+The maximum length of time, in seconds, that the manager waits for primacy to
+ be reassigned from the batch of excess buckets to other buckets.
+Default: 75",
+Cluster Managers,server.conf,,[clustering],rebalance_search_completion_timeout,180,360,s,,"Valid only for 'mode=manager'.
+Valid only for 'searchable_rebalance=true'.
+The amount of time, in seconds, that the manager waits for older generation
+ searches on indexers to complete before removing any excess buckets.
+You do not need to restart the cluster manager when making changes to
+ this setting. This setting reloads automatically.
+Default: 180 (3 minute)",
+Cluster Managers,server.conf,,[clustering],restart_inactivity_timeout,600,900,s,,"Only valid for 'rolling_restart=searchable_force'The amount of time, in seconds, that the manager waits for a peer to restart and rejoin the cluster before it considers the restart a failure and proceeds to restart other peers.More specifically, the amount of time that the manager waits for a peer in the 'Down' status to transition to 'BatchAdding' or 'Up' status.A value of zero (0) means that the manager waits indefinitely for a peer to restart.Default: 600 (10 minutes)",
+Cluster Managers,server.conf,,[clustering],restart_timeout,60,120,s,,"Only valid for 'mode=manager'.
+This is the amount of time, in seconds, the manager waits for a peer
+ to come back when the peer is restarted (to avoid the overhead of
+ trying to fixup the buckets that were on the peer).
+More specifically, the amount of time that the manager waits for a
+ peer in the 'Restarting' status to transition to the 'Down' status.
+Note that this only works with the offline command or if the peer
+ is restarted vi the UI.
+You do not need to restart the cluster manager when making changes to
+ this setting. This setting reloads automatically.
+Default: 60",
+Cluster Managers,server.conf,,[httpServer],maxThreads,0,10240,integer,Cloud CM 100-whisper,"maxThreads = <integer>
+The number of threads that can be used by active HTTP transactions.
+ You can limit this number to constrain resource usage.
+If set to 0, Splunk Enterprise automatically sets the limit to
+ one third of the maximum allowable threads on the host.
+If this number is less than 20, it is set to 20. If this number is
+ greater than 150000, it is set to 150000.
+If maxSockets is not negative and maxThreads is greater than maxSockets, then
+ Splunk Enterprise sets maxThreads to be equal to maxSockets.
+If set to a negative number, no limit is enforced.
+Default: 0",
+Clustered Indexers,default-mode.conf,,[pipeline:scheduler],disabled,false,true,boolean,,"Whether or not the Splunk platform loads the specified pipeline.
+If set to true on a specific pipeline, the pipeline will not be loaded in the system.",
+Clustered Indexers,distsearch.conf,,[replicationSettings],replicationThreads,auto,10,,Makes sense > 10 indexers but < shouldn't hurt - *CLOUD bundle replication hosted on S3 buckets,"The maximum number of threads to use when performing bundle replication
+ to peers. If set to ""auto"", the peer auto-tunes the number of threads it uses for
+ bundle replication. If the peer has 3 or fewer CPUs, it allocates 2 threads. If the peer has 4-7 CPUs, it allocates up to '# of CPUs - 2' threads. If the peer has 8-15 CPUs, it allocates up to '# of CPUs - 3' threads. If the peer has 16 or more CPUs, it allocates up to '# of CPUs - 4' threads. This setting is applicable only when replicationPolicy is set to 'classic'. Maximum accepted value for this setting is 16.",Makes sense > 10 indexers but < shouldn't hurt - *CLOUD bundle replication hosted on S3 buckets
+Clustered Indexers,distsearch.conf,,[replicationSettings],sendRcvTimeout,60,180,s,"*CLOUD bundle replication hosted on S3 buckets
+Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.",The maximum number of seconds to wait for the sending of a full replication to a peer.,"*CLOUD bundle replication hosted on S3 buckets
+Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results."
+Clustered Indexers,indexes.conf,,[_introspection],repFactor,0,auto,,,"repFactor = 0|auto
+Valid only for indexer cluster peer nodes.
+Determines whether an index gets replicated.
+Configuring this setting to 0 turns off replication for this index.
+Configuring to ""auto"" turns on replication for this index.
+You must configure this setting to the same value on all peer nodes.
+Default: 0",
+Clustered Indexers,indexes.conf,,[_metrics],repFactor,0,auto,,,"repFactor = 0|auto
+Valid only for indexer cluster peer nodes.
+Determines whether an index gets replicated.
+Configuring this setting to 0 turns off replication for this index.
+Configuring to ""auto"" turns on replication for this index.
+You must configure this setting to the same value on all peer nodes.
+Default: 0",
+Clustered Indexers,indexes.conf,,[default],journalCompression,gzip,zstd,,Improves performance and compression for raw data on indexers,"journalCompression = gzip|lz4|zstd
+The compression algorithm that splunkd should use for the rawdata journal
+ file of new index buckets.
+This setting does not have any effect on already created buckets. There is
+ no problem searching buckets that are compressed with different algorithms.
+""zstd"" is only supported in Splunk Enterprise version 7.2.x and higher. Do
+ not enable that compression format if you have an indexer cluster where some
+ indexers run an earlier version of Splunk Enterprise.
+Default: gzip",Improves performance and compression for raw data on indexers
+Clustered Indexers,indexes.conf,,[default],lastChanceIndex,empty,lastChanceIndex,string,"Consider setting a low retention periods (i.e, 7d)","lastChanceIndex = <index name>
+An index that receives events that are otherwise not associated
+ with a valid index.
+If you do not specify a valid index with this setting, such events are
+ dropped entirely.
+Routes the following kinds of events to the specified index:
+ events with a non-existent index specified at an input layer, like an
+ invalid ""index"" setting in inputs.conf
+ events with a non-existent index computed at index-time, like an invalid
+ _MetaData:Index value set from a ""FORMAT"" setting in transforms.conf
+You must set 'lastChanceIndex' to an existing, enabled index.
+ Splunk software cannot start otherwise.
+If set to ""default"", then the default index specified by the
+ 'defaultDatabase' setting is used as a last chance index.
+Default: empty string","Having a lastChanceIndex set up by default would make things much less dramatic when we lose / lack custom index definitions: Instead of dropping customer data on the floor, we would be putting it in this catch-all index - AMI-3010 CLOSED"
+Clustered Indexers,indexes.conf,,[default],maxDataSize,auto,auto_high_volume,,"Dictates bucket size. Considering that one of the main scalability issues with indexer clustering right now is linked to high bucket counts, we might want to look at enforcing a different default than ""auto"". We might also want to ensure that some internal indexes that ship with a fixed small bucket size (_internal and _introspection use 1GB buckets) are reconfigured to use 10GB buckets. S2 - covered in it's own setup (750 MB) Classic - auto_high_volume (confirm if already in place as standard)","maxDataSize = <positive integer>|auto|auto_high_volume
+The maximum size, in megabytes, that a hot bucket can reach before splunkd
+ triggers a roll to warm.
+Specifying ""auto"" or ""auto_high_volume"" will cause Splunk to autotune this
+ setting (recommended).
+You should use ""auto_high_volume"" for high-volume indexes (such as the
+ main index); otherwise, use ""auto"". A ""high volume index"" would typically
+ be considered one that gets over 10GB of data per day.
+""auto_high_volume"" sets the size to 10GB on 64-bit, and 1GB on 32-bit
+ systems.
+Although the maximum value you can set this is 1048576 MB, which
+ corresponds to 1 TB, a reasonable number ranges anywhere from 100 to
+ 50000. Before proceeding with any higher value, please seek approval of
+ Splunk Support.
+If you specify an invalid number or string, maxDataSize will be auto
+ tuned.
+NOTE: The maximum size of your warm buckets might slightly exceed
+ 'maxDataSize', due to post-processing and timing issues with the rolling
+ policy.
+For remote storage enabled indexes, consider setting this value to ""auto""
+ (750MB) or lower.
+Default: ""auto"" (sets the size to 750 megabytes)","Dictates bucket size. Considering that one of the main scalability issues with indexer clustering right now is linked to high bucket counts, we might want to look at enforcing a different default than ""auto"". We might also want to ensure that some internal indexes that ship with a fixed small bucket size (_internal and _introspection use 1GB buckets) are reconfigured to use 10GB buckets. S2 - covered in it's own setup (750 MB) Classic - auto_high_volume (confirm if already in place as standard)"
+Clustered Indexers,indexes.conf,,[default],maxHotBuckets,auto,10,,,"Maximum number of hot buckets that can exist per index.
+When 'maxHotBuckets' is exceeded, the indexer rolls the hot bucket
+ containing the least recent data to warm.
+Both normal hot buckets and quarantined hot buckets count towards this
+ total.
+This setting operates independently of maxHotIdleSecs, which can also
+ cause hot buckets to roll.
+NOTE: the indexer applies this limit per ingestion pipeline. For more
+ information about multiple ingestion pipelines, see
+ 'parallelIngestionPipelines' in the server.conf.spec file.
+With N parallel ingestion pipelines, the maximum number of hot buckets across
+ all of the ingestion pipelines is N 'maxHotBuckets', but only
+ 'maxHotBuckets' for each ingestion pipeline. Each ingestion pipeline
+ independently writes to and manages up to 'maxHotBuckets' number of hot
+ buckets. Consequently, when multiple ingestion pipelines are configured, there
+ may be multiple hot buckets with events on overlapping time ranges.
+The highest legal value is 1024. However, do not set to a value greater 
+ than 11 without direction from Splunk Support. Higher values can degrade 
+ indexing performance.
+If you specify ""auto"", the indexer sets the value to 3.
+This setting applies only to event indexes.
+Default: ""auto""",
+Clustered Indexers,indexes.conf,,[default],maxHotIdleSecs,0,,s,Need to define the correct value,"maxHotIdleSecs = <nonnegative integer> * How long, in seconds, that a hot bucket can remain in hot status without   receiving any data. * If a hot bucket receives no data for more than 'maxHotIdleSecs' seconds,   splunkd rolls the bucket to warm. * This setting operates independently of 'maxHotBuckets', which can also cause   hot buckets to roll. * A value of 0 turns off the idle check (equivalent to infinite idle time). * The highest legal value is 4294967295 * Default: 0",Need to define the correct value
+Clustered Indexers,indexes.conf,,[default],maxHotSpanSecs,7776000,,integer,"# 1. use when you have near-zero data latency, data has short path, as long as the data coming within the threshold (2-3 seconds)  # 2. must have very clean data onboarding, most importantly timestamp extractions.  this setting should not be used if we have data quality issues # dealing specifically with timestamping.   For Security/Compliance use cases we need to restrict/avoid over retention this prevents a hot bucket from containing more than seven days Allowing frozenTimePeriodInSecs to be honored within 1 day Upper bound of timespan of hot/warm buckets in seconds. Note:! There may be corner cases on an index by index basis to change this to a higher or lower number","maxHotSpanSecs = <positive integer> * Upper bound of timespan of hot/warm buckets, in seconds. * This is an advanced setting that should be set   with care and understanding of the characteristics of your data. * Splunkd applies this limit per ingestion pipeline. For more   information about multiple ingestion pipelines, see   'parallelIngestionPipelines' in the server.conf.spec file. * With N parallel ingestion pipelines, each ingestion pipeline writes to   and manages its own set of hot buckets, without taking into account the state   of hot buckets managed by other ingestion pipelines. Each ingestion pipeline   independently applies this setting only to its own set of hot buckets. * If you set 'maxHotBuckets' to 1, splunkd attempts to send all   events to the single hot bucket and does not enforce 'maxHotSpanSeconds'. * If you set this setting to less than 3600, it will be automatically   reset to 3600. * NOTE: If you set this setting to too small a value, splunkd can generate   a very large number of hot and warm buckets within a short period of time. * The highest legal value is 4294967295. * NOTE: the bucket timespan snapping behavior is removed from this setting.   See the 6.5 spec file for details of this behavior. * Default: 7776000 (90 days)",
+Clustered Indexers,indexes.conf,,[default],maxTotalDataSizeMB,500000,4294967295,integer,By default never purge based on size of data,"The maximum size of an index, in megabytes.
+If an index grows larger than the maximum size, splunkd freezes the oldest data in the index.
+This setting applies only to hot, warm, and cold buckets. It does not apply to thawed buckets.
+CAUTION: This setting takes precedence over other settings like
+ 'frozenTimePeriodInSecs' with regard to data retention. If the index
+ grows beyond 'maxTotalDataSizeMB' megabytes before
+ 'frozenTimePeriodInSecs' seconds have passed, data could prematurely
+ roll to frozen. As the default policy for rolling data to frozen is
+ deletion, unintended data loss could occur.
+Splunkd ignores this setting on remote storage enabled indexes.
+Highest legal value is 4294967295
+Default: 500000","S2 ONLY - We don't want to restrict the default index size on a per-peer basis for customer indexes. Instead, we want to make sure that size enforcement is only performed based on time, with a frozenTimePeriodInSecs dictated by the customer."
+Clustered Indexers,indexes.conf,,[default],quarantineFutureSecs,2592000,604801,integer,Review example indexes to determine ideal values.,"Events with timestamp of quarantineFutureSecs newer than """"now"""" will be dropped into quarantine bucket. This is a mechanism to prevent main hot buckets from being polluted with fringe events. Defaults to 2592000 (30 days). Tuned to 7 Days and 1 Second",https://jira.splunk.com/browse/CIA-3226
+Clustered Indexers,indexes.conf,,[default],quarantinePastSecs,77760000,604801,integer,Review example indexes to determine ideal values.,"Any data more than seven days old or in the future should go in quarantine This is also to prevent over retention note data in these buckets will be retained based on index date time NOT _time Events with timestamp of quarantinePastSecs older than """"now"""" will be dropped into quarantine bucket This is a mechanism to prevent the main hot buckets from being polluted with fringe events. Defaults to 77760000 (900 days). Tuned to 7 Days and 1 Second Note!: some indexes may need a longer window for example windows","maxHotIdleSecs - currently set to 0, need to define what we set to for S2 and ""classic"" (7776000) : SPL-122407. Quarantine - These settings are to make sure any event with older than 90 days time stamp go into quarantine hot buckets and we don’t create lot of hot buckets . See Quarantine - These settings are to make sure any event with older than 90 days time stamp go into quarantine hot buckets and we don’t create lot of hot buckets Need to compare configs setting for S2 vs ""classic"""
+Clustered Indexers,indexes.conf,,[default],repFactor,0,auto,,,"repFactor = 0|auto
+Valid only for indexer cluster peer nodes.
+Determines whether an index gets replicated.
+Configuring this setting to 0 turns off replication for this index.
+Configuring to ""auto"" turns on replication for this index.
+You must configure this setting to the same value on all peer nodes.
+Default: 0",
+Clustered Indexers,indexes.conf,,[default],tsidxWritingLevel,2,3,,Improves performance and compression for raw data on indexers,"tsidxWritingLevel = [1|2|3|4]
+Enables various performance and space-saving improvements for tsidx files.
+Tsidx files written with a higher tsidxWritingLevel setting have limited backward
+ compatibility when searched with lower versions of Splunk Enterprise.
+Setting tsidxWritingLevel globally is recommended. It can also be set per-index.
+For deployments that have multi-site index clustering, change the setting AFTER
+ all your indexers in the cluster have been upgraded to the latest release.
+Default: 2",Improves performance and compression for raw data on indexers
+Clustered Indexers,limits.conf,,[lookup],max_memtable_bytes,26214400,100000000,integer,Indexers have excess memory. Indexing lookups can impact performance,"max_memtable_bytes = <integer>
+Maximum size, in bytes, of static lookup file to use an in-memory index for.
+Lookup files with size above max_memtable_bytes will be indexed on disk
+NOTE: This setting also applies to lookup files loaded through the lookup()
+ eval function *which runs at search time*. The same function if called through
+ the ingest-eval functionality, uses ingest_max_memtable_bytes instead.
+CAUTION: Setting this to a large value results in loading large lookup
+ files in memory. This leads to a bigger process memory footprint.
+Default: 26214400 (25MB)",Indexers have excess memory. Indexing lookups can impact performance
+Clustered Indexers,limits.conf,,[realtime],local_receive_timeout,5,60,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"local_receive_timeout = <integer>
+Receive timeout, in seconds, for an indexer's search process when
+ connecting to that indexer's splunkd.
+Default: 5",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Indexers,limits.conf,,[search],batch_search_max_index_values,10000000,20000000,integer,20000000 64GB (d2/r3.2xl-4xl) / 30000000 128GB (d2/r3.8x),"batch_search_max_index_values = <integer>
+When using batch mode, this limits the number of event entries read from the
+ index file. These entries are small, approximately 72 bytes. However batch
+ mode is more efficient when it can read more entries at one time.
+Setting this value to a smaller number can lead to slower search performance.
+A balance needs to be struck between more efficient searching in batch mode
+and running out of memory on the system with concurrently running searches.
+Default: 10000000","Increasing this setting allows for batch mode searches (for example, data model acceleration) to process large data buckets (with > 10M events) 2x to 10x faster by operating only in memory."
+Clustered Indexers,limits.conf,,[search],log_search_messages,false,,boolean,"Logs to index=_internal sourcetype=splunk_search_messages, see if this data has any value otherwise disable it","log_search_messages = <boolean>
+Specifies whether splunkd promotes user-facing search messages
+ from $SPLUNK_HOME/var/run/splunk/dispatch/<sid>/info.csv to
+ $SPLUNK_HOME/var/log/splunk/search_messages.log.
+Splunkd does not promote messages with a severity that is ranked
+ lower than the value of search_messages_severity.
+Splunkd promotes messages only after search has been audited.
+The search_messages.log file follows this format when it logs messages:
+ orig_component=""..."" sid=""..."" peer_name=""..."" message=...
+Default: false",
+Clustered Indexers,limits.conf,,[search],max_searches_per_process,500,,integer,from 100-whisper-searchhead tune if necessary or if less than 500,"On UNIX, specifies the maximum number of searches that each search process
+ can run before exiting.
+After a search completes, the search process can wait for another search to
+ start and the search process can be reused.
+When set to ""0"" or ""1"": The process is never reused.
+When set to a negative value: There is no limit to the number of searches
+ that a process can run.
+Has no effect on Windows if search_process_mode is not ""auto"".
+Default: 500","As perSPL-142287NEW, there is an ongoing discussion to turn off search process pre-fork at least for the time being - Last conversation this shoudl NOT be changed and should be left at 500."
+Clustered Indexers,limits.conf,,[search],record_search_telemetry,true,false,boolean,Check if we need to keep index=_introspection sourcetype=search_telemetry,"record_search_telemetry = <boolean>
+Controls whether to record search related metrics in search_telemetry.json
+ in the dispatch dir. It also indexes this file to the _introspection index.
+NOTE: Do not change this setting unless instructed to do so by Splunk Support.
+Default: true",
+Clustered Indexers,limits.conf,,[search],search_process_memory_usage_threshold,4000,0,double,We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers. 0 per Octavio. Will use WLM to manage individual searches,"search_process_memory_usage_threshold = <double>
+To use this setting, the ""enable_memory_tracker"" setting must be set
+ to ""true"".
+Specifies the maximum memory, in MB, that the search process can consume
+ in RAM.
+Search processes that violate the threshold are terminated.
+If the value is set to 0, then search processes are allowed to grow
+ unbounded in terms of in memory usage.
+Default: 4000 (4GB)",We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers. 0 per Octavio. Will use WLM to manage individual searches
+Clustered Indexers,limits.conf,,[system_checks],installed_files_integrity,enabled,log_only,,,"installed_files_integrity = enabled | log_only | disabled
+Enables/disables automatic verification on every startup that all the
+ files that were installed with the running Splunk version are still the
+ files that should be present.
+ Effectively this finds cases where files were removed or changed that
+ should not be removed or changed, whether by accident or intent.
+ The source of truth for the files that should be present is the manifest
+ file in the $SPLUNK_HOME directory that comes with the release, so if
+ this file is removed or altered, the check cannot work correctly.
+ Reading of all the files provided with the install has some I/O cost,
+ though it is paid out over many seconds and should not be severe.
+When ""enabled"", detected problems will cause a message to be posted to
+ the bulletin board (system UI status message).
+When ""enabled"" or ""log_only"", detected problems will cause details to be
+ written out to the splunkd.log file.
+When ""disabled"", no check will be attempted or reported.
+Default: enabled",
+Clustered Indexers,props.conf,,[splunk_python],TRUNCATE,10000,50000,integer,None,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",None
+Clustered Indexers,props.conf,,[splunkd_audit],TRUNCATE,10000,50000,integer,,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",
+Clustered Indexers,props.conf,,[splunkd_ui_access],TRUNCATE,10000,20000,integer,None,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",None
+Clustered Indexers,server.conf,,[cachemanager],eviction_padding,5120,51200,integer,,"eviction_padding = <positive integer> Specifies the additional space, in megabytes, beyond 'minFreeSpace' that the cache manager uses as the threshold to start evicting data.  If free space on a partition falls below ('minFreeSpace' + 'eviction_padding'), then the cache manager tries to evict data from remote storage enabled indexes.  Default: 5120 (~5GB)",
+Clustered Indexers,server.conf,,[cachemanager],eviction_policy,lru,lruk,string,,"eviction_policy = <string>
+The name of the eviction policy to use.
+Current options: lru, clock, random, lrlt, noevict, lruk
+Do not change the value from the default unless instructed by
+ Splunk Support.
+Default: lru",
+Clustered Indexers,server.conf,,[clustering],cxn_timeout,60,300,s,SeeConfigurations for a large indexer cluster (>100k buckets). Specifies how long before an intra-cluster connection will terminate.,"cxn_timeout = <integer>
+Lowlevel timeout, in seconds, for establishing connection between
+ cluster nodes.
+Default: 60",SeeConfigurations for a large indexer cluster (>100k buckets). Specifies how long before an intra-cluster connection will terminate.
+Clustered Indexers,server.conf,,[clustering],decommission_node_force_timeout,300,600,s,,"decommission_node_force_timeout = <seconds>
+Valid only for 'mode=peer' and during node offline operation
+The maximum time, in seconds, that a peer node waits for searchable copy
+ reallocation jobs to finish before it transitions to the down (or)
+ 'GracefulShutdown' state.
+This period begins after the peer node receives a 'splunk offline' command
+ or its '/cluster/slave/control/control/decommission' REST endpoint
+ is accessed.
+This attribute is not applicable to the ""--enforce-counts"" version of the
+ ""splunk offline"" command
+Default: 300 seconds",
+Clustered Indexers,server.conf,,[clustering],decommission_search_jobs_wait_secs,0,900,integer,Want to make sure that it is not changed,"The maximum time, in seconds, that splunkd waits for running searches to complete during a shutdown_decommission_search.  To trigger this type of shudown, post to 'services/server/control/shutdown_decommission_search' If set to 0, splunkd does not wait, and all searches in progress will fail.  If this search head is a member of a search head cluster, use 'decommission_search_jobs_wait_secs' in the [shclustering] stanza instead.
+NOTE: If this search head is a node of an indexer cluster, use 'decommission_search_jobs_wait_secs' in the [clustering] stanza instead.  Default: 0",Want to make sure that it is not changed
+Clustered Indexers,server.conf,,[clustering],max_replication_errors,3,20,integer,,"max_replication_errors = <integer>
+Only valid for 'mode=peer'.
+This is the maximum number of consecutive replication errors
+ (currently only for hot bucket replication) from a source peer
+ to a specific target peer. Until this limit is reached, the
+ source continues to roll hot buckets on streaming failures to
+ this target. After the limit is reached, the source no
+ longer rolls hot buckets if streaming to this specific target
+ fails. This is reset if at least one successful (hot bucket)
+ replication occurs to this target from this source.
+The special value of 0 turns off this safeguard; so the source
+ always rolls hot buckets on streaming error to any target.
+This setting is dynamically reloadable and does not require restart
+ of cluster peer.
+Default: 3",
+Clustered Indexers,server.conf,,[clustering],rcv_timeout,60,300,s,"See Configurations for a large indexer cluster (>100k buckets). Specifies how long before an intra-cluster connection will terminate. If a cluster indexer times out, it will re-add itself to the CM, which itself is a busy operation (it needs to resync the state of all its buckets), These can be bumped up for busier clusters (300s) which can lead to negative feedback loops...","rcv_timeout = <integer>
+Lowlevel timeout, in seconds, for receiving data between cluster nodes.
+Default: 60","See Configurations for a large indexer cluster (>100k buckets). Specifies how long before an intra-cluster connection will terminate. If a cluster indexer times out, it will re-add itself to the CM, which itself is a busy operation (it needs to resync the state of all its buckets), These can be bumped up for busier clusters (300s) which can lead to negative feedback loops..."
+Clustered Indexers,server.conf,,[clustering],rep_cxn_timeout,5,10,s,,"rep_cxn_timeout = <integer>
+Lowlevel timeout, in seconds, for establishing connection for replicating
+ data.
+Default: 5",
+Clustered Indexers,server.conf,,[clustering],rep_max_rcv_timeout,180,360,s,Consider keeping as default. Increasing this setting may increase rate of skips.,"rep_max_rcv_timeout = <integer>
+Only valid for 'mode=peer'
+Maximum cumulative receive timeout, in seconds, for receiving
+ acknowledgment data from peers.
+On 'rep_rcv_timeout' source peer determines if total
+ receive timeout has exceeded 'rep_max_rcv_timeout'.
+ If so, replication fails.
+This setting is dynamically reloadable and does not require restart
+ of cluster peer.
+Default: 180 (3 minutes)",None
+Clustered Indexers,server.conf,,[clustering],rep_max_send_timeout,180,360,s,Consider keeping as default. Increasing this setting may increase rate of skips.,"rep_max_send_timeout = <integer>
+Only valid for 'mode=peer'
+Maximum send timeout, in seconds, for sending replication slice
+ data between cluster nodes.
+On rep_send_timeout source peer determines if total send timeout has
+ exceeded 'rep_max_send_timeout'. If so, replication fails.
+If cumulative 'rep_send_timeout' exceeds 'rep_max_send_timeout',
+ replication fails.
+This setting is dynamically reloadable and does not require restart
+ of cluster peer.
+Default: 180 (3 minutes)",None
+Clustered Indexers,server.conf,,[clustering],rep_rcv_timeout,10,20,s,,"rep_rcv_timeout = <integer>
+Only valid for 'mode=peer'
+Lowlevel timeout, in seconds, for receiving acknowledgment data from peers.
+This is a soft timeout. When this timeout is triggered on source peer,
+ it tries to determine if target is still alive. If it is still alive,
+ it reset the timeout for another 'rep_send_timeout' interval and continues.
+If target has failed or cumulative timeout has exceeded
+ 'rep_max_rcv_timeout', replication fails.
+Default: 10",
+Clustered Indexers,server.conf,,[clustering],rep_send_timeout,5,10,s,,"rep_send_timeout = <integer>
+Only valid for 'mode=peer'
+Lowlevel timeout, in seconds, for sending replication slice data between
+ cluster nodes.
+This is a soft timeout. When this timeout is triggered on source peer,
+ it tries to determine if target is still alive. If it is still alive, it
+ reset the timeout for another 'rep_send_timeout interval' and continues. If
+ target has failed or cumulative timeout has exceeded the
+ 'rep_max_send_timeout', replication fails.
+Default: 5",
+Clustered Indexers,server.conf,,[clustering],search_files_retry_timeout,600,1200,s,Default values were expressed in mins(10) rather than secs (600). Updated default and recommended values to secs.,"search_files_retry_timeout = <integer>
+Timeout, in seconds, after which request for search files from a
+ peer is aborted.
+To make a bucket searchable, search specific files are copied from
+ another source peer with search files. If search files on source
+ peers are undergoing chances, it asks requesting peer to retry after
+ some time. If cumulative retry period exceeds the specified timeout,
+ the requesting peer aborts the request and requests search files from
+ another peer in the cluster that may have search files.
+Default: 600 (10 minutes)",
+Clustered Indexers,server.conf,,[clustering],searchable_target_sync_timeout,60,120,s,,"searchable_target_sync_timeout = <integer>
+Only valid for 'mode=peer'.
+If a hot bucket replication connection is inactive for this time,
+ in seconds, a searchable target flushes out any pending search
+ related in-memory files.
+Regular syncing - when the data is flowing through
+ regularly and the connection is not inactive - happens at a
+ faster rate (default of 5 secs controlled by
+ streamingTargetTsidxSyncPeriodMsec in indexes.conf).
+The special value of 0 turns off this timeout behavior.
+Default: 60",
+Clustered Indexers,server.conf,,[clustering],send_timeout,60,300,s,"Specifies how long before an intra-cluster connection will terminate. If a cluster indexer times out, it will re-add itself to the CM, which itself is a busy operation (it needs to resync the state of all its buckets), which can lead to negative feedback loops... These can be bumped up for busier clusters (300s)","send_timeout = <integer>
+Lowlevel timeout, in seconds, for sending data between cluster nodes.
+Default: 60","Specifies how long before an intra-cluster connection will terminate. If a cluster indexer times out, it will re-add itself to the CM, which itself is a busy operation (it needs to resync the state of all its buckets), which can lead to negative feedback loops... These can be bumped up for busier clusters (300s)"
+Clustered Indexers,server.conf,,[diag],upload_rectifier_timeout_secs,2,4,s,Tune only if necessary and if you are using splunk diag to upload the diag directly to your case,"upload_rectifier_timeout_secs = <unsigned integer>
+Valid only for 'mode=peer'.
+This setting applies to remote storage enabled indexes only.
+When a peer uploads a bucket copy to remote storage, it checks, after a ,
+ timeout based on the value of this setting, to determine whether another
+ peer overwrote the copy.
+Depending on the value of ""bucketsize_upload_preference"" it will determine
+ if the bucket needs to be re-uploaded.
+This setting controls the timeout that the peer waits before checking.
+Default: 2",
+Clustered Indexers,server.conf,,[diskUsage],minFreeSpace,5000,10%,,,"minFreeSpace = <num>|<percentage>
+Minimum free space for a partition.
+Specified as an integer that represents a size in binary
+ megabytes (ie MiB) or as a percentage, written as a decimal
+ between 0 and 100 followed by a '%' sign, for example ""10%""
+ or ""10.5%""
+If specified as a percentage, this is taken to be a percentage of
+ the size of the partition. Therefore, the absolute free space required
+ varies for each partition depending on the size of that partition.
+Specifies a safe amount of space that must exist for splunkd to continue
+ operating.
+Note that this affects search and indexing
+For search:
+ Before attempting to launch a search, Splunk software requires this
+ amount of free space on the filesystem where the dispatch directory
+ is stored, $SPLUNK_HOME/var/run/splunk/dispatch
+ Applied similarly to the search quota values in authorize.conf and
+ limits.conf.
+For indexing:
+ Periodically, the indexer checks space on all partitions
+ that contain splunk indexes as specified by indexes.conf. Indexing
+ is paused and a ui banner + splunkd warning posted to indicate
+ need to clear more disk space.
+Default: 5000 (approx 5GB)",
+Clustered Indexers,server.conf,,[general],parallelIngestionPipelines,1,2,integer,We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin,"The number of discrete data ingestion pipeline sets to create for this instance.
+A pipeline set handles the processing of data, from receiving streams of events through event processing and writing the events to disk.
+An indexer that operates multiple pipeline sets can achieve improved performance with data parsing and disk writing, at the cost of additional
+ CPU cores.
+For most installations, the default setting of ""1"" is optimal.
+Use caution when changing this setting. Increasing the CPU usage for data ingestion reduces available CPU cores for other tasks like searching.
+NOTE: Enabling multiple ingestion pipelines can change the behavior of some settings in other configuration files. Each ingestion pipeline enforces the limits of the following settings independently:
+ 1. maxKBps (in the limits.conf file)
+ 2. max_fd (in the limits.conf file)
+ 3. maxHotBuckets (in the indexes.conf file)
+ 4. maxHotSpanSecs (in the indexes.conf file)",We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin
+Clustered Indexers,server.conf,,[general],useHTTPClientCompression,true,true,boolean,"As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search","useHTTPClientCompression = true|false|on-http|on-https
+Specifies whether gzip compression should be supported when splunkd acts
+ as a client (including distributed searches). Note: For the content to
+ be compressed, the HTTP server that the client is connecting to should
+ also support compression.
+If the connection is being made over https and
+ ""useClientSSLCompression=true"", then setting ""useHTTPClientCompression=true""
+ results in double compression work without much compression gain. To
+ mitigate this, set this value to ""on-http"" (or to ""true"", and
+ useClientSSLCompression to ""false"").
+Default: true","As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search"
+Clustered Indexers,server.conf,,[httpServer],busyKeepAliveIdleTimeout,12,180,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"How long, in seconds, that the Splunkd HTTP server allows a keep-alive
+connection to remain idle while in a busy state before forcibly disconnecting it.
+Use caution when configuring this setting as a value that is too large
+can result in file descriptor exhaustion due to idling connections.
+If this number is less than 12, it is set to 12.",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Indexers,server.conf,,[kvstore],disabled,false,true,boolean,KVStore process are not required on Indexers. Disabling it means one less process and therefore less resource usage on Indexers.,"disabled = <boolean>
+Set to true to disable the KV Store process on the current server. To
+ completely disable KV Store in a deployment with search head clustering or
+ search head pooling, you must also disable KV Store on each individual
+ server.
+Default: false",KVStore process are not required on Indexers. Disabling it means one less process and therefore less resource usage on Indexers.
+Clustered Indexers,server.conf,,[kvstore],oplogSize,1000,20000,integer,"In case of large collections in KVStore on some members of SHC possible to get stale members, see https://docs.splunk.com/Documentation/Splunk/6.5.1/Admin/ResyncKVstore#Prevent_stale_members_by_increasing_operations_log_size","oplogSize = <integer>
+The size of the replication operation log, in megabytes, for environments
+ with search head clustering or search head pooling.
+ In a standalone environment, 20% of this size is used.
+After the KV Store has created the oplog for the first time, changing this
+ setting does NOT affect the size of the oplog. A full backup and restart
+ of the KV Store is required.
+Do not change this setting without first consulting with Splunk Support.
+Default: 1000 (1GB)","In case of large collections in KVStore on some members of SHC possible to get stale members, see https://docs.splunk.com/Documentation/Splunk/6.5.1/Admin/ResyncKVstore#Prevent_stale_members_by_increasing_operations_log_size"
+Clustered Indexers,server.conf,,[license],connection_timeout,30,120,s,,"connection_timeout = <integer>
+ Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Clustered Indexers,server.conf,,[license],receive_timeout,30,120,s,,"receive_timeout = <integer>
+ Maximum time, in seconds, to wait before receiving data from manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Clustered Indexers,server.conf,,[license],report_interval,1m,1h,integer,"Today 1h has been used, so we will keep it to 1h","report_interval = <nonnegative integer>[s|m|h]
+Selects a time period for reporting in license usage to the license manager.
+This value is intended for very large deployments (hundreds of indexers) where a large number of indexers may overwhelm the license server.
+The maximum permitted interval is 1 hour.
+The minimum permitted interval is 1 minute.
+Can be expressed as a positive number of seconds, minutes or hours.
+If no time unit is provided, seconds is assumed.",
+Clustered Indexers,server.conf,,[license],send_timeout,30,120,s,,"send_timeout = <integer>
+ Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Clustered Indexers,server.conf,,[license],squash_threshold,2000,1000,integer,,"squash_threshold = <positive integer>
+Advanced setting. Periodically the indexer must report to license manager
+ the data indexed broken down by source, sourcetype, host, and index. If
+ the number of distinct (source, sourcetype, host, index) tuples grows over
+ the 'squash_threshold', the (host, source) values are squashed and only a
+ breakdown by (sourcetype, index) is reported. This is to prevent explosions in
+ memory + license_usage.log lines.
+Set this only after consulting a Splunk Support engineer.
+This needs to be set on license slaves as well as license manager.
+Default: 2000",
+Clustered Indexers,server.conf,,[queue=aggQueue],maxSize,500KB,10MB,integer,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Clustered Indexers,server.conf,,[queue=indexQueue],maxSize,500KB,10MB,integer,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Clustered Indexers,server.conf,,[queue=parsingQueue],maxSize,500KB,10MB,integer,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Clustered Indexers,server.conf,,[queue=typingQueue],maxSize,500KB,10MB,integer,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Clustered Indexers,server.conf,,[sslConfig],useClientSSLCompression,false,false,boolean,"As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search","useClientSSLCompression = <boolean>
+Turns on HTTP client compression.
+Server-side compression is turned on by default. Setting this on the
+ client-side enables compression between server and client.
+Enabling this potentially gives you much faster distributed searches
+ across multiple Splunk instances.
+CAUTION: There are known performance issues due to SSL compression.
+ Confirm that 'conf_deploy_precompress_bundles',
+ 'precompress_cluster_bundle', 'precompress_artifacts',
+ 'preCompressKnowledgeBundlesClassicMode', 'preCompressKnowledgeBundlesCascadeMode',
+ and 'useHTTPClientCompression' are set to ""false"" before setting
+ 'useClientSSLCompression' to ""true"" to avoid double compression.
+Default: false","As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search"
+Clustered Search Heads,alert_actions.conf,,[email],ttl,86400,3600,integer,from cloud etc/system/local,keep the search artifacts around for 1 hour,We want to make sure that high-frequency alerts with an email action do not pollute the dispatch directory with thousands of artifact for one singe search
+Clustered Search Heads,distsearch.conf,,[bundleEnforcerBlacklist],,,,,BUNDLE ENFORCER DENY LIST OPTIONS,"<name> = <string> * Peers use this setting to make sure knowledge bundle sent by search heads and   managers do not contain alien files. * This list overrides the [bundleEnforceWhitelist] stanza above. This means that   the receiver removes the bundle if it contains any file that matches the   rules specified here even if that file is allowed by [bundleEnforcerWhitelist]. * If this stanza is empty, then only [bundleEnforcerWhitelist] matters. * No default.",
+Clustered Search Heads,distsearch.conf,,[bundleEnforcerWhitelist],,,,,BUNDLE ENFORCER ALLOW LIST OPTIONS,"&lt;name&gt; = &lt;string&gt; * Peers use this setting to make sure knowledge bundles sent by search heads and   managers do not contain alien files. * If this stanza is empty, the receiver accepts the bundle unless it contains   files matching the rules specified in the [bundleEnforcerBlacklist] stanza.   Hence, if both [bundleEnforcerWhitelist] and [bundleEnforcerBlacklist] are   empty (which is the default), then the receiver accepts all bundles. * If this stanza is not empty, the receiver accepts the bundle only if it   contains only files that match the rules specified here but not those in the   [bundleEnforcerBlacklist] stanza. * All rules are regular expressions. * No default.",
+Clustered Search Heads,distsearch.conf,,[distributedSearch],authTokenConnectionTimeout,5,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, for the search head to connect to a remote search peer when reading its authentication token.
+Fractional seconds are allowed (for example, 10.5 seconds).",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],authTokenReceiveTimeout,10,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, for the search head to receive a response from a remote peer when getting its authentication token. Fractional seconds are allowed (for example, 10.5 seconds).",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],authTokenSendTimeout,10,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, for the search head to send a request to a remote peer when getting its authentication token. Fractional seconds are allowed (for example, 10.5 seconds).",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],bestEffortSearch,false,true,boolean,Discussed in relation to nubank,"This setting determines whether a search peer that's missing the knowledge bundle participates in the search.
+If set to ""true"", the peer participates in the search even if it doesn't have the knowledge bundle. The peers that don't have any common bundles are simply not searched.",Discussed in relation to nubank
+Clustered Search Heads,distsearch.conf,,[distributedSearch],connectionTimeout,10,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, when the search head is attempting to establish a connection to the search peer.",The maximum amount of time to wait when attempting to establish a connection to the search peer.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],receiveTimeout,600,1200,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, when the search head is attempting to read or receive data from a search peer.",The maximum amount of time to wait when attempting to read or receive data from a search peer.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],sendTimeout,30,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, when the search head is attempting to write or send data to a search peer.",The maximum amount of time to wait when attempting to write or send data to a search peer.
+Clustered Search Heads,distsearch.conf,,[distributedSearch],serverTimeout,10,120,integer,,"This setting is no longer supported, and will be ignored. It has been replaced by the following settings: 'connectionTimeout', 'sendTimeout', 'receiveTimeout'.",
+Clustered Search Heads,distsearch.conf,,[distributedSearch],statusTimeout,10,120,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"Set connection timeout when gathering a search peer's basic info (/services/server/info). Increasing this value on the Distributed Monitoring Console (DMC) can result in fewer peers showing up as ""Down"" in /services/search/distributed/peers/.
+Note: Read/write timeouts are automatically set to twice this value.",Set how long to wait for a server to return before removing it from the peers list.
+Clustered Search Heads,distsearch.conf,,[replicationBlacklist],,,np_lookup_index_files = (system|apps/*|users(/_reserved)?/*/*)/lookups/*.(tmp$|index($|/...))\nno_sampleapp_app = apps/sample_app/...\nno_framework_app = apps/framework/...\nno_server_conf_files = (system|(apps/*))/(default|local)/server.conf\nno_local_meta_files = (system|apps|users)/.../local.meta\nno_Splunk_ML_Toolkit_users_lookups = users[/\\]\w+[/\\]Splunk_ML_Toolkit[/\\]lookups[/\\](?!__mlspl_)*\nno_users_private_lookups = users/*/*/lookups/*\nno_python_bytecode_files = (system|apps|users)/.../(*.pyc|*.pyi|*.zip|*.tgz|*.tar|*.log|*.sh|*.md|*.typed|*.pem)\nno_python_pyi_files = (system|apps|users)/.../*.pyi\nno_python_init_files = (system|apps|users)/.../__init__.py\nno_search_users_lookups = users[/\\]\w+[/]search[/]lookups[/].csv\nno_splunk_archiver_java_bin_files = apps/splunk_archiver/java-bin/...\nno_lookup_denylist_app_lookups = apps/lookup_denylist/lookups/...\nno_lookup_denylist_users_lookups = users/*/lookup_denylist/lookups/...\nno_readme_files = apps/.../README\nno_geo_files = apps/.../lookups/geo_*/*\nno_geo_lookups = apps/.../lookups/geo_*\nno_text_files = apps/.../*.txt\nno_base_config_apps = apps/*_(all_deploymentclient|all_forwarder_outputs|all_indexer_base|all_indexes|all_search_base|cluster_forwarder_outputs|cluster_manager_base|cluster_search_base|full_license_server|multisite_manager_base|search_volume_indexes)/...\nno_python_upgrade_readiness_app = apps/python_upgrade_readiness_app/...\nno_splunk_rapid_diag_app = apps/splunk_rapid_diag/...\nno_learned_app = apps/learned/...,string,,"<name> = <string> * All comments from the replication allow list notes above also apply here. * Replication deny list takes precedence over the allow list, meaning that a file that matches both the allow list and the deny list is NOT replicated. * Use this setting to prevent unwanted bundle replication in two common scenarios: * Very large files which part of an application might not want to be replicated, especially if they are not needed on search nodes. * Frequently updated files (for example, some lookups) will trigger retransmission of all search head data. * These lists are applied globally across all configuration data. Especially for deny listing, be sure to constrain your deny list to match only data that your application does not need.",
+Clustered Search Heads,distsearch.conf,,[replicationSettings],concerningReplicatedFileSize,500,100,mb,"This is just a warning, it does not prevent the file of being included, so lets get an early warning and monitor these messages with Insights App for Splunk","The maximum allowable file size, in megabytes, within a bundle. Any individual file within a bundle that is larger than this value
+triggers a splunkd.log message. Where possible, avoid replicating such files by customizing your denylists.",
+Clustered Search Heads,distsearch.conf,,[replicationSettings],connectionTimeout,60,120,s,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"The maximum amount of time to wait, in seconds, before a search head's initial connection to a peer times out.",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,distsearch.conf,,[replicationSettings],excludeReplicatedLookupSize,0,200,mb,Lets limit the maximum size of any csv that can potentially get deployed. Needs more analysis.,"The maximum allowable file size, in megabytes, within a bundle. Any individual file within a bundle that is larger than this value
+triggers a splunkd.log message.Where possible, avoid replicating such files by customizing your denylists.",
+Clustered Search Heads,distsearch.conf,,[replicationSettings],maxBundleSize,2048,,mb,100-whisper-searchhead sets it to 3000,"The maximum bundle size, in megabytes, for which replication can occur. If a bundle is larger than this value, bundle replication does not occur and Splunk logs an error message.",Affords the replication of much larger knowledge bundles
+Clustered Search Heads,distsearch.conf,,[replicationSettings],replicationPolicy,classic,cascading,,,"WARNING: This feature is only avilable in v &gt;= 8.0! # Cascading. The search head replicates the bundle to several of its search peers. Those search peers then each replicate the bundle to a set of additional search peers, which might replicate the bundle to additional sets of peers, and so on, until all peers have received the bundle. By spreading the replication activity across multiple nodes, this policy improves performance for deployments with large numbers of search peers.",
+Clustered Search Heads,distsearch.conf,,[replicationSettings],replicationThreads,auto,10,,from 100-whisper,"The maximum number of threads to use when performing bundle replication
+ to peers. If set to ""auto"", the peer auto-tunes the number of threads it uses for
+ bundle replication. If the peer has 3 or fewer CPUs, it allocates 2 threads. If the peer has 4-7 CPUs, it allocates up to '# of CPUs - 2' threads. If the peer has 8-15 CPUs, it allocates up to '# of CPUs - 3' threads. If the peer has 16 or more CPUs, it allocates up to '# of CPUs - 4' threads. This setting is applicable only when replicationPolicy is set to 'classic'. Maximum accepted value for this setting is 16.",Makes sense > 10 indexers but < shouldn't hurt - *CLOUD bundle replication hosted on S3 buckets
+Clustered Search Heads,distsearch.conf,,[replicationSettings],sendRcvTimeout,60,180,s,100-whisper sets it to just 120,The maximum number of seconds to wait for the sending of a full replication to a peer.,"*CLOUD bundle replication hosted on S3 buckets
+Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results."
+Clustered Search Heads,distsearch.conf,,[replicationSettings],warnMaxBundleSizePerc,75,,integer,"tune so the percentage up to 800MB, set to 27% in Splunk Cloud if the bundle max was extended to 3GBset to 40% in Splunk Enterprise if the bundle max was still at the default of 2GB","The search head sends warnings when the knowledge bundle size exceeds this setting's
+ percentage of maxBundleSize.
+For example, if maxBundleSize is 2GB and this setting is 50, the search head sends
+ warnings when the bundle size exceeds 1GB (2GB 50%).
+Supported values range from 1 to 100.
+Default: 75",
+Clustered Search Heads,distsearch.conf,,[replicationWhitelist],,,refine_conf = (system|(apps/*)|users(/_reserved)?/*/*)/(default|local)/*.conf### refine_metadata = (system|(apps/*)|users(/_reserved)?/*/*)/metadata/*.meta### refine_lookups = (system|(apps/(?!pdfserver)*)|users(/_reserved)?/*/*)/(bin|lookups)/...### allow_search_scripts = searchscripts/...### allow_kvstore = kvstore_*/...###,string,,"* Peers use this setting to make sure knowledge bundles sent by search heads and managers do not contain alien files. * If this stanza is empty, the receiver accepts the bundle unless it contains files matching the rules specified in the [bundleEnforcerBlacklist] stanza. Hence, if both [bundleEnforcerWhitelist] and [bundleEnforcerBlacklist] are empty (which is the default), then the receiver accepts all bundles. * If this stanza is not empty, the receiver accepts the bundle only if it contains only files that match the rules specified here but not those in the [bundleEnforcerBlacklist] stanza. * All rules are regular expressions. * No default.",
+Clustered Search Heads,limits.conf,Misc: This section contains miscellaneous search settings,[search],enable_datamodel_meval,true,true,,"Searches against root-event datasets within data models iterate through many eval commands, which can be an expensive operation to complete during data model acceleration. You can improve the data model search efficiency by enabling multi-eval calculations for search in limits.conf.  If you disabled automatic rebuilds for any accelerated data model, you will need to rebuild that data model manually after enabling multi-eval calculations.",enable_datamodel_meval = <bool> * Enable concatenation of successively occurring evals into a single   comma-separated eval during the generation of data model searches. * default: true,
+Clustered Search Heads,limits.conf,,[auto_summarizer],cache_timeout,600,7200,integer,from 100-whisper cloud,"The minimum amount of time, in seconds, to cache auto summary details and search hash codes.  The cached entry expires randomly between 'cache_timeout' and 2 ""cache_timeout"" seconds.  Default: 600 (10 minutes)",See Jira 7.0 only?
+Clustered Search Heads,limits.conf,,[datamodel_service],datamodel_service_enabled,true,false,boolean,"from 100-whisper cloudthis setting is cloud only, do not use","datamodel_service_enabled = <boolean>
+Specifies whether the datamodel service is enabled for data model
+ acceleration.
+When set to 'true', users have the option of setting up data model
+ acceleration summaries that are faster than standard data model acceleration
+ summaries.
+These faster summaries are stored externally. Searches against them do not
+ support certain 'tstats' arguments.
+When set to 'false', only standard data model acceleration summaries are
+ available.
+Default: true",
+Clustered Search Heads,limits.conf,,[default],max_mem_usage_mb,,30000,,,,df
+Clustered Search Heads,limits.conf,,[join],subsearch_maxout,,50000000,,,,df
+Clustered Search Heads,limits.conf,,[join],subsearch_maxtime,,3600,,,,df
+Clustered Search Heads,limits.conf,,[join],subsearch_timeout,,3600,,,,df
+Clustered Search Heads,limits.conf,,[kv],indexed_kv_limit,200,400,integer,"Be careful with this setting, set it if you are seeing this issue: The search you ran exceeded the indexed field extraction limit='200' while it was extracting fields. If the search references a field that is not part of the set of indexed fields that the search annotates to the results that it generates, those results might be incomplete or incorrect. To ensure that all fields are extracted for search, set limits.conf: [kv] / indexed_kv_limit to a number that is higher than the number of fields contained in the files that you index.","indexed_kv_limit = &lt;integer&gt; * The maximum number of fields that can be extracted at index time from a data source. * This setting does not prevent a search from extracting indexed fields that the search needs and explicitly requests. * The Splunk platform imposes this limit for each index bucket. * Fields that can be extracted at index time include default fields, custom fields, and structured data header fields. * The summary fields 'host', 'index', 'source', 'sourcetype', 'eventtype', 'linecount', 'splunk_server', and 'splunk_server_group' do not count against this limit and are always returned. * Increase this setting if, for example, you have indexed data with a large number of columns and want to ensure that the field picker in the Splunk Web search page displays all fields. * This setting is different from the 'limit' setting in that it limits field extraction in different phases of data processing. Previously, the 'limit' setting handled both index-time and search-time field extraction limits, and to maintain backward compatibility, both settings work in concert. * The Splunk platform always uses the higher value for either setting to enforce index-time field extraction limits. * For example, if you set 'indexed_kv_limit' to ""500"" and 'limit' to ""200"", then the platform limits indexed-time field extractions to 500 and search-time field extractions to 200. * If you set 'indexed_kv_limit' to ""200"" and 'limit' to ""500"", then the platform limits both index-time and search-time field extraction to 500. * Set this value to 0 if you do not want to limit the number of fields that can be extracted at index time. * Default: 200",
+Clustered Search Heads,limits.conf,,[kv],limit,100,200,integer,,limit = <integer> * The maximum number of fields that an automatic key-value field extraction (auto kv) can generate at search time. * Increase this setting if you want to ensure that the field picker in the Splunk Web search page displays all fields. * Set this value to 0 if you do not want to limit the number of fields that can be extracted at search time. * Default: 100,
+Clustered Search Heads,limits.conf,,[lookup],max_memtable_bytes,26214400,100000000,integer,from 100-whisper cloud - Review against bundle data,"Maximum size, in bytes, of static lookup file to use an in-memory index for.
+Lookup files with size above max_memtable_bytes will be indexed on disk
+NOTE: This setting also applies to lookup files loaded through the lookup()
+ eval function *which runs at search time*. The same function if called through
+ the ingest-eval functionality, uses ingest_max_memtable_bytes instead.
+CAUTION: Setting this to a large value results in loading large lookup
+ files in memory. This leads to a bigger process memory footprint.
+Default: 26214400 (25MB)",Indexers have excess memory. Indexing lookups can impact performance.
+Clustered Search Heads,limits.conf,,[mvcombine],max_mem_usage_mb,,15500,,,,df
+Clustered Search Heads,limits.conf,,[mvexpand],max_mem_usage_mb,,15500,,,,df
+Clustered Search Heads,limits.conf,,[parallelreduce],autoAppliedPercentage,0,90,integer,from 100-whisper cloud. Tune on SH versions 8.1 or above,"autoAppliedPercentage = <non-negative integer>
+The percentage of search queries to be selected to run as prjob, should be
+ in range of [0, 100].
+If 100 is specified, all search queries will be wrapped as 'prjob'; if 0 is
+ specified, no search query will be wrapped.
+Default: 0",
+Clustered Search Heads,limits.conf,,[parallelreduce],enablePreview,true,false,boolean,from 100-whisper cloud. Tune on SH versions 8.1 or above,"When set to 'true', parallel reduce search jobs generate preview data,
+ meaning that partial search results are returned as the search job runs.
+When set to 'false', parallel reduce search jobs do not generate preview data.
+ They display only the final results of a parallel reduce search job when the
+ search job completes.
+Default: true",
+Clustered Search Heads,limits.conf,,[realtime],indexed_realtime_update_interval,30,10,integer,from 100-whisper-searchhead,"When you run an indexed realtime search, the list of searchable buckets
+ needs to be updated. If the Splunk software is installed on a cluster,
+ the list of allowed primary buckets is refreshed. If not installed on
+ a cluster, the list of buckets, including any new hot buckets are refreshed.
+ This setting controls the interval for the refresh. The setting must be
+ less than the ""indexed_realtime_disk_sync_delay"" setting. If your realtime
+ buckets transition from new to warm in less time than the value specified
+ for the ""indexed_realtime_update_interval"" setting, data will be skipped
+ by the realtime search in a clustered environment.
+Precedence: Indexers
+Default: 30",related to indexed realtime - tested in progressive
+Clustered Search Heads,limits.conf,,[realtime],local_receive_timeout,5,60,integer,from 100-whisper cloud,"Receive timeout, in seconds, for an indexer's search process when
+ connecting to that indexer's splunkd.
+Default: 5",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,limits.conf,,[rex],depth_limit,,100000,,,,df
+Clustered Search Heads,limits.conf,,[rex],match_limit,,500000,,,,df
+Clustered Search Heads,limits.conf,,[scheduler],action_execution_threads,2,10,integer,,"Number of threads to use to execute alert actions, change this number if your
+ alert actions take a long time to execute.
+This number is capped at 10.",
+Clustered Search Heads,limits.conf,,[scheduler],actions_queue_size,100,500,integer,,"The number of alert notifications to queue before the scheduler starts blocking, set to 0 for infinite size.",
+Clustered Search Heads,limits.conf,,[scheduler],alerts_max_history,7d,5m,,from 100-whisper-searchhead,"alerts_max_history = <integer>[s|m|h|d]
+Maximum time to search in the past for previously triggered alerts.
+splunkd uses this property to populate the Activity -> Triggered Alerts
+ page at startup.
+Values greater than the default may cause slowdown.
+Relevant units are: s, sec, second, secs, seconds, m, min, minute, mins,
+ minutes, h, hr, hour, hrs, hours, d, day, days.
+Default: 7d",
+Clustered Search Heads,limits.conf,,[scheduler],alerts_scoping,splunk_server,all,,from 100-whisper-searchhead,"alerts_scoping = host|splunk_server|all
+Determines the scoping to use on the search to populate the triggered alerts
+ page. Choosing splunk_server will result in the search query
+ using splunk_server=local, host will result in the search query using
+ host=<search-head-host-name>, and all will have no scoping added to the
+ search query.
+Default: splunk_server","Determines the scoping to use on the search to populate the triggered alerts
+Determines the scoping to use on the search to populate the triggered alerts"
+Clustered Search Heads,limits.conf,,[scheduler],async_saved_search_fetch,false,true,boolean,,Enables a separate thread that will fetch scheduled or auto-summarized saved   searches asynchronously. * Do not change this setting unless instructed to do so by Splunk support.,
+Clustered Search Heads,limits.conf,,[scheduler],async_saved_search_interval,30,120,integer,,"The interval, in seconds, that scheduled or auto-summarized saved searches   will be fetched asynchronously. * Has no effect if async_saved_search_fetch is set to false.",
+Clustered Search Heads,limits.conf,,[scheduler],auto_summary_perc,50,30,integer,from premiumsupport_configs,"auto_summary_perc = <integer>
+The maximum number of concurrent searches to be allocated for auto
+ summarization, as a percentage of the concurrent searches that the scheduler
+ can run.
+Auto summary searches include:
+ Searches which generate the data for the Report Acceleration feature.
+ Searches which generate the data for Data Model acceleration.
+NOTE: user scheduled searches take precedence over auto summary searches.
+Default: 50",This setting will be customer managed in future version of splunk
+Clustered Search Heads,limits.conf,,[scheduler],base_max_searches,6,,integer,,"A constant to add to the maximum number of searches, computed as a multiplier of the CPUs.",
+Clustered Search Heads,limits.conf,,[scheduler],max_mem_usage_mb,200,500,integer,(implement this value after Search Heads receive 192gb memory),"max_mem_usage_mb = <non-negative integer>
+Provides a limitation to the amount of RAM, in megabytes (MB), a batch of
+ events or results will use in the memory of a search process.
+Operates on an estimation of memory use which is not exact. The estimation can
+ deviate by an order of magnitude or so to both the smaller and larger sides.
+The limitation is applied in an unusual way; if the number of results or
+ events exceeds maxresults, AND the estimated memory exceeds this limit, the
+ data is spilled to disk.
+This means, as a general rule, lower limits will cause a search to use more
+ disk I/O and less RAM, and be somewhat slower, but should cause the same
+ results to typically come out of the search in the end.
+This limit is applied currently to a number, but not all search processors.
+ However, more will likely be added as it proves necessary.
+The number is thus effectively a ceiling on batch size for many components of
+ search for all searches run on this system.
+When set to ""0"": Specifies that the size is unbounded. Searches might be
+ allowed to grow to arbitrary sizes.
+NOTE:
+ The mvexpand command uses the 'max_mem_usage_mb' value in a different way.
+ The mvexpand command has no combined logic with 'maxresults'.
+ If the memory limit is exceeded, output is truncated, not spilled to disk.
+ The stats command processor uses the 'max_mem_usage_mb' value in the
+ following way.
+ If the estimated memory usage exceeds the specified limit, the results are
+ spilled to disk.
+ If 0 is specified, the results are spilled to the disk when the number of
+ results exceed the 'maxresultrows' setting.
+ The eventstats command processor uses the 'max_mem_usage_mb' value in the
+ following way.
+ Both the 'max_mem_usage_mb' and the 'maxresultrows' settings are used to
+ determine the maximum number of results to return. If the limit for one
+ setting is reached, the eventstats processor continues to return results
+ until the limit for the other setting is reached. When both limits are
+ reached, the eventstats command processor stops adding the requested
+ fields to the search results.
+ If you set 'max_mem_usage_mb' to 0, the eventstats command processor uses
+ only the 'maxresultrows' setting as the threshold. When the number of
+ results exceeds the 'maxresultrows' setting, the eventstats command
+ processor stops adding the requested fields to the search results.
+Default: 200",
+Clustered Search Heads,limits.conf,,[scheduler],max_per_result_alerts,500,500,integer,from alert_webhook_custom,"max_per_result_alerts = <integer>
+Maximum number of alerts to trigger for each saved search instance (or
+ real-time results preview for RT alerts)
+Only applies in non-digest mode alerting. Use 0 to disable this limit
+Default: 500",
+Clustered Search Heads,limits.conf,,[scheduler],max_per_result_alerts_time,300,1800,integer,from alert_webhook_custom,"max_per_result_alerts_time = <integer>
+Maximum amount of time, in seconds, to spend triggering alerts for each
+ saved search instance (or real-time results preview for RT alerts)
+Only applies in non-digest mode alerting. Use 0 to disable this limit.
+Default: 300 (5 minutes)",
+Clustered Search Heads,limits.conf,,[scheduler],max_searches_perc,50%,,%,Use Insights App for Splunk and figure out how to tune this setting,"The maximum number of searches the scheduler can run, as a percentage of the maximum number of concurrent searches, see [search] max_searches_per_cpu for how to set the system wide maximum number of searches",This setting will be customer managed in future version of splunk
+Clustered Search Heads,limits.conf,,[scheduler],max_searches_perc.0,none,60,%,,"max_searches_perc.<n> = <integer>
+max_searches_perc.<n>.when = <cron string>
+The same as max_searches_perc but the value is applied only when the cron
+ string matches the current time. This allows 'max_searches_perc' to have
+ different values at different times of day, week, month, etc.
+There may be any number of non-negative <n> that progress from least specific
+ to most specific with increasing <n>.
+The scheduler looks in reverse-<n> order looking for the first match.
+If either these settings aren't provided at all or no ""when"" matches the
+ current time, the value falls back to the non-<n> value of 'max_searches_perc'.",
+Clustered Search Heads,limits.conf,,[scheduler],max_searches_perc.0.when,none,* 1-11 * * *,cron,Find out timezone of sh. If UTC this should be ok.,"Increase the value between 8PM-11PM EST & 12AM-6AM EST every day The same as max_searches_perc but the value is applied only when the cron
+ string matches the current time. This allows 'max_searches_perc' to have
+ different values at different times of day, week, month, etc.
+There may be any number of non-negative <n> that progress from least specific
+ to most specific with increasing <n>.
+The scheduler looks in reverse-<n> order looking for the first match.
+If either these settings aren't provided at all or no ""when"" matches the
+ current time, the value falls back to the non-<n> value of 'max_searches_perc'.",
+Clustered Search Heads,limits.conf,,[scheduler],max_searches_perc.1,none,70,%,,Increase the value,
+Clustered Search Heads,limits.conf,,[scheduler],max_searches_perc.1.when,none,"* 12-23,0 * * 0,6",cron,Find out timezone of sh. If UTC this should be ok.,Increase the value ALL Day Sat & Sun,
+Clustered Search Heads,limits.conf,,[search],allow_batch_mode,,1,,,,
+Clustered Search Heads,limits.conf,,[search],allow_inexact_metasearch,,0,,,,
+Clustered Search Heads,limits.conf,,[lookup],max_matches,,1000,,,,df
+Clustered Search Heads,limits.conf,,[search],base_max_searches,,10,,,,df
+Clustered Search Heads,limits.conf,,[search],batch_search_max_pipeline,1,2,integer,"Tune only if the instance has enough CPU and memory available , also make sure you have enough IOPS ","batch_search_max_pipeline = <integer>
+This setting controls the number of search pipelines that are launched on the
+ indexer during batch search.
+Increasing the number of search pipelines can improve search performance.
+ However, this can also result in increased thread and memory usage.
+This setting applies only to searches that run on remote indexers.
+The value for this setting should be >=1. When this setting is >1 on the
+ search head, the setting is applied to all remote indexers. Otherwise, remote
+ indexers use their local 'batch_search_max_pipeline' setting.
+You can override this setting on a per-search basis by appending
+ '|noop batch_search_max_pipeline=<integer>' to the search string. The
+ <integer> should be >1.
+Default: 1",
+Clustered Search Heads,limits.conf,,[search],default_allow_queue,,1,,,,
+Clustered Search Heads,limits.conf,,[search],dispatch_dir_warning_size,5000,4000,integer,from 100-whisper-searchhead,Specifies the number of jobs in the dispatch directory that triggers when to issue a bulletin message. The message warns that performance might be impacted.  Default: 5000,
+Clustered Search Heads,limits.conf,,[search],dispatch_dir_warning_size,5000,7000,integer,,,df
+Clustered Search Heads,limits.conf,,[search],enable_cumulative_quota,,0,,,,
+Clustered Search Heads,limits.conf,,[search],enable_history,,1,,,,
+Clustered Search Heads,limits.conf,,[search],enable_memory_tracker,false,true,boolean,We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers,"Specifies if the memory tracker is enabled. When set to ""false"" (disabled): The search is not terminated even if the search exceeds the memory limit. When set to ""true"": Enables the memory tracker. Must be set to ""true"" to enable the ""search_process_memory_usage_threshold"" setting or the ""search_process_memory_usage_percentage_threshold"" setting.",We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers
+Clustered Search Heads,limits.conf,,[search],fetch_remote_search_log,disabledSavedSearches,disabled,,,"This disabled retrieving the search logs from the indexers, in Inspect Job these are under:
+Search Job Properties --> Additional info",
+Clustered Search Heads,limits.conf,,[search],force_saved_search_dispatch_as_user,,0,,,,
+Clustered Search Heads,limits.conf,,[search],load_remote_bundles,,0,,,,
+Clustered Search Heads,limits.conf,,[search],log_search_messages,false,,boolean,"Logs to index=_internal sourcetype=splunk_search_messages, see if this data has any value otherwise disable it","log_search_messages = <boolean>
+Specifies whether splunkd promotes user-facing search messages
+ from $SPLUNK_HOME/var/run/splunk/dispatch/<sid>/info.csv to
+ $SPLUNK_HOME/var/log/splunk/search_messages.log.
+Splunkd does not promote messages with a severity that is ranked
+ lower than the value of search_messages_severity.
+Splunkd promotes messages only after search has been audited.
+The search_messages.log file follows this format when it logs messages:
+ orig_component=""..."" sid=""..."" peer_name=""..."" message=...
+Default: false",
+Clustered Search Heads,limits.conf,,[search],max_rawsize_perchunk,100,,mb,look for sub-second order messages,"The maximum raw size, in bytes, of results for each call to search (in dispatch).
+When set to ""0"": Specifies that there is no size limit.
+This setting is not affected by the ""chunk_multiplier"" setting.
+Default: 100000000 (100MB)","According to Chris Pride, this class of settings is set very conservatively, assuming relatively low physical memory (<12GB) on indexers. This is costly in search performance. On machines where we have a lot of memory, we should increase these settings to take advantage of that and boost search performance across the board."
+Clustered Search Heads,limits.conf,,[lookup],max_memtable_bytes,,3000000000,,,,df
+Clustered Search Heads,limits.conf,,[search],max_searches_per_cpu,1,2,integer,If number of cpu's in your machine is 14 then total system wide number of # concurrent searches this machine can handle is 20. # which is base_max_searches + max_searches_per_cpu x num_cpus = 6 + 14 x 1 = 20,"The maximum number of concurrent historical searches for each CPU.
+ The system-wide limit of historical searches is computed as:
+ max_hist_searches = max_searches_per_cpu x number_of_cpus + base_max_searches
+NOTE: The maximum number of real-time searches is computed as:
+ max_rt_searches = max_rt_search_multiplier x max_hist_searches",
+Clustered Search Heads,limits.conf,,[search],min_settings_period,,600,,"As DEFAULT_AUTO_CANCEL is hard-coded as 30 secs, any situation where Splunk Web UI(browser + LB area) can not send the request for about 30 secs can incur the current symptom. If the same issue happens frequently, the following UNDOCUMENTEED attribute can be increased to 600 to make the situation easy.",UNDOCUMENTEED,
+Clustered Search Heads,limits.conf,,[search],record_search_telemetry,true,false,boolean,from 100-whisper cloud,"Controls whether to record search related metrics in search_telemetry.json
+ in the dispatch dir. It also indexes this file to the _introspection index.
+NOTE: Do not change this setting unless instructed to do so by Splunk Support.
+Default: true",
+Clustered Search Heads,limits.conf,,[search],remote_timeline,,1,,,,
+Clustered Search Heads,limits.conf,,[search],remote_timeline_connection_timeout,5,10,integer,,"remote_timeline_connection_timeout = <integer> * Connection timeout, in seconds, for fetching events processed by remote peer timeliner. * Default: 5.",
+Clustered Search Heads,limits.conf,,[search],remote_timeline_fetchall,true,false,boolean,,"remote_timeline_fetchall = [0|1] When set to 1 (true): Splunk fetches all events accessible through the timeline from the remote peers before the job is considered done. Fetching of all events might delay the finalization of some searches, typically those running in verbose mode from the main Search view in Splunk Web. This potential performance impact can be mitigated by lowering the max_events_per_bucket settings. When set to 0 (false): The search peers might not ship all matching events to the search head, particularly if there is a very large number of them. Skipping the complete fetching of events back to the search head will result in prompt search finalization. Some events may not be available to browse in the UI. This setting does NOT affect the accuracy of search results computed by reporting searches.",
+Clustered Search Heads,limits.conf,,[search],remote_timeline_receive_timeout,10,20,integer,,"remote_timeline_receive_timeout = <integer> * Receive timeout, in seconds, for fetching events processed by remote peer timeliner. * Default: 10",
+Clustered Search Heads,limits.conf,,[search],remote_timeline_send_timeout,10,20,integer,,"remote_timeline_send_timeout = <integer> * Send timeout, in seconds, for fetching events processed by remote peer timeliner. * Default: 10",
+Clustered Search Heads,limits.conf,,[search],remote_ttl,600,300,s,,"remote_ttl = <integer> * How long, in seconds, the search artifacts from searches run in behalf of a search head should be stored on the indexer after completion. * Default: 600 (10 minutes)",
+Clustered Search Heads,limits.conf,,[search],replication_period_sec,60,120,s,"Down side, when Knowledge Objects get updated, it will take 10 minutes for a new bundle to get pushed to the 
+indexers
+study this setting first before applying, perhaps start with 120 etc..
+
+NO CHANGE unless we have a problem","The minimum amount of time, in seconds, between two successive bundle replications.",
+Clustered Search Heads,limits.conf,,[search],result_queue_max_size,100,20000000,integer,from premiumsupport_configs,"result_queue_max_size = <integer>
+The maximum size, in MB, that will be kept from peers for processing on
+ the search head before throttling the rate that data is accepted.
+The ""results_queue_min_size"" value takes precedence. The number of search
+ results chunks specified by ""results_queue_min_size"" will always be
+ retained in the queue even if the combined size in MB exceeds the
+ ""result_queue_max_size"" value.
+Default: 100",
+Clustered Search Heads,limits.conf,,[search],results_queue_read_timeout_sec,900,increase only if absolutely needed,integer,,"The amount of time, in seconds, to wait when the search executing on the search head has not received new results from any of the peers. Cannot be less than the 'receiveTimeout' setting in the distsearch.conf file.",
+Clustered Search Heads,limits.conf,,[search],search_messages_severity,WARN,,string,Set to Debug for experimentations only,"search_messages_severity = <string> * When 'log_search_messages = true', this setting specifies the lowest severity of message that splunkd logs to search_messages.log. The processor ignores all messages with a lower severity. * Possible values in ascending order: DEBUG, INFO, WARN, ERROR * For example, when 'search_messages_severity = WARN', splunkd logs only messages with 'WARN' and 'ERROR' severities. * Default: WARN",
+Clustered Search Heads,limits.conf,,[search],search_process_memory_usage_percentage_threshold,25,,%,first use Insights App for Splunk SH-04 to see if there are searches consuming above 35% of the total physical memory and if they are critical for the business.Consider decreasing this value.tune based on sh04 and memory config on the SHC,"To use this setting, the ""enable_memory_tracker"" setting must be set to ""true"". Specifies the percent of the total memory that the search process is entitled to consume.
+Search processes that violate the threshold percentage are terminated. If the value is set to zero, then splunk search processes are allowed to grow unbounded in terms of percentage memory usage. Any setting larger than 100 or less than 0 is discarded and the default value is used.",We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers
+Clustered Search Heads,limits.conf,,[search],search_process_memory_usage_threshold,4000,0,mb,disable memory usage,"To use this setting, the ""enable_memory_tracker"" setting must be set to ""true"".
+Specifies the maximum memory, in MB, that the search process can consume in RAM. Search processes that violate the threshold are terminated.
+If the value is set to 0, then search processes are allowed to grow unbounded in terms of in memory usage.",We don't want searches that present memory leaks or unbounded memory growth to bring down search-heads or indexers. 0 per Octavio. Will use WLM to manage individual searches
+Clustered Search Heads,limits.conf,,[search],timeline_events_preview,,0,,,,
+Clustered Search Heads,limits.conf,,[search],track_indextime_range,,1,,,,
+Clustered Search Heads,limits.conf,,[search],truncate_report,,0,,,,
+Clustered Search Heads,limits.conf,,[search],ttl,600,300,s,,"How long, in seconds, the search artifacts should be stored on disk after the job completes. The ttl is computed relative to the modtime of the status.csv file of the job, if the file exists, or the modtime of the artifact directory for the search job. If a job is being actively viewed in the Splunk UI then the modtime of the status.csv file is constantly updated such that the reaper does not remove the job from underneath.",
+Clustered Search Heads,limits.conf,,[search],unified_search,,0,,,,df
+Clustered Search Heads,limits.conf,,[search],use_bloomfilter,,1,,,,df
+Clustered Search Heads,limits.conf,,[search],write_multifile_results_out,,1,,,,
+Clustered Search Heads,limits.conf,,[search_info],infocsv_log_level,INFO,ERROR,,from 100-whisper-searchhead,"infocsv_log_level = [DEBUG|INFO|WARN|ERROR]
+Limits the messages which are added to the info.csv file to the stated
+ level and above.
+For example, if ""infocsv_log_level"" is WARN, messages of type WARN
+ and higher will be added to the info.csv file.
+Default: INFO",
+Clustered Search Heads,limits.conf,,[search_info],show_warn_on_filtered_indexes,false,true,boolean,from 100-whisper-searchhead,"show_warn_on_filtered_indexes = <boolean>
+Log warnings if search returns no results because user has
+ no permissions to search on queried indexes.
+Default: false",
+Clustered Search Heads,limits.conf,,[searchresults],maxresultrows,,50000000,,,,
+Clustered Search Heads,limits.conf,,[spath],extraction_cutoff,,50000000,,,,# Number of characters to read from an XML or JSON event when # # # auto extracting.
+Clustered Search Heads,limits.conf,,[stats],list_maxsize,,1000,,,,df
+Clustered Search Heads,limits.conf,,[stats],use_stats_v2,,f,,,,df
+Clustered Search Heads,limits.conf,,[stats|sistats],max_mem_usage_mb,200,1000,integer,from premiumsupport_configs,do not use for now,
+Clustered Search Heads,limits.conf,,[stats|sistats],maxmem_check_freq,200,1000,,from premiumsupport_configs,do not use for now,
+Clustered Search Heads,limits.conf,,[subsearch],maxout,,50000000,,# maximum number of results to return from a subsearch,,df
+Clustered Search Heads,limits.conf,,[subsearch],maxtime,,3600,,# maximum number of seconds to run a subsearch before finalizing,,df
+Clustered Search Heads,limits.conf,,[subsearch],subsearch_artifacts_delete_policy,ttl,immediate,,,"subsearch_artifacts_delete_policy = [immediate|ttl] * How subsearch artifacts are deleted after a sub search completes. * Set to `immediate` to have subsearch artifacts remove immediately after a subsearch completes. * Set to 'ttl' to have subsearch artifacts delete after the time-to-live of the subsearch has been reached. * For example, you could use '|noop subsearch_artifacts_delete_policy = [immediate|ttl]' to overwrite the setting for a particular search. * Default: ttl",
+Clustered Search Heads,limits.conf,,[subsearch],ttl,300,,s,# time to cache a given subsearch's results,"The time to live (ttl), in seconds, of the cache for the results of a given subsearch.Do not set this below 120 seconds.See the definition in the [search] stanza under the TTL section for more details on how the ttl is computed.",df
+Clustered Search Heads,limits.conf,,[system_checks],installed_files_integrity,enabled,log_only,,from 100-whisper-searchhead,"installed_files_integrity = enabled | log_only | disabled
+Enables/disables automatic verification on every startup that all the
+ files that were installed with the running Splunk version are still the
+ files that should be present.
+ Effectively this finds cases where files were removed or changed that
+ should not be removed or changed, whether by accident or intent.
+ The source of truth for the files that should be present is the manifest
+ file in the $SPLUNK_HOME directory that comes with the release, so if
+ this file is removed or altered, the check cannot work correctly.
+ Reading of all the files provided with the install has some I/O cost,
+ though it is paid out over many seconds and should not be severe.
+When ""enabled"", detected problems will cause a message to be posted to
+ the bulletin board (system UI status message).
+When ""enabled"" or ""log_only"", detected problems will cause details to be
+ written out to the splunkd.log file.
+When ""disabled"", no check will be attempted or reported.
+Default: enabled",
+Clustered Search Heads,limits.conf,,[system_checks],installed_files_integrity,,log_only,,,,df
+Clustered Search Heads,limits.conf,,[viewstates],ttl,86400,3600,s,,"Controls the age, in seconds, at which a viewstate is considered eligible for reaping.",
+Clustered Search Heads,savedsearches.conf,,[default],allow_skew,0,5m,,We want to promote the use of schedule windows and time skew to spread out scheduler workload as much as possible out of the box.,"allow_skew = <percentage>|<duration-specifier>
+Lets the search scheduler randomly distribute scheduled searches more evenly
+ over the scheduled time periods.
+When set to non-zero for searches with the following cron_schedule values,
+ the search scheduler randomly ""skews"" the second, minute, and hour that the
+ search actually runs on:
+ Every minute.
+ */M Every M minutes (M > 0).
+ 0 Every hour.
+ 0 */H Every H hours (H > 0).
+ 0 0 Every day (at midnight).
+When set to non-zero for a search that has any other 'cron_schedule' setting,
+ the search scheduler can only randomly skew the second that the search runs
+ on.
+The amount of skew for a specific search remains constant between edits of
+ the search.
+To specify a percentage: Use an integer value followed by the percent '%'
+ symbol. This specifies the maximum amount of time to skew, as a percentage of
+ the scheduled search period.
+To specify a duration: Use <integer><timescale> to specify a maximum duration.
+ Supported units are:
+ m, min, minute, mins, minutes
+ h, hr, hour, hrs, hours
+ d, day, days
+ The <timescale> is required and can be omitted only when <integer> is 0.
+Skew examples:
+ 100% (For an every-5-minute search = 5 minutes maximum)
+ 50% (For an every-1-minute search = 30 seconds maximum)
+ 5m = 5 minutes maximum
+ 1h = 1 hour maximum
+A value of 0 does not allow a skew to occur.
+Default: 0",We want to promote the use of schedule windows and time skew to spread out scheduler workload as much as possible out of the box.
+Clustered Search Heads,savedsearches.conf,,[default],auto_summarize.max_concurrent,1,,integer,,"auto_summarize.max_concurrent = <unsigned integer>
+The maximum number of concurrent instances of this auto summarizing search,
+ that the scheduler is allowed to run.",
+Clustered Search Heads,savedsearches.conf,,[default],dispatch.ttl,2p,1p,,"Need to override all jobs < 5 minute interval jobs since 10m will extend them and set their TTL back to 2p
+Need to also find all jobs embedded in Dashboards and set their TTL back to 2p","Indicates the time to live (ttl), in seconds, for the artifacts of the scheduled search, if no actions are triggered.
+If the integer is followed by the letter 'p', the ttl is calculated as a multiple of the execution period for the scheduled search. For example, if the search is scheduled to run hourly and ttl is set to 2p, the ttl of the artifacts is set to 2 hours.
+If an action is triggered, the ttl is changed to the ttl for the action. If multiple actions are triggered, the action with the largest ttl is applied to the artifacts. To set the ttl for an action, refer to the alert_actions.conf.spec file.
+For more information on the ttl for a search, see the limits.conf.spec file [search] stanza ttl setting.
+Default: 2 times the period of the scheduled search",
+Clustered Search Heads,savedsearches.conf,,[default],schedule_window,0,auto,,- Splunk internal team to review,"When 'schedule_window' is non-zero, it indicates to the scheduler that the search does not require a precise start time. This gives the scheduler
+ greater flexibility when it prioritizes searches. When 'schedule_window' is set to an integer greater than 0, it specifies the ""window"" of time (in minutes) that a search may start within.The 'schedule_window' must be shorter than the period of the search.Schedule windows are not recommended for searches that run every minute.When set to 0, there is no schedule window. The scheduler starts the search
+ as close to its scheduled time as possible.When set to ""auto,"" the scheduler calculates the 'schedule_window' value automatically. For more information about this calculation, see the search scheduler documentation.A non-zero 'schedule_window' is mutually exclusive with a non-default 'schedule_priority'. See 'schedule_priority' for details.
+Default: 0 for searches that are owned by users with the 'edit_search_schedule_window' capability. For these searches, this value can be changed.
+Default: auto for searches that are owned by users that do not have the 'edit_search_window' capability. For these searches, this setting cannot be changed.",We want to promote the use of schedule windows and time skew to spread out scheduler workload as much as possible out of the box.
+Clustered Search Heads,server.conf,,[general],sessionTimeout,1 hour,15m,,"we need to think about this one
+
+- consider matching this value to ui_inactivity_timeout in web.conf","he amount of time before a user session times out, expressed as a
+ search-like time range.
+Examples include ""24h"" (24 hours), ""3d"" (3 days),
+ ""7200s"" (7200 seconds, or two hours)",
+Clustered Search Heads,server.conf,,[general],site,empty,site0,,,use with multi-site,
+Clustered Search Heads,server.conf,,[general],useHTTPClientCompression,true,true,boolean,from 100-whisper cloud,"useHTTPClientCompression = true|false|on-http|on-https
+Specifies whether gzip compression should be supported when splunkd acts
+ as a client (including distributed searches). Note: For the content to
+ be compressed, the HTTP server that the client is connecting to should
+ also support compression.
+If the connection is being made over https and
+ ""useClientSSLCompression=true"", then setting ""useHTTPClientCompression=true""
+ results in double compression work without much compression gain. To
+ mitigate this, set this value to ""on-http"" (or to ""true"", and
+ useClientSSLCompression to ""false"").
+Default: true","As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search"
+Clustered Search Heads,server.conf,,[httpServer],busyKeepAliveIdleTimeout,12,180,integer,"busyKeepAliveIdleTimeout must be higher than ELB idle timeout for some of our larger stacks. This is because the ELB will open connections in advance of data being sent. Splunk then tears down the connection after its timeout, and ELB tries to send data to a terminated connection and gets a 504 error. Both settings are at 600 so they are reducing the ELB idle timeout to 60 seconds. Seen where they have made this changes on other large stacks successfully.","How long, in seconds, that the Splunkd HTTP server allows a keep-alive connection to remain idle while in a busy state before forcibly disconnecting it.  Use caution when configuring this setting as a value that is too large can result in file descriptor exhaustion due to idling connections.  If this number is less than 12, it is set to 12.",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Clustered Search Heads,server.conf,,[httpServer],dedicatedIoThreads,auto,,,Set to # of SH in SHC,"dedicatedIoThreads = [<integer>|auto]
+The number of threads that splunkd dedicates to handling HTTP I/O requests.
+This setting controls thread usage for all HTTP requests through splunkd,
+ including SSL encryption.
+If you set this to ""0"", splunkd uses the same thread that accepted the initial
+ connection over TCP to perform the HTTP I/O.
+If you set this to a number other than ""0"", splunkd creates that number of
+ threads to handle HTTP I/O.
+If you set this to ""auto"", splunkd uses the number of CPU cores on the
+ machine to determine the number of threads available for HTTP I/O as
+ follows:
+ Number of CPU cores available | 'dedicatedIoThreads'
+ 0 - 16 | 0
+ 17 - 48 | 2
+ 49 - 128 | 4
+ 129 - 192 | 6
+ 193 and higher | 8
+
+You do not usually need to change this setting.
+Default: auto",
+Clustered Search Heads,server.conf,,[httpServer],keepAliveIdleTimeout,7200,180,integer,This was set artificially high due to a glass tables timeouts problem,"How long, in seconds, that the Splunkd HTTP server allows a keep-alive connection to remain idle before forcibly disconnecting it. If this number is less than 7200, it is set to 7200.
+Default: 7200 (120 minutes)",
+Clustered Search Heads,server.conf,,[httpServer],maxSockets,0,3145728000,integer,from 100-whisper-searchhead,"maxSockets = <integer>
+The number of simultaneous HTTP connections that Splunk Enterprise accepts
+ simultaneously. You can limit this number to constrain resource usage.
+If set to ""0"", Splunk Enterprise automatically sets maxSockets to
+ one third of the maximum allowable open files on the host.
+If this number is less than 50, it is set to 50.
+If this number is greater than 400000, it is set to 400000.
+If set to a negative number, no limit is enforced.
+Default: 0",
+Clustered Search Heads,server.conf,,[httpServer],maxThreads,0,10240,integer,from 100-whisper-searchhead,"maxThreads = <integer>
+The number of threads that can be used by active HTTP transactions.
+ You can limit this number to constrain resource usage.
+If set to 0, Splunk Enterprise automatically sets the limit to
+ one third of the maximum allowable threads on the host.
+If this number is less than 20, it is set to 20. If this number is
+ greater than 150000, it is set to 150000.
+If maxSockets is not negative and maxThreads is greater than maxSockets, then
+ Splunk Enterprise sets maxThreads to be equal to maxSockets.
+If set to a negative number, no limit is enforced.
+Default: 0",
+Clustered Search Heads,server.conf,,[httpServer],max_content_length,2147483648,3221225472,integer,from 100-whisper-searchhead,"max_content_length = <integer>
+Maximum content length, in bytes.
+HTTP requests over the size specified are rejected.
+This setting exists to avoid allocating an unreasonable amount
+ of memory from web requests.
+In environments where indexers have enormous amounts of RAM, this
+ number can be reasonably increased to handle large quantities of
+ bundle data.
+Default: 2147483648 (2GB)",Increased to match distsearch.conf / maxBundleSize on the search-head side
+Clustered Search Heads,server.conf,,[httpServer],streamInWriteTimeout,5,30,integer,,"streamInWriteTimeout = <positive number>
+The timeout, in seconds, for uploading data to the http server.
+When uploading data to http server, if the http server is unable
+ to write data to the receiver for the specified value, the operation
+ aborts.
+Default: 5",
+Clustered Search Heads,server.conf,,[introspection:distributed-indexes],disabled,true,false,boolean,"do not use on-prem, check why cloud use it","disabled = <boolean>
+Whether or not collection of introspection information on distributed
+ indexes is disabled.
+If set to ""false"", information on distributed indexes is collected.
+This provides additional insight into index usage at the cost of greater
+ resource consumption.
+Default: true",
+Clustered Search Heads,server.conf,,[kvstore],oplogSize,1000,20000,integer,"In case of large collections in KVStore on some members of SHC possible to get stale members, see https://docs.splunk.com/Documentation/Splunk/6.5.1/Admin/ResyncKVstore#Prevent_stale_members_by_increasing_operations_log_size","The size of the replication operation log, in megabytes, for environments
+ with search head clustering or search head pooling.
+ In a standalone environment, 20% of this size is used.
+After the KV Store has created the oplog for the first time, changing this
+ setting does NOT affect the size of the oplog. A full backup and restart
+ of the KV Store is required.
+Do not change this setting without first consulting with Splunk Support.
+Default: 1000 (1GB)","In case of large collections in KVStore on some members of SHC possible to get stale members, see https://docs.splunk.com/Documentation/Splunk/6.5.1/Admin/ResyncKVstore#Prevent_stale_members_by_increasing_operations_log_size"
+Clustered Search Heads,server.conf,,[license],connection_timeout,30,60,s,,"Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.",
+Clustered Search Heads,server.conf,,[shclustering],captain_is_adhoc_searchhead,false,true,boolean,"Applies only to SHCs with > 5 members. For large scale deployments in terms of number of search heads, its quite possible that the captain has a higher footprint in terms of memory and CPU. So its best to keep the captain away from scheduler workload.","This setting prohibits the captain from running scheduled jobs. The captain is dedicated to controlling the activities of the cluster, but can also run adhoc search jobs from clients.","Applies only to SHCs with > 5 members. For large scale deployments in terms of number of search heads, its quite possible that the captain has a higher footprint in terms of memory and CPU. So its best to keep the captain away from scheduler workload."
+Clustered Search Heads,server.conf,,[shclustering],cxn_timeout,60,120,s,Applies only to poor network connection like multi-site search head clusters or unstable network.,"Lowlevel timeout, in seconds, for establishing connection between cluster members.",Applies only to poor network connection like multi-site search head clusters or unstable network.
+Clustered Search Heads,server.conf,,[shclustering],cxn_timeout_raft,2,4,s,"Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased.","Low-level timeout, in seconds, for establishing connection between search
+head cluster members for the raft protocol.","Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased."
+Clustered Search Heads,server.conf,,[shclustering],election_timeout_2_hb_ratio,12,,integer,,"DO NOT Use this setting, we added here just as an FYI The ratio between the election timeout, set in election_timeout_ms, and the raft heartbeat period.
+Raft heartbeat period = election_timeout_ms / election_timeout_2_hb_ratio A typical ratio between 5 - 20 is desirable. Default is 12 to keep the raft heartbeat period at 5s, i.e election_timeout_ms(60000ms) / 12
+This ratio determines the number of heartbeat attempts that would fail before a member starts to timeout and tries to become the captain.",
+Clustered Search Heads,server.conf,,[shclustering],election_timeout_ms,60000 ms,120000,ms,"Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased.","The amount of time, in milliseconds, that a member waits before trying to become the captain. Note that modifying this value can alter the heartbeat period (See election_timeout_2_hb_ratio for further details)
+A very low value of election_timeout_ms can lead to unnecessary captain elections.","Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased."
+Clustered Search Heads,server.conf,,[shclustering],enable_jobs_data_lite,false,true,boolean,from 100-whisper-shc,"This is for memory reduction on the captain for Search head clustering, leads to lower memory in captain while slaves send the artifacts status.csv as a string.",
+Clustered Search Heads,server.conf,,[shclustering],executor_workers,10,36,integer,"100-whisper-searchhead sets it to 18, need to tune.  CALCULATE 3xnodes",Number of threads that can be used by the search head clustering threadpool.  A value of 0 is interpreted as 1.,This should auto-adjust itself by default. The number of parallel worker threads to execute the cluster jobs from the captain to its members
+Clustered Search Heads,server.conf,,[shclustering],heartbeat_timeout,60,120,s,Applies only to poor network connection like multi-site search head clusters or unstable network.,"The amount of time, in seconds, that the captain considers a member down. After a member is down, the captain initiates fixup steps to replicate
+artifacts from the dead member to its peers. This heartbeat exchanges data between the captain and members, which helps in maintaining the in-memory centralized state for all the cluster members.
+Note that this heartbeat is different from the Raft heartbeat described in the 'election_timeout_2_hb_ratio' setting.",Applies only to poor network connection like multi-site search head clusters or unstable network.
+Clustered Search Heads,server.conf,,[shclustering],rcv_timeout,60,120,s,Applies only to poor network connection like multi-site search head clusters or unstable network.,"Low-level timeout, in seconds, for receiving data between search head cluster members.",Applies only to poor network connection like multi-site search head clusters or unstable network.
+Clustered Search Heads,server.conf,,[shclustering],rcv_timeout_raft,5,10,s,"Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased.","Low-level timeout, in seconds, for receiving data between search head
+cluster members for the raft protocol.","Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased."
+Clustered Search Heads,server.conf,,[shclustering],rep_cxn_timeout,5,10,s,,"Lowlevel timeout, in seconds, for establishing connection for replicating data.",
+Clustered Search Heads,server.conf,,[shclustering],rep_max_rcv_timeout,180,360,s,,"Only valid for 'mode=peer'
+Maximum cumulative receive timeout, in seconds, for receiving
+ acknowledgment data from peers.
+On 'rep_rcv_timeout' source peer determines if total
+ receive timeout has exceeded 'rep_max_rcv_timeout'.
+ If so, replication fails.
+This setting is dynamically reloadable and does not require restart
+ of cluster peer.
+Default: 180 (3 minutes)",
+Clustered Search Heads,server.conf,,[shclustering],rep_max_send_timeout,600,1200,s,,"Maximum send timeout, in seconds, for sending replication slice data
+ between cluster members.
+On 'rep_send_timeout' source peer determines if total send timeout has
+ exceeded rep_max_send_timeout. If so, replication fails.
+If cumulative rep_send_timeout exceeds 'rep_max_send_timeout', replication
+ fails.
+Default: 600 (10 minutes)",
+Clustered Search Heads,server.conf,,[shclustering],rep_rcv_timeout,10,20,s,,"Only valid for 'mode=peer'
+Lowlevel timeout, in seconds, for receiving acknowledgment data from peers.
+This is a soft timeout. When this timeout is triggered on source peer,
+ it tries to determine if target is still alive. If it is still alive,
+ it reset the timeout for another 'rep_send_timeout' interval and continues.
+If target has failed or cumulative timeout has exceeded
+ 'rep_max_rcv_timeout', replication fails.
+Default: 10",
+Clustered Search Heads,server.conf,,[shclustering],rep_send_timeout,5,10,s,,"Low-level timeout, in seconds, for sending replication slice data
+ between cluster members.
+This is a soft timeout. When this timeout is triggered on source peer,
+ it tries to determine if target is still alive. If it is still alive,
+ it reset the timeout for another rep_send_timeout interval and continues.
+ If target has failed or cumulative timeout has exceeded
+ rep_max_send_timeout, replication fails.
+Default: 5",
+Clustered Search Heads,server.conf,,[shclustering],replication_factor,3,2,integer,"review differences itsi vs main
+Test settings before/after load test",Determines how many copies of search artifacts are created in the cluster. This must be set to the same value on all members.,3 search artifact copies per search is overkill on a 3-node cluster that uses highly available disk. Lowering the artifact replication factor will reduce search overhead and network traffic between SHC members.
+Clustered Search Heads,server.conf,,[shclustering],restart_timeout,600,1200,s,,"This is the amount of time the captain waits for a member to come
+ back when the instance is restarted (to avoid the overhead of
+ trying to fixup the artifacts that were on the peer).",
+Clustered Search Heads,server.conf,,[shclustering],scheduling_heuristic,scheduler_load_based,,,,This setting configures the job distribution heuristic on the captain. There are currently two supported strategies: 'round_robin' or 'scheduler_load_based'.,
+Clustered Search Heads,server.conf,,[shclustering],send_timeout,60,120,s,Applies only to poor network connection like multi-site search head clusters or unstable network.,"Low-level timeout, in seconds, for sending data between search head cluster members.",Applies only to poor network connection like multi-site search head clusters or unstable network.
+Clustered Search Heads,server.conf,,[shclustering],send_timeout_raft,5,10,s,"Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased.","Low-level timeout, in seconds, for sending data between search head
+cluster members for the raft protocol.","Applies only to poor network connection like multi-site search head clusters or unstable network. Additionally, Jason Beyers has found that these settings are needed to properly bootstrap SHC members on Windows in AWS.. Note that election_timeout_ms should be increased if the raft timeouts are increased."
+Clustered Search Heads,server.conf,,[sslConfig],sslServerHandshakeTimeout,60,120,s,,"The timeout, in seconds, for an SSL handshake to complete between an SSL client and the Splunk SSL server. If the SSL server does not receive a ""Client Hello"" from the SSL client within 'sslServerHandshakeTimeout' seconds, the server terminates the connection.",
+Clustered Search Heads,server.conf,,[sslConfig],sslServerSessionTimeout,300,,integer,,"Timeout, in seconds, for newly created session. If set to ""0"", disables Server side session cache.",
+Clustered Search Heads,server.conf,,[sslConfig],useClientSSLCompression,false,true,boolean,"from 100-whisper cloud has the value set to false i.e. the default, need to figure out why it needs to be true","Turns on HTTP client compression. Server-side compression is turned on by default. Setting this on the client-side enables compression between server and client. Enabling this potentially gives you much faster distributed searches across multiple Splunk instances Notes: If the connection is being made over https and useClientSSLCompression=true, then setting use HTTPClientCompression=true results in double compression work without much compression gain. It is recommended that this value be set to ""on-http"" (or to ""true"", and useClientSSLCompression to ""false"").","As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search"
+Clustered Search Heads,ui-prefs.conf,,[default],dispatch.earliest_time,-24h,-5m@m,,,,
+Clustered Search Heads,ui-prefs.conf,,[default],dispatch.latest_time,now,now,,,,
+Clustered Search Heads,ui-prefs.conf,,[default],display.prefs.enableMetaData,true,false,boolean,,,
+Clustered Search Heads,ui-prefs.conf,,[default],display.prefs.showDataSummary,true,false,boolean,,,
+Clustered Search Heads,user-prefs.conf,user-prefs,[general_default],default_earliest_time,,-30m@m,,,,
+Clustered Search Heads,web.conf,,[settings],dashboard_html_allow_embeddable_content,false,true,boolean,,Embed tags will appear as is in the dashboard source,
+Clustered Search Heads,web.conf,,[settings],dashboard_html_allowed_domains,empty,"Hostname: docs.splunk.com, *.splunk.com",,,Embed tags will appear as is in the dashboard source,
+Clustered Search Heads,web.conf,,[settings],dashboard_html_wrap_embed,true,false,boolean,,Embed tags will appear as is in the dashboard source,
+Clustered Search Heads,web.conf,,[settings],dedicatedIoThreads,0,,integer,"from 100-whisper, set to number of member in the SHC","dedicatedIoThreads = <integer> The number of dedicated threads to use for HTTP input/output operations.  If set to zero, HTTP I/O is performed in the same thread that accepted the TCP connection.  If set set to a non-zero value, separate threads run to handle the HTTP I/O, including SSL encryption.  Typically this does not need to be changed. For most usage scenarios using the same the thread offers the best performance.  Default: 0",
+Clustered Search Heads,web.conf,,[settings],enable_risky_command_check,true,false,boolean,,Whether or not checks for data-exfiltrating search commands are enabled,
+Clustered Search Heads,web.conf,,[settings],server.thread_pool,50,60,integer,from cloud etc/system/local,"server.thread_pool = <integer>
+Determines the minimum number of threads the appserver is allowed to maintain.
+The default value of this setting provides acceptable performance for most use
+ cases.
+If you are experiencing issues with UI latency, you can increase the value
+ based on need, to a maximum value of 200.
+Values that exceed 200 can cause memory spikes.
+Default: 50",
+Clustered Search Heads,web.conf,,[settings],updateCheckerBaseURL,https://quickdraw.splunk.com/js/,0,,from 100-whisper,"Setting 'updateCheckerBaseURL' to 0 stops Splunk Web from pinging
+ Splunk.com for new versions of Splunk software.",
+Deployment Servers,inputs.conf,,[monitor://$SPLUNK_HOME/etc/deployment-apps/.../*.conf],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new\nwhitelist = (default-mode.conf|limits.conf|distsearch.conf|authentication.conf|serverclass.conf|authorize.conf|server.conf|web.conf|outputs.conf|indexes.conf|props.conf|inputs.conf|transforms.conf),,,# Enable this input on every Deployment Server instance,
+Every Splunk Instance,inputs.conf,,[monitor://$SPLUNK_HOME/etc/apps/.../*.conf],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new\nwhitelist = (default-mode.conf|limits.conf|distsearch.conf|authentication.conf|serverclass.conf|authorize.conf|server.conf|web.conf|outputs.conf|indexes.conf|props.conf|inputs.conf|transforms.conf)\nblacklist = (default.old|SplunkForwarder/default|SplunkLightForwarder/default|Splunk_ML_Toolkit/default|Splunk_SA_CIM/default|Splunk_SA_Scientific_Python_linux_x86_64/default|alert_logevent/default|alert_webhook/default|appsbrowser/default|introspection_generator_addon/default|journald_input/default|launcher/default|learned/default|legacy/default|lookup_editor/default|python_upgrade_readiness_app/default|sample_app/default|search/default|splunk-dashboard-studio/default|splunk_archiver/default|splunk_essentials_8_2/default|splunk_gdi/default|splunk_httpinput/default|splunk_instrumentation/default|splunk_internal_metrics/default|splunk_metrics_workspace/default|splunk_monitoring_console/default|splunk_rapid_diag/default|splunk_secure_gateway/default|user-prefs),,,"Enable this input on every full instance of Splunk, including Indexers & Search Heads",
+Every Splunk Instance,inputs.conf,,[monitor://$SPLUNK_HOME/etc/system/local/*.conf],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new\nwhitelist = (default-mode.conf|limits.conf|distsearch.conf|authentication.conf|serverclass.conf|authorize.conf|server.conf|web.conf|outputs.conf|indexes.conf|props.conf|inputs.conf|transforms.conf),,,"Enable this input on every full instance of Splunk, including Indexers & Search Heads",
+Heavy Forwarders,default-mode.conf,,[pipeline:scheduler],disabled,false,true,boolean,,"Whether or not the Splunk platform loads the specified pipeline.
+If set to true on a specific pipeline, the pipeline will not be loaded in the system.",
+Heavy Forwarders,distsearch.conf,,[replicationSettings],replicationThreads,auto,10,,Makes sense > 10 indexers but < shouldn't hurt - *CLOUD bundle replication hosted on S3 buckets,"The maximum number of threads to use when performing bundle replication
+ to peers. If set to ""auto"", the peer auto-tunes the number of threads it uses for
+ bundle replication. If the peer has 3 or fewer CPUs, it allocates 2 threads. If the peer has 4-7 CPUs, it allocates up to '# of CPUs - 2' threads. If the peer has 8-15 CPUs, it allocates up to '# of CPUs - 3' threads. If the peer has 16 or more CPUs, it allocates up to '# of CPUs - 4' threads. This setting is applicable only when replicationPolicy is set to 'classic'. Maximum accepted value for this setting is 16.",Makes sense > 10 indexers but < shouldn't hurt - *CLOUD bundle replication hosted on S3 buckets
+Heavy Forwarders,distsearch.conf,,[replicationSettings],sendRcvTimeout,60,180,s,"*CLOUD bundle replication hosted on S3 buckets
+Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.",The maximum number of seconds to wait for the sending of a full replication to a peer.,"*CLOUD bundle replication hosted on S3 buckets
+Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results."
+Heavy Forwarders,inputs.conf,,[monitor://$SPLUNK_HOME/var/run/serverclass.xml],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new,,,"# Enable this input on every full instance of Splunk managed by DS, every HF & every UF to track any Deployment Server Activities",
+Heavy Forwarders,limits.conf,,[system_checks],installed_files_integrity,enabled,log_only,,,"installed_files_integrity = enabled | log_only | disabled
+Enables/disables automatic verification on every startup that all the
+ files that were installed with the running Splunk version are still the
+ files that should be present.
+ Effectively this finds cases where files were removed or changed that
+ should not be removed or changed, whether by accident or intent.
+ The source of truth for the files that should be present is the manifest
+ file in the $SPLUNK_HOME directory that comes with the release, so if
+ this file is removed or altered, the check cannot work correctly.
+ Reading of all the files provided with the install has some I/O cost,
+ though it is paid out over many seconds and should not be severe.
+When ""enabled"", detected problems will cause a message to be posted to
+ the bulletin board (system UI status message).
+When ""enabled"" or ""log_only"", detected problems will cause details to be
+ written out to the splunkd.log file.
+When ""disabled"", no check will be attempted or reported.
+Default: enabled",
+Heavy Forwarders,props.conf,,[splunk_python],TRUNCATE,10000,50000,integer,None,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",None
+Heavy Forwarders,props.conf,,[splunkd_audit],TRUNCATE,10000,50000,integer,,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",
+Heavy Forwarders,props.conf,,[splunkd_ui_access],TRUNCATE,10000,20000,integer,None,"TRUNCATE = <non-negative integer>
+The default maximum line length, in bytes.
+Although this is in bytes, line length is rounded down when this would
+ otherwise land mid-character for multi-byte characters.
+Set to 0 if you never want truncation (very long lines are, however, often
+ a sign of garbage data).
+Default: 10000",None
+Heavy Forwarders,server.conf,,[general],parallelIngestionPipelines,1,2,integer,We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin,"The number of discrete data ingestion pipeline sets to create for this instance.
+A pipeline set handles the processing of data, from receiving streams of events through event processing and writing the events to disk.
+An indexer that operates multiple pipeline sets can achieve improved performance with data parsing and disk writing, at the cost of additional
+ CPU cores.
+For most installations, the default setting of ""1"" is optimal.
+Use caution when changing this setting. Increasing the CPU usage for data ingestion reduces available CPU cores for other tasks like searching.
+NOTE: Enabling multiple ingestion pipelines can change the behavior of some settings in other configuration files. Each ingestion pipeline enforces the limits of the following settings independently:
+ 1. maxKBps (in the limits.conf file)
+ 2. max_fd (in the limits.conf file)
+ 3. maxHotBuckets (in the indexes.conf file)
+ 4. maxHotSpanSecs (in the indexes.conf file)",We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin
+Heavy Forwarders,server.conf,,[httpServer],busyKeepAliveIdleTimeout,12,180,integer,Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.,"How long, in seconds, that the Splunkd HTTP server allows a keep-alive connection to remain idle while in a busy state before forcibly disconnecting it.  Use caution when configuring this setting as a value that is too large can result in file descriptor exhaustion due to idling connections.  If this number is less than 12, it is set to 12.",Benefits / Reason: In the course of support cases on Splunk Cloud with ITSI for large customers such as Progressive and Roche we found that connectivity between peers and search heads negatively impacted correctness of application results.
+Heavy Forwarders,server.conf,,[license],connection_timeout,30,120,s,,"connection_timeout = <integer>
+ Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Heavy Forwarders,server.conf,,[license],receive_timeout,30,120,s,,"receive_timeout = <integer>
+ Maximum time, in seconds, to wait before receiving data from manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Heavy Forwarders,server.conf,,[license],report_interval,1m,1h,integer,"Today 1h has been used, so we will keep it to 1h","report_interval = <nonnegative integer>[s|m|h]
+Selects a time period for reporting in license usage to the license manager.
+This value is intended for very large deployments (hundreds of indexers) where a large number of indexers may overwhelm the license server.
+The maximum permitted interval is 1 hour.
+The minimum permitted interval is 1 minute.
+Can be expressed as a positive number of seconds, minutes or hours.
+If no time unit is provided, seconds is assumed.",
+Heavy Forwarders,server.conf,,[license],send_timeout,30,120,s,,"send_timeout = <integer>
+ Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+Heavy Forwarders,server.conf,,[license],squash_threshold,2000,1000,integer,,"squash_threshold = <positive integer>
+Advanced setting. Periodically the indexer must report to license manager
+ the data indexed broken down by source, sourcetype, host, and index. If
+ the number of distinct (source, sourcetype, host, index) tuples grows over
+ the 'squash_threshold', the (host, source) values are squashed and only a
+ breakdown by (sourcetype, index) is reported. This is to prevent explosions in
+ memory + license_usage.log lines.
+Set this only after consulting a Splunk Support engineer.
+This needs to be set on license slaves as well as license manager.
+Default: 2000",
+Heavy Forwarders,server.conf,,[queue=aggQueue],maxSize,500KB,10MB,,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Heavy Forwarders,server.conf,,[queue=indexQueue],maxSize,500KB,10MB,,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Heavy Forwarders,server.conf,,[queue=parsingQueue],maxSize,500KB,10MB,,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Heavy Forwarders,server.conf,,[queue=typingQueue],maxSize,500KB,10MB,,"The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466","maxSize = [<integer>|<integer>[KB|MB|GB]]
+Specifies default capacity of a queue.
+If specified as a lone integer (for example, maxSize=1000), maxSize
+ indicates the maximum number of events allowed in the queue.
+If specified as an integer followed by KB, MB, or GB (for example,
+ maxSize=100MB), it indicates the maximum RAM allocated for queue.
+Default: 500KB","The default size of ingestion queues is pretty ridiculously low. When an indexing peak occurs, it takes very little for the queues to fill up and for the indexers to make forwarders back off. It might be good to mitigate short-lived indexing peaks by cushioning them with larger queues and preventing forwarder back-off. See SPL-109320 UNTRIAGED CO-37466"
+Heavy Forwarders,server.conf,,[sslConfig],useClientSSLCompression,false,false,boolean,"As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search","useClientSSLCompression = <boolean>
+Turns on HTTP client compression.
+Server-side compression is turned on by default. Setting this on the
+ client-side enables compression between server and client.
+Enabling this potentially gives you much faster distributed searches
+ across multiple Splunk instances.
+CAUTION: There are known performance issues due to SSL compression.
+ Confirm that 'conf_deploy_precompress_bundles',
+ 'precompress_cluster_bundle', 'precompress_artifacts',
+ 'preCompressKnowledgeBundlesClassicMode', 'preCompressKnowledgeBundlesCascadeMode',
+ and 'useHTTPClientCompression' are set to ""false"" before setting
+ 'useClientSSLCompression' to ""true"" to avoid double compression.
+Default: false","As perSPL-142431IN REVIEWSPL-141503RESOLVED, SSL compression can cause instability in distributed search"
+License Managers,server.conf,,[license],connection_timeout (peer),30,,s,,"Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+License Managers,server.conf,,[license],receive_timeout (lm),30,,s,,"Maximum time, in seconds, to wait before receiving data from manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+License Managers,server.conf,,[license],send_timeout (peer),30,,s,,"Maximum time, in seconds, to wait before sending data to manager times out
+ This timeout applies only if 'manager_uri' is set.
+ Default: 30",
+License Managers,server.conf,,[license],squash_threshold (peer),2000,,integer,,"Advanced setting. Periodically the indexer must report to license manager
+ the data indexed broken down by source, sourcetype, host, and index. If
+ the number of distinct (source, sourcetype, host, index) tuples grows over
+ the 'squash_threshold', the (host, source) values are squashed and only a
+ breakdown by (sourcetype, index) is reported. This is to prevent explosions in
+ memory + license_usage.log lines.
+Set this only after consulting a Splunk Support engineer.
+This needs to be set on license slaves as well as license
+ manager.
+Default: 2000",
+Search Head Cluster Deployers,inputs.conf,,[monitor://$SPLUNK_HOME/etc/shcluster/apps/.../*.conf],,,disabled = 0\nindex = ia4s_summary\nsourcetype = stash_new\nwhitelist = (default-mode.conf|limits.conf|distsearch.conf|authentication.conf|serverclass.conf|authorize.conf|server.conf|web.conf|outputs.conf|indexes.conf|props.conf|inputs.conf|transforms.conf),,,# Enable this input on every Search Head Cluster Deployer instance,
+Universal Forwarders Heavy Data,limits.conf,,[thruput],maxKBps,0,0,integer,,"The maximum speed, in kilobytes per second, that incoming data is   processed through the thruput processor in the ingestion pipeline. * To control the CPU load while indexing, use this setting to throttle   the number of events this indexer processes to the rate (in   kilobytes per second) that you specify. * NOTE:   * There is no guarantee that the thruput processor     will always process less than the number of kilobytes per     second that you specify with this setting. The status of     earlier processing queues in the pipeline can cause     temporary bursts of network activity that exceed what     is configured in the setting.   * The setting does not limit the amount of data that is     written to the network from the tcpoutput processor, such     as what happens when a universal forwarder sends data to     an indexer.   * The thruput processor applies the 'maxKBps' setting for each     ingestion pipeline. If you configure multiple ingestion     pipelines, the processor multiplies the 'maxKBps' value     by the number of ingestion pipelines that you have     configured.   * For more information about multiple ingestion pipelines, see     the 'parallelIngestionPipelines' setting in the     server.conf.spec file. * Default (Splunk Enterprise): 0 (unlimited) * Default (Splunk Universal Forwarder): 256",
+Universal Forwarders Heavy Data,outputs.conf,,[tcpout],autoLBVolume,0,2097152,integer,,"* The volume of data, in bytes, to send to an indexer before a new indexer   is randomly selected from the list of indexers provided in the server   setting of the target group stanza. * This setting is closely related to the 'autoLBFrequency' setting.   The forwarder first uses 'autoLBVolume' to determine if it needs to   switch to another indexer. If the 'autoLBVolume' is not reached,   but the 'autoLBFrequency' is, the forwarder switches to another   indexer as the forwarding target. * A non-zero value means that volume-based forwarding is active. * 0 means the volume-based forwarding is not active. * Default: 0",
+Universal Forwarders Heavy Data,props.conf,,[<SOURCE TYPE>],EVENT_BREAKER,,\r\n,"""([\r\n]+)""",,"A regular expression that specifies the event boundary for a   universal forwarder to use to determine when it can send events   to an indexer. * The regular expression must contain a capturing group   (a pair of parentheses that defines an identified sub-component   of the match.) * When the UF finds a match, it considers the first capturing group   to be the end of the previous event, and the end of the capturing group   to be the beginning of the next event. * At this point, the forwarder can then change the receiving indexer   based on these event boundaries. * This setting is only active if you set 'EVENT_BREAKER_ENABLE' to   ""true"", only works on universal forwarders, and   works best with multiline events. * Default: ""([\r\n]+)""",
+Universal Forwarders Heavy Data,props.conf,,[<SOURCE TYPE>],EVENT_BREAKER_ENABLE,False,True,boolean,," Whether or not a universal forwarder (UF) uses the 'ChunkedLBProcessor'   data processor to improve distribution of events to receiving   indexers for a given source type. * When set to true, a UF splits incoming data with a   light-weight chunked line breaking processor ('ChunkedLBProcessor')   so that data is distributed fairly evenly amongst multiple indexers. * When set to false, a UF uses standard load-balancing methods to   send events to indexers. * Use this setting on a UF to indicate that data   should be split on event boundaries across indexers, especially   for large files. * This setting is only valid on universal forwarder instances. * Default: false",
+Universal Forwarders Heavy Data,server.conf,,[general],parallelIngestionPipelines,1,2,integer,We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin,"The number of discrete data ingestion pipeline sets to create for this instance.
+A pipeline set handles the processing of data, from receiving streams of events through event processing and writing the events to disk.
+An indexer that operates multiple pipeline sets can achieve improved performance with data parsing and disk writing, at the cost of additional
+ CPU cores.
+For most installations, the default setting of ""1"" is optimal.
+Use caution when changing this setting. Increasing the CPU usage for data ingestion reduces available CPU cores for other tasks like searching.
+NOTE: Enabling multiple ingestion pipelines can change the behavior of some settings in other configuration files. Each ingestion pipeline enforces the limits of the following settings independently:
+ 1. maxKBps (in the limits.conf file)
+ 2. max_fd (in the limits.conf file)
+ 3. maxHotBuckets (in the indexes.conf file)
+ 4. maxHotSpanSecs (in the indexes.conf file)",We might want to start leveraging parallel ingestion pipelines in order to mitigate indexing congestion. Notable benefits: Helps absorb indexing peaks Adding a second pipeline allows for indexing to not be fully blocked if a pdata channel clogs one of two existing pipelin
+Workload Management,workload_pools.conf,,[general],default_pool,,standard_perf,string,,"Specifies the default workload pool to be used at runtime for search workloads. * This setting is maintained for backward compatibility with previous releases.   Its value is set but is not used in the current release. This value matches the   default_pool value of [workload_category:search]. * This setting is only applicable when workload management has been enabled in   the system. If workload management has been enabled, this is a mandatory setting.",
+Workload Management,workload_pools.conf,,[general],enabled,false,TRUE,boolean,,Specifies whether workload management has been enabled on the system or not. * This setting only applies to the default stanza as a global setting.,
+Workload Management,workload_pools.conf,,[general],ingest_pool,,ingest_pool,string,,"* Specifies the workload pool for splunkd and helper processes that control   data ingestion and related actions in the Splunk deployment. * This setting is maintained for backward compatibility with previous releases.   Its value is set but is not used in the current release. This value matches the   default_pool value of [workload_category:ingest]. * This setting is only applicable when workload management has been enabled in   the system. If workload management has been enabled, this is a mandatory setting.",
+Workload Management,workload_pools.conf,,[general],workload_pool_base_dir_name,splunk,splunk,string,,"* Specifies the base controller directory name for Splunk cgroups on Linux that is   used by a Splunk deployment. * Workload pools created from the workload management page are all created relative   to this base directory. * This setting is only applicable when workload management has been enabled in   the system. If workload management has been enabled, this is a mandatory setting. * Default: splunk",
+Workload Management,workload_pools.conf,,[workload_category:ingest],cpu_weight,,45,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_category:ingest],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_category:misc],cpu_weight,,5,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_category:misc],mem_weight,,5,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_category:search],cpu_weight,,50,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_category:search],mem_weight,,65,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_pool:high_perf],category,,search,string,," Specifies the category to which this workload pool belongs. * Required to create a workload pool. * Valid categories are ""search"",""misc"" and ""ingest"". * The ""ingest"" and ""misc"" categories each contain one pool only, which is the   default_pool for the respective category.",
+Workload Management,workload_pools.conf,,[workload_pool:high_perf],cpu_weight,,60,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_pool:high_perf],default_category_pool,,0,boolean,,"* Specifies if this pool is the default pool for its category. * Admin users can specify workload pools associated with roles. If no workload   pool is found, the default_pool defined for this category is used. * The first pool that is added to a category has this value set to 1. * All other pools have this value set to 0. * Required if workload management is enabled.",
+Workload Management,workload_pools.conf,,[workload_pool:high_perf],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_pool:ingest_pool],category,,ingest,string,," Specifies the category to which this workload pool belongs. * Required to create a workload pool. * Valid categories are ""search"",""misc"" and ""ingest"". * The ""ingest"" and ""misc"" categories each contain one pool only, which is the   default_pool for the respective category.",
+Workload Management,workload_pools.conf,,[workload_pool:ingest_pool],cpu_weight,,100,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_pool:ingest_pool],default_category_pool,,1,boolean,,"* Specifies if this pool is the default pool for its category. * Admin users can specify workload pools associated with roles. If no workload   pool is found, the default_pool defined for this category is used. * The first pool that is added to a category has this value set to 1. * All other pools have this value set to 0. * Required if workload management is enabled.",
+Workload Management,workload_pools.conf,,[workload_pool:ingest_pool],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_pool:limited_perf],category,,search,string,," Specifies the category to which this workload pool belongs. * Required to create a workload pool. * Valid categories are ""search"",""misc"" and ""ingest"". * The ""ingest"" and ""misc"" categories each contain one pool only, which is the   default_pool for the respective category.",
+Workload Management,workload_pools.conf,,[workload_pool:limited_perf],cpu_weight,,5,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_pool:limited_perf],default_category_pool,,0,boolean,,"* Specifies if this pool is the default pool for its category. * Admin users can specify workload pools associated with roles. If no workload   pool is found, the default_pool defined for this category is used. * The first pool that is added to a category has this value set to 1. * All other pools have this value set to 0. * Required if workload management is enabled.",
+Workload Management,workload_pools.conf,,[workload_pool:limited_perf],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_pool:misc_pool],category,,misc,string,," Specifies the category to which this workload pool belongs. * Required to create a workload pool. * Valid categories are ""search"",""misc"" and ""ingest"". * The ""ingest"" and ""misc"" categories each contain one pool only, which is the   default_pool for the respective category.",
+Workload Management,workload_pools.conf,,[workload_pool:misc_pool],cpu_weight,,100,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_pool:misc_pool],default_category_pool,,1,boolean,,"* Specifies if this pool is the default pool for its category. * Admin users can specify workload pools associated with roles. If no workload   pool is found, the default_pool defined for this category is used. * The first pool that is added to a category has this value set to 1. * All other pools have this value set to 0. * Required if workload management is enabled.",
+Workload Management,workload_pools.conf,,[workload_pool:misc_pool],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,
+Workload Management,workload_pools.conf,,[workload_pool:standard_perf],category,,search,string,," Specifies the category to which this workload pool belongs. * Required to create a workload pool. * Valid categories are ""search"",""misc"" and ""ingest"". * The ""ingest"" and ""misc"" categories each contain one pool only, which is the   default_pool for the respective category.",
+Workload Management,workload_pools.conf,,[workload_pool:standard_perf],cpu_weight,,35,number,,Specifies the cpu weight to be used by this workload pool. * This is a percentage of the total cpu resources available to the category to   which the pool belongs.,
+Workload Management,workload_pools.conf,,[workload_pool:standard_perf],default_category_pool,,1,boolean,,"* Specifies if this pool is the default pool for its category. * Admin users can specify workload pools associated with roles. If no workload   pool is found, the default_pool defined for this category is used. * The first pool that is added to a category has this value set to 1. * All other pools have this value set to 0. * Required if workload management is enabled.",
+Workload Management,workload_pools.conf,,[workload_pool:standard_perf],mem_weight,,100,number,,* Specifies the memory weight to be used by this workload pool. * This is a percentage of the total memory resources available to the category to   which the pool belongs. * This is a mandatory parameter for the creation of a workload pool and only   allows positive integral values.,

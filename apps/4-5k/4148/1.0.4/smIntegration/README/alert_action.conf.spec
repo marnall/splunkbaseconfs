@@ -1,0 +1,2 @@
+[createIncident]
+param.category = <string>

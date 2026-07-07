@@ -1,0 +1,24 @@
+[<name>]
+account_type = 
+copy_account_name = 
+hostname = 
+password = 
+username = 
+use_ca_cert = 
+custom_certificate = 
+enable_proxy = 
+proxy_type = 
+proxy_url = 
+proxy_port = 
+proxy_username = 
+proxy_password = 
+pxgrid_host = 
+pxgrid_client_username = 
+pxgrid_cert_auth = 
+client_cert = 
+client_key = 
+ise_ssh_port = 
+sftp_repo_ip = 
+sftp_repo_user = 
+sftp_repo_pw = 
+sftp_repo_port = 

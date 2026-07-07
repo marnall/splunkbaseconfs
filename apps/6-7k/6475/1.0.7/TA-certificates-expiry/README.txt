@@ -1,0 +1,11 @@
+# Binary File Declaration
+- pvectorc.cpython-37m-x86_64-linux-gnu.so: this file does not require any source code
+- _speedups.cpython-37m-x86_64-linux-gnu.so: this file does not require any source code
+- gui.exe: this file does not require any source code
+- cli.exe: this file does not require any source code
+- setuptools/gui-64.exe: this file does not require any source code
+- cli-arm64.exe: this file does not require any source code
+- gui-arm64.exe: this file does not require any source code
+- gui-32.exe: this file does not require any source code
+- cli-64.exe: this file does not require any source code
+- cli-32.exe: this file does not require any source code

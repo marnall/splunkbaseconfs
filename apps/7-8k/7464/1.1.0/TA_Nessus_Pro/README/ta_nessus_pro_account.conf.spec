@@ -1,0 +1,4 @@
+[<name>]
+nessus_url = 
+client_id = 
+client_secret = 

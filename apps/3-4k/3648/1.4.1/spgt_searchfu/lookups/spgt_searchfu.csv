@@ -1,0 +1,1414 @@
+asset_category,tags,description,asset,related_info,contributor,asset_type
+web,web,Condition as Percentage: Cart Conversion,"index=""*"" sourcetype=""*access*"" method=GET
+| stats count AS Page_Views, count(eval(action=""purchase"")) AS Actual_Purchases
+| eval ""Conversion %"" =((Actual_Purchases*100)/Page_Views)
+| rename Page_Views as Views Actual_Purchases as Purchases",,grdhg24,1
+splunk_internal,audit,View audit trail information stored in the local audit index.,| audit,http://docs.splunk.com/Documentation/Splunk/6.1/SearchReference/Audit,Splunk,1
+splunk_internal,audit dbinspect,Returns information about the buckets in the Splunk index that you specify,| dbinspect index=_internal span=1d,http://docs.splunk.com/Documentation/Splunk/6.1/SearchReference/Dbinspect,Splunk,1
+splunk_internal,audit index,Multiple indexes getting full without reaching retention policy.,"| rest splunk_server_group=dmc_group_indexer /services/data/indexes search=""totalEventCount!=0""
+| eval coldPath.maxDataSizeMB=if('coldPath.maxDataSizeMB' = 0, null(), 'coldPath.maxDataSizeMB')
+| eval homePath.maxDataSizeMB=if('homePath.maxDataSizeMB' = 0, null(), 'homePath.maxDataSizeMB')
+| eval roof=min((coalesce('homePath.maxDataSizeMB', 4294967295) + coalesce('coldPath.maxDataSizeMB', 4294967295)), maxTotalDataSizeMB)
+| eval span=tostring(currentDBSizeMB) + "" / "" + tostring(roof) + "" MB""
+| eval PercentFull=tostring(round(currentDBSizeMB * 100 / roof)) + ""%""
+| eval ""Total Events""=tostring(totalEventCount,""commas"")
+| stats first(span) AS ""Capacity vs Limit"" by splunk_server title minTime maxTime ""Total Events"" PercentFull
+| rename splunk_server AS Indexer title AS Index minTime AS ""Oldest Event"" maxTime AS ""Newest Event""
+| table Indexer Index ""Capacity vs Limit"" ""Oldest Event"" ""Newest Event"" ""Total Events"" PercentFull
+| sort Index, Indexer, -PercentFull
+| where match(PercentFull, ""^(10|9|8).%"")",,Splunk,1
+splunk_internal,audit knowledge,Large number of knowledge objects being pushed to the shcluster.,"index=_internal sourcetype=splunkd component=DistributedBundleReplicationManager bundle_file_size=*
+| rex field=bundle_file_size ""(?<bundle_size>\d+)""
+| eval bundle_size_mb=bundle_size/1024
+| stats count max(bundle_size_mb) by host",,Splunk,1
+splunk_internal,audit forwarder,Data feed status delay by over 30 minutes.,"| metadata type=sourcetypes index=*
+| search
+    [| inputlookup sta_all_sourcetypes.csv
+    | fields sourcetype ]
+| sort - totalCount
+| eval Delay=now()-recentTime
+| rangemap default=severe field=Delay low=0-1800
+| convert ctime(recentTime) AS ""Last Indexed""
+| table range, sourcetype, ""Last Indexed"", Delay, totalCount
+| eval Delay=tostring(Delay,""duration"")
+| eval totalCount=tostring(totalCount, ""commas"")
+| rename totalCount AS Events, range AS Status sourcetype AS Sourcetype
+| sort + ""Last Indexed""
+| where Status=""severe"" AND NOT match(Sourcetype, ""-(\d+|too_small)$"")",,Splunk,1
+splunk_internal,host index,Hosts within an index,| metadata type=hosts index=_internal,http://docs.splunk.com/Documentation/Splunk/6.1/SearchReference/Metadata,Splunk,1
+splunk_internal,audit searches,Address unnecessarily frequent scheduled searches and overall unnecessary searches.,"| rest splunk_server=* /servicesNS/-/-/admin/savedsearch/ earliest_time=-0s@s latest_time=+2d@d search=""is_scheduled=1"" search=""disabled=0""
+| table splunk_server eai:acl.app eai:acl.owner cron_schedule title scheduled_times
+| mvexpand scheduled_times
+| rename scheduled_times as _time eai:acl.app as app eai:acl.owner as user title as search
+| stats count(search) as count by search cron_schedule app
+| sort 20 -count",,Splunk,1
+splunk_internal,audit alerts,"Review alerts that are not returning results to ensure ""no results"" is the expected/desired outcome.","| rest splunk_server=local /servicesNS/-/-/saved/searches
+| where is_scheduled=1 AND disabled=0
+| stats values(splunk_server) by title, eai:acl.owner, eai:acl.app, cron_schedule
+| join type=outer title
+    [ search index=_internal sourcetype=scheduler result_count earliest=-30d@d
+    | extract pairdelim="","", kvdelim=""="", auto=f
+    | stats avg(result_count) min(result_count) max(result_count), sparkline(avg(result_count)) AS sparkline avg(run_time) by savedsearch_name
+    | rename savedsearch_name AS title]
+| makemv delim="","" setsv=true sparkline
+| where 'max(result_count)' = 0
+| sort - avg(run_time)
+| search title!=""Missing Data*"" (eai:acl.app=search OR eai:acl.app=CDC-*)",,Splunk,1
+splunk_internal,audit searches,Ensure no scheduled searches are running on indexers.,"index=_internal sourcetype=scheduler result_count host!=acdc-sec-splk-shcp*
+| extract pairdelim="","", kvdelim=""="", auto=f
+| stats avg(result_count) min(result_count) max(result_count), sparkline(avg(result_count)) AS result_sparkline avg(run_time) min(run_time) max(run_time) sum(run_time) values(host) AS hosts count AS execution_count by savedsearch_name, app
+| rename savedsearch_name AS title
+| makemv delim="","" values(host)
+| eval host_count=mvcount(hosts)
+| makemv delim="","" hosts
+| where app!=""TA-fire_brigade"" AND host_count > 1
+| sort - ""avg(run_time)""",,Splunk,1
+splunk_internal,dashboard audit,Dashboards that have not been viewed in over 21 days or are orphaned.,"| rest splunk_server=local /servicesNS/-/-/data/ui/views
+| stats count values(eai:acl.sharing) values(eai:acl.owner) AS owner by title, eai:acl.app
+| rename eai:acl.app AS app
+| eval last_view_time_days_ago=-1
+| eval last_view_time_days_ago_pretty=""no views in last 30 days""
+| join type=outer title app
+    [ search index=""_internal"" sourcetype=splunk_web_access GET app earliest=-30d@d
+    | rex ""GET /[^/]+/app/(?<app>[^/ ?]+)/(?<title>[^\/\?\s]+)""
+    | search app=* AND title=* AND user=* AND user!=""-""
+    | stats latest(_time) AS last_view_time latest(user) AS last_user by app, title
+    | eval last_view_time_days_ago=round(abs(now()-last_view_time),0)
+    | eval last_view_time_days_ago_pretty=tostring(last_view_time_days_ago, ""duration"")
+    | convert ctime(last_view_time)]
+| where last_view_time_days_ago > (60*60*24*21) OR last_view_time_days_ago=-1",,Splunk,1
+splunk_internal,search audit,Spread out scheduled searches.,"index=_internal source=*metrics.log group=searchscheduler
+| timechart partial=false span=10m sum(dispatched) AS Started sum(skipped) AS Skipped",,Splunk,1
+splunk_internal,search audit user,Number of users who can run real-time searches.,"index=_internal host=acdc-sec-splk-shcp2.cdc.gov source=*metrics.log group=search_concurrency ""system total"" NOT user=*
+| timechart max(active_realtime_searches) AS ""Max Real-Time Searches""",,Splunk,1
+splunk_internal,search audit,"User training for overall search best practices (e.g. specifying indexes/sourcetypes, when wildcards are appropriate, and using proper time ranges).","index=_audit [|rest /services/server/info splunk_server=local
+| fields host]  action=search user=* user!=splunk-system-user search_id=* (info=granted OR info=completed)
+|rex field=apiStartTime ""'(?<start_time>[^']+)'""
+|rex field=apiEndTime ""'(?<end_time>[^']+)'""
+|rex ""search\=(?<search_string>.+)\,\sautojoin""
+|eval range=if(start_time==""ZERO_TIME"",""All Time"", tostring(strptime(end_time, ""%a %b %d %H:%M:%S %Y"") - strptime(start_time, ""%a %b %d %H:%M:%S %Y""),""duration""))
+|eval range2=if(start_time==""ZERO_TIME"",""All Time"", strptime(end_time, ""%a %b %d %H:%M:%S %Y"") - strptime(start_time, ""%a %b %d %H:%M:%S %Y""))
+|stats max(event_count) AS event_count values(start_time) AS ""Search Earliest"" values(end_time) AS ""Search Latest"" count values(range) AS range values(range2) AS range2 values(search) AS Search values(user) AS User max(total_run_time) AS run_time(sec) by search_id savedsearch_name
+| convert ctime(*Time) ctime(""Search Start"") ctime(""Search End"")
+|where count>1 |rename search_id AS SID range AS ""Search Range""
+| eval ""Run Time""=tostring('run_time(sec)',""duration"")
+| eval ""Overran?""=if('run_time(sec)'>range2,""Overran its range!!!"", ""NO"")
+| eval SID = trim(SID, ""'"")
+| table SID savedsearch_name event_count ""Search Earliest"" ""Search Latest"" ""Search Range"" Search User ""run_time(sec)"" ""Overran?"" ""Run Time""
+| sort - ""Run Time""",,Splunk,1
+splunk_internal,sourcetype index,Sourcetypes within an index,"| metadata type=sourcetypes index=""INDEX""",,Splunk,1
+splunk_internal,sourcetype,"Return the values of ""sourcetypes"" for events in the ""_internal"" index.",| metadata type=sourcetypes index=_internal,,Splunk,1
+splunk_internal,sourcetype,"Return the values of ""sourcetypes"" for events in the non internal indexes.",| metadata type=sourcetypes index=* NOT _internal,,Splunk,1
+splunk_internal,typeahead,Typeahead values for an index.,| typeahead prefix=source count=10 index=_internal,http://docs.splunk.com/Documentation/Splunk/6.1/SearchReference/Typeahead,Splunk,1
+splunk_internal,events,Indexes an event counts within an app,| eventcount summarize=false index=* | dedup index | fields index count,,Splunk,1
+splunk_internal,index,Get a high level summary of your indexes (must be run on the indexer):,| dbinspect,,Splunk,1
+splunk_internal,hosts splunkd,Find out what hosts (or sources or sourcetypes) have sent data to Splunk:,| metadata type=hosts,,Splunk,1
+splunk_internal,web access,Check indexers to see if web access is available,"| btool web
+| where app!=""learned"" AND ([| inputlookup assets.csv where search_group=""dmc_customgroup_Indexer""
+| stats count by host
+| fields + host
+| rename host AS sos_server
+| format])
+|  stats dc(app) AS app_count count AS stanza_count sum(linecount) AS setting_count by sos_server
+| eventstats mode(stanza_count) AS mode_st mode(setting_count) AS mode_lc mode(app_count) AS mode_app
+| eval Status=if(mode_st!=stanza_count OR mode_lc!=setting_count OR mode_app!=app_count,""elevated!!!deviation found"", ""low!!!ok"")
+| eval ""Application Deviation""=app_count-mode_app
+| eval ""Setting Deviation""=setting_count-mode_lc
+| eval ""Stanza Deviation""=stanza_count-mode_st
+| fields - mode*
+| rename sos_server AS Host app_count AS ""Unique Applications"" stanza_count AS ""Stanza Count"" setting_count AS ""Setting Count""
+| sort Status",,Splunk,1
+splunk_internal,epoch,Convert ctime(*Time)” to make the epoch time readable:,"| metadata type=hosts
+ | convert ctime(*Time)",,Splunk,1
+splunk_internal,user audit,Shows users by search time,"index=_audit action=search (id=* OR search_id=*)
+| eval search_id = if(isnull(search_id), id, search_id)
+| replace '*' with * in search_id
+| rex ""search='(?<search>.*?)', autojoin""
+| search search_id!=scheduler_*
+| convert num(total_run_time)
+| rex ""\,\s+user=(?<user>\S+),""
+| eval user = if(user=""n/a"", null(), user)
+| stats min(_time) as _time first(user) as user max(total_run_time) as total_run_time first(search) as search by search_id host
+| search search=search* search!=*_internal* search!=*_audit*
+| stats median(total_run_time) as ""Median search time"" perc95(total_run_time) as ""95th Percentile search time"" sum(total_run_time) as ""Total search time"" count as ""Search count"" max(_time) as ""Last use"" by user host
+| fieldformat ""Last use"" = strftime('Last use', ""%F %T.%Q %:z"")
+| rename host AS ""Search Head""
+| sort - ""Median search time""",,Splunk,1
+splunk_internal,user audit,Shows what user did what over time and what was the outcome,index=_audit | table _time user action info,,Splunk,1
+splunk_internal,field,Create a field whose name is the value of another field.,| eval {aName}=aValue,http://answers.splunk.com/answers/103700/how-do-i-create-a-field-whose-name-is-the-value-of-another-field-like-backticks-or-eval-in-other-languages,Splunk,1
+splunk_internal,sourcetypes,Top Five Sourcetypes,"index=_internal (source=*/metrics.log* OR source=*\\metrics.log*) group=per_sourcetype_thruput
+| chart sum(kb) by series
+| sort -sum(kb)
+| head 5",,Splunk,1
+splunk_internal,splunkd errors,Splunk Errors,index=_internal  error  NOT debug source=*splunkd.log*,,Splunk,1
+splunk_internal,errors,Errors in the last 24 hours,index=* error OR failed OR severe OR ( sourcetype=*access* ( 404 OR 500 OR 503 ) ),,Splunk,1
+splunk_internal,license,License Usage Data Cube,"index=_internal source=*license_usage.log type=""Usage""
+| eval h=if(len(h)=0 OR isnull(h),""(SQUASHED)"",h)
+| eval s=if(len(s)=0 OR isnull(s),""(SQUASHED)"",s)
+| eval idx=if(len(idx)=0 OR isnull(idx),""(UNKNOWN)"",idx)
+| bin _time span=1d
+| stats sum(b) as b by _time, pool, s, st, h, idx",,Splunk,1
+splunk_internal,server roles pwn,"Return a list of all Splunk Hosts their ROLES in the cluster, GUID, and Version","index=_internal sourcetype=splunkd component=ServerRoles role!=license_slave* role!=search_peer*
+| rex field=role ""(?<role>\S+)\.""
+| dedup host role
+| join host
+[ |rest splunk_server=* /services/server/info
+| rename serverName AS host
+| fields host guid version]
+| rename server_role AS role
+| table host role guid version",,,
+splunk_internal,uf inputs,"Are my forwarders connecting to my receiver? Which IP addresses are connecting to
+Splunk as inputs, and how many times is each IP logged in metrics.log?","index=_internal source=*metrics.log* tcpin_connections
+| stats count by sourceIp",http://docs.splunk.com/Documentation/Splunk/latest/Troubleshooting/Cantfinddata,Splunk,1
+splunk_internal,hosts nodata,What hosts (not forwarder/TCP inputs) have logged an event to Splunk in the last 10 minutes? (Including rangemap.),"| metadata type=hosts index=INDEX
+| eval diff=now()-recentTime
+| where diff < 600
+| convert ctime(*Time)
+| stats count
+| rangemap field=count low=800-2000 elevated=100-799 high=50-99 server=0-49",http://docs.splunk.com/Documentation/Splunk/latest/Troubleshooting/Cantfinddata,Splunk,1
+splunk_internal,internal,Are you SURE your time range is correct? (You wouldn't be the first!) Search over all time to double check. Check for lag.,"index=*
+| eval time=_time
+| eval itime=_indextime
+| eval lag=(itime - time)/60
+| stats avg(lag), min(lag), max(lag) by index host sourcetype",http://docs.splunk.com/Documentation/Splunk/latest/Troubleshooting/Cantfinddata,Splunk,1
+splunk_internal,bucket eps stats _time pwn,Do  a splunk search over the index you are putting messages into and bucket it up by seconds to get the event per second rate.,"index=*
+ | bucket _time span=1s | stats count by _time",,Splunk,1
+splunk_internal,sourcetype,Sourcetype Searches,"index=*
+ | stats count by sourcetype",,Splunk,1
+splunk_internal,license,Data Consumption,"index=_internal source=*license_usage.log type=Usage
+| eval GB = b/1024/1024/1024
+| timechart sum(GB) as GBytes
+| streamstats sum(GBytes) as GB_Used
+| predict GB_Used as GB_Expected algorithm=LLT future_timespan=14
+| fields – Gbytes",,Splunk,1
+splunk_internal,license,Counted against license,"index=_internal source=* license_usage.log type=Usage
+| stats sum(b) as bytes by date_wday, date_mday, date_month, idx
+| eval GB = round(bytes/1024/1024/1024,5)
+| table date_wday, date_mday, date_month, GB, idx",,Splunk,1
+splunk_internal,splunkd events,Count number of events of Splunk processes,| eventcount index=_internal,,Splunk,1
+splunk_internal,meta,Metadata Searches,| metadata index=* type=sources,,Splunk,1
+dev,dev,Clears browser cache.,| rest /servicesNS/-/-/configs/conf-props/_reload,,Splunk,1
+dev,dev,Clears browser cache.,| rest /servicesNS/-/-/admin/monitor/_reload(splunkURL)/en-us/debug/refresh,,Splunk,1
+dev,cache,Clears browser cache.,| extract reload=t,,Splunk,1
+dev,cache,Clears browser cache.,../enUs/debug/refresh,,Splunk,2
+web,referer,Top Referer,"index=""*"" sourcetype=*access*
+| top referer
+| fields referer percent","The HTTP referer is an HTTP header field that identifies the address of the webpage (i.e. the URI or IRI) that linked to the resource being requested. By checking the referer, the new webpage can see where the request originated.",grdhg24,1
+web,gets posts,Gets vs Posts,"index=* sourcetype=*access*
+| chart count(eval(method=""GET"")) AS GET,count(eval(method=""POST"")) AS POST",Easy Pie Chart,grdhg24,1
+web,sparkline,Sparkline by Client IP,"index=*  sourcetype=""*access*""
+| stats sparkline count by clientip | sort -count",Sparkline by IP,grdhg24,1
+web,host,Who has accessed in the last 7 days.,"index=* sourcetype=*access* earliest=-7d@d latest=now
+| timechart count by host",External access by outside sources.,grdhg24,1
+web,predict,Prediction of traffic based on the Kalman Algorithm.,"index=* sourcetype=""*access*""
+| timechart count(bytes) as traffic
+| streamstats sum(traffic) as total_traffic
+| predict total_traffic as expected_traffic algorithm=LLT future_timespan=14",,grdhg24,1
+web,predict,Prediction of traffic based on the Kalman Algorithm w/explicit fields assigned to display.,"index=* sourcetype=""*access*""
+| timechart count(bytes) as traffic
+| streamstats sum(traffic) as total_traffic
+| predict total_traffic as expected_traffic algorithm=LLT future_timespan=14
+| fields total_traffic, expected_traffic",,grdhg24,1
+web,host access,Hits by Host without Internal access for last 7 days.,"index=* sourcetype=*access* earliest = -7d@d latest = now clientip != 192*
+| timechart count by host",,grdhg24,1
+web,host hits,Hits by host for last 7 days.,"index=* sourcetype=*access* earliest = -7d@d latest = now
+| timechart count by host",,grdhg24,1
+web,status,Traffic with Good HTTP status for last 7 days.,"index=* sourcetype=*access* earliest=-7d@d latest=now status>100 status<300
+| timechart count BY status",,grdhg24,1
+web,status,Traffic with Bad HTTP status for last 7 days.,"index=* sourcetype=*access* earliest = -7d@d latest = now status>300
+| timechart count BY status",,grdhg24,1
+web,status bad,Top pages by bad HTTP status for last 7 days.,"index=* sourcetype=*access* earliest = -7d@d latest = now status>=300
+| stats dc(clientip) as ""unique ips"" count as ""total count"" by uri, status",,grdhg24,1
+web,web realtime users tag,Real Time Users,"index=* tag=web
+| timechart dc(clientip) AS unique_visitors by host",,grdhg24,1
+web,web,Average Queue Size,"index=* sourcetype=""*access*""
+| eval bytes = bytes / 170
+| timechart avg(bytes)",https://serverfault.com/questions/tagged/splunk,grdhg24,1
+web,web status sparkline rename,Top Statuses Sparklines,"index=* sourcetype=""*access*""
+| stats count(status) as count sparkline(count) by status_description
+|  rename status_description as ""http status code""
+| sort - count",https://docs.splunk.com/Documentation/SplunkCloud/6.6.1/Search/Addsparklinestosearchresults,grdhg24,1
+web,web geo ui map,User Demographics by Region: Geo Map,"index=* sourcetype=""*access*""
+| iplocation clientip
+| geostats count by Country",https://www.splunk.com/blog/2017/04/25/mapping-with-splunk.html,grdhg24,1
+web,ui chloropleth geo,User Demographics by Region: Chloropleth,"index=* sourcetype=""*access*""
+| iplocation clientip
+| stats count by Country
+| geom geo_countries featureIdField=""Country""",https://www.splunk.com/blog/2017/04/25/mapping-with-splunk.html,grdhg24,1
+web,web bounce,Bounce Rate (Enters and exits on the same page) (Pie Chart),"index=""*"" sourcetype=""*access*""
+| transaction clientip maxpause=1h keepevicted=t mvlist=t
+| eval user_type=case (eventcount=1,""Bounced"", eventcount<=5, ""2-5 pages"", eventcount<=10, ""6-10 pages"")
+| top  limit=5000 user_type",,grdhg24,1
+web,web unique,Total Unique Client IPs Over Time,"index=""*"" sourcetype=""*access*""
+| timechart distinct_count(FIELD) span=1h",,grdhg24,1
+web,security,Detect ShellShock Attempts in Apache Logs,"index=""*"" sourcetype=""*access*"" http_method=POST request=""*{ :;};*"" OR request=""*/bin/*""",,mjeffery,1
+web,web catenation strcat,"Add the field: ""comboIP"". Values of ""comboIP"" = ""sourceIP"" + ""/"" + ""destIP"".","index=""*""
+|  strcat source* ""/"" dest* combo*",,grdhg24,1
+web,web,"Keep the ""host"" and ""ip"" fields, and display them in the order: ""host"", ""ip""","index=""*"" sourcetype=""*access*""
+| fields + host, ip",,grdhg24,1
+web,rare,"Return the least common values of the ""url"" field.","index=* sourcetype=*access*
+| rare url",,grdhg24,1
+web,web referrer,"Search the access logs, and return the number of hits from the top 100 values of ""referer_domain""","index=""*"" sourcetype=""*access*""
+| top limit=100 referer_domain
+| stats sum(count)",,grdhg24,1
+web,streamstats,"For each event, add a count field that represent the number of event seen so far (including that event). i.e., 1 for the first event, 2 for the second, 3, 4 ... and so on","index=""*"" sourcetype=""*access*""
+| streamstats count",,grdhg24,1
+web,timechart,"Create a timechart of the count of from ""web"" sources by ""host""","index=""*"" sourcetype=""*access*""
+| timechart count by host",,grdhg24,1
+web,stats,Search Web / Total KB / # of Unique IPs. Replace the wildcard * and or field names to be applicable to your data set(s.),"index=* sourcetype=*access*
+| eval kb=bytes/1024
+|  stats sum(kb) dc(clientip)
+|  rename sum(kb) AS ""Total KB"" dc(FIELD) AS ""Unique Customers""",http://docs.splunk.com/Documentation/Splunk/latest/SearchReference/stats,grdhg24,1
+web,web stats duration,"A ""transaction"" search using the ""stats"" command instead. Its less resources and more flexibility.","index=* sourcetype=*access*
+| stats min(_time) AS earliest max(_time) AS latest by FIELD
+| eval duration=latest-earliest | stats min(duration) max(duration) avg(duration)",http://docs.splunk.com/Documentation/Splunk/latest/SearchReference/stats,grdhg24,1
+misc,duration,"More than a day between events
+Add a field to each event which is the time between this event and the previous one.
+The only field required here is _time.","index=* sourcetype=*
+| sort _time
+| streamstats current=f global=f window=1 last(_time) as last_ts
+| eval time_since_last = _time - last_ts
+| fieldformat time_since_last = tostring(time_since_last, ""duration"")
+| where time_since_last > 60*60*24",,grdhg24,1
+misc,duration,"Time between events
+Add a field to each event which is the time between this event and the previous one.
+The only field required here is _time.","index=* sourcetype=*  Error
+| sort _time
+| streamstats current=f global=f window=1 last(_time) as last_ts
+| eval time_since_last = _time - last_ts
+| fieldformat time_since_last = tostring(time_since_last, ""duration"")",http://www.bbosearch.com/searches/12,gpburdell,1
+splunk_internal,_internal,Get information on all indexes.,"| rest splunk_server=local /servicesNS/-/-/configs/conf-indexes
+| rename eai:appName as app eai:acl.sharing as sharing
+| table app sharing author title homePath coldPath thawedPath frozenTimePeriodInSecs maxDataSize maxHotBuckets maxTotalDataSizeMB
+| foreach * [eval FIELD = if(len(FIELD)>0, 'FIELD', ""-"")]
+| join app type=left [| rest splunk_server=local /servicesNS/-/-/apps/local
+| rename title as app label as app_label
+| table app app_label]
+| eval app_label = if(isnotnull(app_label), app_label, app)",,grdhg24,1
+splunk_internal,rest indexes,Look for a specific index .,"| rest /services/data/indexes
+| stats sum(totalEventCount) as Events dc(splunk_server) as NumServers by title",,grdhg24,1
+splunk_internal,dbinspect buckets,Returns information about the buckets in the Splunk index that you specify.,| dbinspect index=_internal span=1d,http://docs.splunk.com/Documentation/Splunk/latest/SearchReference/Dbinspect,grdhg24,1
+splunk_internal,internal hosts meta,Index meta data,| metadata type=hosts index=_internal,http://docs.splunk.com/Documentation/Splunk/latest/SearchReference/Metadata,grdhg24,1
+splunk_internal,meta dbinspect addinfo append,Combine dbinspect and REST api data for buckets. The dbinspect API doesn't return consistent information about the size of buckets.,"| dbinspect index=*
+| foreach *
+    [eval dbinspect_FIELD = 'FIELD']
+| table dbinspect_*
+| append    [
+	| rest splunk_server_group=dmc_group_cluster_master ""/services/cluster/master/buckets""
+	| foreach *
+	    [eval rest_api_FIELD = 'FIELD']
+| table rest_api_*    ]
+| eval bucketId=if(isNull(rest_api_title),dbinspect_bucketId,rest_api_title)
+| stats values(*) as * by bucketId
+| foreach rest_api_peers.*.*    [eval rest_api_<<MATCHSEG2>>=""""]
+| foreach rest_api_peers.*.*    [eval rest_api_<<MATCHSEG2>>=if (""<<MATCHSEG1>>""=dbinspect_bucketId,'FIELD','<<MATCHSEG2>>')]
+| fields - rest_api_peers.*",,grdhg24,1
+analytics,stats eval makeresults bin,Create a Normal Curve,"| makeresults count=50000
+| eval r = random() / (pow(2,31)-1)
+| eval r2 = random() / (pow(2,31)-1)
+| eval normal = sqrt(-2 * ln(r)) * cos(2 * pi() * r2)
+| bin normal span=0.1
+| stats count by normal
+| makecontinuous normal",,grdhg24,1
+analytics,machine learning predictive streamstats,"How to move a field through time for prediction purposes.
+Align a future value with the features in the past based on some time delta (Time to Decision, Time to Action) for machine learning or predictive analytics in general.","| inputlookup SOMECSV
+| reverse
+| streamstats window=1 current=f first(RemoteAccess) as RemoteAccessFromFuture
+| reverse
+| ...",,grdhg24,1
+splunk_internal,errors pwn,"Search to end all errors.
+Identifies frequently occurring errors in your splunk instance. LSS knocking out the top 10 on this list will make your splunk instance very happy.","index=_internal sourcetype=""splunkd"" log_level=""ERROR""
+| stats sparkline count dc(host) as hosts last(_raw) as last_raw_msg values(sourcetype) as sourcetype last(_time) as last_msg_time first(_time) as first_msg_time values(index) as index by punct
+| eval delta=round((first_msg_time-last_msg_time),2)
+| eval msg_per_sec=round((count/delta),2)
+| convert ctime(last_msg_time) ctime(first_msg_time)
+| table last_raw_msg count hosts sparkline msg_per_sec sourcetype index first_msg_time last_msg_time delta
+| sort -count",,grdhg24,1
+network,security,"Machines with Multiple Services.
+You can also filter it down with a additional | where ""Different Ports"" > 5.  Replace the wildcard * and or field names to be applicable to your data set(s.)","index=*
+| stats count by src_ip dst_ip dst_port protocol
+| stats dc(dst_port) as ""Different Ports"" by dst_ip",,grdhg24,1
+mv,"json,rename,fields,rex",json mv extraction,"index=*
+ | rename events{}.code AS a_c, events{}.message AS a_m, events{}.timestamp AS a_ts, events{}.priority as a_p # combine mv fields together using mvzip (to get tuples as comma-delim'd strings)
+| eval b_combined = mvzip(mvzip(mvzip(a_c, a_m), a_ts), a_p) # get rid of the a_* fields, simply b/c we don't need them clogging up the ui
+| fields - a_* # expand out the combined fields
+| mvexpand b_combined # extract nicely named fields from the results (using the comma from mvzip as the delimiter)
+| rex field=b_combined ""(?<e_c>[^,]*),(?<e_m>[^,]*),(?<e_ts>[^,]*),(?<e_p>[^,]*)"" # get rid of the combined field b/c we don't need it
+| fields - b_* # urldecode the field that you care about
+| eval e_m = urldecode(e_m)",,grdhg24,1
+security,"geoip,map",Detect unauthorized admin activity via foreign country.,"index=*
+| geoip clientip as clientip
+| table _time clientip client_country
+| where client_country NOT (""Germany"" OR ""Austria"" OR ""Switzerland"")",,grdhg24,1
+database,stream sql rex eval timechart,"Extract SQL Insert Params
+Extracts fields from a SQL Insert statement so that the values inserted into the database can be manipulated via splunk searches. In this case, it is used in conjunction with splunk stream & mysql, but should work with any source / database technology.","index=*
+sourcetype=stream:mysql* query=""insert into*""
+| rex ""insert into \S* \((?<aaa>[^)]+)\) values \((?<bbb>[^)]+)\)""
+| rex mode=sed field=bbb ""s/\\\\\""//g""
+| makemv aaa delim="",""
+| makemv bbb delim="",""
+| eval a_kvfield = mvzip(aaa, bbb)
+| extract jam_kv_extract
+| timechart span=1s per_second(m_value) by m_name",,grdhg24,1
+misc,spath makemv where strptime,"XML with SPATH
+Searches for events which contain a field called ""message"" that composite field is expanded via a call to spath. Then a value from the resulting expansion is used to find events that contain a date meeting certain criteria.","index=* sourcetype=""SOURCETYPE""
+| spath input=FIELD
+| where strptime('FIELD.updated_at', ""%Y-%m-%d %H:%M:%S %z"") > strptime(""2013-08-07 00:00:00"", ""%Y-%m-%d %H:%M:%S"")",,grdhg24,1
+security,threat security,"Detect Account Sharing
+Detect Users who login from multiple IP's / User account Sharing.  Replace the wildcard * and or field names to be applicable to your data set(s.)","index=* sourcetype=""*access*""
+| stats dc(src_ip) as ip_count by user",,grdhg24,
+security,threat security,"Detect machines/applications who are potentially infected and have active running malware on it. Even use it to detect fraud for shopping site orders coming from bad IP's. requirements:
+machine data with external IP's + IP Reputation App","index=*
+| stats count by src_ip dst_ip dst_port protocol
+| lookup threatscore clientip as dst_ip
+| sort –threatscore
+| where threatscore>0",,grdhg24,1
+security,threat security security,Find the top 5 ip addresses that are attempting to attack us. Requires juniper:idp data,"index=*
+sourcetype = ""juniper:idp"" attack*
+| top limit=5 src_ip",,grdhg24,1
+splunk_internal,utils,"Detect Clock Skew. If delta is anything other than about 00:00:01 (which is easy to account for when processing a lot of indexers), you may have clock skew.","| rest /services/server/info
+| eval updated_t=round(strptime(updated, ""%Y-%m-%dT%H:%M:%S%z""))
+| eval delta_t=now()-updated_t
+| eval delta=tostring(abs(delta_t), ""duration"")
+| table serverName, updated, updated_t, delta, delta_t",,grdhg24,1
+security,windows security,"Detect Account Sharing.
+Detect Users who login from multiple IP's / User account Sharing
+Requires: Login logs with Username + Source IP field extractions","index=*
+| stats dc(src_ip) as ip_count by user",,grdhg24,1
+security,rare security windows,Find Rare Processes (windows). Find rarely seen windows processes. Might indicate custom malware.,"index=*
+sourcetype=winregistry
+| rare process_image",,grdhg24,1
+web,status,Apache access_logs status code reporting ,"index=* sourcetype=""*access*""
+| chart count(eval(like(status,""2%""))) AS Success, count(eval(like(status,""4%"") OR like(status,""5%""))) AS Error by status",,grdhg24,1
+web,status,Find web site status over time.,"index=* sourcetype=""*access*""
+| timechart count by status_type limit=10 usenull=f",,grdhg24,1
+web,devices usage,Reports on most used devices / platforms.,"index=* sourcetype=""*access*""
+| dedup useragent
+| eval device=useragent
+| replace *Windows* with Windows, *Macintosh* with Apple, *Android* with Android, *iPhone* with iPhone, *iPad* with iPad in device
+| top limit=5 useother=t device",,grdhg24,1
+web,ui map,"Worldmap with unique visitors last 24 hours. Example uses clientip and an ""access"" sourcetype.","index=""*"" sourcetype=""*access*""
+| iplocation clientip
+| stats dc(clientip) by Country
+| geom geo_countries featureIdField=""Country"" earliest=-24h",,grdhg24,1
+security,linux login,List IPs that had Successful and Failed SSH Attempts,"index=* sourcetype=""*secure"" process=sshd ""password for""
+| rex field=_raw ""(?Accepted|Failed) password for (?\w+) from (?[0-9A-Fa-f:\.]+)""
+| eval success=if(result==""Failed"",0,1)
+| stats count as total,sum(success) as success by ipaddr
+| where total!=success AND success!=0",,grdhg24,1
+security,security outliers stdev,"Simple Outlier Search
+Find outliers - hosts that have an error count which is greater than two standard deviations away from the mean.","index=* ""Failed Password""
+| stats count by user
+| eventstats avg(count) as avg_count stdev(count) as stdev_count
+| where count>(avg_count + 2*stdev_count)
+| sort  -count",,grdhg24,1
+misc,streamstats eval,Time between events,"index=*
+| sort _time
+| streamstats current=f global=f window=1 last(_time) as last_ts
+| eval time_since_last = _time - last_ts
+| fieldformat time_since_last = tostring(time_since_last, ""duration"")",,grdhg24,1
+splunk_internal,utils,Splunk Server's Time,"index=*
+| head 1
+| eval tnow = now()
+| fieldformat tnow=strftime(tnow, ""%c %Z"")
+| table tnow",,grdhg24,1
+misc,utils,More than a day between events,"index=*
+| sort _time
+| streamstats current=f global=f window=1 last(_time) as last_ts
+| eval time_since_last = _time - last_ts
+| fieldformat time_since_last = tostring(time_since_last, ""duration"")
+| where time_since_last > 60*60*24",,grdhg24,1
+splunk_internal,index splunkd uf,List Hosts added to Splunk by some _time.,"index=* host=*
+| stats dc(host) as host by date_month",,grdhg24,1
+splunk_internal,forwarder,List of Sourcetypes Sent by Forwarder,"index=""_internal""
+| where host!=splunk_server
+| stats values(series) as Sourcetypes by host",,grdhg24,1
+splunk_internal,error host pwn,Detailed list of Errors Per Host,"index=_internal sourcetype=""splunkd"" log_level=""ERROR""
+| stats sparkline count dc(host) as uniqhosts last(message) as message last(_time) as last first(_time) as first by punct
+| convert ctime(last) ctime(first)
+| table message count uniqhosts sparkline first last
+| sort -count
+| rename message as ""Error Output"" count as Count uniqhosts as ""Number of Hosts"" first as ""First Occurance"" last as ""Most Recent Occurance""",,grdhg24,1
+splunk_internal,user pwn,Splunk User Search Activity,"index=_audit splunk_server=local action=search (id=* OR search_id=*)
+| eval search_id = if(isnull(search_id), id, search_id)
+| replace '*' with * in search_id
+| rex ""search='search\s(?<search>.*?)',\sautojoin""| search search_id!=scheduler_*
+| convert num(total_run_time) | eval user = if(user=""n/a"", null(), user)
+| stats min(_time) as _time first(user) as user max(total_run_time) as total_run_time first(search) as search by search_id
+| search search!=*_internal*  search!=*_audit*
+| chart sum(total_run_time) as ""Total search time"" count as ""Search count"" max(_time) as ""Last use"" by user
+| fieldformat ""Last use"" = strftime('Last use', ""%F %T.%Q"")",,grdhg24,1
+splunk_internal,memory sid,Introspection – Memory used by SID (Search ID),"index=""_introspection""  ""data.process""=splunkd
+| timechart max(data.mem_used) by data.search_props.sid usenull=f useother=f",,grdhg24,1
+splunk_internal,app,Search to show what apps are ready to be updated,"| rest splunk_server=local /services/apps/local
+| search update.version=* | table title version update.version",,grdhg24,1
+security,linux_secure,Linux Logons: Successful,"index=* sourcetype=linux_secure
+| rex ""\w{3}\s\d{1,2}\s\d{2}:\d{2}:\d{2}\s\S+\s(?<session>gdm-\w+)\S:\s""
+| search session=gdm-password
+| rex ""\w{3}\s\d{1,2}\s\d{2}:\d{2}:\d{2}\s(?<hostname>\S+)\s.+\Sgdm-password:auth\S:\s(?<authstatus>\w+\s\w+);\s.+user=(?<username>\S+)""
+| search authstatus=""authentication success""
+| timechart count(username)",,grdhg24,1
+security,login linux fail,Linux Logons: Failed,"index=* sourcetype=linux_secure
+| rex ""\w{3}\s\d{1,2}\s\d{2}:\d{2}:\d{2}\s\S+\s(?<session>gdm-\w+)\S:\s""
+| search session=gdm-password
+| rex ""\w{3}\s\d{1,2}\s\d{2}:\d{2}:\d{2}\s(?<hostname>\S+)\s.+\Sgdm-password:auth\S:\s(?<authstatus>\w+\s\w+);\s.+user=(?<username>\S+)""
+| search authstatus=""authentication failure""
+| timechart count(username)",,grdhg24,1
+security,windows suspicious,Search Common EventCodes (EventID’s) for Suspicious Behavior,"index=* source=WinEventLog:security User!=SYSTEM User!=""LOCAL SERVICE"" User!=""NETWORK SERVICE"" | eval Trigger=case(EventCode=516, ""Audit Logs Modified"",EventCode=517, ""Audit Logs Modified"",EventCode=612, ""Audit Logs Modified"",EventCode=623, ""Audit Logs Modified"",EventCode=806, ""Audit Logs Modified"",EventCode=807, ""Audit Logs Modified"",EventCode=1101, ""Audit Logs Modified"",EventCode=1102, ""Audit Logs Modified"",EventCode=4612, ""Audit Logs Modified"",EventCode=4621, ""Audit Logs Modified"",EventCode=4694, ""Audit Logs Modified"",EventCode=4695, ""Audit Logs Modified"",EventCode=4715, ""Audit Logs Modified"",EventCode=4719, ""Audit Logs Modified"",EventCode=4817, ""Audit Logs Modified"",EventCode=4885, ""Audit Logs Modified"",EventCode=4902, ""Audit Logs Modified"",EventCode=4906, ""Audit Logs Modified"",EventCode=4907, ""Audit Logs Modified"",EventCode=4912, ""Audit Logs Modified"", EventCode=642, ""Account Modification"",EventCode=646, ""Account Modification"",EventCode=685, ""Account Modification"",EventCode=4738, ""Account Modification"",EventCode=4742, ""Account Modification"",EventCode=4781, ""Account Modification"", EventCode=1102, ""Audit Logs Cleared/Deleted"",EventCode=517, ""Audit Logs Cleared/Deleted"", EventCode=628, ""Passwords Changed"",EventCode=627, ""Passwords Changed"",EventCode=4723, ""Passwords Changed"",EventCode=4724, ""Passwords Changed"", EventCode=528, ""Successful Logons"",EventCode=540, ""Successful Logons"",EventCode=4624, ""Successful Logons"", EventCode=4625, ""Failed Logons"",EventCode=529, ""Failed Logons"",EventCode=530, ""Failed Logons"",EventCode=531, ""Failed Logons"",EventCode=532, ""Failed Logons"",EventCode=533, ""Failed Logons"",EventCode=534, ""Failed Logons"",EventCode=535, ""Failed Logons"",EventCode=536, ""Failed Logons"",EventCode=537, ""Failed Logons"",EventCode=539, ""Failed Logons"", EventCode=576, ""Escalation of Privileges"",EventCode=4672, ""Escalation of Privileges"",EventCode=577, ""Escalation of Privileges"",EventCode=4673, ""Escalation of Privileges"",EventCode=578, ""Escalation of Privileges"",EventCode=4674, ""Escalation of Privileges"") | stats count by Trigger | sort - count",,grdhg24,1
+misc,compare stats bin,Comparing Stats Time Over Time,"index=_internal earliest=-48h latest=-24h
+| bin _time span=10m
+| stats count by _time
+| eval window=""yesterday""
+| append
+[search index=_internal earliest=-24h
+| bin _time span=10m
+| stats count by _time
+| eval window=""today""
+| eval _time=(_time-(60*60*24))]
+| timechart span=10m sum(count) by window",,grdhg24,1
+splunk_internal,users count pwn,Splunk Query Count by users,"index=_audit search=* NOT (search_id='scheduler* OR search_id='Summary*) user=admin
+| timechart span=1d count by user usenull=f",,grdhg24,1
+splunk_internal,license,Splunk License Gauge,"| rest splunk_server=local /services/licenser/pools
+| rename title AS Pool
+| search [rest splunk_server=local /services/licenser/groups
+| search is_active=1
+| eval stack_id=stack_ids
+| fields stack_id]
+| join type=outer stack_id [rest splunk_server=local /services/licenser/stacks | eval stack_id=title
+| eval stack_quota=quota | fields stack_id stack_quota]
+| stats sum(used_bytes) as used max(stack_quota) as total
+| eval usedGB=round(used/1024/1024/1024,3)
+| eval totalGB=round(total/1024/1024/1024,3)
+| eval gauge_base=0
+| eval gauge_danger=totalGB*0.8
+| eval gauge_top=totalGB+0.001
+| gauge usedGB gauge_base gauge_danger totalGB gauge_top",,grdhg24,1
+splunk_internal,license,"Percentage of Daily License Usage.
+This Splunk search query will indicate the percentage of license used for the current day. This is already shown in the licensing tab under settings, however this query is extracted if you would want to use it within a dashboard or any other reason.","| rest splunk_server=* /services/licenser/pools
+| rename title AS Pool
+| search [rest splunk_server=* /services/licenser/groups
+| search is_active=1
+| eval stack_id=stack_ids
+| fields stack_id]
+| eval quota=if(isnull(effective_quota),quota,effective_quota)
+| eval ""% used""=round(used_bytes/quota*100,2)
+| fields ""% used""",,grdhg24,1
+security,login fail linux_secure,Repeated Unsuccessful Logon Attempts in Linux,"index=* sourcetype=linux_secure
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| rex ""gdm\S+\sauthentication\s(?<status>\w+)""
+| rex ""\suser[^'](?<User>\S+\w+)""
+| search status=failure
+| stats count as fails by Date, User, hostname
+| eval ""Alert Level""=case(fails>=50, ""Critical"", fails<50 AND fails>=20, ""Warning"", fails<20, ""Normal"")
+| sort - fails
+| rename fails as ""Failed Logon Attempts""
+| rename User as ""Account in Question""",,grdhg24,1
+splunk_internal,memory windows,Memory Usage and Information on Splunk Server,"| rest splunk_server=* /services/server/status/resource-usage/hostwide
+| stats first(normalized_load_avg_1min) as load_average first(cpu_system_pct) as system, first(cpu_user_pct) as user first(mem) AS mem first(mem_used) AS mem_used by splunk_server
+| fields splunk_server mem mem_used
+| eval pctmemused=round((mem_used/mem)*100).""%""
+| table splunk_server pctmemused
+| rename splunk_server as ""Splunk Server"" pctmemused as ""Percent of Memory Used""",,grdhg24,1
+security,malware,Malware Detection,"index=*
+| convert mktime(_time) as epoch
+| sort 0 uri_host,client_ip,epoch
+| delta epoch as epoch_delta
+| search epoch_delta>0 epoch_delta<30
+| chart count over epoch_delta by uri_host",,grdhg24,1
+misc,compare,Calculate the Difference in time Between two Fields,"index=*
+| eval timeDiff = strptime(timeField1, ""%Y-%m-%d %H:%M:%S.%3N"") - strptime(timeField2, ""%Y-%m-%d%H:%M:%S.%3N"")
+| table timeDiff",,grdhg24,1
+splunk_internal,forwarder traffic nodata,Traffic Volume by Forwarder,"index=""_internal"" source=""*metrics.lo*"" group=tcpin_connections NOT eventType=*
+| eval sourceHost=if(isnull(hostname), sourceHost,hostname)
+| search sourceHost=***
+| timechart per_second(kb) by sourceHost WHERE max in top5 useother=f",,grdhg24,1
+security,qualys,Qualys Active OS Vuln Count,"index=qualys HOSTVULN SEVERITY=3 OR 4 OR 5 TYPE=""CONFIRMED"" earliest=-30d@d
+| dedup HOST_ID, QID | search STATUS!=""FIXED""
+| join QID [search index=qualys QID_INFO PATCHABLE=1]
+| join HOST_ID [search index=qualys HOSTSUMMARY: OS=""Windows*"" NOT ""Windows Server*""
+| where cidrmatch(""10.128.0.0/9"", IP) ]
+| stats count(QID) as #_Vulns by OS | sort -#_Vulns | addcoltotals #_Vulns",,grdhg24,1
+security,qualys,Qualys Top 10 Vulnerabilities by Severity,"index=""*"" sourcetype=qualys_vm_detection HOSTVULN SEVERITY=3 OR 4 OR 5 TYPE=""CONFIRMED"" earliest=-30d@d
+| dedup HOST_ID, QID | search STATUS!=""FIXED""
+| join QID [search sourcetype=qualys_knowledgebase PATCHABLE=1 ]
+| eval Published=strftime(strptime(PUBLISHED_DATETIME, ""%Y-%m-%d""), ""%m/%d/%Y"")
+| join HOST_ID [search sourcetype=qualys_vm_detection HOSTSUMMARY OS=""Windows*"" NOT ""Windows Server*""
+| where cidrmatch(""10.128.0.0/9"", IP)  ]
+|  stats count(HOST_ID) as #_Hosts by QID, Published, TITLE, SEVERITY
+| sort  -SEVERITY, 10 -#_Hosts",,grdhg24,1
+security,qualys,Qualys Hosts not Scanned in 30 days+,"index=""qualys"" HOSTVULN earliest=-30d@d STATUS=""RE-OPENED""
+| dedup HOST_ID, QID sortby +_time
+| join HOST_ID [search index=qualys HOSTSUMMARY OS=""Windows*"" NOT ""Windows Server*""
+| where cidrmatch(""10.128.0.0/9"", IP) ]
+| timechart span=1d count(QID) by SEVERITY",,grdhg24,1
+security,windows security disabled,Failed Attempt to Login to a Disabled Account,"index=* sourcetype=""WinEventLog:security"" EventCode=4625 (Sub_Status=""0xc0000072"" OR Sub_Status=""0xC0000072"") Security_ID!=""NULL SID"" Account_Name!=""*$""
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| rex ""Which\sLogon\sFailed:\s+\S+\s\S+\s+\S+\s+Account\sName:\s+(?<facct>\S+)""
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, facct, host, Keywords
+| rename facct as ""Target Account"" host as Host Keywords as Status count as Count",,grdhg24,1
+splunk_internal,splunkd duration  pwn,Splunk Server Restart Duration,"index=_audit (action=""splunkShuttingDown"" OR action=""splunkStarting"")
+| eval Date=strftime(_time, ""%Y/%m/%d"") | transaction splunk_server startswith=action=""splunkShuttingDown"" endswith=action=""splunkStarting""
+| eval duration=round(duration/60, 2)
+| table Date splunk_server duration
+| rename duration as ""Splunk Restart Duration"" splunk_server as ""Splunk Server""",,grdhg24,1
+splunk_internal,splunkd permissions  pwn,"Permissions for splunk users
+Another view for which splunk user can do what in your splunk environment","| rest /services/authentication/users
+| mvexpand roles
+| table realname, title, roles, email
+| join roles [ rest /services/authorization/roles
+| rename title as roles
+| search srchIndexesAllowed=*
+| table roles srchIndexesAllowed]",,grdhg24,1
+misc,epoch convert,"Convert field timestamp format to Epoch. This does not include the meta data field _time.
+Scenario: You have a non timestamp field that you need to convert to epoch time to perform statistics on within splunk. Here’s how you do it:","index=*
+| eval Epoch_Time=strptime(Field_Date, ""%Y-%m-%d %H:%M:%S"")",,grdhg24,1
+splunk_internal,rest splunkd disk,"Hard Disk Usage and Information on Splunk Server.
+The following Splunk Query will utilize a “| REST” call to gather information related to disk usage on your Splunk server(s). The following has been modified from the “Distributed Management Console” to be more generic for a copy, paste, and search example.","| rest splunk_server=* /services/server/status/partitions-space
+| eval free = if(isnotnull(available), available, free)
+| eval usage = round((capacity - free) / 1024, 2) | eval capacity = round(capacity / 1024, 2)
+| eval compare_usage = usage."" / "".capacity | eval pct_usage = round(usage / capacity * 100, 2)
+| stats first(fs_type) as fs_type first(compare_usage) as compare_usage first(pct_usage) as pct_usage by mount_point, splunk_server
+| rename mount_point as ""Mount Point"", fs_type as ""File System Type"", compare_usage as ""Disk Usage (GB)"", capacity as ""Capacity (GB)"", pct_usage as ""Disk Usage (%)"" splunk_server as ""Splunk Server""
+| sort - ""Splunk Server""",,grdhg24,1
+misc,convert time,"Convert Seconds to Hours Minutes Seconds HHMMSS.
+Take any field in splunk that outputs a value in seconds and change it to report in HH:MM:SS format:","index=*
+| eval HHMMSS=tostring(Field_In_Seconds, ""duration"")
+| table HHMMSS",,grdhg24,1
+splunk_internal,trouble,Forwarder Diagnostics – Last time Data Was Received by Index and Sourcetype.,"| tstats latest(_time) as Latest by host sourcetype index
+| eval current=now()
+| eval Minimum_Age=round(((current-Latest)/60)/60,2)
+| rangemap field=Minimum_Age default=Critical Normal=0-0.5 Elevated=0.5-2 Warning=2-4
+| eval stIDX=tostring(index) + "" -- "" + tostring(sourcetype)
+| stats values(stIDX) as ""Index -- Sourcetype"" list(Latest) as ""Latest Event"" list(Minimum_Age) as Minimum_Age list(range) as Threshold by host
+| convert ctime(""Latest Event"")
+| eventstats avg(Minimum_Age) as average by host
+| eval average=round(average,2)
+| sort - average
+| rename Minimum_Age as ""Hours Since Last Communication"" average as ""Average Time in Hours Since Last Communication""",,grdhg24,1
+splunk_internal,uf sourcetypes,List of Sourcetypes Sent by Forwarder,"index=""_internal""
+| where host!=splunk_server
+| stats values(series) as Sourcetypes by host",,grdhg24,1
+splunk_internal,uf ports  pwn,List Ports Forwarders are Using,"index=""_internal"" source=""*metrics.lo*"" group=tcpin_connections NOT eventType=* 
+| dedup sourceHost
+| stats count by destPort",,grdhg24,1
+splunk_internal,host splunkd errors,"Detailed list of Errors Per Host.
+The following Splunk search will return a detailed list (by message) of errors associated with hosts running a universal forwarder:","index=_internal sourcetype=""splunkd"" log_level=""ERROR""
+| stats sparkline count dc(host) as uniqhosts last(message) as message last(_time) as last first(_time) as first by punct
+| convert ctime(last) ctime(first)
+| table message count uniqhosts sparkline first last
+| sort -count
+| rename message as ""Error Output"" count as Count uniqhosts as ""Number of Hosts"" first as ""First Occurance"" last as ""Most Recent Occurance""",,grdhg24,1
+security,juniper attack,"Count of Attackers on Juniper Devices.
+The following is a Splunk search query that indicates potential “attacks” by source IP.","index=* sourcetype = ""juniper:idp"" attack*
+| stats count by src_ip",,grdhg24,1
+security,windows audit,Clearing of Windows Audit Logs,"index=* source=WinEventLog:security (EventCode=1102 OR EventCode=517)
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Client_User_Name, host, index, Date
+| sort - Date
+| rename Client_User_Name as ""Account Name""",,grdhg24,1
+security,root hosts,"Number of Hosts the Root Account was Detected on.
+The following splunk query example will return the total number of hosts the Root account was detected on  in a given time range *NOTE* if the host field is being autoextracted (for instance if you are using a universal forwarder) you will not need the regex command and can call upon the auto extracted fieldname […]","index=* sourcetype=linux_secure
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| rex ""\suser[^'](?<User>\S+\w+)""
+| search User=""root"" | stats dc(hostname)",,grdhg24,1
+security,windows overlay,"Windows Failed Logons with Average Overlay
+This Splunk search will show any failed login attempt and graphically overlay an average value.","index=* sourcetype=""WinEventLog:Security"" (Logon_Type=2 OR Logon_Type=7 OR Logon_Type=10) (EventCode=4625 OR EventCode=529 OR EventCode=530 OR EventCode=531 OR EventCode=532 OR EventCode=533 OR EventCode=534 OR EventCode=535 OR EventCode=536 OR EventCode=537 OR EventCode=539)
+| timechart count(EventCode) as count
+| eventstats avg(count) as Average | eval average=round(average,0)
+| rename count as ""Failed Logons""",,grdhg24,1
+security,windows file access,"Windows File Access Attempts
+The following splunk queries will display any file access attempts (successful or failed) by user account. Ensure the Splunk App for Windows is installed grab it here: https://apps.splunk.com/app/742/ Windows 2003 and older:","index=* sourcetype=""WinEventLog:Security"" EventCode=560 Object_Type=File
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| eval UserName=coalesce(Primary_User_Name, Client_User_Name)
+| search UserName!=""*$"" AND UserName!=""NETWORK SERVICE""
+| stats count by Date, Image_File_Name, UserName, Type, host
+| sort - Date",,grdhg24,1
+security,windows file access,Windows 2008 and newer:,"index=* sourcetype=""WinEventLog:Security"" EventCode=4656 Object_Type=File (Security_ID!=""NT AUTHORITY*"") (Security_ID!=""S-*"")
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, Account_Name, Process_Name, Keywords, host",,grdhg24,1
+web,iis,"Real Time IIS Web Site Connections
+Assuming JSESSIONID is auto-extracted, run the following REAL-TIME search (choose your window, I typically go with 5 minutes)","index=* sourcetype=""iis""
+| stats dc(JSESSIONID)",,grdhg24,1
+security,windows,"Accounts Deleted via EventID’s that Correspond with Post XP/2003 Operating Systems.
+This query will search for accounts deleted via EventID’s that correspond with post XP/2003 operating systems. It will output the admin account, account deleted, details about the action, and the machine that the account deletion took place on.","index=* sourcetype=WinEventLog:Security (EventCode=630)
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by User, Target_Account_Name, name, host, index Date
+| rename User as ""Administrator Account""
+| rename Target_Account_Name as ""Account Name Deleted""
+| rename name as ""Detailed Information""
+| rename host as ""Computer the Account was Created on""
+| rename index as ""Index of origin""| sort - Date",,grdhg24,1
+splunk_internal,audit,"Internal Splunk User Modifications.
+This query will search the internal audit sourcetype of splunk and report on any user modification attempts, both success and fail.","index=_audit sourcetype=audittrail action=edit_user
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| where user!=object
+| stats count by user, info, object, Date
+| rename user as ""Authenticated User""
+| rename info as ""Success Status""
+| rename object as ""Modified Account""
+| sort - count",,grdhg24,1
+splunk_internal,license,Splunk License Usage Over the Last 30 Days,"index=_internal source=*license_usage.log type=""RolloverSummary"" earliest=-30d@d
+| eval _time=_time - 43200
+| bin _time span=1d
+| stats latest(b) AS b by slave, pool, _time
+| timechart span=1d sum(b) AS ""volume"" fixedrange=false
+| join type=outer _time [search index=_internal source=*license_usage.log type=""RolloverSummary"" earliest=-30d@d
+| eval _time=_time - 43200
+| bin _time span=1d
+| stats latest(stacksz) AS ""stack size"" by _time]
+| fields - _timediff
+| foreach * [eval FIELD=round('FIELD'/1024/1024/1024, 3)]",,grdhg24,1
+web,iis,"Total Unique Browsers detected in IIS logs.
+The following Splunk search query will show a count of unique browsers (calculation to include version) that hit a given website within IIS logs:","index=* sourcetype=iis
+| stats dc(cs_User_Agent)",,grdhg24,1
+splunk_internal,license  pwn,"License Usage by Index per Day.
+The following Splunk search query will output license usage for each index for each day for the week to date. It will also output an average for each index over the course of the given time period.","index=_internal source=*license_usage.log type=""Usage"" splunk_server=* earliest=-1w@d
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| eventstats sum(b) as volume by idx, Date
+| eval MB=round(volume/1024/1024,5)
+| timechart first(MB) AS volume by idx",,grdhg24,1
+infrastructure,windows disk,Low Disk Space Alert for Windows Servers,"index=* eventtype=hostmon_windows Type=Disk host=""*"" FileSystem=""*"" DriveType=""*""
+| dedup host, Name
+| eval FreeSpacePct=round(FreeSpaceKB/TotalSpaceKB*100)
+| eval TotalSpaceGB=round(TotalSpaceKB/1024/1024)
+| eval FreeSpaceGB=round(FreeSpaceKB/1024/1024)
+| search FreeSpacePct<10 TotalSpaceGB=""*""
+| dedup host, Name, DriveType, TotalSpaceGB, FreeSpaceGB, FreeSpacePct
+| table host, Name, DriveType, TotalSpaceGB, FreeSpaceGB, FreeSpacePct
+| sort FreeSpacePct",,grdhg24,1
+splunk_internal,license  pwn,"Top 5 License Consuming Hosts.
+The following Splunk search query will return the top five licensing consuming hosts:","index=_internal source=*license_usage.log type=""Usage""
+| stats sum(b) AS volume by h
+| eval  GB=round(volume/1024/1024/1024,5)
+| table h GB
+| sort 5 - GB",,grdhg24,1
+splunk_internal,license,"License Usage Forecast Model.
+The following query can be used for Splunk license capacity planning. It is only a prediction based on your current ingestion rate, and attempts to predict what your usage will be over the next 120 days. It is recommended not to use all time in your search, as the predict command takes quite a bit of […]","index=_internal todaysbytesindexed startdaysago=60
+| eval GB_Indexed = todaysBytesIndexed/1024/1024/1024
+| timechart span=1d avg(""GB_Indexed"")
+| predict avg(""GB_Indexed"") future_timespan=120 as ""Forecast Index Rate""
+| rename avg(""GB_Indexed"") as ""Current Index Rate""",,grdhg24,1
+web,trouble,Events processed by Web Servers / load balance?,"index=* sourcetype=*access*
+earliest=-7d@d  latest=now
+| timechart count by host",,grdhg24,1
+web,queue,Average Queue Size,"index=* sourcetype=""*access*""
+| eval bytes = bytes / 170
+| timechart avg(bytes)",,grdhg24,1
+web,status sparkline,Top Statuses Sparklines,"index=* sourcetype=""*access*""
+|  stats count(status) as count sparkline(count) by status_description
+|  rename status_description as ""http status code""
+|  sort - count",,grdhg24,1
+web,unique,Unique Visitors,"index=* sourcetype=*access* earliest=-10d@d latest=now
+| timechart dc(clientip) AS unique_visitors by host",,grdhg24,1
+web,unique,Total Unique Client IPs Over Time,"index=* sourcetype=*access*
+| timechart distinct_count(clientip) span=1h",,grdhg24,1
+web,join field,"Add the field: ""comboIP"". Values of ""comboIP"" = """"sourceIP"" + ""/"" + ""destIP""""","index=* sourcetype = *access*
+| strcat sourceIP ""/"" destIP comboIP",,grdhg24,1
+web,field show,"Keep the ""host"" and ""ip"" fields, and display them in the order: ""host"", ""ip""","index=* sourcetype=*access*
+| fields + host, ip",,grdhg24,1
+web,rare url,"Return the least common values of the ""url"" field.","index=* sourcetype=*access*
+| rare url",,grdhg24,1
+web,referer url,"Search the access logs, and return the number of hits from the top 100 values of ""referer_domain","index=* sourcetype=*access*
+| top limit=100 referer_domain
+| stats sum(count)",,grdhg24,1
+web,host,"Create a timechart of the count of from ""web"" sources by ""host""","index=* sourcetype=*access*
+| timechart count by host",,grdhg24,1
+web,errors diff,"Return values of ""URL"" that contain the string ""404"" or ""303"" but not both.","index=* sourcetype=*access*
+| set diff [search 404 | fields url] [search 303 | fields url]",,grdhg24,1
+web,url,"Return the 20 most common values of the ""url"" field.","index=* sourcetype=*access*
+| top limit=20 url",,grdhg24,1
+web,transaction,Users Percentage of Total Processing Time (Know User Name - $series$),"index=* sourcetype=""*access*""
+| transaction username clientip maxspan=20m maxpause=5m
+| eval durationCurrentUser = if (username = ""$series$"", duration, null)
+| eval eventCountCurrentUser = if (username = ""$series$"", eventcount, null)
+| eval durationOtherUsers = if (username != ""$series$"", duration, null)
+| eval eventCountOtherUsers = if (username != ""$series$"", eventcount, null)
+| stats avg(eventCountCurrentUser), avg(eventCountOtherUsers), avg(durationCurrentUser), avg(durationOtherUsers)",,grdhg24,1
+web,sparkline,Top Users,"index=* sourcetype=*access*
+| stats sparkline count by username
+| sort -count
+| head 10",,grdhg24,1
+web,User Agent,Top User Agent,"index=""*"" sourcetype=*access*
+| top useragent",,grdhg24,1
+web,convert,Convert Bytes to Megabytes,"index=*  sourcetype=""*access*""
+| eval megabytes=((bytes/1024)/1024)
+| timechart sum(megabytes)",,grdhg24,1
+misc,transaction,Simple Example: Transaction.  Replace the wildcard * and or field names to be applicable to your data set(s.),"index=*
+| transaction clientip
+| where duration >1
+| table clientip  host duration _time",,grdhg24,1
+misc,transaction,"Group search results that have the same ""host"" and ""cookie"", occur within 30 seconds of each other, and do not have a pause greater than 5 seconds between each event into a transaction.  Replace the wildcard * and or field names to be applicable to your data set(s.)","index=*
+| transaction host cookie maxspan=30s maxpause=5s",,grdhg24,1
+misc,transaction,Show Avg Transaction duration,"index=* sourcetype=""*access*""
+| eval bytes = bytes / 20
+| eval sla=105
+| timechart avg(sla) as SLA avg(bytes) as ""Avg Tx Duration"" span=1m",,grdhg24,1
+web,transaction,Bounce Rate (Enters and exits on the same page),"index=* sourcetype=*access*
+| transaction clientip maxpause=1h keepevicted=t mvlist=t
+| eval user_type=case (eventcount=1,""Bounced"", eventcount<=5, ""2-5 pages"", eventcount<=10, ""6-10 pages"")
+| top limit=5000 user_type",,grdhg24,1
+misc,streamstats,Streamstats,"index=*
+| head 5
+| sort _time
+| streamstats sum(bytes) as ASimpleSumOfBytes by clientip",http://blogs.splunk.com/2014/04/01/search-command-stats-eventstats-and-streamstats-2/sourcetype=access_combined*,grdhg24,1
+misc,anomalies,Return only anomalous event.  Replace the wildcard * and or field names to be applicable to your data set(s.),"index=* sourcetype=*
+| anomalies",,grdhg24,1
+misc,rename,"Rename the ""_ip"" field as ""IPAddress""","index=*
+| rename _ip as IPAddress",,grdhg24,1
+misc,overlay,Figure out how to show an SLA on a current graph,"index=*
+| timechart avg(responsetime) as responsetime
+| eval SLA = 5",,grdhg24,1
+misc,predict,Predict: Example.  Replace the wildcard * and or field names to be applicable to your data set(s.),"index=* sourcetype=*
+| timechart span=1d count(file) as count
+| predict count",,grdhg24,1
+misc,predict,Predict: Example 2.  Replace the wildcard * and or field names to be applicable to your data set(s.),"index=* sourcetype=*
+| timechart span=""1m"" count AS foo
+| predict foo as fubar algorithm=LL upper90=high lower97=low future_timespan=10 holdback=20",,grdhg24,1
+misc,timewrap command,"Timewrap. Use this after a 'timechart' command, and compare week-over-week. Or use 'h' (hour), 'w' (week), 'm' (month), 'q' (quarter), 'y' (year).  Replace the wildcard * and or field names to be applicable to your data set(s.)","index=INDEX sourcetype=SOURCETYPE
+| timewrap 1w",,grdhg24,1
+misc,punct,Does a distinct on data by its shape (punct). punct is the skeleton of the event.,"index=INDEX sourcetype=SOURCETYPE
+| dedup punct",,grdhg24,1
+misc,punct error,Punct example:1,"index=INDEX sourcetype=SOURCETYPE err* OR fail* OR crit* OR down OR fatal OR except*
+| rare punct",,grdhg24,1
+misc,punct pwn error,Punct example:2,"index=INDEX sourcetype=SOURCETYPE  err* OR fail* OR crit* OR fatal* OR except*
+| rex field=punct ""(?<smallpunct>.{5})""
+| eval smallpunct= ""*"" + smallpunct
+| stats first(_raw) as example count by smallpunct
+| sort -count
+| fields smallpunct,count,example",,grdhg24,1
+misc,"cim,predict",WEB CIM data model predict web request durations,"| tstats summariesonly=t perc95(web_request.wDuration) AS estPC95, perc90(web_request.wDuration) AS estPC90, perc50(web_request.wDuration) AS estPC50 from datamodel=""web"" where (nodename=""web_request"") groupby ""_time"" span=1m
+| fields _time, estPC*",,grdhg24,1
+splunk_internal,event pwn,Calculate Event Data Sizes,"index=_internal earliest=""-d@d"" latest=""@d""
+| fieldsummary
+| rex field=values max_match=100 ""value\"":\""(?<foo>[^\""]*)\"",""
+| mvexpand foo
+| eval foo_len=len(foo)
+| rex field=field ""^(?!date|punct|host|hostip|index|linecount|source|sourcetype|timeendpos|timestartpos|splunk_server)(?<Field>.*)""
+| stats max(foo_len) as Bytes values(foo) as Values by Field,count
+| eval SpaceMB=(Bytes*count)/1024/1023
+| rename count as Count
+| table Field Bytes Count SpaceMB
+| sort -SpaceMB",,grdhg24,1
+special,compare,Single Value: COMPARE,"index=* error earliest=-30d latest=@d
+| timechart span=1h count
+| eval Hour = strftime(_time,""%H"")
+| stats avg(count) as AverageCount by Hour",,grdhg24,1
+special,compare,Viewing data together.,"index=""*"" error earliest=-30d latest=@d
+| timechart span=1d count as dailyCount
+| stats avg(dailyCount) as AveragePerDay
+| appendcols [search error earliest=@d latest=now
+| stats count as TodaysCount]",,grdhg24,1
+special,compare,Avg Value for 24 hours over 30 days compared with todays value- optimized searches,"index=* sourcetype=* error earliest=-30d latest=@h
+| timechart span=1h count
+| eval StartTime=relative_time(now(),""-24h@h"")
+| eval Series=if(_time>=StartTime,""TodaysCount"",""AverageCount"")
+| eval Hour = strftime(_time,""%H"")
+| chart avg(count) by Hour Series",,grdhg24,1
+special,compare,"Comparing equal time ranges in one report. 1 day is 86,400 seconds",... | eval _time = _time + 86400,,grdhg24,1
+special,compare,Seven Days Over One Day,"index=* error earliest=-7d@d latest=@d
+| eval Series=""Yesterday""
+| eval _time = _time + 86400
+| append [ search error earliest=@d latest=now
+| eval Series = ""Today"" ]
+| timechart fixedrange=f span=30m count by Series",,grdhg24,1
+special,compare,Day over Day,"index=""*"" error earliest=-1d@d latest=@d
+| eval Series=""Yesterday""
+| eval _time = _time + 86400
+| append [ search tag=failure earliest=@d latest=now
+| eval Series = ""Today"" ]
+| timechart fixedrange=f span=30m count by Series",http://blogs.splunk.com/2012/02/19/compare-two-time-ranges-in-one-report/,grdhg24,1
+special,predict x11,Links to search information. The links contain information on the native splunk predict and x11 commands.,"http://docs.splunk.com/Documentation/Splunk/latest/Search/Aboutpredictiveanalytics
+http://blogs.splunk.com/tag/machine-learning/
+http://apps.splunk.com/app/1307/
+https://splunkbase.splunk.com/app/2890/",,grdhg24,2
+misc,email,Send search results to the specified email,"... | sendemail to=""youremail@youraddress.com""",,grdhg24,1
+misc,accum,"Save the running total of ""count"" in a field called ""total_count""",... | accum count AS total_count,,grdhg24,1
+misc,countdiff delta,"For each event where 'count' exists, compute the difference between count and its previous value and store the result in 'countdiff'.",... | delta count AS countdiff,,grdhg24,1
+misc,strcat,"Add the field: ""comboIP"". Values of ""comboIP"" = ""sourceIP"" + ""/"" + ""destIP""","... | strcat sourceIP ""/"" destIP comboIP",,grdhg24,1
+misc,relevance,Calculate the relevancy of the search and sort the results in descending order.,... disk error | relevancy | sort -relevancy,,grdhg24,1
+misc,fields,"Remove the ""host"" and ""ip"" fields ","... | fields - host, ip",,grdhg24,1
+misc,null Null,Build a time series chart of web events by host and fill all empty fields with NULL,... | timechart count by host | fillnull value=NULL,,grdhg24,1
+misc,web replace,"Change any host value that ends with ""localhost"" to ""localhost""",... | replace *localhost with localhost in host,,grdhg24,1
+misc,highlight,"Highlight the terms ""login"" and ""logout""","... | highlight login,logout",,grdhg24,1
+misc,saved search,"Run the ""SEARCH"" saved search",... | savedsearch SEARCH,,grdhg24,1
+misc,scrub,Anonymize the current search results,... | scrub,,grdhg24,1
+misc,output,"Output the ""_raw"" field of your current search into ""_xml""",... | outputtext,,grdhg24,1
+misc,dedup,Remove duplicates of results with the same host value,... | dedup host,,grdhg24,1
+misc,distinct dc,"Remove duplicates of results with the same ""host"" value and return the total count of the remaining results",... | stats dc(host),,grdhg24,1
+misc,uniq,"For the current search, keep only unique result",... | uniq,,grdhg24,1
+misc,output,"Output LookupWrite to ""users.csv"" lookup file (under $SPLUNK_HOME/etc/system/lookups or $SPLUNK_HOME/etc/apps/*/lookups)",... | outputlookup users.csv,,grdhg24,1
+misc,sort,"Sort results by ""ip"" value in ascending order and then by ""url"" value in descending order","... | sort ip, -url",,grdhg24,1
+misc,head top,Return the first 20 results,... | head 20,,grdhg24,1
+misc,reverse,Reverse the order of a result set,... | reverse,,grdhg24,1
+misc,inputlookup,"View contents of a look up file. In this case, users.csv",... | inputlookup users.csv,,grdhg24,1
+misc,error,Error Search Broken Down by Sourcetype,... error OR failed OR severe OR ( sourcetype=* ( 404 OR 500 OR 503 ) )| timechart count by host,,grdhg24,1
+misc,rex erex extract,"Extracts out values like ""7/01"", putting them into the ""monthday"" attribute","... | erex monthday examples=""7/01""",,grdhg24,1
+misc,extract delim,"Extract field/value pairs that are delimited by ""|;"", and values of fields that are delimited by ""=:""","... | extract pairdelim=""|;"", kvdelim=""=:"", auto=f",,grdhg24,1
+misc,xml extract,"Extract field/value pairs from XML formatted data. ""xmlkv"" automatically extracts values between XML tags",... | xmlkv,,grdhg24,1
+misc,rex,"REX in the Search Bar - <<The field comes out as aaa in the interesting fields section>>. Your regex (between the """") needs to be correct for your sample to extract a value.","... | rex field=_raw ""\,\d\d\d\s(?<aaa>[^\s]+)""",,grdhg24,1
+misc,addtotals,"Calculate the sums of the numeric fields of each result, and put the sums in the field ""sum""",... | addtotals fieldname=sum,,grdhg24,1
+misc,mean,"Return the average (mean) ""size"" for each distinct ""host""",... | chart avg(size) by host,,grdhg24,1
+misc,"bins,bucket","Return the the maximum ""delay"" by ""size"", where ""size"" is broken down into a maximum of 10 equal sized buckets",... | chart max(delay) by size bins=10,,grdhg24,1
+misc,eval delay avg os,"Return the ratio of the average (mean) ""size"" to the maximum ""delay"" for each distinct ""host"" and ""user"" pair ",... | chart eval(avg(size)/max(delay)) by host user,,grdhg24,1
+misc,avg os,"Graph the average ""thruput"" of hosts over time",... | timechart span=5m avg(thruput) by host,,grdhg24,1
+misc,outlier os,"Create a timechart of average ""cpu_seconds"" by ""host"", and remove data (outlying values) that may distort the timechart's axis",... | timechart avg(cpu_seconds) by host | outlier action=tf,,grdhg24,1
+misc,stats avg os,"Return the average for each hour, of any unique field that ends with the string ""lay"" (for example, delay, xdelay, relay, etc)",... |  stats avg(*lay) BY date_hour,,grdhg24,1
+misc,timechart span os,"Calculate the average value of ""CPU"" each minute for each ""host""",... | timechart span=1m avg(CPU) by host,,grdhg24,1
+misc,timechart cpu mem os,"Compute the product of the average ""CPU"" and average ""MEM"" each minute for each ""host""","index=INDEX sourcetype=SOURCETYPE
+| timechart span=1m
+| eval(avg(CPU) * avg(MEM)) by host",,grdhg24,1
+misc,convert,Deriving Total Bytes,"index=INDEX sourcetype=SOURCETYPE
+| stats sum(total_bytes) as TotalBytes
+| eval MB=(TotalBytes)/1048576",,grdhg24,1
+web,duration,Request Duration Deviation Critical (processing_time),"index=INDEX sourcetype=SOURCETYPE
+| eval processingTime = tonumber(trim(processing_time, ""ms""))
+| eval formattedTime = strftime(_time, ""%Y%m%d"")
+| eval processingTimeBase = if (formattedTime = ""20121012"", processingTime, null)
+| eval processingTimeNow = if (formattedTime = ""20121013"", processingTime, null)
+| stats avg(processingTimeBase) as avgProcessingTimeBase, avg(processingTimeNow) as avgProcessingTimeNow by request_type
+| eval diff = avgProcessingTimeNow - avgProcessingTimeBase
+| eval pctChange = round(diff / avgProcessingTimeBase, 3) * 100
+| where pctChange > 10000",,grdhg24,1
+misc,duration,Average Processing Time (field = processing_time - could be whatever field you want),"index=""INDEX"" sourcetype=""SOURCETYPE""
+| eval processingTime = tonumber(trim(processing_time, ""ms""))
+| eval formattedTime = strftime(_time, ""%Y%m%d"")
+| eval processingTimeBase = if (formattedTime = ""20121012"", processingTime, null)
+| stats avg(processingTimeBase) as ""Average Processing Time""
+| rangemap field=""Average Processing Time"" low=0-240 elevated=241-320 severe=321-400 default=severe",,grdhg24,1
+misc,summary indexing optimization,Base for Summary Indexing: Dashboard Optimization,"index=_internal source=*splunkd_access.log
+| bucket _time span=1h
+| sistats avg(some) by _time, method, status
+| addinfo
+| collect index=",,grdhg24,1
+special,output known errors,"What you Don't Know.
+(Outputting of known events to a .csv file)
+Search #1  Scheduled to populate ""known errors"" table.","index=INDEX sourcetype=SOURCETYPE FIELD=*
+| fields + FIELD
+| dedup FIELD
+| outputlookup known_errors.csv",,Jeff Klumpp,1
+special,output known errors,"What you Don't Know.
+(Outputting of known events to a .csv file)
+Search #2  Scheduled to compare recent errors with table of known errors: I tagged all errors that I found as known and then the search became:
+err* OR fail* OR crit* OR down NOT tag=known","index=INDEX sourcetype=SOURCETYPE FIELD=*
+| dedup FIELD
+| search NOT [inputlookup known_errors.csv
+| fields +
+| dedup FIELD]",,Jeff Klumpp,1
+os,dns security pwn,List of Host Names without Fully Qualified Domain Names,"| metadata type=hosts | rex field=host ""(?<shortHost>[^.]+)$"" | rex field=host ""(?<shortHost>[^.]+)\.""
+| dedup shortHost
+| table shortHost",,Jeff Klumpp,1
+special,predict,Find Future Time Descrepencies by Host,"| metadata type=hosts index=*
+| where lastTime > now()
+| eval secondsInFuture=lastTime-now()
+| eval hrInFuture=round(secondsInFuture/3600,1)
+| sort -secondsInFuture
+| table host secondsInFuture hrInFuture",,Dmitri McKay,1
+special,rare punct,Rare Punctuation by Host,"index=INDEX sourcetype=SOURCETYPE
+| err* OR fail* OR crit* OR fatal* OR except* | rex field=punct ""(?<smallpunct>.{5})""
+| eval smallpunct= ""*"" + smallpunct
+| stats first(_raw) as example count by smallpunct
+| sort -count | fields smallpunct,count,example",,Dmitri McKay,1
+splunk_internal,rest transforms,List of extractions in transforms.conf,"| rest /services/data/transforms/extractions
+| table title eai:appName REGEX FORMAT updated",,grdhg24,1
+splunk_internal,rest props pwn,List of Props.conf Extractions ,"| rest /services/data/props/extractions
+| table title type value attribute",,grdhg24,1
+splunk_internal,rest splunk resource usage,REST Call for Memory & CPU usage on Splunk Servers,"| rest  /services/server/status/resource-usage/hostwide
+| eval cpu_count = if(isnull(cpu_count), ""N/A"", cpu_count)
+| eval cpu_usage = cpu_system_pct + cpu_user_pct | eval mem_used_pct = round(mem_used / mem * 100 , 2)
+| eval mem_used = round(mem_used, 0) | eval mem = round(mem, 0) |eval mem=tostring(mem, ""commas"")
+| eval mem_used=tostring(mem_used, ""commas"")
+| fields splunk_server, cpu_count, cpu_usage, mem, mem_used, mem_used_pct
+| sort - cpu_usage, -mem_used
+| rename splunk_server AS Instance, cpu_count AS ""CPU Cores"", cpu_usage AS ""CPU Usage (%)"", mem AS ""Physical Memory Capacity (MB)"", mem_used AS ""Physical Memory Usage (MB)"", mem_used_pct AS ""Physical Memory Usage (%)""",,grdhg24,1
+splunk_internal,rest users pwn,Show all currently logged in users,"| rest /services/authentication/current-context
+| search NOT username=”splunk-system-user”
+| table username roles updated",,grdhg24,1
+splunk_internal,rest lookup lookups,REST Call for a list of Lookup Files,"| rest /services/data/transforms/lookups
+| table eai:acl.app eai:appName filename title fields_list updated id",,grdhg24,1
+splunk_internal,server role status pwn,REST Call for Splunk Server Role Status ,| rest /services/server/introspection | table title splunk_server status updated,,grdhg24,1
+splunk_internal,user congestion activity pwn,"Average Splunk Web requests by hour.
+This query is pretty awesome! It helped enlighten us to exactly when our splunk infrastructure is being hit with users.","index=_internal sourcetype=splunk_web_access
+ [ rest / splunk_server=local
+ | fields splunk_server
+ | rename splunk_server as host ]
+ | bin _time span=1d
+ | stats count by date_hour _time
+ | appendpipe [ fields _time
+ | dedup _time
+ | eval date_hour=mvrange(0,24,1)
+ | eval count=0
+ | mvexpand date_hour ]
+ | stats sum(count) as count by date_hour _time
+ | stats avg(count) as avg by date_hour
+ | sort date_hour",,grdhg24,1
+splunk_internal,objects permissions pwn,Splunk Objects With Permissions Granted to Non-existent Roles ,"| rest /servicesNS/-/-/admin/directory count=0 splunk_server=local
+ | fields eai:acl.app, eai:acl.owner, eai:acl.perms.*, eai:acl.sharing, eai:location, title
+ | eval perms=mvappend('eai:acl.perms.read','eai:acl.perms.write')
+ | fields - eai:acl.perms.*
+ | mvexpand perms
+ | where perms!=""*"" AND NOT
+ [
+ | rest /servicesNS/-/-/authorization/roles count=0 splunk_server=local
+ | fields title
+ | rename title as perms
+ ]",,grdhg24,1
+splunk_internal,memory,Memory Usage and Information on Splunk Server ,"| rest splunk_server=* /services/server/status/resource-usage/hostwide
+| stats first(normalized_load_avg_1min) as load_average first(cpu_system_pct) as system, first(cpu_user_pct) as user first(mem) AS mem first(mem_used) AS mem_used by splunk_server | fields splunk_server mem mem_used
+| eval pctmemused=round((mem_used/mem)*100).""%""
+| table splunk_server pctmemused
+| rename splunk_server as ""Splunk Server"" pctmemused as ""Percent of Memory Used""",,grdhg24,1
+splunk_internal,rest errors,Detailed list of Errors Per Host,"index=_internal sourcetype=""splunkd"" log_level=""ERROR""
+| stats sparkline count dc(host) as uniqhosts last(message) as message last(_time) as last first(_time) as first by punct
+| convert ctime(last) ctime(first)
+| table message count uniqhosts sparkline first last
+| sort -count
+| rename message as ""Error Output"" count as Count uniqhosts as ""Number of Hosts"" first as ""First Occurance"" last as ""Most Recent Occurance""",,grdhg24,1
+splunk_internal,rest pwn,Index Sizes,"| REST /services/data/indexes
+| eval currentDBSizeMB=tostring(currentDBSizeMB, ""commas"")
+| eval totalEventCount=tostring(totalEventCount, ""commas"")
+| eval frozenTimePeriodInHours=(frozenTimePeriodInSecs/60/60)
+| table title splunk_server currentDBSizeMB frozenTimePeriodInHours maxTime minTime totalEventCount",,grdhg24,1
+splunk_internal,disk indexes pwn,"Search to show Raw Data Size, Size of Data on the Disk, and Compression Ratio overall","| eventcount summarize=false index=* | dedup index | fields index
+| map maxsearches=100 search=""|dbinspect index=\""$index$\""| fields rawSize, sizeOnDiskMB, eventCount | table rawSize, sizeOnDiskMB, eventCount""
+| stats sum(rawSize) AS rawTotal, sum(sizeOnDiskMB) AS diskTotalinMB, sum(eventCount) AS Total_Events
+| eval rawTotalinMB=(rawTotal / 1024 / 1024)
+| eval compression=(diskTotalinMB / rawTotalinMB * 100)
+| eval Compression_Ratio=tostring(round((100 - compression),2)) + ""%""
+| eval Raw_Total_MB=tostring(round(rawTotalinMB,2),""commas"")
+| eval OnDisk_Total_MB=tostring(round(diskTotalinMB,4),""commas"")
+| eval Total_Events=tostring(Total_Events,""commas"")
+| table Total_Events, Raw_Total_MB, OnDisk_Total_MB, Compression_Ratio",,grdhg24,1
+misc,count percentage,Find the count of a number of times something happened for ACTORX VS ALLACTORS and show the ACTORCOUNT and its percentage to the whole.,"index=INDEX sourcetype=SOURCETYPE
+| eventstats count as ""total_count""
+| eventstats count as ""variable_count"" by YOURVARIABLE
+| eval percent=(variable_count/total_count)*100
+| stats values(variable_count), values(percent) as percent by YOURVARIABLE",,grdhg24,1
+security,windows win,Use threat intelligence data to detect known attacker domains and IP’s.,"https://splunkbase.splunk.com/app/635/
+https://splunkbase.splunk.com/app/844/
+https://splunkbase.splunk.com/app/1617/","Data Sources:
+Proxy: BlueCoat Proxy Logs 
+Bro_dns 
+Tanium
+Browser History compared with Threat Intel.",grdhg24,2
+security,windows win,Alert on malware or attack tools being retrieved. ,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+IBM ISS Proventia 
+CheckPoint Smart Center 
+Bro_Files 
+Antivirus (such as Trend or Symantec)",grdhg24,2
+splunk_internal,alerts pwn,List of fired alerts in Splunk,"| rest /services/alerts/fired_alerts splunk_server=local
+| table eai:acl.owner eai:acl.app id title triggered_alert_count",,grdhg24,1
+security,windows win,Alert on events that indicate an active exploit occurring.,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+IPS/IDS/STIX/Threat Intel",grdhg24,2
+security,windows win,Detect known and unknownn spear phishing email or malware delivered via email.,"https://splunkbase.splunk.com/app/995/   
+https://splunkbase.splunk.com/app/1809/","Data Sources:
+Email Message Tracking Logs or Splunk Stream and Threat Intel such as the Phishing Lookup on Splunkbase.",grdhg24,2
+security,windows win,Detect encryption protocols outbound that are not SSL or TLS.,"https://splunkbase.splunk.com/app/1617/ 
+https://splunkbase.splunk.com/app/1809/",IDS events or Splunk Stream.,grdhg24,2
+security,windows win,Detect attacks such as SQL Injection and remote file includes etc.,https://splunkbase.splunk.com/app/1809/,"Data Sources:
+F5 APM or Splunk Stream",grdhg24,2
+security,windows win,"The accounts used should always be user privileges (not admin) and also LAN credentials starting with an 'A' or a 'Z' (as opposed to service accounts). 
+Detect concurrent sessions, unexpected IP geolocation, or correlate to known compromised accounts.",https://splunkbase.splunk.com/app/1680/,"Data Sources:
+Auth logs via AD, RADIUS or Kerberos",grdhg24,2
+security,windows win,Failed login attempts with domain admin accounts.,https://splunkbase.splunk.com/app/647/,"Data Sources:
+Windows Event Logs",grdhg24,2
+security,windows win,Service Account logon interactivly ,https://splunkbase.splunk.com/app/647/  ,"Data Sources:
+Windows Event Logs",grdhg24,2
+security,windows win,Identify password hashes crossing the network.  Common dump format key words. ,"https://splunkbase.splunk.com/app/1809/
+https://splunkbase.splunk.com/app/1617/","Data Sources:
+IDS such as Bro and/or Splunk Stream.",grdhg24,2
+security,windows win,"Anomalous use of Sharepoint or Wiki.  E.g. bulk downloads in Sharepoint or TGT wiki.  Look at user agent strings, host, account name, and transfer sizes.",https://splunkbase.splunk.com/app/1908/,"Data Sources:
+Web logs from wiki / sharepoint servers, Proxy, Splunk Stream and Authentication events.",grdhg24,2
+security,windows win,Alert on Src IPs from VPN pool accessing specific critical high value business assets (such as database servers or sources of PII).,https://splunkbase.splunk.com/app/525/,"Data Sources:
+Firewall logs for the VPN IP subnets",grdhg24,2
+security,windows win,Identify web shells by unusually large data transfer sizes per connection to web servers.,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+Bro_Conn",grdhg24,2
+security,windows win,"Unusual source, destinations, and sizes of transfers to / from stores","https://splunkbase.splunk.com/app/525/
+https://splunkbase.splunk.com/app/1617/","Data Sources:
+Firewall Logs 
+Bro_conn",grdhg24,2
+security,windows win,Large volumes of traffic and destination countries / ISPs ,https://splunkbase.splunk.com/app/525/,"Data Sources:
+Firewall Logs: Cisco",grdhg24,2
+security,windows win,Alert when data is transferred out of the organization in commonly used formats. (bro_files also useful here). ,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+IDS: 
+Bro_files",grdhg24,2
+security,windows win,Look for duration of connection and amount of data transferred (ex.NetFlow) or based on # of connections in a period of time. ,https://splunkbase.splunk.com/app/1809/,"Data Sources:
+Session Data (e.g. NetFlow) 
+Bro_conn or Splunk Stream",grdhg24,2
+security,email,Detect when email is used as a method of outbound data transfer. ,https://splunkbase.splunk.com/app/1809/,"Data Sources:
+Email Message Tracking Logs or Splunk Stream",grdhg24,2
+security,windows win,Detect FTP exfiltration occuring directly from stores.,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+Bro_Conn; Bro_Files, Splunk Stream",grdhg24,2
+security,windows win,Detect VNC and remote desktop connections from Target IPs to or from Internet-addressible IP addresses.,"https://splunkbase.splunk.com/app/1617/
+https://splunkbase.splunk.com/app/1809/","Data Sources:
+IPS/Splunk Stream or Bro_IDS w/ PCAP",grdhg24,2
+security,windows win,Detect obfuscation,https://splunkbase.splunk.com/app/1617/,"Data Sources:
+bro_files",grdhg24,2
+security,windows win,Detect successful outbound TOR traffic.,https://splunkbase.splunk.com/app/1809/,"Data Sources:
+Splunk stream and/or threat intel",grdhg24,2
+security,windows win,"Detect meterpreter sessions using x.509 characteristics. 
+Indicators that can be used to detect Metasploit's reverse_https meterpreter sessions simply by passively looking at network traffic:","https://splunkbase.splunk.com/app/1617/
+https://splunkbase.splunk.com/app/1809/","Data Sources:
+bro_ssl and/or Splunk Stream to watch certificates and local traffic",grdhg24,2
+security,windows win,List of legitimate account names in Windows to identify the deviations from norm: ,"index=* source=""WinEventLog:security"" (Logon_Type=2 OR Logon_Type=7 OR Logon_Type=10) (EventCode=528 OR EventCode=540 OR EventCode=4624)
+| rex ""New\sLogon:\s+.*\s+Account\sName:\s+(?<UserName>\S+)"" | eval Account=coalesce(User_Name,UserName)
+| stats count by Account | sort - count",,grdhg24,1
+security,windows win,Clearing of Windows Audit Logs: ,"index=* source=WinEventLog:security (EventCode=1102 OR EventCode=517) | eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Client_User_Name, host, index, Date
+| sort - Date
+| rename Client_User_Name as ""Account Name""",,grdhg24,1
+security,windows win,Successful Windows Logins with Average Overlay to see deviations and anomalies.,"index=* sourcetype=""WinEventLog:Security"" (Logon_Type=2 OR Logon_Type=7 OR Logon_Type=10) (EventCode=528 OR EventCode=540 OR EventCode=4624)
+| timechart count(EventCode) as count
+| eventstats avg(count) as Average
+| eval average=round(average,0)
+| rename count as ""Successful Logons""",,grdhg24,1
+security,windows win,Windows failed logons with Average Overlay to identify deviations and anomalies.,"index=* sourcetype=""WinEventLog:Security"" (Logon_Type=2 OR Logon_Type=7 OR Logon_Type=10) (EventCode=4625 OR EventCode=529 OR EventCode=530 OR EventCode=531 OR EventCode=532 OR EventCode=533 OR EventCode=534 OR EventCode=535 OR EventCode=536 OR EventCode=537 OR EventCode=539)
+| timechart count(EventCode) as count
+| eventstats avg(count) as Average
+| eval average=round(average,0)
+| rename count as ""Failed Logons""",,grdhg24,1
+security,windows win,Removal of USB storage device. This will detect if any storage device was removed from a Windows machine.,"index=*  sourcetype=WinRegistry key_path=""HKLM\\system\\controlset*\\enum\\usbstor\\*"" process_image=""c:\\Windows\\System32\\svchost.exe"" registry_type=DeleteKey
+| eval Date=strftime(_time, ""%Y/%m/%d %H:%M:%S"")
+| rex ""key_path.*usbstor\S(?<DeviceType>.*)&ven\S(?<Vendor>.*)&prod\S(?<Product>\S*)&rev\S""
+| stats count by Date, host, Vendor, Product, DeviceType  
+| fields  - count 
+| sort  - Date",,grdhg24,1
+security,windows win,Failed Attempt to initiate Remote Desktop session: Must have Splunk app for windows installed. Works with Server 2003 and older. ,"index=*  source=WinEventLog:Security sourcetype=WinEventLog:security Logon_Type=10 (EventCode=529 OR EventCode=530 OR EventCode=531 OR EventCode=532 OR EventCode=533 OR EventCode=534 OR EventCode=535 OR EventCode=536 OR EventCode=537 OR EventCode=539)
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, User_Name, Reason, host",,grdhg24,1
+security,windows win,"Failed Windows Remote Desktop Connection Attempt: Must have Windows app installed, works with Server 2008 or newer:","index=* source=WinEventLog:Security sourcetype=WinEventLog:security Logon_Type=10 EventCode=4625
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| rex ""Failed:\s+.*\s+Account\sName:\s+(?<TargetAccount>\S+)\s""
+| stats count by Date, TargetAccount, Failure_Reason, host
+| sort - Date",,grdhg24,1
+security,windows win,Account Enabled in Windows from a previously disabled state. Must have the Splunk app for Windows installed: Windows Server 2008 and newer.,"index=* sourcetype=WinEventLog:Security (EventCode=4722) #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"") |rex ""ID:\s+\w+\\\(?<sourceaccount>\S+)\s+""
+| rex ""Account:\s+Security\sID:\s+\w+\\\(?<targetaccount>\S+)\s+""
+| stats count by Date, sourceaccount, targetaccount, Keywords, host
+| rename sourceaccount as ""Source Account""
+| rename targetaccount as ""Target Account""
+| sort - Date",,grdhg24,1
+security,windows wineventlog,Account Enabled in Windows from a previously disabled state. Must have the Splunk app for Windows installed: Windows Server 2003 and older.,"index=* sourcetype=WinEventLog:Security (EventCode=626) #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, Caller_User_Name, Target_Account_Name, Type, host #(Date, Caller_User_Name, Target_Account_Name, Type, host) This/these field/s must exist or edit to make search valid.
+| sort - Date",,grdhg24,1
+security,windows wineventlog,"Password Non Compliance in Windows: Return results for failed attempts to change password, requires App for Windows: 2003 and older. ","index=*  sourcetype=""WinEventLog:Security"" EventCode=627 Type=""Failure Audit""
+| eval Date=strftime(_time, ""%Y/%m/%d"") | stats count by Date, Target_Account_Name, host
+| sort - Date",,grdhg24,1
+security,windows wineventlog,"Password Non Compliance in Windows: Return results for failed attempts to change password, requires App for Windows: 2008 and newer. ","index=""*"" sourcetype=""WinEventLog:Security"" EventCode=4723  Keywords=""Audit Failure"" #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| rex ""Target\sAccount:\s+Security\sID:.*\\\(?<account>\S+)""
+| stats count by Date, account, host | sort - Date",,grdhg24,1
+security,windows wineventlog,Modification to File Permissions in Windows 2008 and newer. Retuns results for modifications of an individual file level permissions. Requires Splunk app for Windows.,"index=* source=""WinEventLog:Security"" sourcetype=""WinEventLog:Security"" EventCode=4670 (Security_ID!=""NT AUTHORITY*"") (Security_ID!=""S-*"")
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, Account_Name, Process_Name, Keywords, host
+| sort - Date",,grdhg24,1
+security,windows wineventlog,"File deletion attempts in Windows, which returns results based on any suer account who attempts to delete a file. This will return both successful and unsuccessful attempts. Requires Splunk App for Windows: 2003 and older. ","index=*  sourcetype=""WinEventLog:Security"" EventCode=564 #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, Image_File_Name, Type, host
+| sort - Date",,grdhg24,1
+security,windows wineventlog,"File deletion attempts in Windows, which returns results based on any suer account who attempts to delete a file. This will return both successful and unsuccessful attempts. Requires Splunk App for Windows: 2008 and newer.","index=*  sourcetype=""WinEventLog:Security"" EventCode=4660 (Security_ID!=""NT AUTHORITY*"") (Security_ID!=""S-*"")
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by Date, Account_Name, Process_Name, Keywords, host",,grdhg24,1
+security,windows wineventlog,Time between rights granted and rights revoked: 2003 and older.,"index=* sourcetype=WinEventLog:Security (EventCode=608 OR EventCode=609)
+| rex ""Message=User\sRight\sAssigned:\s+User\sRight:\s+(?\w+)""
+| rex ""Message=User\sRight\sRemoved:\s+User\sRight:\s+(?\w+)""
+| eval Rights=coalesce(RightGranted,RightRemoved)
+| eval status=case(EventCode=608, ""New Rights Granted by:"", EventCode=609, ""Rights Removed by:"")
+| transaction Rights user startswith=""Assigned"" endswith=""Removed""
+| where duration > 0
+| eval duration = duration/60 |eval n=round(duration,2)
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| table Date, host, status, User, user, Rights, n
+| rename User as ""Source Account""
+| rename user as ""Target Account""
+| rename n as ""Minutes between Rights Granted Then Removed""
+| sort - date",,grdhg24,1
+security,windows wineventlog,"Console Lock Duration, 2008 and newer. ","index=*  sourcetype=WinEventLog:Security (EventCode=4800 OR EventCode=4801) #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| transaction host Account_Name startswith=EventCode=4800 endswith=EventCode=4801
+| eval duration = duration/60
+| eval duration=round(duration,2)
+| table host, Account_Name, duration, Date
+| rename duration as ""Console Lock Duration in Minutes""
+| sort - date",,grdhg24,1
+security,windows wineventlog,Security Access Granted to an account. 2007/2008 or better.,"index=* sourcetype=""WinEventLog:Security"" EventCode=4717 #(WinEventLog:Security) This/these sourcetype/s must  exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by src_user, user, Access_Right, Date, Keywords #(src_user, user, Access_Right, Date, Keywords) This/these field/s must exist or edit to make search valid.
+| rename src_user as ""Source Account""
+| rename user as ""Target Account""
+| rename Access_Right as ""New Rights Granted""",,grdhg24,1
+security,windows wineventlog,Security Access Granted to an account. 2003 or older.,"index=* sourcetype=""WinEventLog:Security"" EventCode=621 Account_Modified!=""%{*""
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| stats count by User_Name, Account_Modified, Access_Granted, Date, action |rename User_Name as ""Source Account""
+| rename Account_Modified as ""Target Account""
+| rename Access_Granted as ""New Rights Granted""",,grdhg24,1
+security,windows wineventlog,Password Changes in Windows environment by user account.,"index=* sourcetype=""WinEventLog:Security"" (EventCode=628 OR EventCode=627 OR EventCode=4723 OR EventCode=4724)
+| chart count by user #(user) This/these field/s must exist or edit to make search valid.",,grdhg24,1
+security,"windows, wineventlog",Escalation of Privs in Windows by User: ,"index=* sourcetype=""WinEventLog:Security"" (EventCode=576 OR EventCode=4672 OR EventCode=577 OR EventCode=4673 OR EventCode=578 OR EventCode=4674)
+| stats count by user #(user) This/these field/s must exist or edit to make search valid.",,grdhg24,1
+security,"windows, wineventlog","Search common event codes for suspicious behavior. Warning, this can take a while to run. ","index=* source=WinEventLog:security User!=SYSTEM User!=""LOCAL SERVICE"" User!=""NETWORK SERVICE""
+| eval Trigger=case(EventCode=516, ""Audit Logs Modified"",EventCode=517, ""Audit Logs Modified"",EventCode=612, ""Audit Logs Modified"",EventCode=623, ""Audit Logs Modified"",EventCode=806, ""Audit Logs Modified"",EventCode=807, ""Audit Logs Modified"",EventCode=1101, ""Audit Logs Modified"",EventCode=1102, ""Audit Logs Modified"",EventCode=4612, ""Audit Logs Modified"",EventCode=4621, ""Audit Logs Modified"",EventCode=4694, ""Audit Logs Modified"",EventCode=4695, ""Audit Logs Modified"",EventCode=4715, ""Audit Logs Modified"",EventCode=4719, ""Audit Logs Modified"",EventCode=4817, ""Audit Logs Modified"",EventCode=4885, ""Audit Logs Modified"",EventCode=4902, ""Audit Logs Modified"",EventCode=4906, ""Audit Logs Modified"",EventCode=4907, ""Audit Logs Modified"",EventCode=4912, ""Audit Logs Modified"", EventCode=642, ""Account Modification"",EventCode=646, ""Account Modification"",EventCode=685, ""Account Modification"",EventCode=4738, ""Account Modification"",EventCode=4742, ""Account Modification"",EventCode=4781, ""Account Modification"", EventCode=1102, ""Audit Logs Cleared/Deleted"",EventCode=517, ""Audit Logs Cleared/Deleted"", EventCode=628, ""Passwords Changed"",EventCode=627, ""Passwords Changed"",EventCode=4723, ""Passwords Changed"",EventCode=4724, ""Passwords Changed"", EventCode=528, ""Successful Logons"",EventCode=540, ""Successful Logons"",EventCode=4624, ""Successful Logons"", EventCode=4625, ""Failed Logons"",EventCode=529, ""Failed Logons"",EventCode=530, ""Failed Logons"",EventCode=531, ""Failed Logons"",EventCode=532, ""Failed Logons"",EventCode=533, ""Failed Logons"",EventCode=534, ""Failed Logons"",EventCode=535, ""Failed Logons"",EventCode=536, ""Failed Logons"",EventCode=537, ""Failed Logons"",EventCode=539, ""Failed Logons"", EventCode=576, ""Escalation of Privileges"",EventCode=4672, ""Escalation of Privileges"",EventCode=577, ""Escalation of Privileges"",EventCode=4673, ""Escalation of Privileges"",EventCode=578, ""Escalation of Privileges"",EventCode=4674, ""Escalation of Privileges"")
+| stats count by Trigger
+| sort - count",,grdhg24,1
+security,"windows, wineventlog",Logon Types within a windows environment with logon count.,"index=* source=""WinEventLog:security"" #(WinEventLog:security) This/these source/s must exist or edit to make search valid.
+| eval LogonType=case(Logon_Type=""2"", ""Local Console Access"", Logon_Type=""3"", ""Accessing Network Folders or Files"", Logon_Type=""4"", ""Scheduled Task, Batch File, or Script"", Logon_Type=""5"", ""Service Account"", Logon_Type=""7"", ""Local Console Unlock"", Logon_Type=""8"", ""Network User Logon"", Logon_Type=""9"", ""Program launched with RunAs using /netonly switch"", Logon_Type=""10"", ""Remote Desktop via Terminal Services"", Logon_Type=""11"", ""Mobile Access or Network Domain Connection Resumed"")
+| top limit=15 LogonType | eval percent = round(percent,2) . "" %""",,grdhg24,1
+security,linux_secure,Escaltion of Privs via SU in Linux: ,"index=* sourcetype=linux_secure source=""/var/log/*"" ""su: ("" #(linux_secure) This/these sourcetype/s exist or edit to make search valid.
+| eval Date=strftime(_time, ""%Y/%m/%d"")
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| rex ""su:\s\Sto\sroot\S\s(?<SU>\S+)""
+| stats  count by Date, hostname, SU
+| rename  count as ""Occurrences""
+| rename  SU as ""Account with Escalated Privileges"" | sort - Date",,grdhg24,1
+security,linux_secure ,List of user accounts in a linux environment:,"index=* sourcetype=linux_secure #(linux_secure) This/these sourcetype/s exist or edit to make search valid.
+| rex ""\suser[^'](?<User>\S+\w+)""
+| stats count by User",,grdhg24,1
+security,linux_secure ,Count of Unique users in a linux environment ,"index=* sourcetype=linux_secure
+| rex ""\suser[^'](?<User>\S+\w+)""
+| stats dc(User)",,grdhg24,1
+security,linux_secure ,Top 10 most active users in Linux,"index=* sourcetype=linux_secure
+| rex ""\suser[^'](?<User>\S+\w+)""
+| top limit=10 User",,grdhg24,1
+security,linux_secure ,"List of hosts in a Linux Environment. If you are using a universal forwarder, this field will be autoextracted as ""host"". ","index=* sourcetype=linux_secure
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| stats count by hostname",,grdhg24,1
+security,linux_secure rex,"Top 10 most active hosts in a Linux Environment: If using a universal forwarder, rex isn't needed, this will be extracted as ""host"".","index=* sourcetype=linux_secure
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| top limit=10 hostname",,grdhg24,1
+security,linux_secure ,Number of hosts the root account was detected on.,"index=* sourcetype=linux_secure
+| rex "".*:\d{2}\s(?<hostname>\S+)""
+| rex ""\suser[^'](?<User>\S+\w+)""
+| search User=""root""
+| stats dc(hostname)",,grdhg24,1
+security,"windows, wineventlog","Accounts deleted within 24 hours of creation: 2008 or better, requires the Splunk app for Windows ","index=* sourcetype=WinEventLog:Security (EventCode=4726 OR EventCode=4720)
+|eval Date=strftime(_time, ""%Y/%m/%d"")
+|rex ""Subject:\s+\w+\s\S+\s+\S+\s+\w+\s\w+:\s+(?<SourceAccount>\S+)""
+| rex ""Target\s\w+:\s+\w+\s\w+:\s+\S+\s+\w+\s\w+:\s+(?<DeletedAccount>\S+)""
+| rex ""New\s\w+:\s+\w+\s\w+:\s+\S+\s+\w+\s\w+:\s+(?<NewAccount>\S+)""
+| eval SuspectAccount=coalesce(DeletedAccount,NewAccount)
+| transaction SuspectAccount startswith=""EventCode=4720"" endswith=""EventCode=4726"" |eval duration=round(((duration/60)/60)/24, 2)
+| eval Age=case(duration<=1, ""Critical"", duration>1 AND duration<=7, ""Warning"", duration>7, ""Normal"")
+| table Date, index, host, SourceAccount, SuspectAccount, duration, Age
+| rename duration as ""Days Account was Active"" | sort + ""Days Account was Active""",,grdhg24,1
+security,windows wineventlog,"Accounts deleted within 24 hours of creation: 2003 or older, requires the Splunk app for Windows","index=* sourcetype=WinEventLog:Security (EventCode=630 OR EventCode=624) |eval Date=strftime(_time, ""%Y/%m/%d"") | transaction Target_Account_Name startswith=""EventCode=624"" endswith=""EventCode=630"" |eval duration=round(((duration/60)/60)/24, 2) | eval Age=case(duration<=1, ""Critical"", duration>1 AND duration<=7, ""Warning"", duration>7, ""Normal"")| table Date, index, host, Caller_User_Name, Target_Account_Name, duration, Age | rename duration as ""Days Account was Active"" | sort - Date",,grdhg24,1
+security,iis transaction,Session Hijacking report/alert,"index=* sourcetype=*access*
+| transaction JSESSIONID  #(JSESSIONID) This/these field/s must exist or edit to make search valid.
+| where mvcount(clientip)>1  #(clientip) This/these field/s must exist or edit to make search valid.
+| table clientip, JSESSIONID",,grdhg24,1
+security,endpoint system,Unusual/short file names used by hackers to avoid detection,"index=YOURINDEX
+| eval file_length=len(file)       #(file) This/these field/s must exist or edit to make search valid.
+| where file_length < 4",,grdhg24,1
+security,process,Process List via Tasklist in Microsoft Windows or Linux ps command.,"index=YOURINDEX
+| stats dc(host) by process
+| sort dc(host)",,grdhg24,1
+security,dns,"Unusual outbound activity using a high number of DNS requests occurring from a particular client compared to a baseline. It’s possible advanced threat communication (instruction, stealing data) via the DNS protocol is being used. ","index=* sourcetype=dns       #(dns) Make sure that this/these sourcetype/s exist or edit to make search valid.
+| stats count(clientip) AS Requests by clientip #(clientip) This/these field/s must exist or edit to make search valid.
+| sort - Requests",,grdhg24,1
+security,dns,"Unusual outbound activity using a High number of same-sized DNS requests from an internal host, patterns of same-sized DNS requests which can evidence advanced threat communication (instruction/data theft) using DNS.","index=* sourcetype=dns #(dns) Make sure that this/these sourcetype/s exist or edit to make search valid.
+| eval Length=len(query)
+| stats count(clientip) by Length #(clientip) This/these field/s must exist or edit to make search valid.
+| sort – Length",,grdhg24,1
+special,find needle haystack pwn,Find crazy errors.,"index=* err* OR fail* OR crit* OR fatal* OR except*
+| rex field=punct ""(?<smallpunct>.{5})""
+| eval smallpunct= ""*"" + smallpunct
+| stats first(_raw) as example count by smallpunct
+| sort -count
+| fields smallpunct,count,example",,grdhg24,1
+misc,coffee,silly,"index=beerme earliest=@d+17h+15m latest=now item=beer OR item=wine OR item=liquor
+| lookup nutritioninfo item OUTPUT alcohol_pct
+| stats sum(eval((alcohol_pct/100)*qty) as oz_alcohol",,grdhg24,1
+mail,email,The idea is to tie ESA emails together by message id.,"index=email
+| transaction internal_message_id dcid icid maxevents=100 maxspan=30s endswith=""Message finished""",,grdhg24,1
+splunk_internal,delay,"To measure the delay between the time stamp of the events and the indexing time (the time that the indexer receives and processes the events), use the following method: Look at the delay in seconds per source for a particular host.
+","source=mysource host=myhost
+| eval delay_sec=_indextime-_time
+| timechart min(delay_sec) avg(delay_sec) max(delay_sec) by source",,grdhg24,1
+splunk_internal,delay pwn,"To measure the delay between the time stamp of the events and the indexing time (the time that the indexer receives and processes the events), use the following method: Look at the delay per host for the Splunk internal logs.","index=_internal source=*splunkd.log*
+| eval delay_sec=_indextime-_time
+| timechart min(delay_sec) avg(delay_sec) max(delay_sec) by host
+",,grdhg24,1
+misc,,coffee,"#Where the streets have no name#
+* source=streets NOT name=*",,grdhg24,1
+misc,,coffee,"#All the King's Horses#
+source=hm_stables | top limit=0 horse",,grdhg24,1
+misc,coffee,coffee,"#How Long is this Going to Take?#
+source=history
+| stats stdev(dur) as stdev, avg(dur) as avg
+| eval soonest=avg-(3*stdev)
+| eval latest=avg+(3*stdev)",,grdhg24,1
+misc,,coffee,"#Find Happiness#
+happiness",,grdhg24,1
+misc,time after time,90th Percentile Value for 24 hours over 30 days compared with todays value.,"index=* sourcetype=*
+error earliest=-30d latest=@h
+|timechart span=1h count
+|eval StartTime=relative_time(now(),""-24h@h"")
+|eval Series=if(_time>=StartTime,""TodaysCount,""p90"")
+|eval Hour = strftime(_time,""%H"")
+|chart p90(count) by Hour Series
+Comparing equal time ranges in one report. 1 day is 86,400 seconds.
+| eval _time = _time + 86400",,grdhg24,
+misc,transaction,This search allows you to trace a process with duration at each hop without using the transaction command,"Transaction Search: Coalesce and Rename Highlighted
+
+Example1:index=oidemo | rename phoneName as foo | rename JSESSIONID as foo
+Result: Only foo are JSESSIONIDs
+
+Example 2a:index=oidemo | rename JSESSIONID as foo, phoneName as foo
+Result: Only foo are phoneName
+
+Example3:index=oidemo | eval foo = coalesce(JSESSIONID, phoneName)
+Result: foo are both phoneName and JSESSIONID
+
+Pseudocode:
+(for ease of describing techniques):
+Search for some stuff | rename customField1 as commonFieldName | rename customField2 as commonFieldName | streamstats by commonFieldName to calculate the time between each hop | stats to calculate the aggregate results
+
+Actual Code:
+sourcetype=access_combined action=* | rename JSESSIONID as commonFieldName | reverse | streamstats window=2 global=false earliest(_time) as earliestTime latest(_time) as latestTime by commonFieldName | eval hopDuration=latestTime-earliestTime |  stats earliest(_time) as transactionStartTime latest(_time) as transactionEndTime count list(action) as pageAction list(hopDuration) as hopDuration by commonFieldName | eval totalTransactionDuration=transactionEndTime-transactionStartTime",,grdhg24,
+splunk_internal,Case,"Eval's Case Statement: Case is like a series of if statements. While you could write if(a=b, ""hello!"",if(a=c, ""Goodbye!"", ""I dunno"")) that gets ugly as complexity increases. Better to write case(a=b, ""hello!"", a=c, ""Goodbye!"", 1=1, ""I dunno"").","index=_audit action=search info=completed
+| eval search_et=if(search_et=""N/A"",0,search_et) | eval search_et_diff = exec_time - search_et | eval search_et_diff = if(search_et_diff < 0,0,search_et_diff)
+| eval time_bucket = case(
+		round((search_et_diff+1800)/3600,0)<10, ""< 0"" . round((search_et_diff+1800)/3600,0) . "" hr(s)"",
+		round((search_et_diff+1800)/3600,0) <= 25, ""< "" . round((search_et_diff+1800)/3600,0) . "" hr(s)"",
+		round((search_et_diff+3600*12)/(3600*24),0)<10, ""< 0"" . round((search_et_diff+3600*12)/(3600*24),0) . "" days"",
+		round((search_et_diff+3600*12)/(3600*24),0)<32, ""< "" . round((search_et_diff+3600*12)/(3600*24),0) . "" days"",
+		1 = 1,""> 1 month"")
+| stats count median(event_count) avg(event_count) median(total_run_time) avg(total_run_time) sum(total_run_time) by time_bucket
+| sort time_bucket",,grdhg24,
+misc,xyseries,"Creating Your Own Table with xyseries
+
+    Measuring in Standard Deviations: This is a convenient way to check for aberations without setting a predefined threshold (though the below is a pretty bad example of that).
+    xyseries: Using xyseries allows you ample flexibility in creating the data that should be formatted on a table.","sourcetype=access_combined source=*sample_access_logs.txt
+| bucket _time span=1h | stats avg(time_taken) as avg_time_taken by action _time
+| eventstats avg(avg_time_taken) as avg_of_avg_is_often_bad_math stdev(avg_time_taken) as stdev by action
+| eval sigmas = abs(avg_time_taken - avg_of_avg_is_often_bad_math) / stdev
+| xyseries _time action sigmas",,grdhg24,
+misc,fieldformat,"Sorting using fieldformat
+Using fieldformat to control field appearances: while fieldformat is most often used for items like rounding or adding percentage signs, it works just as well if you want to totally change what is shown.","sourcetype=access_combined source=*sample_access_logs.txt
+| timechart span=1h avg(time_taken) as time_taken
+| eval SLARisk = case(time_taken<600,1, time_taken < 900, 2, 1=1, 3)
+| eval ""SLA Number, for Illustration""=SLARisk
+| fieldformat SLARisk = case(SLARisk=1,""Low"", SLARisk = 2, ""Medium"", SLARisk = 3, ""High"", 1=1, null)",,grdhg24,
+misc,stats,Stats - Values vs List vs First and more,"index=_internal sourcetype=splunk_web_access user=admin
+| rex field=uri_path ""(\/[^\/ ]*)?\/app\/(?<myapp>[^\/ ]*)\/(?<myview>[^\/ \?]*)"" | eval myview = if(myview=""@go"",""savedsearch"",myview)
+| eval app_and_view = myapp . ""/"" . myview
+| stats values(app_and_view) list(app_and_view) earliest(app_and_view) first(app_and_view)","This example leverages the following useful techniques:
+
+    Stats values: Values will give you an deduplicated list of field values, in alphabetical order. Consider questions here like ""What webpages did my top spenders view?""
+    Stats list: List will give you a list of field values, not deduplicated, in the order they were seen in the data. Consider questions here like ""What was the series of pages that caused someone to reach that 404?""
+    Stats earliest: Will give you the oldest record. ""What was the first page they hit?""
+    Stats first: Will give you the first record we saw. ""What was the last page someone hit?""",grdhg24,
+splunk_internal,user pwn,Which users are logging in and logging out?,"index=_audit sourcetype=audittrail user=* action=log* | rename info as status | replace succeeded with success in status | replace failed with failure in status | replace ""login attempt"" with login in action |  stats count by user action status _time | append [search index=_internal sourcetype=splunk_web_service user=* action=log* | stats count by user action status _time] | join type=OUTER user [search index=_internal (component=UiAuth OR sourcetype=splunk_web_service) user=* clientip=* | stats first(clientip) as clientip by user] | table _time user host clientip action status count",,grdhg24,
+splunk_internal,pwn,Saturated Event-Processing Queues,"| rest splunk_server_group=dmc_group_indexer /services/server/introspection/queues
+| search title=tcpin_queue OR title=parsingQueue OR title=aggQueue OR title=typingQueue OR title=indexQueue
+| eval fifteen_min_fill_perc = round(value_cntr3_size_bytes_lookback / max_size_bytes * 100,2)
+| fields title fifteen_min_fill_perc splunk_server
+| where fifteen_min_fill_perc > 90
+| rename splunk_server as Instance, title AS ""Queue name"", fifteen_min_fill_perc AS ""Average queue fill percentage (last 15min)""",,grdhg24,
+splunk_internal,pwn,Abnormal State of Indexer Processor,"| rest splunk_server_group=dmc_group_indexer /services/server/introspection/indexer
+| fields splunk_server, average_KBps, status, reason
+| where status != ""normal""
+| eval average_KBps = round(average_KBps, 0)
+| eval status= if(status==""normal"", status, status."" - "".reason)
+| fields - reason
+| rename splunk_server as Instance, average_KBps as ""Average KB/s (last 30s)"", status as Status ",,grdhg24,
+splunk_internal,,Search Peer Not Responding,"| rest splunk_server=local /services/search/distributed/peers/
+| where status!=""Up"" AND disabled!=0
+| fields peerName, status
+| rename peerName as Instance, status as Status",,grdhg24,
+splunk_internal,,Critical System Physical Memory Usage,"| rest splunk_server_group=dmc_group_* /services/server/status/resource-usage/hostwide
+| eval percentage=round(mem_used/mem,3)*100
+| where percentage > 90
+| fields splunk_server, percentage, mem_used, mem
+| rename splunk_server AS Instance, mem AS ""Physical memory installed (MB)"", percentage AS ""Memory used (%)"", mem_used AS ""Memory used (MB)""",,grdhg24,
+splunk_internal,,Near Critical Disk Usage,"| rest splunk_server_group=dmc_group_* /services/server/status/partitions-space
+| eval free = if(isnotnull(available), available, free)
+| eval usage = capacity - free
+| eval pct_usage = floor(usage / capacity * 100)
+| where pct_usage > 80
+| stats first(fs_type) as fs_type first(capacity) AS capacity first(usage) AS usage first(pct_usage) AS pct_usage by splunk_server, mount_point
+| eval usage = round(usage / 1024, 2)
+| eval capacity = round(capacity / 1024, 2)
+| rename splunk_server AS Instance mount_point as ""Mount Point"", fs_type as ""File System Type"", usage as ""Usage (GB)"", capacity as ""Capacity (GB)"", pct_usage as ""Usage (%)""",,grdhg24,
+splunk_internal,,Build Standalone Asset Table,"| `dmc_get_local_instance_asset` | rename search_groups AS search_group| inputlookup append=true dmc_assets | stats last(*) AS * by peerURI, search_group | fields peerURI serverName host machine search_group",,grdhg24,
+splunk_internal,pwn,Orphaned Scheduled Searches,"|  rest splunk_server=local /servicesNS/-/-/saved/searches add_orphan_field=yes count=0
+| where disabled=0 AND is_scheduled=1
+| stats count(eval(orphan=1)) AS orphaned_search_count by splunk_server
+| eval severity_level = if(orphaned_search_count > 0, 3, 0)
+| rename splunk_server AS instance
+drilldown = | rest splunk_server=$instance$ /servicesNS/-/-/saved/searches add_orphan_field=yes count=0
+| search orphan=1 disabled=0 is_scheduled=1
+| eval status = if(disabled = 0, ""enabled"", ""disabled"")
+| fields title eai:acl.owner eai:acl.app eai:acl.sharing orphan status is_scheduled cron_schedule next_scheduled_time next_scheduled_time actions
+| rename title AS ""search name"" eai:acl.owner AS owner eai:acl.app AS app eai:acl.sharing AS sharing",,grdhg24,
+splunk_internal,pwn,Find Ulimit Problems,"| rest splunk_server=local /services/server/info
+| join type=outer splunk_server [rest splunk_server=local /services/server/sysinfo | fields splunk_server ulimits.data_segment_size ulimits.open_files ulimits.user_processes]
+| eval ulimits.data_segment_size = if(isnotnull('ulimits.data_segment_size'), 'ulimits.data_segment_size', ""unavailable"")
+| eval ulimits.open_files = if(isnotnull('ulimits.open_files'), 'ulimits.open_files', ""unavailable"")
+| eval ulimits.user_processes = if(isnotnull('ulimits.user_processes'), 'ulimits.user_processes', ""unavailable"")
+| eval sev_segment_size = case('ulimits.data_segment_size' == -1 OR 'ulimits.data_segment_size' >= 1073741824, 0, 'ulimits.data_segment_size' == ""unavailable"", -1, True(), 2)
+| eval sev_open_files = case('ulimits.open_files' == -1 OR 'ulimits.open_files' >= 8192, 0, 'ulimits.open_files' == ""unavailable"", -1, True(), 2)
+| eval sev_user_processes = case('ulimits.user_processes' == -1 OR 'ulimits.user_processes' >= 8192, 0, 'ulimits.user_processes' == ""unavailable"", -1, True(), 2)
+| eval severity_level = max(sev_segment_size, sev_open_files, sev_user_processes)
+| fields splunk_server ulimits.data_segment_size ulimits.open_files ulimits.user_processes severity_level
+| rename splunk_server AS instance ulimits.data_segment_size AS ""ulimits.data_segment_size (current / recommended)"" ulimits.open_files AS ""ulimits.open_files (current / recommended)"" ulimits.user_processes AS ""ulimits.user_processes (current / recommended)""
+| fieldformat ulimits.data_segment_size (current / recommended) = if('ulimits.data_segment_size (current / recommended)' >= 0, 'ulimits.data_segment_size (current / recommended)'."" / 1073741824"", 'ulimits.data_segment_size (current / recommended)')
+| fieldformat ulimits.open_files (current / recommended) = if('ulimits.open_files (current / recommended)' >= 0, 'ulimits.open_files (current / recommended)'."" / 8192"", 'ulimits.open_files (current / recommended)')
+| fieldformat ulimits.user_processes (current / recommended) = if('ulimits.user_processes (current / recommended)' >= 0, 'ulimits.user_processes (current / recommended)'."" / 8192"", 'ulimits.user_processes (current / recommended)')
+| fields - _timediff",,grdhg24,
+analytics,average,"AverageKB for Sourcetypes  (at every 30 seconds) along
+With the average range for 2 hours, then 5 hours.
+","index=_internal sourcetype=splunkd source=*metrics.log group=per_sourcetype_thruput | timechart span=1h avg(kb) range(kb) | streamstats window=2 avg(""range(kb)"") as avg_range_2_hr | streamstats window=5 avg(""range(kb)"") as avg_range_5_hr | fields _time avg*",,grdhg24,
+special,anomalies expectedness,Anomalies Critical Errors,"index=* sourcetype=* (crit* OR fail* OR fatal OR except* OR err* OR status > 500) NOT success* OR NOT INFO OR NOT WARN
+| anomalies threshold=0.03 labelonly=true by sourcetype
+| search sourcetype=*
+| eval threshold=0.03
+| eval score=if(unexpectedness>=threshold, ""anomalous"", ""boring"")",,grdhg24,
+misc,ForEach command,"For Each. This command will apply logic to all ""like"" fields in a result set. In this case I have fields that all begin with Per*. I want to round all the decimal places to 4. This is how you would do it. ","...| foreach Per* [eval <<FIELD>> = round(<<FIELD>>,4)] | sort -Percent5xx",,grdhg24,
+splunk_internal,,Show how much disk space is used by _internal,index=_internal source=*license_usage.log type=Usage | eval gb=b/1024/1024/1024 | timechart span=1d sum(gb) as GB by host useother=false | untable _time host gb | top limit=1 host | join time [search index=_internal source=*license_usage.log type=Usage | eval gb=b/1024/1024/1024 | timechart span=1d sum(gb) as GB by sourcetype useother=false |untable _time sourcteype sum(GB)],,,
+splunk_internal,,Events sent to Null Que,"index=_internal component=metrics processor=nullqueue group=pipeline sourcetype=splunkd | table _time log_level name processor cpu_seconds executes, cumulative_hits",,,
+splunk_internal,,Datamodel search performance,"index=_internal sourcetype=scheduler component=SavedSplunker ACCELERATE NOT skipped run_time=* 
+| rex field=savedsearch_id ""ACCELERATE_(?:[A-F0-9\-]{36}_)?(?<acceleration>.*?)_ACCELERATE""
+| timechart span=5m max(run_time) AS run_time by acceleration",,,
+splunk_internal,,Saved Search Scheduler Activity,"index=_internal sourcetype=scheduler result_count | extract pairdelim="","", kvdelim=""="", auto=f | stats avg(result_count) min(result_count) max(result_count), sparkline avg(run_time) min(run_time) max(run_time) sum(run_time) values(host) AS hosts count AS execution_count by savedsearch_name, app | join savedsearch_name type=outer [| rest /servicesNS/-/-/saved/searches | fields title eai:acl.owner cron_schedule dispatch.earliest_time dispatch.latest_time search | rename title AS savedsearch_name eai:acl.app AS App eai:acl.owner AS Owner cron_schedule AS ""Cron Schedule"" dispatch.earliest_time AS ""Dispatch Earliest Time"" dispatch.latest_time AS ""Dispatch Latest Time""]| rename savedsearch_name AS ""Saved Search Name"" search AS ""SPL Query"" app AS App | makemv delim="","" values(host) | sort - avg(run_time) | table ""Saved Search Name"", App, Owner, ""SPL Query"", ""Dispatch Earliest Time"" ""Dispatch Latest Time"" ""Cron Schedule"" hosts, execution_count, sparkline, *(result_count), sum(run_time) *(run_time)",,,
+splunk_internal,,Show Indexing Queue Sizes,index=_internal source=*metrics.log group=queue (name=parsingqueue OR name=indexqueue OR name=typingqueue OR name=aggqueue) | timechart avg(current_size) by name,,,
+splunk_internal,,Splunk Internal User Modifications,"index=_audit sourcetype=audittrail action=edit_user | eval Date=strftime(_time, ""%Y/%m/%d"") |where user!=object| stats count by user, info, object, Date | rename user as ""Authenticated User"" | rename info as ""Success Status"" | rename object as ""Modified Account"" | sort - count",,,
+splunk_internal,,Last Time a Forwarder Checked In,"index=""_internal"" source=""*metrics.lo*"" group=tcpin_connections NOT eventType=* | eval sourceHost=if(isnull(hostname), sourceHost,hostname) | eval connectionType=case(fwdType==""uf"",""universal forwarder"", fwdType==""lwf"", ""lightweight forwarder"",fwdType==""full"", ""heavy forwarder"", connectionType==""cooked"" or connectionType==""cookedSSL"",""Splunk forwarder"", connectionType==""raw"" or connectionType==""rawSSL"",""legacy forwarder"")| eval build=if(isnull(build),""n/a"",build) | eval version=if(isnull(version),""pre 4.2"",version) | eval os=if(isnull(os),""n/a"",os)| eval arch=if(isnull(arch),""n/a"",arch) | eval lastReceived = case(kb>0, _time) | eval seconds=30 | eval event_count= tcp_eps * seconds | bin _time span=10m | stats first(connectionType) as connectionType first(version) as version max(_time) as lastConnected max(lastReceived) as lastReceived sum(kb) as kbTotal  sum(event_count) as events sum(seconds) as secs by sourceHost _time | stats first(connectionType) as connectionType first(version) as version max(lastConnected) as lastConnected max(lastReceived) as lastReceived by sourceHost | eval LastReceived=strftime(lastReceived, ""%Y/%m/%d %H:%M:%S"") | fields sourceHost, connectionType, LastReceived | sort + LastReceived",,,
+splunk_internal,,TEST2,"index=_internal sourcetype=scheduler result_count | extract pairdelim="","", kvdelim=""="", auto=f | stats avg(result_count) min(result_count) max(result_count), sparkline avg(run_time) min(run_time) max(run_time) sum(run_time) values(host) AS hosts count AS execution_count by savedsearch_name, app | join savedsearch_name type=outer [| rest /servicesNS/-/-/saved/searches | fields title eai:acl.owner cron_schedule dispatch.earliest_time dispatch.latest_time search | rename title AS savedsearch_name eai:acl.app AS App eai:acl.owner AS Owner cron_schedule AS ""Cron Schedule"" dispatch.earliest_time AS ""Dispatch Earliest Time"" dispatch.latest_time AS ""Dispatch Latest Time""]| rename savedsearch_name AS ""Saved Search Name"" search AS ""SPL Query"" app AS App | makemv delim="","" values(host) | sort - avg(run_time) | table ""Saved Search Name"", App, Owner, ""SPL Query"", ""Dispatch Earliest Time"" ""Dispatch Latest Time"" ""Cron Schedule"" hosts, execution_count, sparkline, *(result_count), sum(run_time) *(run_time)",,,
+splunk_internal,,CIM Assist,"index=*
+| fields index, tag, user, action, object_category
+| eval datamodel = if(tag=""alert"", index.""."".""alert"", datamodel)
+| eval datamodel = if(tag=""listening"" AND tag=""port"", index.""."".""application_state_deprecated"".""."".""endpoint"", datamodel)
+| eval datamodel = if(tag=""process"" AND tag=""report"", index.""."".""application_state_deprecated"".""."".""endpoint"", datamodel)
+| eval datamodel = if(tag=""service"" AND tag=""report"", index.""."".""application_state_deprecated"".""."".""endpoint"", datamodel)
+| eval datamodel = if(tag=""authentication"" AND action!=""success"" AND user!=""*$"", index.""."".""authentication"", datamodel)
+| eval datamodel = if(tag=""certificate"", index.""."".""certificates"", datamodel)
+| eval datamodel = if(tag=""change"" AND NOT (object_category=file OR object_category=directory OR object_category=registry), index.""."".""change"".""."".""change_analysis_deprecated"", datamodel)
+| eval datamodel = if(tag=""dlp"" AND tag=""incident"", index.""."".""data_loss_prevention"", datamodel)
+| eval datamodel = if(tag=""database"", index.""."".""database"", datamodel)
+| eval datamodel = if(tag=""email"", index.""."".""email"", datamodel)
+| eval datamodel = if(tag=""endpoint"" AND tag=""filesystem"", index.""."".""endpoint"", datamodel)
+| eval datamodel = if(tag=""endpoint"" AND tag=""registry"", index.""."".""endpoint"", datamodel)
+| eval datamodel = if(tag=""track_event_signatures"" AND (signature=""*"" OR signature_id=""*""), index.""."".""event_signatures"", datamodel)
+| eval datamodel = if(tag=""messaging"", index.""."".""interprocess_messaging"", datamodel)
+| eval datamodel = if(tag=""ids"" AND tag=""attack"", index.""."".""intrusion_detection"", datamodel)
+| eval datamodel = if(tag=""inventory"" AND (tag=""cpu"" OR tag=""memory"" OR tag=""network"" OR tag=""storage"" OR (tag=""system"" AND tag=""version"") OR tag=""user"" OR tag=""virtual""), index.""."".""inventory"", datamodel)
+| eval datamodel = if(tag=""jvm"", index.""."".""jvm"", datamodel)
+| eval datamodel = if(tag=""malware"" AND tag=""attack"", index.""."".""malware"", datamodel)
+| eval datamodel = if(tag=""network"" AND tag=""resolution"" AND tag=""dns"", index.""."".""network_resolution_dns"", datamodel)
+| eval datamodel = if(tag=""network"" AND tag=""session"", index.""."".""network_sessions"", datamodel)
+| eval datamodel = if(tag=""network"" AND tag=""communicate"", index.""."".""network_traffic"", datamodel)
+| eval datamodel = if(tag=""performance"" AND (tag=""cpu"" OR tag=""facilities"" OR tag=""memory"" OR tag=""storage"" OR tag=""network"" OR (tag=""os"" AND ((tag=""time"" AND tag=""synchronize"") OR tag=""uptime""))), index.""."".""performance"", datamodel)
+| eval datamodel = if(tag=""ticketing"", index.""."".""ticket_managment"", datamodel)
+| eval datamodel = if(tag=""update"" AND tag=""status"", index.""."".""updates"", datamodel)
+| eval datamodel = if(tag=""vulnerability"" AND tag=""report"", index.""."".""vulnerabilities"", datamodel)
+| eval datamodel = if(tag=""web"", index.""."".""web"", datamodel)
+| rex field=datamodel ""(?<index>[^\.]+)\.(?<datamodel>.*)""
+| makemv delim=""."" datamodel
+| stats values(index) as index by datamodel",,,
+splunk_internal,,Sourcetypes by GB,"index=_internal source=*metrics.log
+| eval GB=kb/(1024*1024) 
+| search group=""per_sourcetype_thruput"" 
+| timechart span=1d sum(GB) by series limit=20",,,
+misc,,insights,"New Insights",,,

@@ -1,0 +1,28 @@
+[splunkconf-eventline]
+action.email.useNSSubject = 1
+alert.track = 0
+dispatch.earliest_time = -8h@h
+dispatch.latest_time = now
+display.general.type = visualizations
+display.page.search.tab = visualizations
+display.statistics.show = 0
+display.visualizations.charting.chart = line
+display.visualizations.custom.height = 392
+display.visualizations.custom.type = event-timeline-viz.event-timeline-viz
+display.visualizations.type = custom
+request.ui_dispatch_app = splunkconf-backup
+request.ui_dispatch_view = search
+search = index=_internal (host="cm") source="*splunkconf-backup.log*" (TERM("splunkconf-backup") action=backup) OR (TERM("splunkconf-purgebackup") action=purge) NOT result="running" latest=now() earliest=-24h | eval object2=case(object=="kvdump","kv",object=="kvstore","kv",1==1,object) | bin _time bins=40 minspan=5m| eval file=if(type=="remote",src,dest) | rex field=file "^\/.*\/(?<fileshort>[^\/]+\.tar\.gz)$"| rex field=fileshort "\-(?<datefile>\d+\-\d+\w*)_\d\.tar\.gz$"| eval n=strptime(datefile,"%Y%m%d-%H%M")| eval n=strptime(datefile,"%Y%m%d-%H%M%Z")|eval actionresult=action."_".result  |  stats  count as  countdest,  values(fileshort) as fileshort values(datefile) as datefile values(n) as n values(_raw) as raws, latest(_raw) as raw , values(actionresult), latest(actionresult) as actionresult latest(result) as result , latest(action) as action, values(result) as list_result, values(host) as host,values(object) as object, values(reason) as reason ,earliest(_time) as _time by file,type | where countdest>1 OR action!="purge" | eval start=_time  | fillnull result value="missing"  | eval color = case(action=="backup" AND result=="failure" AND reason="localdiskspacecheck","#ff5050",action=="backup" AND result=="failure","#ff0000", action=="backup" AND result=="success","#00FF00", action=="purge" AND result=="success","#0000FF", 1==1,"#efefef")|   eval object2=case(object=="kvdump","kv",object=="kvstore","kv",1==1,object) |  search NOT (dcobject=2 AND object="kvstore") | fields - dcobject,object2| eval label=host."_".object."_".type | eval label=type | eval group=host."_".object |stats count values(fileshort) as fileshort by start,label,group,color |eval tooltip=fileshort | rename result AS latest_result
+
+[Splunkconf-backupstatut]
+action.email.useNSSubject = 1
+alert.track = 0
+dispatch.earliest_time = -24h@h
+dispatch.latest_time = now
+display.general.type = statistics
+display.page.search.tab = statistics
+display.visualizations.charting.chart = line
+display.visualizations.show = 0
+request.ui_dispatch_app = splunkconf-backup
+request.ui_dispatch_view = search
+search = |makeresults | eval host=mvappend("cm","ds","test"), object=mvappend("etc","scripts","kvdump","kvstore","state"), type=mvappend("local","remote") | mvexpand host| mvexpand object | mvexpand type | join type=left host,type,object [search index=_internal source="*splunkconf-backup.log*" "splunkconf-backup"  NOT "splunkconf-purgebackup" action=backup | bin _time span=1d | stats count,latest(_raw) , latest(result) as result , values(result) as list_result by type,host,object] | fillnull result value="missing"

@@ -1,0 +1,185 @@
+#!/usr/bin/env @PYTHON_EXECUTABLE@
+#
+# File: handler_cribl_instance.py - Version 2.0.3
+# Copyright © Datapunctum AG 2023-6-28
+#
+# CONFIDENTIAL - Use or disclosure of this material in whole or in part
+# without a valid written license from Datapunctum AG is PROHIBITED.
+#
+
+import os
+import sys
+import json
+import uuid
+import http.client
+
+from splunk.persistconn.application import PersistentServerConnectionApplication
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+
+# Splunk Enterprise SDK
+import splunklib.client as client
+
+# Import Datapunctum modules
+from utstream_template.factory_logger import Logger
+from utstream_template.handler_abstract import HandlerAbstract
+
+from utstream.service_cribl_instance import CriblInstanceService
+
+class CriblInstanceHandler( PersistentServerConnectionApplication, HandlerAbstract ):
+
+
+    def __init__(self, _command_line, _command_arg):
+        super( PersistentServerConnectionApplication, self ).__init__()
+
+
+    def handle(self, request_payload: str) -> str:
+        """
+        Called for a simple synchronous request
+        """
+
+        self.uuid = str(uuid.uuid4())
+        self.logger = Logger( logname="handler", uuid=self.uuid )
+
+        try:
+            return self.abstract_handle( request_payload )
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def handle_get(self, data: dict):
+        """
+        Fetching licenses from the configuration
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            cribl_instances : list[ dict ] = cribl_instance_service.get_instances()
+            return self.response( cribl_instances, http.client.OK )
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def handle_post(self, data: dict):
+        """
+        Adding / Updating / Removing a Cribl Instace
+        """
+        payload = json.loads( data["payload"] )
+        action = payload["action"]
+
+        if action == "add":
+            return self.handle_post_add( payload )
+        elif action == "update":
+            return self.handle_post_update( payload )
+        elif action == "delete":
+            return self.handle_post_delete( payload )
+        elif action == "get_worker_groups":
+            return self.handle_post_get_worker_groups( payload )
+        elif action == "get_instance_information":
+            return self.handle_post_get_instance_information( payload )
+
+        return self.response( "Invalid Action", http.client.BAD_REQUEST )
+
+    
+    def handle_post_add(self, payload: dict):
+        """
+        Adding a Cribl Instance
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            cribl_instance = cribl_instance_service.add_instance( payload[ "instance" ] )
+            
+            if cribl_instance:
+                return self.response( cribl_instance, http.client.CREATED) 
+            else:
+                return self.response( "Failed to add Cribl instance", http.client.INTERNAL_SERVER_ERROR )
+            
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def handle_post_update(self, payload: dict):
+        """
+        Updating a Cribl Instance
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            cribl_instance = cribl_instance_service.update_instance( payload[ "instance" ] )
+            
+            if cribl_instance:
+                return self.response( cribl_instance, http.client.OK) 
+            else:
+                return self.response( "Failed to update Cribl instance", http.client.INTERNAL_SERVER_ERROR )
+            
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def handle_post_delete(self, payload: dict):
+        """
+        Removing a Cribl Instance
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            result = cribl_instance_service.remove_instance( payload[ "instance" ] )
+            
+            if result:
+                return self.response( result, http.client.OK) 
+            else:
+                return self.response( "Failed to delete Cribl instance", http.client.INTERNAL_SERVER_ERROR )
+            
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+    
+    def handle_post_get_worker_groups(self, payload: dict):
+        """
+        Adding a Cribl Instance
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            worker_groups = cribl_instance_service.get_worker_groups( payload[ "instance" ] )
+            
+            if worker_groups:
+                return self.response( worker_groups, http.client.OK) 
+            else:
+                return self.response( "Failed to fetch Cribl Worker groups", http.client.INTERNAL_SERVER_ERROR )
+            
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def handle_post_get_instance_information(self, payload: dict):
+        """
+        Get the configured inputs, outputs and pipelines
+        """
+        try:
+            cribl_instance_service = CriblInstanceService(uuid=self.uuid, client=client, session_key=self.session_key, privileged_key=self.privileged_key, user=self.user)
+            cribl_instance = cribl_instance_service.get_instance_information( payload[ "instance" ][ "name" ] )
+            
+            if cribl_instance:
+                return self.response( cribl_instance, http.client.OK) 
+            else:
+                return self.response( "Instance not found", http.client.NOT_FOUND )
+            
+        except Exception as e:
+            self.logger.exception( str( e ) )
+            return self.__handle_error( str( e) )
+
+
+    def __handle_error( self, exception_string : str = ""):
+        """
+        Handles an error
+        """
+
+        if exception_string.startswith( "Invalid Configuration" ):
+            return self.response( exception_string.replace("Invalid Configuration: ", ""), http.client.BAD_REQUEST )
+        elif "Unauthorized" in exception_string:
+            return self.response( "Unauthorized", http.client.FORBIDDEN )
+        
+        return self.response( "Failed to handle your request", http.client.INTERNAL_SERVER_ERROR )

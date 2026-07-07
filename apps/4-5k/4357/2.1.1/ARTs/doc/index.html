@@ -1,0 +1,624 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome file</title>
+  <link rel="stylesheet" href="https://stackedit.io/style.css" />
+</head>
+
+<body class="stackedit">
+  <div class="stackedit__html"><h2 id="table-of--content">Table of  content</h2>
+<p><a href="#what-is-arts">What is ARTs</a><br>
+<a href="#getting-started">Getting Started</a></p>
+<ul>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#configure-arts">Configure ARTs</a></li>
+<li><a href="#architecture-overview">Architecture overview</a></li>
+<li><a href="#basic-features">Basic features</a>
+<ul>
+<li><a href="#overview-page">Overview page</a></li>
+<li><a href="#trend-page">Trend page</a></li>
+<li><a href="#triage-page">Triage page</a></li>
+</ul>
+</li>
+</ul>
+<p><a href="#triage-workflow">Triage workflow</a></p>
+<ul>
+<li><a href="#step1--select-a-job-you-would-like-to-triage.">Step1:  Select a job you would like to triage.</a></li>
+<li><a href="#step2-select-the-build-you-would-like-to-triage.">Step2: Select the build you would like to triage.</a></li>
+<li><a href="#step3-triage-failures.">Step3: Triage failures.</a>
+<ul>
+<li><a href="#step3.1-triage-product-bug-failures.">Step3.1: Triage <em>Product bug failures</em>.</a></li>
+<li><a href="#step3.2-triage-infrastructure-failures.">Step3.2: Triage Infrastructure failures.</a></li>
+<li><a href="#step3.3-triage-flaky-failures.">Step3.3: Triage <em>Flaky failures</em>.</a></li>
+<li><a href="#step3.4-triage-test-failures.">Step3.4: Triage <em>Test failures</em></a></li>
+</ul>
+</li>
+<li><a href="#step4-add-a-global-message.-optional">Step4: Add a global message. (optional)</a></li>
+</ul>
+<p><a href="#features-in-depth">Features in depth</a></p>
+<ul>
+<li><a href="#customize-your-own-overview-page">Customize your own overview page</a></li>
+<li><a href="#branch-comparison">Branch comparison</a></li>
+<li><a href="#maintenance">Maintenance</a></li>
+</ul>
+<p><a href="#faq">FAQ</a></p>
+<h2 id="what-is-arts">What is ARTs?</h2>
+<p>ARTs (Automation Result Triage system) is a Splunk application for automation test results analysis with the following main features:</p>
+<ul>
+<li>Latest test results stats</li>
+<li>Test results stats trend</li>
+<li>Failure triage</li>
+<li>Different branch result comparison</li>
+<li>Global message broadcast</li>
+</ul>
+<h2 id="getting-started">Getting Started</h2>
+<blockquote>
+<p>This guide assumes that you know the basic knowledge of Splunk, e.g. how to install and configure Splunk (standalone or clustering) and how to install the Splunk app.</p>
+</blockquote>
+<h3 id="prerequisites">Prerequisites</h3>
+<hr>
+<p>Assuming that you have installed and configured the Splunk(cluster) environment. Before you are going to install the app of ARTs, you <strong>need</strong> to complete the following two steps first.</p>
+<ol>
+<li>Install the <a href="https://splunkbase.splunk.com/app/3332/">Splunk App for Jenkins</a></li>
+<li>Install the <a href="https://splunkbase.splunk.com/app/3205/">Status Matrix Custom Viz</a></li>
+</ol>
+
+<h3 id="configure-arts">Configure ARTs</h3>
+<hr>
+<p>After you install the app of ARTs, you can enable the JIRA settings in the setup page for the very first time. Or you can update the settings in the <strong>Manage Apps</strong> page.</p>
+<blockquote>
+<p>Note: It is optional. If you don’t enable it, ARTs could not be get information from JIRA system.</p>
+<p>If you are not a admin user, you <b>SHOULD</b> assign the role list_storage_passwords capability to user, otherwise it will use the default user/password in jirabugstatus command to access JIRA system. It may fail due to authencication failed or it will affect the performace.</p>
+</blockquote>
+<p>Besides that, you can make some personalized customization based on your requirements. Here are some configuration files.</p>
+<blockquote>
+<p>After updating the files, you might need to restart Splunk Enterprise for the changes to take effect.</p>
+</blockquote>
+<h4 id="arts_settings.conf">arts_settings.conf</h4>
+<pre><code># This file contains attribute/value pairs of general personalized customization for ARTs  
+[triage]  
+# enable/disable html report link/button  
+enable_html_report=0  
+  
+# enable/disable pytest script button  
+enable_pytest_script=0  
+  
+# admin user for ARTs,which have delete permission in global message  
+admin_user=  
+  
+# blacklist for JIRA ticket (splitted with |), the tickets with the following  
+# prefix will not be regarded as product bug, such as TNT-123, INFRA-123  
+jira_bug_blacklist=TNT|INFRA
+</code></pre>
+<h4 id="macros.conf">macros.conf</h4>
+<p>In the “Customization Section”, you can update the macros according to your own metadata.</p>
+<pre><code># Update the following macros according to your own metadata if needed  
+# --------------------------- Customization Section Start----------------------
+...
+# In this macro, we extract the error message from the pytest stacktrace
+...
+# Update the following macros to define the failure category
+
+# This macro will filter out the jobs without test results
+...
+# --------------------------- Customization Section End----------------
+</code></pre>
+<h4 id="failure_category.csv">failure_category.csv</h4>
+<p>The lookup file contains the known infrastructure (connection/start/restart) issues.<br>
+For example:</p>
+<pre><code>line1 category,type,filter  
+line2 connection,errorinfo,SSLHandshakeError  
+line3 connection,errorinfo_message, Failed to install/upgrade from
+...
+line9 start,errorinfo,CouldNotStart
+</code></pre>
+<blockquote>
+<p>line1: the field names of the lookup file<br>
+line2:  means the errorinfo contains SSLHandshakeError will be regarded as connection issues<br>
+line3:  means the errorinfo_message contains the filter value “Failed to install/upgrade from” will be grouped into connection issues<br>
+line9:  means the errorinfo contains CouldNotStart will be categorized into start/restart issues.</p>
+</blockquote>
+
+<h3 id="architecture-overview">Architecture overview</h3>
+<hr>
+<p>Here is the architecture diagram of ARTs.</p>
+<div class="mermaid"><svg xmlns="http://www.w3.org/2000/svg" id="mermaid-svg-tmu1GfchBaCjodiE" width="100%" style="max-width: 1392.8125px;" viewBox="0 0 1392.8125 228"><g transform="translate(-12, -12)"><g class="output"><g class="clusters"><g class="cluster" id="subGraph3" transform="translate(1304.0078125,126)" style="opacity: 1;"><rect width="185.609375" height="116" x="-92.8046875" y="-58"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-44" fill="black" stroke="none" id="mermaid-svg-tmu1GfchBaCjodiEText" style="text-anchor: middle;"></text></g><g class="cluster" id="subGraph2" transform="translate(516.375,126)" style="opacity: 1;"><rect width="172.375" height="212" x="-86.1875" y="-106"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-92" fill="black" stroke="none" id="mermaid-svg-tmu1GfchBaCjodiEText" style="text-anchor: middle;">Processed by Splunk Plungin for Jenkins</text></g><g class="cluster" id="subGraph1" transform="translate(834.1015625,121)" style="opacity: 1;"><rect width="344.515625" height="184" x="-172.2578125" y="-92"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-78" fill="black" stroke="none" id="mermaid-svg-tmu1GfchBaCjodiEText" style="text-anchor: middle;">Search Head</text></g><g class="cluster" id="subGraph0" transform="translate(195.453125,121)" style="opacity: 1;"><rect width="350.90625" height="184" x="-175.453125" y="-92"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-78" fill="black" stroke="none" id="mermaid-svg-tmu1GfchBaCjodiEText" style="text-anchor: middle;">Jenkins</text></g></g><g class="edgePaths"><g class="edgePath" style="opacity: 1;"><path class="path" d="M327.1969401041667,103L370.90625,78L400.546875,78L430.1875,78L455.1875,78" marker-end="url(#arrowhead528)" style="fill:none"></path><defs><marker id="arrowhead528" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M577.5625,78L602.5625,78L632.203125,78L661.84375,78L721.79248046875,103" marker-end="url(#arrowhead529)" style="fill:none"></path><defs><marker id="arrowhead529" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M327.1969401041667,149L370.90625,174L400.546875,174L430.1875,174L456.765625,174" marker-end="url(#arrowhead530)" style="fill:none"></path><defs><marker id="arrowhead530" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M575.984375,174L602.5625,174L632.203125,174L661.84375,174L721.79248046875,149" marker-end="url(#arrowhead531)" style="fill:none"></path><defs><marker id="arrowhead531" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M981.359375,126L1006.359375,126L1108.78125,126L1211.203125,126L1236.203125,126" marker-end="url(#arrowhead532)" style="fill:none"></path><defs><marker id="arrowhead532" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 0 0 L 0 0 z" style="fill: #333"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M168.78125,126L198.421875,126L228.0625,126" marker-end="url(#arrowhead533)" style="fill:none"></path><defs><marker id="arrowhead533" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M867.046875,126L896.6875,126L926.328125,126" marker-end="url(#arrowhead534)" style="fill:none"></path><defs><marker id="arrowhead534" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 0 0 L 0 0 z" style="fill: #333"></path></marker></defs></g></g><g class="edgeLabels"><g class="edgeLabel" transform="translate(400.546875,78)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">2</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(632.203125,78)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">4</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(400.546875,174)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">3</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(632.203125,174)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">5</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1108.78125,126)" style="opacity: 1;"><g transform="translate(-77.421875,-13)" class="label"><foreignObject width="154.84375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">custom SPL command</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(198.421875,126)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">1</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(896.6875,126)" style="opacity: 1;"><g transform="translate(-4.640625,-13)" class="label"><foreignObject width="9.28125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">6</span></div></foreignObject></g></g></g><g class="nodes"><g class="node" id="jira" transform="translate(1304.0078125,126)" style="opacity: 1;"><rect rx="0" ry="0" x="-67.8046875" y="-23" width="135.609375" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-57.8046875,-13)"><foreignObject width="115.609375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">JIRA bug system</div></foreignObject></g></g></g><g class="node" id="logs" transform="translate(516.375,78)" style="opacity: 1;"><rect rx="0" ry="0" x="-61.1875" y="-23" width="122.375" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-51.1875,-13)"><foreignObject width="102.375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">test result logs</div></foreignObject></g></g></g><g class="node" id="xmls" transform="translate(516.375,174)" style="opacity: 1;"><rect rx="0" ry="0" x="-59.609375" y="-23" width="119.21875" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-49.609375,-13)"><foreignObject width="99.21875" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">test result xml</div></foreignObject></g></g></g><g class="node" id="splunkin" transform="translate(776.9453125,126)" style="opacity: 1;"><rect rx="0" ry="0" x="-90.1015625" y="-23" width="180.203125" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-80.1015625,-13)"><foreignObject width="160.203125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Splunk App for Jenkins</div></foreignObject></g></g></g><g class="node" id="arts" transform="translate(953.84375,126)" style="opacity: 1;"><rect rx="0" ry="0" x="-27.515625" y="-23" width="55.03125" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-17.515625,-13)"><foreignObject width="35.03125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">ARTs</div></foreignObject></g></g></g><g class="node" id="master" transform="translate(106.890625,126)" style="opacity: 1;"><rect rx="0" ry="0" x="-61.890625" y="-23" width="123.78125" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-51.890625,-13)"><foreignObject width="103.78125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Jenkins master</div></foreignObject></g></g></g><g class="node" id="slaves" transform="translate(286.984375,126)" style="opacity: 1;"><rect rx="0" ry="0" x="-58.921875" y="-23" width="117.84375" height="46"></rect><g class="label" transform="translate(0,0)"><g transform="translate(-48.921875,-13)"><foreignObject width="97.84375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Jenkins slaves</div></foreignObject></g></g></g></g></g></g></svg></div>
+<blockquote>
+<ol>
+<li>Jenkins master triggers the master build which triggers slave builds to run the test suites in parallel.</li>
+<li>Each slave runs the test  suite for specific feature  and generates the test result logs.</li>
+<li>Each slave generates the test result JUnit xml file as the structured data after the execution.</li>
+<li>The Jenkins plugin Splunkins processes the JUnit xml files to formatted JSON data with the metadata and send it to Indexer.</li>
+<li>Each slave also forwards the test result log files to Indexer.</li>
+<li>Splunk App for Jenkins handles the index and sourcetype ARTs used.</li>
+</ol>
+</blockquote>
+<h3 id="basic-features">Basic features</h3>
+<hr>
+<p>Now you can start to use ARTs.  Here are several main pages.</p>
+<h4 id="overview-page">Overview page</h4>
+<p>Overview page will show you the overall information of a set of jobs with the following metrics:</p>
+<ul>
+<li>job status (running or completed)</li>
+<li>failed cases/total cases</li>
+<li>failure delta versus the previous run</li>
+<li>trend of failures in the last 7 days by default</li>
+</ul>
+<p>Clicking on the job will drilldown to the corresponding <a href="#trend-page">Trend page</a>.</p>
+<p><img src="img/overview.png" alt=""></p>
+<h4 id="trend-page">Trend page</h4>
+<p>Trend page is a new page introduced in  ARTs 2.0.  The legacy Summary page in 1.0 lacks of detailed trend info. The new Trend page can be treated as an upgraded version of the legacy Summary page.</p>
+<p>It displays trendline for different categories of failures as well as other more detailed job failure information that you can drilldown to view more details.</p>
+<p><img src="img/trend.png" alt=""></p>
+<h5 id="overview--summary">Overview  summary</h5>
+
+<table>
+<thead>
+<tr>
+<th>Title</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>Total tests</em></td>
+<td>The total number of all cases (excluded skipped ones)</td>
+</tr>
+<tr>
+<td><em>Pass rate</em></td>
+<td>The number of passed cases <span class="katex--inline"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>÷</mo></mrow><annotation encoding="application/x-tex">\div</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.66666em; vertical-align: -0.08333em;"></span><span class="mord">÷</span></span></span></span></span> Total tests <span class="katex--inline"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>×</mo></mrow><annotation encoding="application/x-tex">\times</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height: 0.66666em; vertical-align: -0.08333em;"></span><span class="mord">×</span></span></span></span></span> 100%</td>
+</tr>
+<tr>
+<td><em>Total failures</em></td>
+<td>The total number of all failed cases</td>
+</tr>
+<tr>
+<td><em>Skipped tests</em></td>
+<td>The total number of all skipped cases</td>
+</tr>
+</tbody>
+</table><h5 id="failure-category">Failure category</h5>
+
+<table>
+<thead>
+<tr>
+<th>Title</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>Product bug failures</em></td>
+<td>The total number of failures due to product bug</td>
+</tr>
+<tr>
+<td><em>Setup failures</em></td>
+<td>The total number of failures due to connection errors/issues in setup step. The connection errors/issues are defined in lookup <em>failure_category.csv (category=connection)</em></td>
+</tr>
+<tr>
+<td><em>Start/Restart failures</em></td>
+<td>The total number of failures due to start/restart errors/issues. the start/restart errors/issues are defined in lookup <em>failure_category.csv (category=start)</em></td>
+</tr>
+<tr>
+<td><em>Connection failures</em></td>
+<td>Similar as setup failures, the only difference is that the error/issue doesn’t occur in setup step.</td>
+</tr>
+<tr>
+<td><em>Flaky failures</em></td>
+<td>The total number of failures whose notes are started by flaky, such <em>flaky_</em>*</td>
+</tr>
+<tr>
+<td><em>Test failures</em></td>
+<td>The total number of failures due to test script issues.</td>
+</tr>
+</tbody>
+</table><p>If you clicking on any of the failure categories, the <strong>Triage button</strong> will be displayed.  Clicking on the button, you will be brought  to the <a href="#triage-page">Triage page</a>.</p>
+<h4 id="triage-page">Triage page</h4>
+<p>Triage page is the core page in ARTs.   There is also summary trend information stated in triage page.<br>
+Failures are distributed by error types or features. You can find all the failures in a specified error type or a specified feature.<br>
+Failures are  also grouped by “<em>Triaging</em>” and “<em>Untriaged</em>”.</p>
+
+<table>
+<thead>
+<tr>
+<th>column name</th>
+<th>description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><em>Triaging</em></td>
+<td>being investigated by someone, with triage note started by “_”, such as <em>_investigated_by_xx</em></td>
+</tr>
+<tr>
+<td><em>Untriaged</em></td>
+<td>no triage note, need someone to look into it</td>
+</tr>
+</tbody>
+</table><p><img src="img/triage_column.png" alt=""></p>
+<p>Now you can follow the <a href="#triage-workflow">Triage workflow</a> to triage.</p>
+<h2 id="triage-workflow">Triage workflow</h2>
+<p><strong>Triage</strong> page shows the results of a specified job.</p>
+<h4 id="step1--select-a-job-you-would-like-to-triage.">Step1:  Select a job you would like to triage.</h4>
+<p>Select  dropdown inputs , such as  <em>Product</em>, <em>Source</em>, etc. to narrow down the scope to find the job.</p>
+<blockquote>
+<p>Note:</p>
+<ul>
+<li>If you can’t find the job name, check the <em><strong>time range.</strong></em> The default time range is “Last 7 days”, the latest build of the job may be out of the range.</li>
+<li>If there is no result after you set all the inputs, check whether you select the correct <em><strong>Operating System</strong></em>.</li>
+<li>If you are a feature owner, you may only care about a specified feature. You can select a <em><strong>Feature Group</strong></em>  that will only show the results in the feature group.</li>
+</ul>
+</blockquote>
+<p><img src="img/triage_workflow_step1.png" alt=""></p>
+<h4 id="step2-select-the-build-you-would-like-to-triage.">Step2: Select the build you would like to triage.</h4>
+<p>There are two builds in the specified job, the right build is always earlier than the left one.  (That is different to <a href="#branch-comparison">branch comparison</a> page.)</p>
+<blockquote>
+<p>Note: If there is only one build in the time range (such Last 7 days), the two builds are the same build.</p>
+</blockquote>
+<p>It will show the <a href="#overview-summary">Overview summary</a> and <a href="#failure-category">Failure category</a> for each build.</p>
+<blockquote>
+<p>Note: You can only click on a failure number in the <strong>left</strong> build to see the details.</p>
+</blockquote>
+<p>Clicking on the <em><strong>Total failures</strong></em>, it will show all the failures in the left build (comparing to the right build).</p>
+
+<table>
+<thead>
+<tr>
+<th>Column name</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>J</td>
+<td>Link directed to Jenkins job</td>
+</tr>
+<tr>
+<td>Feature</td>
+<td>Clicking on it will show all the failures in the specified feature</td>
+</tr>
+<tr>
+<td>Failed</td>
+<td>Total failure number (diff to right one) in one feature</td>
+</tr>
+<tr>
+<td>Triaging</td>
+<td>Failures which are in investigating</td>
+</tr>
+<tr>
+<td>Untriaged</td>
+<td>Failures are not be triaged (very important)</td>
+</tr>
+<tr>
+<td>Failure type</td>
+<td>The failure types occur in the feature</td>
+</tr>
+</tbody>
+</table><p>Check the <em><strong>Statistics Charts</strong></em>, it will show you <em><strong>Failures distribution by type</strong></em> and  <em><strong>Failures distribution by feature</strong></em>.   Clicking on a specified failure type, it will drillldown and show all the failures caused by this failure type.  Clicking on a specified feature, it will show all the failures in the feature.<br>
+<img src="img/triage_workflow_step2.png" alt=""></p>
+
+<h4 id="step3-triage-failures.">Step3: Triage failures.</h4>
+<h5 id="step3.1-triage-product-bug-failures.">Step3.1: Triage <em>Product bug failures</em>.</h5>
+<p>Clicking on the “Product bug failures” category, it will show the failures summary in the table.<br>
+It lists all the failures which caused by a product bug and groups them into features.</p>
+<p>Check the checkbox “<em><strong>Show JIRA Tickets</strong></em>”, it will show the details of the corresponding JIRA tickets.  The status which are “Resolved” or “Closed” will be highlighted in yellow.</p>
+<p>Clicking on the <em>bug_id</em>,  it will be directed to the JIRA system. Clicking on other column of the row, it will show the related failure cases. Clicking on the failed case, it will show you the case status trend in  <a href="https://splunkbase.splunk.com/app/3205/">Status Matrix Custom Viz</a>  and the errorstacktrace. If you find the case still failed with the same error, you may re-open the bug in JIRA system. Otherwise, you need to investigate the new cause.</p>
+<blockquote>
+<p>Note:</p>
+<ul>
+<li>If you can’t see the bug table, check whether you have enabled the JIRA settings which mentioned in the very beginning of <a href="#installation-and-configuration">Installation and configuration</a></li>
+<li>If the JIRA ticket is not a product bug, such as infrastructure issue INFRA-XXX,  you don’t want to categorize it as a product bug. You can append INFRA value to the <em>jira_bug_blacklist</em> in <a href="#arts_settings.conf">arts_settings.conf </a></li>
+</ul>
+</blockquote>
+<h5 id="step3.2-triage-infrastructure-failures.">Step3.2: Triage Infrastructure failures.</h5>
+<p>We defined the infrastructure failures which include <em><strong>Setup failures</strong></em>, <em><strong>Start/Restart failures</strong></em> and <em><strong>Connection failures</strong></em>.</p>
+<p>How to define the specified category. Refer to <a href="#failure_category.csv">failure_category.csv</a>.</p>
+
+<table>
+<thead>
+<tr>
+<th>category in failure_category.csv</th>
+<th>case failed in setup/teardown</th>
+<th>Failure category</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>connection</td>
+<td>yes</td>
+<td><em><strong>Setup Failures</strong></em></td>
+</tr>
+<tr>
+<td>connection</td>
+<td>no</td>
+<td><em><strong>Connection failures</strong></em></td>
+</tr>
+<tr>
+<td>start</td>
+<td>NA</td>
+<td><em><strong>Start/Restart failures</strong></em></td>
+</tr>
+</tbody>
+</table><p>You can also change the whole definition. Refer to <a href="#macros.conf">macros.conf</a></p>
+<h5 id="step3.3-triage-flaky-failures.">Step3.3: Triage <em>Flaky failures.</em></h5>
+<p>All the cases with triage note which is prefixed with “flaky” may be categorized  into <em><strong>Flaky failures</strong></em>.</p>
+<blockquote>
+<p>Note: if you want to update the definition, update the macro <em><strong>flaky_failures</strong></em> in <a href="#macros.conf">macros.conf</a>.<br>
+Refer to <a href="#triage-note-rule">Triage note rule</a> to know more about triage note.</p>
+</blockquote>
+<h5 id="step3.4-triage-test-failures.">Step3.4: Triage <em>Test failures</em>.</h5>
+<p>This is the most important category since most un-triaged failures are categorized here.</p>
+<p>In the case when you find failures in “<em>Untriaged</em>” column of a feature, clicking on the failure number cell will show all the untriaged cases in the feature. (similar to <a href="#step3.1-triage-product-bug-failures.">Step3.1</a> )  You are going to investigate on one of the failures or all the failures that you think are caused by the same issue. You want to inform other team members so that they will not do the same work.  Clicking on the <em><strong>Edit Triage Notes</strong></em> button, it will pop out a <strong>Triage Dialog</strong>.</p>
+<p>There are several scopes to add to triage notes.</p>
+
+<table>
+<thead>
+<tr>
+<th>Scope</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>current test case</td>
+<td>Add triage note for current test case on all jobs.</td>
+</tr>
+<tr>
+<td>test cases sharing the same test method</td>
+<td>Add triage note for current test method on all jobs.</td>
+</tr>
+<tr>
+<td>current test class</td>
+<td>Add triage note for current test class on all jobs.</td>
+</tr>
+<tr>
+<td>current feature suite</td>
+<td>Add triage note for current feature suite on all jobs.</td>
+</tr>
+<tr>
+<td>test cases with the same error message</td>
+<td>Add triage note for all cases with same error message</td>
+</tr>
+<tr>
+<td>current test case for the <strong>specified job</strong> name ONLY</td>
+<td>Add triage note for current test case on <strong>only current</strong> job.</td>
+</tr>
+<tr>
+<td>test cases sharing the same method for the <strong>specified job</strong> name ONLY</td>
+<td>Add triage note for current test method on <strong>only current</strong> job.</td>
+</tr>
+<tr>
+<td>current test class for the <strong>specified job</strong> name ONLY</td>
+<td>Add triage note for current test class on <strong>only current</strong> job.</td>
+</tr>
+<tr>
+<td>current feature suite for the <strong>specified job</strong> name ONLY</td>
+<td>Add triage note for current feature suite on <strong>only current</strong> job.</td>
+</tr>
+</tbody>
+</table><p>Add a triage note like “<em>investigated_by</em>**” and then the failed case will be grouped into “<em>Triaging</em>” column in triage page.  If you find the root cause, e.g. a bug with JIRA ticket <em>JIRA-123</em>, you can edit the triage note with “JIRA-123”. Then the failed case will be grouped into <em>Triaged</em>.</p>
+<h6 id="triage-note-rule">Triage note rule</h6>
+
+
+<table>
+<thead>
+<tr>
+<th>Note</th>
+<th>Triaging/Triaged</th>
+<th>failures category</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>_fixed_by_bob_11_8</td>
+<td>Triaging (note started with “_”)</td>
+<td>test failure</td>
+</tr>
+<tr>
+<td>flaky_Test-123</td>
+<td>Triaged</td>
+<td>flaky failure (note started with <em>flaky</em>)</td>
+</tr>
+<tr>
+<td>flaky_Bug-123</td>
+<td>Triaged</td>
+<td>product failure</td>
+</tr>
+<tr>
+<td>Test-123_found_by_bob</td>
+<td>Triaged</td>
+<td>test failure</td>
+</tr>
+<tr>
+<td>Bug_123_Test-123</td>
+<td>Triaged</td>
+<td>product_failure (the first JIRA ticket is Bug-123)</td>
+</tr>
+<tr>
+<td>Test-123_Bug_123</td>
+<td>Triaged</td>
+<td>test failure (the first JIRA ticket is Test-123)</td>
+</tr>
+<tr>
+<td>_Test-123_Bug_123</td>
+<td>Triaging (note started with “_”)</td>
+<td>test failure</td>
+</tr>
+</tbody>
+</table><blockquote>
+<p>The type of Bug-123 is “Bug” in JIRA system<br>
+The type of Test-123 is “Test” in JIRA system</p>
+</blockquote>
+<h4 id="step4-add-a-global-message.-optional">Step4: Add a global message. (optional)</h4>
+<p>If there is a critical issue and you want to inform others, click on button “<em><strong>Add Global Message</strong></em>” on top of the page.</p>
+<blockquote>
+<p>Note: Only the message owner and the user defined in  <a href="#arts_settings.conf">arts_settings.conf</a> (admin_user) can edit/delete other one’s message.</p>
+</blockquote>
+<p><img src="img/add_message.png" alt=""></p>
+<h2 id="features-in-depth">Features in depth</h2>
+<h4 id="customize-your-own-overview-page">Customize your own overview page</h4>
+<p>There is a template that helps you create your own overview page. The template is a dashboard named <em>overview_template.xml</em>.  You can just clone and update its content.</p>
+<p><em>overview_template.xml</em></p>
+<pre><code>&lt;form hideEdit="True" stylesheet="overview.css, progressview.css"  
+  script="render_overview_page_from_xml.js"&gt;
+  &lt;label&gt;overview template&lt;/label&gt;
+  &lt;row&gt;  
+	 &lt;panel&gt; job_section_1 &lt;/panel&gt;
+	 &lt;panel&gt; job_section_2 &lt;/panel&gt;
+  &lt;/row&gt;  
+  &lt;row&gt; 
+     &lt;panel&gt; job_section_3 &lt;/panel&gt;
+     &lt;panel&gt; job_section_4 &lt;/panel&gt;
+  &lt;/row&gt;
+&lt;/form&gt;  
+</code></pre>
+<p><em>job_section_i</em></p>
+<blockquote>
+<p>%data-job-name%: the name of job in jenkins<br>
+%data-title%: custom title for the panel<br>
+%data-host%: the value of host<br>
+%data-os%: windows, linux, mac<br>
+%data-threshold%: the panel will be highlight when the failure number exceed threshold, default is 400<br>
+%data-earliest-time%: customized timerange for earliest time, such as -7d@h<br>
+%data-latest-time%: customized timerange for latest time, such as now</p>
+</blockquote>
+<pre><code> &lt;html&gt;  
+ &lt;div data-job-name="%data-job-name%"
+      data-title="%data-title%
+      data-host="%data-host%"
+      data-os="%data-os%"
+      data-threshold="%data-threshold%"
+      data-earliest-time="%data-earliest-time%"
+      data-latest-time="%data-latest-time%"&gt;
+  &lt;/div&gt;
+ &lt;/html&gt;
+</code></pre>
+<h4 id="branch-comparison">Branch comparison</h4>
+<p>Similar to the <em><strong>Triage</strong></em> page,  there are several inputs you need to select first. But Branch comparison page will help you when you need to compare the test results between <strong>different</strong> branches.</p>
+<p>It also will show the <a href="#overview-summary">Overview summary</a> and <a href="#failure-category">Failure category</a> for a specified run of each job.</p>
+<blockquote>
+<p>Note: You can only click on the failure number in the <strong>left</strong> build to see the details.  (Same as Triage page)</p>
+</blockquote>
+<p><img src="img/branch_comparison.png" alt=""></p>
+<p>In the <em><strong>Summary Table Fields</strong></em>, you can only select the column name that you are interested in.</p>
+<p><img src="img/branch_comparison_fields.png" alt=""></p>
+
+<table>
+<thead>
+<tr>
+<th>Column Name</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Feature</td>
+<td>The feature group</td>
+</tr>
+<tr>
+<td>Total</td>
+<td>Total number (left one comparing to the right one)</td>
+</tr>
+<tr>
+<td>Added</td>
+<td>The number of cases that run in left job build but not run in the right one</td>
+</tr>
+<tr>
+<td>Removed</td>
+<td>Opposite to <em>Added</em></td>
+</tr>
+<tr>
+<td>Fixed</td>
+<td>The number of cases that pass in the left job build but failed in the right one.</td>
+</tr>
+<tr>
+<td>Existing</td>
+<td>The number of cases failed on both job builds</td>
+</tr>
+<tr>
+<td><strong>Regression</strong></td>
+<td>The number of cases that failed in the left job build but pass in the right one.</td>
+</tr>
+<tr>
+<td><strong>New</strong></td>
+<td>The number of cases that failed which was only running in the left job, such as new added cases.</td>
+</tr>
+</tbody>
+</table><p>The <strong>Regression</strong> and <strong>New</strong> columns are the ones that you should pay more attention to.    Clicking on the number in <strong>Regression</strong> column, it will show you the regression failures. Clicking on one of the failures, it will show you the status trend of the case running in the <strong>right</strong> job.</p>
+<blockquote>
+<p>Note: From the status trend, you can find whether the failure is a flaky failure. If yes, it may  not be a regression.</p>
+</blockquote>
+<p>You can also follow the steps in the <a href="#triage-workflow">Triage workflow</a> to edit triage notes.</p>
+<h4 id="maintenance">Maintenance</h4>
+<p>Maintenance page will help you handle:</p>
+<ul>
+<li>Out-of-date triage notes</li>
+</ul>
+<blockquote>
+<p>It lists those triage notes with all passed test cases, which mean the triage notes are no longer needed. (e.g. the product bug has been fixed). It also lists all the skipped and failed test cases with triage notes as a summary. If you click on any triage note, it will navigate to the tag management page where the delete action is provided.</p>
+</blockquote>
+<ul>
+<li>Known bugs / issues</li>
+</ul>
+<blockquote>
+<p>It lists all the failed tests and their corresponding bugs and issues. This page gives you a quick overview of the root causes of the test failures.</p>
+</blockquote>
+<ul>
+<li>long running test cases</li>
+</ul>
+<blockquote>
+<p>Some test cases will run a long time without expected. It means that these cases may need to be improved.</p>
+</blockquote>
+<h2 id="faq">FAQ</h2>
+<ol>
+<li>
+<p><strong>Q</strong>: Why the case is not grouped in <em>Triaging</em> column in triage page after I add triage note to the case?<br>
+<strong>A</strong>: Only the cases with triage note with prefix “_” will be in <em>Triage</em> column, otherwise it will be grouped into <em>Failed</em> column that means it is triaged.</p>
+</li>
+<li>
+<p><strong>Q</strong>: What’s the rule to category failures, such as product bugs, test failures, etc.?<br>
+<strong>A</strong>: Here is a diagram help you to understand the rule.</p>
+<blockquote>
+<p><strong>note</strong>:  If you won’t to category the failures with triage note such as TNT-123, Auto-123, to product bug failures, you need to add the them to the blacklist in  arts_settings.conf.  Set the jira_bug_blacklist=TNT|Auto</p>
+</blockquote>
+<div class="mermaid"><svg xmlns="http://www.w3.org/2000/svg" id="mermaid-svg-TObf1A655J0peISa" width="100%" style="max-width: 1738.703125px;" viewBox="0 0 1738.703125 961.9781246185303"><g transform="translate(-12, -12)"><g class="output"><g class="clusters"><g class="cluster" id="subGraph2" transform="translate(1661.6875,879.1656246185303)" style="opacity: 1;"><rect width="162.03125" height="173.625" x="-81.015625" y="-86.8125"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-72.8125" fill="black" stroke="none" id="mermaid-svg-TObf1A655J0peISaText" style="text-anchor: middle;">Test failures</text></g><g class="cluster" id="subGraph1" transform="translate(1661.6875,681.3374996185303)" style="opacity: 1;"><rect width="162.03125" height="182.03125" x="-81.015625" y="-91.015625"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-77.015625" fill="black" stroke="none" id="mermaid-svg-TObf1A655J0peISaText" style="text-anchor: middle;">Flaky failures</text></g><g class="cluster" id="subGraph0" transform="translate(1399.1015625,324.0234375)" style="opacity: 1;"><rect width="215.953125" height="608.046875" x="-107.9765625" y="-304.0234375"></rect><g class="label"><g transform="translate(0,0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"></div></foreignObject></g></g><text x="0" y="-290.0234375" fill="black" stroke="none" id="mermaid-svg-TObf1A655J0peISaText" style="text-anchor: middle;">Infrastructure failures</text></g></g><g class="edgePaths"><g class="edgePath" style="opacity: 1;"><path class="path" d="M145.375,365.0726547241211L170.375,365.0726547241211L195.87499999999994,365.5726547241211" marker-end="url(#arrowhead627)" style="fill:none"></path><defs><marker id="arrowhead627" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M320.36522707652813,330.5238193006492L391.6171875,273.7898406982422L428.82031555175786,274.28984069824213" marker-end="url(#arrowhead628)" style="fill:none"></path><defs><marker id="arrowhead628" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M656.3237551933789,258.8776614433788L708.0328063964844,250.7898406982422L762.8015594482422,250.7898406982422" marker-end="url(#arrowhead629)" style="fill:none"></path><defs><marker id="arrowhead629" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M313.22092615094334,407.76579107317775L391.6171875,495.85546875L549.7781219482422,495.85546875L708.0328063964844,495.85546875L756.0275873688585,490.55337167061674" marker-end="url(#arrowhead630)" style="fill:none"></path><defs><marker id="arrowhead630" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M620.8051828645819,325.220598385418L708.0328063964844,388.0726547241211L784.9599426647034,440.22520443002344" marker-end="url(#arrowhead631)" style="fill:none"></path><defs><marker id="arrowhead631" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M876.0849101221708,414.0731944239286L978.1640625,205.859375L1027.1960937499998,206.35937500000003" marker-end="url(#arrowhead632)" style="fill:none"></path><defs><marker id="arrowhead632" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1170.2508678486763,170.31414909867658L1254.328125,112.8359375L1291.125,112.8359375L1341.265625,112.8359375" marker-end="url(#arrowhead633)" style="fill:none"></path><defs><marker id="arrowhead633" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1170.250864201918,242.4045984445663L1254.328125,298.8828125L1291.125,298.8828125L1320.890625,298.8828125" marker-end="url(#arrowhead634)" style="fill:none"></path><defs><marker id="arrowhead634" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M883.3749197619645,538.3477273327621L978.1640625,677.97265625L1015.4609375,678.47265625" marker-end="url(#arrowhead635)" style="fill:none"></path><defs><marker id="arrowhead635" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1162.4531992532586,622.8946055032586L1254.328125,510.0703125L1291.125,510.0703125L1316.125,510.0703125" marker-end="url(#arrowhead636)" style="fill:none"></path><defs><marker id="arrowhead636" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1174.9321712305384,721.5717350194616L1254.328125,780.2515621185303L1291.125,780.2515621185303L1348.0203140258798,780.7515621185302" marker-end="url(#arrowhead637)" style="fill:none"></path><defs><marker id="arrowhead637" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1426.521902967111,756.0906525856386L1507.078125,681.3374996185303L1543.875,681.3374996185303L1580.671875,681.3374996185303L1605.671875,681.3374996185303" marker-end="url(#arrowhead638)" style="fill:none"></path><defs><marker id="arrowhead638" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g><g class="edgePath" style="opacity: 1;"><path class="path" d="M1426.5219037634672,805.4124723809397L1507.078125,879.1656246185303L1543.875,879.1656246185303L1580.671875,879.1656246185303L1609.875,879.1656246185303" marker-end="url(#arrowhead639)" style="fill:none"></path><defs><marker id="arrowhead639" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="strokeWidth" markerWidth="8" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowheadPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker></defs></g></g><g class="edgeLabels"><g class="edgeLabel" transform="" style="opacity: 1;"><g transform="translate(0,0)" class="label"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(391.6171875,273.7898406982422)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(708.0328063964844,250.7898406982422)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(549.7781219482422,495.85546875)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(708.0328063964844,388.0726547241211)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(978.1640625,205.859375)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1254.328125,112.8359375)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1254.328125,298.8828125)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(978.1640625,677.97265625)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1254.328125,510.0703125)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1254.328125,780.2515621185303)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1543.875,681.3374996185303)" style="opacity: 1;"><g transform="translate(-11.703125,-13)" class="label"><foreignObject width="23.40625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">yes</span></div></foreignObject></g></g><g class="edgeLabel" transform="translate(1543.875,879.1656246185303)" style="opacity: 1;"><g transform="translate(-11.796875,-13)" class="label"><foreignObject width="23.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel">not</span></div></foreignObject></g></g></g><g class="nodes"><g class="node" id="test_failure" transform="translate(1661.6875,879.1656246185303)" style="opacity: 1;"><circle x="-51.8125" y="-23" r="51.8125"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-41.8125,-13)"><foreignObject width="83.625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Test failures</div></foreignObject></g></g></g><g class="node" id="flaky_failure" transform="translate(1661.6875,681.3374996185303)" style="opacity: 1;"><circle x="-56.015625" y="-23" r="56.015625"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-46.015625,-13)"><foreignObject width="92.03125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Flaky failures</div></foreignObject></g></g></g><g class="node" id="setup_failure" transform="translate(1399.1015625,112.8359375)" style="opacity: 1;"><circle x="-57.8359375" y="-23" r="57.8359375"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-47.8359375,-13)"><foreignObject width="95.671875" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Setup failures</div></foreignObject></g></g></g><g class="node" id="connection_failure" transform="translate(1399.1015625,298.8828125)" style="opacity: 1;"><circle x="-78.2109375" y="-23" r="78.2109375"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-68.2109375,-13)"><foreignObject width="136.421875" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Connection failures</div></foreignObject></g></g></g><g class="node" id="start_failure" transform="translate(1399.1015625,510.0703125)" style="opacity: 1;"><circle x="-82.9765625" y="-23" r="82.9765625"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-72.9765625,-13)"><foreignObject width="145.953125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Start/Restart failures</div></foreignObject></g></g></g><g class="node" id="failures" transform="translate(82.6875,365.0726547241211)" style="opacity: 1;"><circle x="-62.6875" y="-23" r="62.6875"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-52.6875,-13)"><foreignObject width="105.375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">All Failed cases</div></foreignObject></g></g></g><g class="node" id="has_note" transform="translate(275.14453125,365.0726547241211)" style="opacity: 1;"><polygon points="79.76953125,0 159.5390625,-79.76953125 79.76953125,-159.5390625 0,-79.76953125" rx="5" ry="5" transform="translate(-79.76953125,79.76953125)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-55.6328125,-13)"><foreignObject width="111.265625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">with triage note</div></foreignObject></g></g></g><g class="node" id="is_bug" transform="translate(549.7781219482422,273.7898406982422)" style="opacity: 1;"><polygon points="121.4578125,0 242.915625,-121.4578125 121.4578125,-242.915625 0,-121.4578125" rx="5" ry="5" transform="translate(-121.4578125,121.4578125)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-101.953125,-13)"><foreignObject width="203.90625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">the triage note is a bug ticket</div></foreignObject></g></g></g><g class="node" id="product_bug" transform="translate(843.0984344482422,250.7898406982422)" style="opacity: 1;"><circle x="-80.296875" y="-23" r="80.296875"></circle><g class="label" transform="translate(0,0)"><g transform="translate(-70.296875,-13)"><foreignObject width="140.59375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">Product bug failures</div></foreignObject></g></g></g><g class="node" id="has_connection_issue" transform="translate(843.0984344482422,479.35546875)" style="opacity: 1;"><polygon points="98.26875,0 196.5375,-98.26875 98.26875,-196.5375 0,-98.26875" rx="5" ry="5" transform="translate(-98.26875,98.26875)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-76.1875,-13)"><foreignObject width="152.375" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">has connection issues</div></foreignObject></g></g></g><g class="node" id="is_setup" transform="translate(1116.24609375,205.859375)" style="opacity: 1;"><polygon points="89.55,0 179.1,-89.55 89.55,-179.1 0,-89.55" rx="5" ry="5" transform="translate(-89.55,89.55)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-66.5,-13)"><foreignObject width="133" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">occur in setup step</div></foreignObject></g></g></g><g class="node" id="has_start_issue" transform="translate(1116.24609375,677.97265625)" style="opacity: 1;"><polygon points="101.28515625,0 202.5703125,-101.28515625 101.28515625,-202.5703125 0,-101.28515625" rx="5" ry="5" transform="translate(-101.28515625,101.28515625)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-79.5390625,-13)"><foreignObject width="159.078125" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">has start/restart issues</div></foreignObject></g></g></g><g class="node" id="has_flaky_marker" transform="translate(1399.1015625,780.2515621185303)" style="opacity: 1;"><polygon points="51.581250000000004,0 103.16250000000001,-51.581250000000004 51.581250000000004,-103.16250000000001 0,-51.581250000000004" rx="5" ry="5" transform="translate(-51.581250000000004,51.581250000000004)"></polygon><g class="label" transform="translate(0,0)"><g transform="translate(-24.3125,-13)"><foreignObject width="48.625" height="26"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;">is flaky</div></foreignObject></g></g></g></g></g></g></svg></div>
+</li>
+<li>
+<p><strong>Q:</strong>  Does ARTs support other CI system, such as Bamboo?<br>
+<strong>A:</strong> No.</p>
+</li>
+<li>
+<p><strong>Q:</strong> What kind of test framework does ARTs support?<br>
+<strong>A:</strong> By default ARTs supports the pytest framework and extracts the errorinfo/errorinfo_message according to the pytest stacktrace. If you find it didn’t meet your requirement, update the marcos in the <a href="#macros.conf">macros.conf</a>, such as <em>generate_error</em>, <em>extract_errorinfo</em>.</p>
+</li>
+<li>
+<p><strong>Q:</strong> Does ARTs support other Bug system besides JIRA?<br>
+<strong>A:</strong> No.</p>
+</li>
+<li>
+<p><strong>Q:</strong> In the <strong>Branch Comparison</strong> page, why one failed case is grouped into <em><strong>New</strong></em>  Column but it run in the right job indeed.<br>
+<strong>A:</strong> You may be confused if you select a specified failure category in <strong>Branch Comparison</strong>. For example, you select the <em><strong>Test failures</strong></em> category and find one <em><strong>New</strong></em> failure. But it run and also failed in the right job indeed. What happen?  After investigating, you find that it failed because of an infrastructure issue.   Best practice is select <em><strong>Total failures</strong></em> category.</p>
+</li>
+<li>
+<p><strong>Q:</strong>  In the <strong>Branch Comparison</strong> page, why do not show all the removed cases sometimes?<br>
+<strong>A:</strong> <strong>Branch Comparison</strong> pageOnly comparing the features containing cases in the left job build to the right one. There may be jobs with no results. These cases will not be calculated in the <strong>Removed</strong> column. </p>
+</li>
+<li>
+<p><strong>Q:</strong> Why do I meet the out of memory issue for mvexpand or mvcombine command?<br>
+<strong>A:</strong>   Contact the admin for hardware and memory limits. Admin may change the limits.conf as follows.</p>
+<pre><code> [mvexpand] 
+ max_mem_usage_mb=10240
+ [mvcombine]
+ max_mem_usage_mb=10240
+</code></pre>
+</li>
+</ol>
+<h2 id="contact-us">Contact us</h2>
+<p><strong>Email:</strong>   <a href="mailto:arts@splunk.com">arts@splunk.com</a></p>
+</div>
+</body>
+
+</html>

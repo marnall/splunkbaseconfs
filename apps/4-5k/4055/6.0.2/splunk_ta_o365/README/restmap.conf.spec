@@ -1,0 +1,4 @@
+
+[admin_external:<name>]
+python.version = python3
+python.required = 3.9, 3.13

@@ -1,0 +1,5 @@
+SA-VMWIndex-inframon version = 4.2.2
+
+For documentation, see: https://docs.splunk.com/Documentation/AddOns/released/VMWmetricsIndexes/About
+
+Copyright (C) 2005-2021 Splunk Inc. All Rights Reserved.

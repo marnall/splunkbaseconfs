@@ -1,0 +1,2 @@
+[xposedornot://<name>]
+api_key = Visit the XposedorNot Domain Verification Add-on to start the verification process. After successful verification, your API key will be accessible through the CXO Dashboard.

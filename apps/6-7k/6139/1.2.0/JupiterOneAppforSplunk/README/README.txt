@@ -1,0 +1,1 @@
+Add all the conf.spec file that app needs in this directory.

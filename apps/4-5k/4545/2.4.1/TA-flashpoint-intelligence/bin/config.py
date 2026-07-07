@@ -1,0 +1,9 @@
+"""Configuration module.
+
+Contains user defined configurations.
+"""
+POLL_OFFSET_FOR_48_HOURS = 172800
+POLL_OFFSET_FOR_CVE = 158401
+POLL_OFFSET = 1800
+POLL_OFFSET_INDICATORS = 5400
+PRODUCT_VERSION = "4.5.23"

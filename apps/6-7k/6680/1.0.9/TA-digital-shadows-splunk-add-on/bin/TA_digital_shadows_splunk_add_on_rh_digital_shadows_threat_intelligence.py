@@ -1,0 +1,87 @@
+
+import ta_digital_shadows_splunk_add_on_declare
+
+from splunktaucclib.rest_handler.endpoint import (
+    field,
+    validator,
+    RestModel,
+    DataInputModel,
+)
+from splunktaucclib.rest_handler import admin_external, util
+from splunk_aoblib.rest_migration import ConfigMigrationHandler
+
+util.remove_http_proxy_env_vars()
+
+
+fields = [
+    field.RestField(
+        'interval',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.Pattern(
+            regex=r"""^\-[1-9]\d*$|^\d*$""", 
+        )
+    ), 
+    field.RestField(
+        'index',
+        required=True,
+        encrypted=False,
+        default='default',
+        validator=validator.String(
+            min_len=1, 
+            max_len=80, 
+        )
+    ), 
+    field.RestField(
+        'global_account',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=None
+    ),
+    field.RestField(
+        'since',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=20,
+        )
+    ),
+    field.RestField(
+        'ingesting_iocs',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=None
+    ),
+    field.RestField(
+        'threat_intelligence_updates',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=None
+    ),
+    field.RestField(
+        'disabled',
+        required=False,
+        validator=None
+    )
+
+]
+model = RestModel(fields, name=None)
+
+
+
+endpoint = DataInputModel(
+    'digital_shadows_threat_intelligence',
+    model,
+)
+
+
+if __name__ == '__main__':
+    admin_external.handle(
+        endpoint,
+        handler=ConfigMigrationHandler,
+    )

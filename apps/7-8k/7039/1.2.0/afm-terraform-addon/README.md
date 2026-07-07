@@ -1,0 +1,1 @@
+# Automation Fabric Monitorin (AFM) Terraform Cloud Addon Repository

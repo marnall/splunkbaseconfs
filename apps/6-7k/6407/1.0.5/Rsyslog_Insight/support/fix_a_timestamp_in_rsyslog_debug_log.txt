@@ -1,0 +1,76 @@
+###!/usr/bin/perl
+# version 0.0.2 by PavelP 25.Apr.2022
+# convert rsyslog debug timestamp to unix epoch
+# WHY: rsyslog debug uses custom 4-digits timestamp (runtime/debug.c) that not usable with splunk.
+# usage: perl convert.pl rsyslog_debug_orig_timestamp.log > rsyslog_debug_unix_epoch_timestamp.log
+# to get correct calculation for long period of time (over 9999 x 2 sec), the time diff between any two lines MUST be less than 9999 sec. It can be achived with implementing a impstats configuration, that create a new debug entry every couple of seconds.
+
+my $create_error_file = 1; # create a log file with parsing errors etc
+my $error_file_name = "_$0_error.log"; # a name for the error log
+my $fh_err_log = undef;
+my $ignore_missing_timestamp = 1; # ignore if a line missing a timestamp, reuse a previous timestamp
+
+if ($create_error_file == 1){
+  open ( $fh_err_log, ">", $error_file_name ) or die "cannot open file $error_file_name : $!";
+}
+
+
+my $rsyslog_debug_log_name = $ARGV[0];
+my $birth_timestamp_epoch=qx(stat -c %W $rsyslog_debug_log_name | tr -d '\n');
+my $birth_timestamp_rsyslog=$birth_timestamp_epoch % 10000;
+my $first_rsyslog_timestamp_sec = qx(head $rsyslog_debug_log_name | grep -ve "^\s\*\$" | head -1 | cut -f1 -d".");
+#print "$birth_timestamp_epoch $birth_timestamp_rsyslog first_rsyslog_timestamp: $first_rsyslog_timestamp_sec\n";
+
+# plausibility check: the birth_timestamp should be the same as first_rsyslog_timestamp
+my $diff_birth_vs_first_timestamp = $birth_timestamp_rsyslog - $first_rsyslog_timestamp_sec;
+if ( $diff_birth_vs_first_timestamp < 2 && $diff_birth_vs_first_timestamp > -2 ){
+  # inside of tolerance limit
+}else{
+  die "ERROR: the birth_timestamp [$birth_timestamp_rsyslog] should be the same as first_rsyslog_timestamp [$first_rsyslog_timestamp_sec]";
+}
+
+
+
+my $sec = undef;
+my $nanosec = undef;
+my $sec_diff = undef;
+my $sec_new = undef;
+my $sec_new_rsyslog = undef;
+my $line = undef;
+
+while(<>){
+  next if /^\s*$/;
+
+  if (/^(\d\d\d\d)\.(\d+)(.*)$/){
+    $sec     = $1;
+    $nanosec = $2;
+    $line    = $3;
+
+    # because of the timestamp rollover after 9999 the timestamp calc should be based on the last known timestamp, not on the birth time
+    if (defined $sec_new_rsyslog ){
+      $sec_diff=$sec - $sec_new_rsyslog;
+      $sec_new=$sec_new + $sec_diff;
+      $sec_new_rsyslog=$sec_new % 10000;
+    }else{
+      # $sec_new_rsyslog is not known yet, lets calculate the timestamp based on the birth timestamp of the log
+      if ($sec >= $birth_timestamp_rsyslog){
+        $sec_diff=$sec-$birth_timestamp_rsyslog;
+        $sec_new=$birth_timestamp_epoch+$sec_diff;
+        $sec_new_rsyslog=$sec_new % 10000;
+      }else{
+        $sec_diff=10000-$birth_timestamp_rsyslog+$sec;
+        $sec_new=$birth_timestamp_epoch+$sec_diff;
+        $sec_new_rsyslog=$sec_new % 10000;
+      }
+    }
+    #print "diff: $sec_diff new_sec: $sec_new\n";
+    print "${sec_new}.${nanosec}${line}\n";
+
+  }else{
+    print $fh_err_log "ERROR rsyslog_4digists_timestamp_not_found: $_";
+    print "${sec_new}.${nanosec}${line}\n" if $ignore_missing_timestamp == 1;
+    # reset variables
+    $sec = undef;
+    $line = undef;
+  }
+}

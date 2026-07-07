@@ -1,0 +1,8 @@
+FIELD_CLIENT_ID = 'field_client_id'
+FIELD_CLIENT_SECRET = 'field_client_secret'
+FIELD_ACCESS_TOKEN = 'field_access_token'
+FIELD_POLLING_INTERVAL = 'field_polling_interval'
+NAMESPACE = 'Avanan'
+OWNER = 'nobody'
+SIGNIN_URL = 'https://splunk-app-production-1.auth.us-east-1.amazoncognito.com/token'
+STANZA_NAME = 'setupentity'

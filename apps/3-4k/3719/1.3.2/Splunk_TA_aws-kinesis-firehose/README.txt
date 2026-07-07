@@ -1,0 +1,1 @@
+This add-on provides knowledge management to data ingested from Amazon Kinesis Firehose to use in Splunk Enterprise. This add-on is also compatible with apps such as the Splunk App for AWS and Splunk Enterprise Security. For more information, see https://github.com/splunk/cloudfwd.

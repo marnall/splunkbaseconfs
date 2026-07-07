@@ -1,0 +1,10 @@
+
+
+
+
+
+
+
+
+# Binary File Declaration
+* lib/charset_normalizer/md__mypyc.cpython-37m-x86_64-linux-gnu.so

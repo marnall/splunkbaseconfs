@@ -1,0 +1,4 @@
+This is an add-on powered by the Splunk Add-on Builder.
+# Binary File Declaration
+# Binary File Declaration
+# Binary File Declaration

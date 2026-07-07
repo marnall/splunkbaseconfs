@@ -1,0 +1,2 @@
+# Introduction 
+This will override the Splunk Add-On for Microsoft Windows settings for the Windows sources. The props.conf can also be deployed in a new app using the Splunk deployment server. If using a custom app, remember: Search Time Order of Precedence matters where the app name needs to be alphabetically after the Splunk_TA_windows, in Splunk_TA_windows/local of the TA, or in system/local.

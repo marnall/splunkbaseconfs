@@ -1,0 +1,10 @@
+# Scatterplot Matrix
+display.visualizations.custom.aplura_viz.scatterplot_matrix.log = <boolean>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.show_trend = <boolean>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.trendline_color = <hex>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.trendline_width = <integer>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.show_r = <string>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.show_legend = <boolean>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.legend_position = <string>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.show_self = <boolean>
+display.visualizations.custom.aplura_viz.scatterplot_matrix.override_trellis = <boolean>

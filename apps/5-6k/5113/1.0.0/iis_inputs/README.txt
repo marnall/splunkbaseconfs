@@ -1,0 +1,3 @@
+This app is intended to be deployed alongside the TA for IIS.  The app runs a scripted input at startup to fetch all the IIS log locations on the host, and automatically appends them to inputs.conf.
+
+Limitations: the script will not change inputs.conf once it has been written out. It would need to be undeployed/redeployed to catch up to any IIS configuration changes. It also will not resolve environment variables in the paths other than systemdrive (which would be unusual, but could happen). It's also possible for a Windows foldername to contain a bracket "]" character which might crash the [monitor://] stanza. I haven't tested, and don't know if there's a method for escaping it.

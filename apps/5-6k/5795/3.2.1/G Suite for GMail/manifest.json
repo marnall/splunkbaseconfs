@@ -1,0 +1,2713 @@
+{
+    "name": "G Suite for GMail",
+    "description": "Integrates with G Suite for various investigative and containment actions",
+    "appid": "9c73f233-2c4a-406a-855e-41d8d2497d0e",
+    "type": "email",
+    "product_vendor": "Google",
+    "app_version": "3.2.1",
+    "license": "Copyright (c) 2017-2025 Splunk Inc.",
+    "min_phantom_version": "7.0.0",
+    "package_name": "phantom_gsgmail",
+    "main_module": "src.app:app",
+    "logo": "logo_google.svg",
+    "logo_dark": "logo_google_dark.svg",
+    "product_name": "GMail",
+    "python_version": "3.13,3.14",
+    "product_version_regex": ".*",
+    "publisher": "Splunk",
+    "utctime_updated": "2026-06-10T01:43:30.910945Z",
+    "fips_compliant": true,
+    "contributors": [],
+    "configuration": {
+        "login_email": {
+            "data_type": "string",
+            "required": true,
+            "description": "Login (Admin) email",
+            "order": 0,
+            "category": "connectivity"
+        },
+        "key_json": {
+            "data_type": "password",
+            "required": true,
+            "description": "Contents of Service Account JSON file",
+            "order": 1,
+            "category": "connectivity"
+        },
+        "label": {
+            "data_type": "string",
+            "required": false,
+            "description": "Mailbox Label (folder) to be polled",
+            "order": 2,
+            "category": "connectivity",
+            "default": ""
+        },
+        "ingest_manner": {
+            "data_type": "string",
+            "required": false,
+            "description": "How to ingest",
+            "order": 3,
+            "category": "connectivity",
+            "default": "oldest first",
+            "value_list": [
+                "oldest first",
+                "latest first"
+            ]
+        },
+        "first_run_max_emails": {
+            "data_type": "numeric",
+            "required": false,
+            "description": "Maximum emails for scheduled polling first time",
+            "order": 4,
+            "category": "connectivity",
+            "default": 1000
+        },
+        "max_containers": {
+            "data_type": "numeric",
+            "required": false,
+            "description": "Maximum emails for scheduled polling",
+            "order": 5,
+            "category": "connectivity",
+            "default": 100
+        },
+        "data_type": {
+            "data_type": "string",
+            "required": false,
+            "description": "Ingestion data type when polling",
+            "order": 6,
+            "category": "connectivity",
+            "default": "utf-8",
+            "value_list": [
+                "utf-8",
+                "ascii"
+            ]
+        },
+        "forwarding_address": {
+            "data_type": "string",
+            "required": false,
+            "description": "Address to forward polled emails to",
+            "order": 7,
+            "category": "connectivity"
+        },
+        "auto_reply": {
+            "data_type": "string",
+            "required": false,
+            "description": "Auto reply to emails with a set body",
+            "order": 8,
+            "category": "connectivity"
+        },
+        "extract_attachments": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract Attachments",
+            "order": 9,
+            "category": "ingest",
+            "default": false
+        },
+        "default_format": {
+            "data_type": "string",
+            "required": false,
+            "description": "Format used for the get email action",
+            "order": 10,
+            "category": "connectivity",
+            "default": "metadata",
+            "value_list": [
+                "metadata",
+                "minimal",
+                "raw"
+            ]
+        },
+        "extract_urls": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract URLs",
+            "order": 11,
+            "category": "ingest",
+            "default": false
+        },
+        "extract_ips": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract IPs",
+            "order": 12,
+            "category": "ingest",
+            "default": false
+        },
+        "extract_domains": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract Domain Names",
+            "order": 13,
+            "category": "ingest",
+            "default": false
+        },
+        "extract_hashes": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract Hashes",
+            "order": 14,
+            "category": "ingest",
+            "default": false
+        },
+        "download_eml_attachments": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Download EML attachments",
+            "order": 15,
+            "category": "ingest",
+            "default": false
+        },
+        "extract_eml": {
+            "data_type": "boolean",
+            "required": false,
+            "description": "Extract root (primary) email as Vault",
+            "order": 16,
+            "category": "ingest",
+            "default": true
+        }
+    },
+    "actions": [
+        {
+            "action": "on poll",
+            "identifier": "on_poll",
+            "description": "Poll for new emails from Gmail and yield Container objects.",
+            "type": "ingest",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "Callback action for the on_poll ingest functionality",
+            "parameters": {
+                "start_time": {
+                    "order": 0,
+                    "name": "start_time",
+                    "description": "Start of time range, in epoch time (milliseconds).",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "end_time": {
+                    "order": 1,
+                    "name": "end_time",
+                    "description": "End of time range, in epoch time (milliseconds).",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "container_count": {
+                    "order": 2,
+                    "name": "container_count",
+                    "description": "Maximum number of container records to query for.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "artifact_count": {
+                    "order": 3,
+                    "name": "artifact_count",
+                    "description": "Maximum number of artifact records to query for.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "container_id": {
+                    "order": 4,
+                    "name": "container_id",
+                    "description": "Comma-separated list of container IDs to limit the ingestion to.",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": true
+                }
+            },
+            "output": []
+        },
+        {
+            "action": "on es poll",
+            "identifier": "on_es_poll",
+            "description": "Poll for new emails and yield Finding objects for ES ingestion.",
+            "type": "ingest",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "Callback action for the on_es_poll ingest functionality",
+            "parameters": {
+                "start_time": {
+                    "order": 0,
+                    "name": "start_time",
+                    "description": "Start of time range, in epoch time (milliseconds).",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "end_time": {
+                    "order": 1,
+                    "name": "end_time",
+                    "description": "End of time range, in epoch time (milliseconds).",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "container_count": {
+                    "order": 2,
+                    "name": "container_count",
+                    "description": "Maximum number of findings to query for.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                }
+            },
+            "output": []
+        },
+        {
+            "action": "test connectivity",
+            "identifier": "test_connectivity",
+            "description": "Test connectivity to Google Workspace.\n\nVerifies that the service account credentials are valid and can access\nthe configured domain.",
+            "type": "test",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "Basic test for app.",
+            "parameters": {},
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "get user",
+            "identifier": "get_user",
+            "description": "Retrieve user profile information.\n\nUses the Gmail API to get user profile metadata including message and\nthread counts.\n\nArgs:\n    params: Action parameters containing email address\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    User profile information\n\nRaises:\n    ActionFailure: If user retrieval fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "email": {
+                    "order": 0,
+                    "name": "email",
+                    "description": "User's Email address",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.email_address",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "example_values": [
+                        "user@example.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.messages_total",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1234
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.threads_total",
+                    "data_type": "numeric",
+                    "example_values": [
+                        567
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.history_id",
+                    "data_type": "string",
+                    "example_values": [
+                        "987654321"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "custom",
+                "view": "src.actions.get_user.render_get_user_view"
+            }
+        },
+        {
+            "action": "list users",
+            "identifier": "list_users",
+            "description": "List users in the Google Workspace domain.\n\nUses the Admin SDK to retrieve users with pagination support.\n\nArgs:\n    params: Action parameters with optional max_items and page_token\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    List of user profiles\n\nRaises:\n    ActionFailure: If user listing fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "max_items": {
+                    "order": 0,
+                    "name": "max_items",
+                    "description": "Maximum number of users to retrieve (default 500, max 500)",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": 500.0
+                },
+                "page_token": {
+                    "order": 1,
+                    "name": "page_token",
+                    "description": "Token to retrieve the next page of results",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "gsuite page token"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.max_items",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.page_token",
+                    "data_type": "string",
+                    "contains": [
+                        "gsuite page token"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.agreed_to_terms",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.archived",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.change_password_at_next_login",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.creation_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.customer_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.emails.*.address",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.emails.*.primary",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.emails.*.type",
+                    "data_type": "string",
+                    "example_values": [
+                        "work"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.etag",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.include_in_global_address_list",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.is_admin",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.is_mailbox_setup",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.kind",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.last_login_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name.family_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name.full_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.name.given_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.primary_email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.suspended",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.suspension_reason",
+                    "data_type": "string",
+                    "example_values": [
+                        "ADMIN"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "custom",
+                "view": "src.actions.get_users.render_list_users_view"
+            }
+        },
+        {
+            "action": "run query",
+            "identifier": "run_query",
+            "description": "Search emails in a user's mailbox.\n\nConstructs a Gmail query from provided filters and returns matching emails\nwith pagination support.\n\nArgs:\n    params: Action parameters for search filters\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    List of matching email messages\n\nRaises:\n    ActionFailure: If search fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "email": {
+                    "order": 0,
+                    "name": "email",
+                    "description": "User's email address (mailbox to search)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "label": {
+                    "order": 1,
+                    "name": "label",
+                    "description": "Label/folder to search in",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "gmail label"
+                    ],
+                    "default": "INBOX"
+                },
+                "subject": {
+                    "order": 2,
+                    "name": "subject",
+                    "description": "Substring to search in email subject",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "sender": {
+                    "order": 3,
+                    "name": "sender",
+                    "description": "Sender email address to match",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "body": {
+                    "order": 4,
+                    "name": "body",
+                    "description": "Substring to search in email body",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "internet_message_id": {
+                    "order": 5,
+                    "name": "internet_message_id",
+                    "description": "Internet Message ID to search for",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "internet message id"
+                    ]
+                },
+                "query": {
+                    "order": 6,
+                    "name": "query",
+                    "description": "Gmail query string (overrides other filters if provided)",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "max_results": {
+                    "order": 7,
+                    "name": "max_results",
+                    "description": "Maximum number of results to return",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": 100.0
+                },
+                "page_token": {
+                    "order": 8,
+                    "name": "page_token",
+                    "description": "Token for pagination to get next page of results",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.label",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail label"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.subject",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.sender",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.internet_message_id",
+                    "data_type": "string",
+                    "contains": [
+                        "internet message id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.query",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.max_results",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.page_token",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.delivered_to",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ],
+                    "column_name": "Email ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data.*.from",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "example_values": [
+                        "user@example.com"
+                    ],
+                    "column_name": "From",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.data.*.to",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "To",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.data.*.subject",
+                    "data_type": "string",
+                    "column_name": "Subject",
+                    "column_order": 3
+                },
+                {
+                    "data_path": "action_result.data.*.history_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.internal_date",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.label_ids",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.message_id",
+                    "data_type": "string",
+                    "contains": [
+                        "internet message id"
+                    ],
+                    "column_name": "Internet Message ID",
+                    "column_order": 4
+                },
+                {
+                    "data_path": "action_result.data.*.size_estimate",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.snippet",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.thread_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.next_page_token",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.total_messages_returned",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "delete email",
+            "identifier": "delete_email",
+            "description": "Delete emails from a user's mailbox (idempotent).\n\nDeletes one or more emails by their message IDs. If a message ID doesn't exist\n(likely already deleted), it's treated as successful and added to ignored_ids.\n\nArgs:\n    params: Action parameters with email and message IDs\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Summary of deleted and ignored/already-deleted email IDs\n\nRaises:\n    ActionFailure: If no valid email IDs are provided, or if any deletion\n        fails for a reason other than the message already being deleted (404)",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "id": {
+                    "order": 0,
+                    "name": "id",
+                    "description": "Email message IDs to delete (comma-separated)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                "email": {
+                    "order": 1,
+                    "name": "email",
+                    "description": "Email address of mailbox owner",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ],
+                    "column_name": "Email ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "Email",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.data.*.deleted_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.deleted_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "get email",
+            "identifier": "get_email",
+            "description": "Retrieve and parse email details.\n\nFetches email from Gmail API, parses MIME structure, extracts IOCs and\noptionally downloads attachments and raw email to vault.\n\nArgs:\n    params: Action parameters\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Parsed email with extracted data\n\nRaises:\n    ActionFailure: If email retrieval fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "email": {
+                    "order": 0,
+                    "name": "email",
+                    "description": "User's email address",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "internet_message_id": {
+                    "order": 1,
+                    "name": "internet_message_id",
+                    "description": "Internet Message ID to retrieve",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "internet message id"
+                    ]
+                },
+                "format": {
+                    "order": 2,
+                    "name": "format",
+                    "description": "Email format to retrieve",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": "metadata",
+                    "value_list": [
+                        "metadata",
+                        "minimal",
+                        "raw"
+                    ]
+                },
+                "extract_attachments": {
+                    "order": 3,
+                    "name": "extract_attachments",
+                    "description": "Extract attachments to vault",
+                    "data_type": "boolean",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": false
+                },
+                "extract_nested": {
+                    "order": 4,
+                    "name": "extract_nested",
+                    "description": "Extract attachments from nested emails",
+                    "data_type": "boolean",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": false
+                },
+                "download_email": {
+                    "order": 5,
+                    "name": "download_email",
+                    "description": "Download raw email as EML file to vault",
+                    "data_type": "boolean",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": false
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.internet_message_id",
+                    "data_type": "string",
+                    "contains": [
+                        "internet message id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.format",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.extract_attachments",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.parameter.extract_nested",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.parameter.download_email",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.subject",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.from",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.to",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.date",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.message_id",
+                    "data_type": "string",
+                    "contains": [
+                        "internet message id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.thread_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.history_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.internal_date",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.label_ids",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.size_estimate",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.snippet",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parsed_plain_body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.parsed_html_body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.headers.*.name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.headers.*.value",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.urls.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ips.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.domains.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.hashes.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.download_email_vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "example_values": [
+                        "000094000006f00004cd60000b1f8e0000e5fa3e"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "custom",
+                "view": "src.actions.get_email.render_get_email_view"
+            }
+        },
+        {
+            "action": "send email",
+            "identifier": "send_email",
+            "description": "Send email via Gmail.\n\nConstructs MIME message with attachments, respecting 25MB size limit.\nOptionally creates send-as alias before sending.\n\nArgs:\n    params: Action parameters\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Send result with message ID and thread ID\n\nRaises:\n    ActionFailure: If email send fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "from": {
+                    "order": 0,
+                    "name": "from_",
+                    "description": "User's email address",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "to": {
+                    "order": 1,
+                    "name": "to",
+                    "description": "Recipients",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "subject": {
+                    "order": 2,
+                    "name": "subject",
+                    "description": "Email subject",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false
+                },
+                "body": {
+                    "order": 3,
+                    "name": "body",
+                    "description": "Email body (HTML)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false
+                },
+                "cc": {
+                    "order": 4,
+                    "name": "cc",
+                    "description": "CC recipients",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": true,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "bcc": {
+                    "order": 5,
+                    "name": "bcc",
+                    "description": "BCC recipients",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": true,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "reply_to": {
+                    "order": 6,
+                    "name": "reply_to",
+                    "description": "Reply-To address",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": true,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "headers": {
+                    "order": 7,
+                    "name": "headers",
+                    "description": "Additional headers as JSON",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "attachments": {
+                    "order": 8,
+                    "name": "attachments",
+                    "description": "Vault IDs to attach (comma-separated)",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "alias_email": {
+                    "order": 9,
+                    "name": "alias_email",
+                    "description": "Send from alias email address",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "alias_name": {
+                    "order": 10,
+                    "name": "alias_name",
+                    "description": "Alias name for send-as",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.from",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.to",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.subject",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.cc",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.bcc",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.reply_to",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.headers",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.attachments",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.alias_email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.alias_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.thread_id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.label_ids",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.from_email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "trash email",
+            "identifier": "trash_email",
+            "description": "Move emails to trash in a user's mailbox (idempotent).\n\nMoves one or more emails to the Trash label by their message IDs. If a\nmessage ID doesn't exist, it is treated as successful and added to ignored_ids.\n\nArgs:\n    params: Action parameters with email and message IDs\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Summary of trashed and ignored/already-trashed email IDs\n\nRaises:\n    ActionFailure: If no valid email IDs are provided, or if any trash\n        operation fails for a reason other than the message not existing (404)",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "id": {
+                    "order": 0,
+                    "name": "id",
+                    "description": "Email message IDs to trash (comma-separated)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                "email": {
+                    "order": 1,
+                    "name": "email",
+                    "description": "Email address of mailbox owner",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ],
+                    "column_name": "Email ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "Email",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.data.*.trashed_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.trashed_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "untrash email",
+            "identifier": "untrash_email",
+            "description": "Restore emails from trash in a user's mailbox (idempotent).\n\nRemoves one or more emails from the Trash label by their message IDs. If a\nmessage ID doesn't exist, it is treated as successful and added to ignored_ids.\n\nArgs:\n    params: Action parameters with email and message IDs\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Summary of untrashed and ignored email IDs\n\nRaises:\n    ActionFailure: If no valid email IDs are provided, or if any untrash\n        operation fails for a reason other than the message not existing (404)",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "id": {
+                    "order": 0,
+                    "name": "id",
+                    "description": "Email message IDs to untrash (comma-separated)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                "email": {
+                    "order": 1,
+                    "name": "email",
+                    "description": "Email address of mailbox owner",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ],
+                    "column_name": "Email ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "Email",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.data.*.untrashed_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.untrashed_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.ignored_ids.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "invalid_id"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "add label",
+            "identifier": "add_label",
+            "description": "Add labels to emails in a user's mailbox using Gmail batchModify.\n\nApplies one or more label IDs to one or more messages.\n\nArgs:\n    params: Action parameters with email, message IDs, and label IDs\n    soar: SOAR client instance\n    asset: Asset configuration object\n\nReturns:\n    Summary of labeled email IDs\n\nRaises:\n    ActionFailure: If no valid email IDs or label IDs are provided, if more\n        than 1000 message IDs are supplied, or if the batch modify request\n        fails",
+            "type": "generic",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "verbose": "",
+            "parameters": {
+                "id": {
+                    "order": 0,
+                    "name": "id",
+                    "description": "Email message IDs to label (comma-separated)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "gmail email id"
+                    ]
+                },
+                "email": {
+                    "order": 1,
+                    "name": "email",
+                    "description": "Email address of mailbox owner",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": false,
+                    "contains": [
+                        "email"
+                    ]
+                },
+                "label_ids": {
+                    "order": 2,
+                    "name": "label_ids",
+                    "description": "Label IDs to add (comma-separated, for example: STARRED,IMPORTANT or Label_1234567890)",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "allow_list": true,
+                    "contains": [
+                        "gmail label"
+                    ]
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.id",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail email id"
+                    ],
+                    "column_name": "Email ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.parameter.email",
+                    "data_type": "string",
+                    "contains": [
+                        "email"
+                    ],
+                    "column_name": "Email",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.parameter.label_ids",
+                    "data_type": "string",
+                    "contains": [
+                        "gmail label"
+                    ],
+                    "column_name": "Label IDs",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.data.*.labeled_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.labeled_emails.*",
+                    "data_type": "string",
+                    "example_values": [
+                        "email_id_1",
+                        "email_id_2"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "render": {
+                "type": "table"
+            }
+        },
+        {
+            "action": "make request",
+            "identifier": "make_request",
+            "description": "make request",
+            "type": "generic",
+            "read_only": false,
+            "versions": "EQ(*)",
+            "verbose": "'make request' action for the app. Used to handle arbitrary HTTP requests with the app's asset",
+            "parameters": {
+                "http_method": {
+                    "order": 0,
+                    "name": "http_method",
+                    "description": "The HTTP method to use for the request.",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": false,
+                    "allow_list": false,
+                    "value_list": [
+                        "GET",
+                        "POST",
+                        "PUT",
+                        "DELETE",
+                        "PATCH",
+                        "HEAD",
+                        "OPTIONS"
+                    ]
+                },
+                "endpoint": {
+                    "order": 1,
+                    "name": "endpoint",
+                    "description": "Gmail API endpoint to call, appended to the API base URL. Example: '/gmail/v1/users/me/profile'. Note: this action is authorized with the gmail.readonly scope only \u2014 write or modify endpoints will require additional domain-wide delegation.",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "headers": {
+                    "order": 2,
+                    "name": "headers",
+                    "description": "The headers to send with the request (JSON object). An example is {'Content-Type': 'application/json'}",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "query_parameters": {
+                    "order": 3,
+                    "name": "query_parameters",
+                    "description": "Parameters to append to the URL (JSON object or query string). An example is ?key=value&key2=value2",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "body": {
+                    "order": 4,
+                    "name": "body",
+                    "description": "The body to send with the request (JSON object). An example is {'key': 'value', 'key2': 'value2'}",
+                    "data_type": "string",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "timeout": {
+                    "order": 5,
+                    "name": "timeout",
+                    "description": "The timeout for the request in seconds.",
+                    "data_type": "numeric",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false
+                },
+                "verify_ssl": {
+                    "order": 6,
+                    "name": "verify_ssl",
+                    "description": "Whether to verify the SSL certificate.",
+                    "data_type": "boolean",
+                    "required": false,
+                    "primary": false,
+                    "allow_list": false,
+                    "default": true
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failure"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.http_method",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.endpoint",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.headers",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.query_parameters",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.timeout",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.verify_ssl",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.status_code",
+                    "data_type": "numeric",
+                    "example_values": [
+                        200
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.response_body",
+                    "data_type": "string",
+                    "example_values": [
+                        "{\"emailAddress\": \"user@example.com\"}"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        }
+    ],
+    "pip313_dependencies": {
+        "wheel": [
+            {
+                "module": "annotated-doc",
+                "input_file": "wheels/shared/annotated_doc-0.0.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/annotated_doc-0.0.4-py3-none-any.whl"
+            },
+            {
+                "module": "annotated-types",
+                "input_file": "wheels/shared/annotated_types-0.7.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/annotated_types-0.7.0-py3-none-any.whl"
+            },
+            {
+                "module": "anyio",
+                "input_file": "wheels/shared/anyio-4.13.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/anyio-4.13.0-py3-none-any.whl"
+            },
+            {
+                "module": "authlib",
+                "input_file": "wheels/shared/authlib-1.7.0-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/authlib-1.7.0-py2.py3-none-any.whl"
+            },
+            {
+                "module": "bleach",
+                "input_file": "wheels/shared/bleach-6.3.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/bleach-6.3.0-py3-none-any.whl"
+            },
+            {
+                "module": "build",
+                "input_file": "wheels/shared/build-1.4.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/build-1.4.4-py3-none-any.whl"
+            },
+            {
+                "module": "cachetools",
+                "input_file": "wheels/shared/cachetools-6.2.6-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/cachetools-6.2.6-py3-none-any.whl"
+            },
+            {
+                "module": "cffi",
+                "input_file": "wheels/python313/cffi-2.0.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "input_file_aarch64": "wheels/python313/cffi-2.0.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.whl"
+            },
+            {
+                "module": "click",
+                "input_file": "wheels/shared/click-8.1.8-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/click-8.1.8-py3-none-any.whl"
+            },
+            {
+                "module": "colorclass",
+                "input_file": "wheels/shared/colorclass-2.2.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/colorclass-2.2.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "compressed-rtf",
+                "input_file": "wheels/shared/compressed_rtf-1.0.7-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/compressed_rtf-1.0.7-py3-none-any.whl"
+            },
+            {
+                "module": "cryptography",
+                "input_file": "wheels/shared/cryptography-47.0.0-cp311-abi3-manylinux_2_28_x86_64.whl",
+                "input_file_aarch64": "wheels/shared/cryptography-47.0.0-cp311-abi3-manylinux_2_28_aarch64.whl"
+            },
+            {
+                "module": "distro",
+                "input_file": "wheels/shared/distro-1.9.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/distro-1.9.0-py3-none-any.whl"
+            },
+            {
+                "module": "easygui",
+                "input_file": "wheels/shared/easygui-0.98.3-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/easygui-0.98.3-py2.py3-none-any.whl"
+            },
+            {
+                "module": "ebcdic",
+                "input_file": "wheels/shared/ebcdic-1.1.1-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/ebcdic-1.1.1-py2.py3-none-any.whl"
+            },
+            {
+                "module": "extract-msg",
+                "input_file": "wheels/shared/extract_msg-0.55.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/extract_msg-0.55.0-py3-none-any.whl"
+            },
+            {
+                "module": "google-api-core",
+                "input_file": "wheels/shared/google_api_core-2.30.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_api_core-2.30.3-py3-none-any.whl"
+            },
+            {
+                "module": "google-api-python-client",
+                "input_file": "wheels/shared/google_api_python_client-2.194.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_api_python_client-2.194.0-py3-none-any.whl"
+            },
+            {
+                "module": "google-auth",
+                "input_file": "wheels/shared/google_auth-2.49.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_auth-2.49.2-py3-none-any.whl"
+            },
+            {
+                "module": "google-auth-httplib2",
+                "input_file": "wheels/shared/google_auth_httplib2-0.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_auth_httplib2-0.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "googleapis-common-protos",
+                "input_file": "wheels/shared/googleapis_common_protos-1.74.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/googleapis_common_protos-1.74.0-py3-none-any.whl"
+            },
+            {
+                "module": "h11",
+                "input_file": "wheels/shared/h11-0.16.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/h11-0.16.0-py3-none-any.whl"
+            },
+            {
+                "module": "hatchling",
+                "input_file": "wheels/shared/hatchling-1.29.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/hatchling-1.29.0-py3-none-any.whl"
+            },
+            {
+                "module": "httpcore",
+                "input_file": "wheels/shared/httpcore-1.0.9-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpcore-1.0.9-py3-none-any.whl"
+            },
+            {
+                "module": "httplib2",
+                "input_file": "wheels/shared/httplib2-0.31.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httplib2-0.31.2-py3-none-any.whl"
+            },
+            {
+                "module": "httpx",
+                "input_file": "wheels/shared/httpx-0.28.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpx-0.28.1-py3-none-any.whl"
+            },
+            {
+                "module": "httpx-retries",
+                "input_file": "wheels/shared/httpx_retries-0.5.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpx_retries-0.5.0-py3-none-any.whl"
+            },
+            {
+                "module": "humanize",
+                "input_file": "wheels/shared/humanize-4.15.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/humanize-4.15.0-py3-none-any.whl"
+            },
+            {
+                "module": "jinja2",
+                "input_file": "wheels/shared/jinja2-3.1.6-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/jinja2-3.1.6-py3-none-any.whl"
+            },
+            {
+                "module": "joserfc",
+                "input_file": "wheels/shared/joserfc-1.6.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/joserfc-1.6.4-py3-none-any.whl"
+            },
+            {
+                "module": "lark",
+                "input_file": "wheels/shared/lark-1.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/lark-1.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "markdown-it-py",
+                "input_file": "wheels/shared/markdown_it_py-4.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/markdown_it_py-4.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "markupsafe",
+                "input_file": "wheels/python313/markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+                "input_file_aarch64": "wheels/python313/markupsafe-3.0.3-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+            },
+            {
+                "module": "mdurl",
+                "input_file": "wheels/shared/mdurl-0.1.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/mdurl-0.1.2-py3-none-any.whl"
+            },
+            {
+                "module": "msoffcrypto-tool",
+                "input_file": "wheels/shared/msoffcrypto_tool-6.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/msoffcrypto_tool-6.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "oauth2client",
+                "input_file": "wheels/shared/oauth2client-4.1.3-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/oauth2client-4.1.3-py2.py3-none-any.whl"
+            },
+            {
+                "module": "olefile",
+                "input_file": "wheels/shared/olefile-0.47-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/olefile-0.47-py2.py3-none-any.whl"
+            },
+            {
+                "module": "oletools",
+                "input_file": "wheels/shared/oletools-0.60.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/oletools-0.60.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "packaging",
+                "input_file": "wheels/shared/packaging-26.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/packaging-26.2-py3-none-any.whl"
+            },
+            {
+                "module": "pathspec",
+                "input_file": "wheels/shared/pathspec-1.1.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pathspec-1.1.1-py3-none-any.whl"
+            },
+            {
+                "module": "pcodedmp",
+                "input_file": "wheels/shared/pcodedmp-1.2.6-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pcodedmp-1.2.6-py2.py3-none-any.whl"
+            },
+            {
+                "module": "pip-licenses",
+                "input_file": "wheels/shared/pip_licenses-5.5.5-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pip_licenses-5.5.5-py3-none-any.whl"
+            },
+            {
+                "module": "pluggy",
+                "input_file": "wheels/shared/pluggy-1.6.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pluggy-1.6.0-py3-none-any.whl"
+            },
+            {
+                "module": "prettytable",
+                "input_file": "wheels/shared/prettytable-3.17.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/prettytable-3.17.0-py3-none-any.whl"
+            },
+            {
+                "module": "proto-plus",
+                "input_file": "wheels/shared/proto_plus-1.27.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/proto_plus-1.27.2-py3-none-any.whl"
+            },
+            {
+                "module": "protobuf",
+                "input_file": "wheels/shared/protobuf-7.34.1-cp310-abi3-manylinux2014_x86_64.whl",
+                "input_file_aarch64": "wheels/shared/protobuf-7.34.1-cp310-abi3-manylinux2014_aarch64.whl"
+            },
+            {
+                "module": "pyasn1",
+                "input_file": "wheels/shared/pyasn1-0.6.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyasn1-0.6.3-py3-none-any.whl"
+            },
+            {
+                "module": "pyasn1-modules",
+                "input_file": "wheels/shared/pyasn1_modules-0.4.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyasn1_modules-0.4.2-py3-none-any.whl"
+            },
+            {
+                "module": "pycparser",
+                "input_file": "wheels/shared/pycparser-3.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pycparser-3.0-py3-none-any.whl"
+            },
+            {
+                "module": "pydantic",
+                "input_file": "wheels/shared/pydantic-2.13.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pydantic-2.13.3-py3-none-any.whl"
+            },
+            {
+                "module": "pydantic-core",
+                "input_file": "wheels/python313/pydantic_core-2.46.3-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+                "input_file_aarch64": "wheels/python313/pydantic_core-2.46.3-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+            },
+            {
+                "module": "pygments",
+                "input_file": "wheels/shared/pygments-2.20.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pygments-2.20.0-py3-none-any.whl"
+            },
+            {
+                "module": "pyjwt",
+                "input_file": "wheels/shared/pyjwt-2.12.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyjwt-2.12.1-py3-none-any.whl"
+            },
+            {
+                "module": "pyparsing",
+                "input_file": "wheels/shared/pyparsing-3.3.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyparsing-3.3.2-py3-none-any.whl"
+            },
+            {
+                "module": "pyproject-hooks",
+                "input_file": "wheels/shared/pyproject_hooks-1.2.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyproject_hooks-1.2.0-py3-none-any.whl"
+            },
+            {
+                "module": "python-magic",
+                "input_file": "wheels/shared/python_magic-0.4.27-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/python_magic-0.4.27-py2.py3-none-any.whl"
+            },
+            {
+                "module": "red-black-tree-mod",
+                "input_file": "wheels/shared/red_black_tree_mod-1.22-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/red_black_tree_mod-1.22-py3-none-any.whl"
+            },
+            {
+                "module": "rich",
+                "input_file": "wheels/shared/rich-15.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rich-15.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "rsa",
+                "input_file": "wheels/shared/rsa-4.9.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rsa-4.9.1-py3-none-any.whl"
+            },
+            {
+                "module": "rtfde",
+                "input_file": "wheels/shared/rtfde-0.1.2.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rtfde-0.1.2.2-py3-none-any.whl"
+            },
+            {
+                "module": "setuptools",
+                "input_file": "wheels/shared/setuptools-82.0.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/setuptools-82.0.1-py3-none-any.whl"
+            },
+            {
+                "module": "shellingham",
+                "input_file": "wheels/shared/shellingham-1.5.4-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/shellingham-1.5.4-py2.py3-none-any.whl"
+            },
+            {
+                "module": "splunk-soar-sdk",
+                "input_file": "wheels/shared/splunk_soar_sdk-3.22.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/splunk_soar_sdk-3.22.2-py3-none-any.whl"
+            },
+            {
+                "module": "toml",
+                "input_file": "wheels/shared/toml-0.10.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/toml-0.10.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "tqdm",
+                "input_file": "wheels/shared/tqdm-4.67.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/tqdm-4.67.3-py3-none-any.whl"
+            },
+            {
+                "module": "trove-classifiers",
+                "input_file": "wheels/shared/trove_classifiers-2026.1.14.14-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/trove_classifiers-2026.1.14.14-py3-none-any.whl"
+            },
+            {
+                "module": "typer",
+                "input_file": "wheels/shared/typer-0.23.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typer-0.23.1-py3-none-any.whl"
+            },
+            {
+                "module": "typing-extensions",
+                "input_file": "wheels/shared/typing_extensions-4.15.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typing_extensions-4.15.0-py3-none-any.whl"
+            },
+            {
+                "module": "typing-inspection",
+                "input_file": "wheels/shared/typing_inspection-0.4.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typing_inspection-0.4.2-py3-none-any.whl"
+            },
+            {
+                "module": "tzlocal",
+                "input_file": "wheels/shared/tzlocal-5.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/tzlocal-5.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "uritemplate",
+                "input_file": "wheels/shared/uritemplate-4.2.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/uritemplate-4.2.0-py3-none-any.whl"
+            },
+            {
+                "module": "wcwidth",
+                "input_file": "wheels/shared/wcwidth-0.6.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/wcwidth-0.6.0-py3-none-any.whl"
+            },
+            {
+                "module": "webencodings",
+                "input_file": "wheels/shared/webencodings-0.5.1-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/webencodings-0.5.1-py2.py3-none-any.whl"
+            }
+        ]
+    },
+    "pip314_dependencies": {
+        "wheel": [
+            {
+                "module": "annotated-doc",
+                "input_file": "wheels/shared/annotated_doc-0.0.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/annotated_doc-0.0.4-py3-none-any.whl"
+            },
+            {
+                "module": "annotated-types",
+                "input_file": "wheels/shared/annotated_types-0.7.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/annotated_types-0.7.0-py3-none-any.whl"
+            },
+            {
+                "module": "anyio",
+                "input_file": "wheels/shared/anyio-4.13.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/anyio-4.13.0-py3-none-any.whl"
+            },
+            {
+                "module": "authlib",
+                "input_file": "wheels/shared/authlib-1.7.0-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/authlib-1.7.0-py2.py3-none-any.whl"
+            },
+            {
+                "module": "bleach",
+                "input_file": "wheels/shared/bleach-6.3.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/bleach-6.3.0-py3-none-any.whl"
+            },
+            {
+                "module": "build",
+                "input_file": "wheels/shared/build-1.4.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/build-1.4.4-py3-none-any.whl"
+            },
+            {
+                "module": "cachetools",
+                "input_file": "wheels/shared/cachetools-6.2.6-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/cachetools-6.2.6-py3-none-any.whl"
+            },
+            {
+                "module": "cffi",
+                "input_file": "wheels/python314/cffi-2.0.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+                "input_file_aarch64": "wheels/python314/cffi-2.0.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.whl"
+            },
+            {
+                "module": "click",
+                "input_file": "wheels/shared/click-8.1.8-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/click-8.1.8-py3-none-any.whl"
+            },
+            {
+                "module": "colorclass",
+                "input_file": "wheels/shared/colorclass-2.2.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/colorclass-2.2.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "compressed-rtf",
+                "input_file": "wheels/shared/compressed_rtf-1.0.7-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/compressed_rtf-1.0.7-py3-none-any.whl"
+            },
+            {
+                "module": "cryptography",
+                "input_file": "wheels/shared/cryptography-47.0.0-cp311-abi3-manylinux_2_28_x86_64.whl",
+                "input_file_aarch64": "wheels/shared/cryptography-47.0.0-cp311-abi3-manylinux_2_28_aarch64.whl"
+            },
+            {
+                "module": "distro",
+                "input_file": "wheels/shared/distro-1.9.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/distro-1.9.0-py3-none-any.whl"
+            },
+            {
+                "module": "easygui",
+                "input_file": "wheels/shared/easygui-0.98.3-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/easygui-0.98.3-py2.py3-none-any.whl"
+            },
+            {
+                "module": "ebcdic",
+                "input_file": "wheels/shared/ebcdic-1.1.1-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/ebcdic-1.1.1-py2.py3-none-any.whl"
+            },
+            {
+                "module": "extract-msg",
+                "input_file": "wheels/shared/extract_msg-0.55.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/extract_msg-0.55.0-py3-none-any.whl"
+            },
+            {
+                "module": "google-api-core",
+                "input_file": "wheels/shared/google_api_core-2.30.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_api_core-2.30.3-py3-none-any.whl"
+            },
+            {
+                "module": "google-api-python-client",
+                "input_file": "wheels/shared/google_api_python_client-2.194.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_api_python_client-2.194.0-py3-none-any.whl"
+            },
+            {
+                "module": "google-auth",
+                "input_file": "wheels/shared/google_auth-2.49.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_auth-2.49.2-py3-none-any.whl"
+            },
+            {
+                "module": "google-auth-httplib2",
+                "input_file": "wheels/shared/google_auth_httplib2-0.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/google_auth_httplib2-0.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "googleapis-common-protos",
+                "input_file": "wheels/shared/googleapis_common_protos-1.74.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/googleapis_common_protos-1.74.0-py3-none-any.whl"
+            },
+            {
+                "module": "h11",
+                "input_file": "wheels/shared/h11-0.16.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/h11-0.16.0-py3-none-any.whl"
+            },
+            {
+                "module": "hatchling",
+                "input_file": "wheels/shared/hatchling-1.29.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/hatchling-1.29.0-py3-none-any.whl"
+            },
+            {
+                "module": "httpcore",
+                "input_file": "wheels/shared/httpcore-1.0.9-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpcore-1.0.9-py3-none-any.whl"
+            },
+            {
+                "module": "httplib2",
+                "input_file": "wheels/shared/httplib2-0.31.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httplib2-0.31.2-py3-none-any.whl"
+            },
+            {
+                "module": "httpx",
+                "input_file": "wheels/shared/httpx-0.28.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpx-0.28.1-py3-none-any.whl"
+            },
+            {
+                "module": "httpx-retries",
+                "input_file": "wheels/shared/httpx_retries-0.5.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/httpx_retries-0.5.0-py3-none-any.whl"
+            },
+            {
+                "module": "humanize",
+                "input_file": "wheels/shared/humanize-4.15.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/humanize-4.15.0-py3-none-any.whl"
+            },
+            {
+                "module": "jinja2",
+                "input_file": "wheels/shared/jinja2-3.1.6-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/jinja2-3.1.6-py3-none-any.whl"
+            },
+            {
+                "module": "joserfc",
+                "input_file": "wheels/shared/joserfc-1.6.4-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/joserfc-1.6.4-py3-none-any.whl"
+            },
+            {
+                "module": "lark",
+                "input_file": "wheels/shared/lark-1.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/lark-1.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "markdown-it-py",
+                "input_file": "wheels/shared/markdown_it_py-4.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/markdown_it_py-4.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "markupsafe",
+                "input_file": "wheels/python314/markupsafe-3.0.3-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+                "input_file_aarch64": "wheels/python314/markupsafe-3.0.3-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl"
+            },
+            {
+                "module": "mdurl",
+                "input_file": "wheels/shared/mdurl-0.1.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/mdurl-0.1.2-py3-none-any.whl"
+            },
+            {
+                "module": "msoffcrypto-tool",
+                "input_file": "wheels/shared/msoffcrypto_tool-6.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/msoffcrypto_tool-6.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "oauth2client",
+                "input_file": "wheels/shared/oauth2client-4.1.3-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/oauth2client-4.1.3-py2.py3-none-any.whl"
+            },
+            {
+                "module": "olefile",
+                "input_file": "wheels/shared/olefile-0.47-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/olefile-0.47-py2.py3-none-any.whl"
+            },
+            {
+                "module": "oletools",
+                "input_file": "wheels/shared/oletools-0.60.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/oletools-0.60.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "packaging",
+                "input_file": "wheels/shared/packaging-26.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/packaging-26.2-py3-none-any.whl"
+            },
+            {
+                "module": "pathspec",
+                "input_file": "wheels/shared/pathspec-1.1.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pathspec-1.1.1-py3-none-any.whl"
+            },
+            {
+                "module": "pcodedmp",
+                "input_file": "wheels/shared/pcodedmp-1.2.6-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pcodedmp-1.2.6-py2.py3-none-any.whl"
+            },
+            {
+                "module": "pip-licenses",
+                "input_file": "wheels/shared/pip_licenses-5.5.5-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pip_licenses-5.5.5-py3-none-any.whl"
+            },
+            {
+                "module": "pluggy",
+                "input_file": "wheels/shared/pluggy-1.6.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pluggy-1.6.0-py3-none-any.whl"
+            },
+            {
+                "module": "prettytable",
+                "input_file": "wheels/shared/prettytable-3.17.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/prettytable-3.17.0-py3-none-any.whl"
+            },
+            {
+                "module": "proto-plus",
+                "input_file": "wheels/shared/proto_plus-1.27.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/proto_plus-1.27.2-py3-none-any.whl"
+            },
+            {
+                "module": "protobuf",
+                "input_file": "wheels/shared/protobuf-7.34.1-cp310-abi3-manylinux2014_x86_64.whl",
+                "input_file_aarch64": "wheels/shared/protobuf-7.34.1-cp310-abi3-manylinux2014_aarch64.whl"
+            },
+            {
+                "module": "pyasn1",
+                "input_file": "wheels/shared/pyasn1-0.6.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyasn1-0.6.3-py3-none-any.whl"
+            },
+            {
+                "module": "pyasn1-modules",
+                "input_file": "wheels/shared/pyasn1_modules-0.4.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyasn1_modules-0.4.2-py3-none-any.whl"
+            },
+            {
+                "module": "pycparser",
+                "input_file": "wheels/shared/pycparser-3.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pycparser-3.0-py3-none-any.whl"
+            },
+            {
+                "module": "pydantic",
+                "input_file": "wheels/shared/pydantic-2.13.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pydantic-2.13.3-py3-none-any.whl"
+            },
+            {
+                "module": "pydantic-core",
+                "input_file": "wheels/python314/pydantic_core-2.46.3-cp314-cp314-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+                "input_file_aarch64": "wheels/python314/pydantic_core-2.46.3-cp314-cp314-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+            },
+            {
+                "module": "pygments",
+                "input_file": "wheels/shared/pygments-2.20.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pygments-2.20.0-py3-none-any.whl"
+            },
+            {
+                "module": "pyjwt",
+                "input_file": "wheels/shared/pyjwt-2.12.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyjwt-2.12.1-py3-none-any.whl"
+            },
+            {
+                "module": "pyparsing",
+                "input_file": "wheels/shared/pyparsing-3.3.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyparsing-3.3.2-py3-none-any.whl"
+            },
+            {
+                "module": "pyproject-hooks",
+                "input_file": "wheels/shared/pyproject_hooks-1.2.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/pyproject_hooks-1.2.0-py3-none-any.whl"
+            },
+            {
+                "module": "python-magic",
+                "input_file": "wheels/shared/python_magic-0.4.27-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/python_magic-0.4.27-py2.py3-none-any.whl"
+            },
+            {
+                "module": "red-black-tree-mod",
+                "input_file": "wheels/shared/red_black_tree_mod-1.22-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/red_black_tree_mod-1.22-py3-none-any.whl"
+            },
+            {
+                "module": "rich",
+                "input_file": "wheels/shared/rich-15.0.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rich-15.0.0-py3-none-any.whl"
+            },
+            {
+                "module": "rsa",
+                "input_file": "wheels/shared/rsa-4.9.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rsa-4.9.1-py3-none-any.whl"
+            },
+            {
+                "module": "rtfde",
+                "input_file": "wheels/shared/rtfde-0.1.2.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/rtfde-0.1.2.2-py3-none-any.whl"
+            },
+            {
+                "module": "setuptools",
+                "input_file": "wheels/shared/setuptools-82.0.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/setuptools-82.0.1-py3-none-any.whl"
+            },
+            {
+                "module": "shellingham",
+                "input_file": "wheels/shared/shellingham-1.5.4-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/shellingham-1.5.4-py2.py3-none-any.whl"
+            },
+            {
+                "module": "splunk-soar-sdk",
+                "input_file": "wheels/shared/splunk_soar_sdk-3.22.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/splunk_soar_sdk-3.22.2-py3-none-any.whl"
+            },
+            {
+                "module": "toml",
+                "input_file": "wheels/shared/toml-0.10.2-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/toml-0.10.2-py2.py3-none-any.whl"
+            },
+            {
+                "module": "tqdm",
+                "input_file": "wheels/shared/tqdm-4.67.3-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/tqdm-4.67.3-py3-none-any.whl"
+            },
+            {
+                "module": "trove-classifiers",
+                "input_file": "wheels/shared/trove_classifiers-2026.1.14.14-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/trove_classifiers-2026.1.14.14-py3-none-any.whl"
+            },
+            {
+                "module": "typer",
+                "input_file": "wheels/shared/typer-0.23.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typer-0.23.1-py3-none-any.whl"
+            },
+            {
+                "module": "typing-extensions",
+                "input_file": "wheels/shared/typing_extensions-4.15.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typing_extensions-4.15.0-py3-none-any.whl"
+            },
+            {
+                "module": "typing-inspection",
+                "input_file": "wheels/shared/typing_inspection-0.4.2-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/typing_inspection-0.4.2-py3-none-any.whl"
+            },
+            {
+                "module": "tzlocal",
+                "input_file": "wheels/shared/tzlocal-5.3.1-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/tzlocal-5.3.1-py3-none-any.whl"
+            },
+            {
+                "module": "uritemplate",
+                "input_file": "wheels/shared/uritemplate-4.2.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/uritemplate-4.2.0-py3-none-any.whl"
+            },
+            {
+                "module": "wcwidth",
+                "input_file": "wheels/shared/wcwidth-0.6.0-py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/wcwidth-0.6.0-py3-none-any.whl"
+            },
+            {
+                "module": "webencodings",
+                "input_file": "wheels/shared/webencodings-0.5.1-py2.py3-none-any.whl",
+                "input_file_aarch64": "wheels/shared/webencodings-0.5.1-py2.py3-none-any.whl"
+            }
+        ]
+    },
+    "supports_es_polling": true
+}

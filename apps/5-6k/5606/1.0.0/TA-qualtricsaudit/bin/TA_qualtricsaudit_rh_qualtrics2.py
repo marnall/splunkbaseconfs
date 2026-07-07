@@ -1,0 +1,129 @@
+
+import ta_qualtricsaudit_declare
+
+from splunktaucclib.rest_handler.endpoint import (
+    field,
+    validator,
+    RestModel,
+    DataInputModel,
+)
+from splunktaucclib.rest_handler import admin_external, util
+from splunk_aoblib.rest_migration import ConfigMigrationHandler
+
+util.remove_http_proxy_env_vars()
+
+
+fields = [
+    field.RestField(
+        'interval',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.Pattern(
+            regex=r"""^\-[1-9]\d*$|^\d*$""", 
+        )
+    ), 
+    field.RestField(
+        'index',
+        required=True,
+        encrypted=False,
+        default='default',
+        validator=validator.String(
+            min_len=1, 
+            max_len=80, 
+        )
+    ), 
+    field.RestField(
+        'qualtrics_server_selection',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            min_len=0, 
+            max_len=8192, 
+        )
+    ), 
+    field.RestField(
+        'qualtrics_domain_selection',
+        required=True,
+        encrypted=False,
+        default='.qualtrics.com',
+        validator=validator.String(
+            min_len=0, 
+            max_len=8192, 
+        )
+    ), 
+    field.RestField(
+        'clientid',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            min_len=0, 
+            max_len=8192, 
+        )
+    ), 
+    field.RestField(
+        'clientsecret',
+        required=True,
+        encrypted=True,
+        default=None,
+        validator=validator.String(
+            min_len=0, 
+            max_len=8192, 
+        )
+    ), 
+    field.RestField(
+        'oauth_2_0_scope',
+        required=True,
+        encrypted=False,
+        default='read:activity_logs',
+        validator=validator.String(
+            min_len=0, 
+            max_len=8192, 
+        )
+    ), 
+    field.RestField(
+        'disable_https_cert_validation',
+        required=False,
+        encrypted=False,
+        default=True,
+        validator=None
+    ), 
+    field.RestField(
+        'delete_existing_checkpoints',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=None
+    ), 
+    field.RestField(
+        'activity_types_to_collect',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=None
+    ), 
+
+    field.RestField(
+        'disabled',
+        required=False,
+        validator=None
+    )
+
+]
+model = RestModel(fields, name=None)
+
+
+
+endpoint = DataInputModel(
+    'qualtrics2',
+    model,
+)
+
+
+if __name__ == '__main__':
+    admin_external.handle(
+        endpoint,
+        handler=ConfigMigrationHandler,
+    )

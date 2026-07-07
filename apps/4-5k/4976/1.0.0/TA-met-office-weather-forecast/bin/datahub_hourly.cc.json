@@ -1,0 +1,85 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.client_id",
+        "__settings__.additional_parameters.client_secret",
+        "latitude",
+        "longitude"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": []
+            },
+            "request": {
+                "url": "https://api-metoffice.apiconnect.ibmcloud.com/metoffice/production/v0/forecasts/point/hourly?excludeParameterMetadata=false&includeLocationName=false&latitude={{latitude}}&longitude={{longitude}}",
+                "method": "GET",
+                "headers": {
+                    "accept": "application/json",
+                    "x-ibm-client-id": "{{__settings__.additional_parameters.client_id}}",
+                    "x-ibm-client-secret": "{{__settings__.additional_parameters.client_secret}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.features[*].properties.timeSeries"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.features[*].properties.timeSeries"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "1",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.features[*].properties.timeSeries"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            }
+        }
+    ]
+}

@@ -1,0 +1,141 @@
+======================================================================
+SPLUNK ADD-ON FOR NESSUS
+======================================================================
+Author:                  Alain Morgado
+Author:			 		 Kevin Kurzawa
+Add-on Type:             Add-on for Nessus
+Add-on Name:             TA-nessus_json
+Add-on Version:          1.5
+
+Vendor Product(s):       Nessus 6.3.5 - 6.4 API
+Splunk Platform(s):      6.x (not tested on any other versions)
+Splunk CIM Compatible:   Yes
+
+
+CONTENTS
+==========================================================
+Prerequisites
+Description
+Installation
+Configuration
+Importing Data
+Definitions
+Contact Info and Future Enhancements
+Other Information
+
+
+PREREQUISITES
+==========================================================
+1. Splunk running on Linux OS (does not currently run on Splunk installations on Microsoft)
+2. Tenable Nessus scanner 6.x
+3. Python 2.7 on Splunk indexer
+4. Python "requests" module on Splunk indexer
+  4.1. This is included in this TA under the "bin" directory for more info on requests see http://docs.python-requests.org/en/latest/user/install/.
+
+
+DESCRIPTION
+==========================================================
+The Add-on for Nessus allows a Splunk administrator to ingest Nessus vulnerability information directly from the Nessus product using an API.
+
+This provides the index- and search-time functions for the vulnerability data by converting the output of Nessus web API calls into JSON documents via a python scripted input.
+
+By default, this TA will create files and place them in the $SPLUNK_HOME/etc/apps/TA-nessus_json/drop directory. Once this creation process is completed, they will be moved to the $SPLUNK_HOME/etc/apps/TA-nessus_json/pickup directory. A monitor stanza in the inputs.conf file will then acquire the Nessus JSON data from the pickup directory.
+
+
+INSTALLATION
+==========================================================
+The add-on needs to be installed on the indexer and the searchhead if in a distributed environment. In non-distributed environments, the indexer and searchhead are the same device and will only need to be installed at this central point.
+
+GUI Installation:
+1. Download the app from Splunkbase
+2. From the Splunk web interface, click on App -> Manage Apps to open the Apps Management page in Manager
+3. Click the "Install app from file" button, locate the downloaded file, and click "Upload"
+
+Command Line Installation:
+1. Download the app from Splunkbase
+2. Uncompress the tar file and move the entire app folder to the $SPLUNK_HOME/etc/apps location
+3. Restart the Splunk service/process (using either the UI <Settings/Server Controls/Restart Splunk> or by command line <$SPLUNK_HOME/bin/splunk restart>)
+
+NOTE: There have been issues with installing this TA via a deployment server. It is recommended that this TA be installed directly and not via a deployment server. Solutions are being researched.
+
+CONFIGURATION
+==========================================================
+These items should be configured in order for this TA to function properly:
+1. URL of Nessus API
+2. Account Credentials for Nessus API or preferably the API keys (please see Nessus documentation for version 6.4+ on generating keys)
+3. Scan IDs to import (OPTIONAL)
+4. Scheduling (OPTIONAL)
+
+Note: All references to indexer or searchhead are made assuming there is a distributed environment. If Splunk is not configured in a distributed environment and the indexer and searchhead are one device, refer to these references as simply your one Splunk instance.
+
+1. URL of Nessus API
+----------------------------------------------
+1.1. Open a terminal connection to the indexer
+1.2. Edit the file $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson.py
+1.3. Find line 12 referencing the URL of the Nessus scanner and replace the example with your Nessus host and port
+
+2. Account Credentials for Nessus API
+----------------------------------------------
+2.1. Open a terminal connection to the indexer
+2.2. Edit the file $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson.py
+2.3. Find lines 18 and 19 referencing the username and password for an account on the Nessus scanner and replace the examples with an account on the Nessus service. Preferably commencing with Nessus version 6.4, you may use API keys to log in lui of a username and password, these can be entered on lines 49 and 50. Please see Nessus documentation for version 6.4+ on how to generate access keys.
+
+Note: The Nessus account used must have read access to the scans that will be imported via the API. If using a version of Nessus that allows for multiple accounts, the specified account must be explicitly given read access to each scan.
+
+3. Scan IDs to Import (OPTIONAL)
+----------------------------------------------
+Note: The default configuration will import ALL scans. Follow these steps to limit the scans to only those specified.
+3.1. Open a terminal connection to the indexer
+3.2. Edit the file $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/getscanID.py
+3.3. Make the same adjustments to this script for the URL (line 9), username (line 10), and password (line 11) that were made in the previous two steps to nessus2splunkjson.py Preferably commencing with Nessus version 6.4, you may use API keys to log in lui of a username and password, these can be entered on lines 14 and 15. Please see Nessus documentation for version 6.4+ on how to generate access keys.
+3.4. From the terminal, execute $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/getscanID.sh (this will create a file with the name "getscanID_<timestamp>.log")
+3.5. Open the newly created file to see a list of detected scan names and associated IDs
+3.6. Open $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson.py for editing
+3.7. Copy the desired scan IDs for importing and place them into a comma-separated list on line 27
+3.8. Uncomment line 27
+3.9. Comment out line 242
+
+4. Scheduling (OPTIONAL)
+----------------------------------------------
+By default, the script needs to be run manually. To have it execute automatically, see the ScriptSetup page on the Splunk Docs for instructions on how to set this up.
+http://docs.splunk.com/Documentation/Splunk/6.2.3/AdvancedDev/ScriptSetup
+
+
+IMPORTING DATA
+==========================================================
+1.1. Open a terminal connection to the indexer
+1.2. Execute $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson.sh
+1.3. Watch in amazement as the script outputs its status
+1.3.1. Results of the scan will be written to $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson_results_<timestamp>.log
+1.3.2. If problems are encountered (such as Nessus connection issues), errors will be written to $SPLUNK_HOME/etc/apps/TA-nessus_json/bin/nessus2splunkjson_errors_<timestamp>.log
+
+Note on Historical IDs: This script keeps track of the historical IDs (in the the hid_history file) that have been processed so that duplication does not occur and subsequent imports are more efficient. All scans that have been specified will be marked for import, including each historical ID within the scan. If the status of the historical ID is running, it will be skipped. All other statuses will attempt to import. However, some aborted and pending scans may not have any host data and thus no data will be imported.
+
+Note on Indexes: This script will import data to the default Splunk index. Changes can be made to this in inputs.conf.
+
+
+DEFINITIONS
+==========================================================
+HID = Historical ID is an instance of a specific Nessus scan
+PID = Nessus plugin ID
+SID = Scan ID is a numerical reference to a Nessus scan name
+
+
+CONTACT INFO AND FUTURE ENHANCEMENTS
+==========================================================
+Feature requests, bug reports, complaints, blatant praise, and support questions (provided on a best effort basis only) can be sent to splunk@almorga.com
+
+Potential future enhancements:
+* Create a scheduled lookup table for plugin "descriptions" in order to reduce data ingress
+* Front-end GUI 
+*Microsoft windows version
+* Make it fast like Speedy Gonzales
+
+
+OTHER INFORMATION
+==========================================================
+Some of the python functions for the Nessus API base code come from, and are based on, examples shared by AverageSecurityGuy at https://github.com/averagesecurityguy/Nessus6.
+
+Note that Nessus is the property and registered trademark of Tenable Network Security. This add-on is not written, endorsed or supported by, or affiliated with, Tenable Network Security in any way.
+
+Test this on a non-production instance first. Pay attention to disk space and ingestion.

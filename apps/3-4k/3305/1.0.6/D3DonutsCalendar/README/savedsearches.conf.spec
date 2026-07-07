@@ -1,0 +1,11 @@
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.showLabels = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.selfDefinedLabel = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.showTooltips = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.showLegends = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.showTopN = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.topNValue = <float> 
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.colorMode = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.minColor = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.maxColor = <string>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.numOfBins = <float>
+display.visualizations.custom.D3DonutsCalendar.donutscalendar.backgroundColor = <string>

@@ -1,0 +1,1 @@
+Local Polling API to enumerate .gps files from BlackVue WiFi equiped dashcams using their http API.

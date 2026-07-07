@@ -1,0 +1,107 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.allure_server",
+        "__settings__.additional_parameters.api_auth_token",
+        "nid"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{nid}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_nid"
+                    }
+                ]
+            },
+            "request": {
+                "url": "{{__settings__.additional_parameters.allure_server}}/api/v2/notification/afterids?notificationIds={{nid}}",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "Bearer {{__settings__.additional_parameters.api_auth_token}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.[*].notificationId"
+                        ],
+                        "method": "json_path",
+                        "output": "nid"
+                    },
+                    {
+                        "input": [
+                            "{{nid != ''}}",
+                            "The value of token 'nid' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{nid == _raw_nid}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{nid}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_nid"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": []
+            },
+            "checkpoint": {
+                "content": {
+                    "nid": "{{_raw_nid}}"
+                }
+            }
+        }
+    ]
+}

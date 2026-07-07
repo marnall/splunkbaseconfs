@@ -1,0 +1,2777 @@
+<!-- File: dataminrpulse_get_alert_details_v4.html
+Copyright (c) 2023-2026 Dataminr
+
+This unpublished material is proprietary to Dataminr.
+All rights reserved. The methods and
+techniques described herein are considered trade secrets
+and/or confidential. Reproduction or distribution, in whole
+or in part, is forbidden except by express written permission
+of Dataminr.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under
+the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. See the License for the specific language governing permissions
+and limitations under the License. -->
+{% extends 'widgets/widget_template.html' %}
+{% load custom_template %}
+{% block custom_title_prop %}
+  {% if title_logo %}
+    style="background-size: auto 60%; background-position: 50%; background-repeat: no-repeat; background-image:
+    url('/app_resource/{{ title_logo }}');"
+  {% endif %}
+{% endblock %}
+{% block title1 %}{{ title1 }}{% endblock %}
+{% block title2 %}{{ title2 }}{% endblock %}
+{% block custom_tools %}{% endblock %}
+{% block widget_content %}
+  <style>
+    /* ====================================================================
+   CSS VARIABLES - DESIGN TOKENS
+   ==================================================================== */
+:root {
+    --dataminr-primary: #2fd0bb;
+    --dataminr-bg-dark: #293548;
+    --dataminr-bg-medium: #34495e;
+    --dataminr-bg-darker: #2a3441;
+    --dataminr-border: #3d4a5c;
+    --dataminr-text-light: #9ca3af;
+    --dataminr-white: #ffffff;
+    --dataminr-border-radius-sm: 4px;
+    --dataminr-border-radius-md: 6px;
+    --dataminr-border-radius-lg: 8px;
+}
+
+/* ====================================================================
+   UTILITY CLASSES - COMMON PATTERNS
+   ==================================================================== */
+.flex-center {
+    display: flex;
+    align-items: center;
+}
+
+.flex-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.border-radius-sm {
+    border-radius: var(--dataminr-border-radius-sm);
+}
+
+.border-radius-md {
+    border-radius: var(--dataminr-border-radius-md);
+}
+
+.border-radius-lg {
+    border-radius: var(--dataminr-border-radius-lg);
+}
+
+/* ====================================================================
+   CLICKABLE ENTITY STYLES
+   ==================================================================== */
+.entity-clickable {
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.entity-clickable:hover {
+    color: var(--dataminr-primary) !important;
+    text-decoration: underline;
+}
+
+.malware-name.entity-clickable {
+    color: var(--dataminr-white);
+    font-weight: 500;
+}
+
+.malware-name.entity-clickable:hover {
+    color: var(--dataminr-primary);
+}
+
+.cve-link.entity-clickable {
+    color: var(--dataminr-primary);
+    text-decoration: none;
+}
+
+.cve-link.entity-clickable:hover {
+    color: var(--dataminr-white);
+    text-decoration: underline;
+}
+
+/* Entity Aliases */
+.entity-aliases-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.entity-alias-item {
+    position: relative;
+    padding-left: 24px;
+    margin-bottom: 8px;
+    color: var(--dataminr-white);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.entity-alias-item:before {
+    content: "\2022";
+    position: absolute;
+    left: 8px;
+    top: 0;
+    color: var(--dataminr-white);
+    font-weight: bold;
+    font-size: 16px;
+    line-height: 1.5;
+}
+
+/* ====================================================================
+   NOTIFICATION STYLES
+   ==================================================================== */
+.entity-not-found-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #374151;
+    color: var(--dataminr-white);
+    padding: 12px 20px;
+    border-radius: var(--dataminr-border-radius-lg);
+    border-left: 4px solid #f59e0b;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10000;
+    font-size: 14px;
+    max-width: 300px;
+}
+
+.entity-not-found-notification .notification-title {
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.entity-not-found-notification .notification-message {
+    opacity: 0.9;
+}
+
+/* ====================================================================
+   MAIN WIDGET CONTAINER
+   ==================================================================== */
+.dataminr-alert-widget {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--dataminr-bg-dark);
+    color: var(--dataminr-white);
+    line-height: 1.5;
+    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.dataminr-alert-widget * {
+    margin: 0;
+    box-sizing: border-box;
+}
+
+.dataminr-alert-widget #app-no-data,
+.dataminr-alert-widget #app-alert {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ====================================================================
+   HEADER STYLES
+   ==================================================================== */
+.dataminr-alert-widget .header {
+    background-color: var(--dataminr-bg-dark);
+    border-bottom: 1px solid var(--dataminr-border);
+    padding: 16px 20px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.dataminr-alert-widget .dataminr-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--dataminr-primary);
+    font-size: 14px;
+    text-decoration: none;
+    margin-left: auto;
+    padding: 4px 10px;
+    border-radius: var(--dataminr-border-radius-sm);
+    transition: background-color 0.2s ease;
+}
+
+.dataminr-alert-widget .dataminr-link:hover {
+    background-color: rgba(47, 208, 187, 0.1);
+}
+
+.dataminr-alert-widget .dataminr-link svg {
+    color: var(--dataminr-primary);
+}
+
+/* Ensure the header content is properly aligned */
+.dataminr-alert-widget .header-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dataminr-alert-widget .alert-badge {
+    padding: 6px 12px;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--dataminr-white);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.dataminr-alert-widget .alert-badge.alert-type-default {
+    background-color: #F9B637;
+    color: #070e1e;
+}
+
+.dataminr-alert-widget .alert-badge.alert-type-urgent {
+    background-color: #f47d3e;
+    color: #070e1e;
+}
+
+.dataminr-alert-widget .alert-badge.alert-type-flash {
+    background-color: #E1211E;
+}
+
+.dataminr-alert-widget .timestamp {
+    font-size: 14px;
+    color: #a0a7b4;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dataminr-alert-widget .timestamp::before {
+    color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .action-view-btn {
+    background: none;
+    border: 1px solid var(--dataminr-primary);
+    color: var(--dataminr-primary);
+    padding: 6px 12px;
+    border-radius: var(--dataminr-border-radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s ease;
+    margin-left: auto;
+}
+
+.dataminr-alert-widget .action-view-btn:hover {
+    background-color: var(--dataminr-primary);
+    color: var(--dataminr-white);
+}
+
+.dataminr-alert-widget .action-view-btn svg {
+    width: 14px;
+    height: 14px;
+}
+
+.dataminr-alert-widget .close-btn {
+    background: none;
+    border: none;
+    color: #a0a7b4;
+    font-size: 24px;
+    cursor: pointer;
+    margin-left: auto;
+    padding: 4px;
+}
+
+.dataminr-alert-widget .close-btn:hover {
+    color: var(--dataminr-white);
+}
+
+/* ====================================================================
+   MAIN CONTENT
+   ==================================================================== */
+.dataminr-alert-widget .main-content {
+    padding: 20px;
+    flex: 1;
+    max-width: 800px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.dataminr-alert-widget .alert-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    margin-top: 18px;
+    margin-bottom: 24px;
+    line-height: 1.3;
+}
+
+/* ====================================================================
+   REGEN AI SECTION
+   ==================================================================== */
+.dataminr-alert-widget .regen-section {
+    /* background-color: #2C3240; */
+    border-radius: var(--dataminr-border-radius-lg);
+    margin-bottom: 24px;
+    overflow: hidden;
+    /* box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); */
+}
+
+.dataminr-alert-widget .regen-header {
+    background: linear-gradient(90deg, #007061 0.83%, #19373F 99.72%);
+    color: var(--dataminr-white);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dataminr-alert-widget .regen-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .regen-content {
+    padding: 12px 16px;
+    color: var(--dataminr-white);
+    line-height: 1.6;
+    background-color: #19373F;
+    border-radius: 0 0 var(--dataminr-border-radius-lg) var(--dataminr-border-radius-lg);
+}
+
+/* Live Brief Section - Exact Match to Image */
+.dataminr-alert-widget .live-brief-section {
+    margin: 0 0 24px 0;
+    background: transparent;
+    border-radius: 0;
+}
+
+.dataminr-alert-widget .live-brief-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    padding: 0;
+    background: transparent;
+}
+
+.dataminr-alert-widget .live-brief-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+}
+
+/* Intel Agents Section - Exact Match to Image */
+.dataminr-alert-widget .intel-agent-section {
+    background: transparent;
+    border: 1px solid #069381;
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 16px;
+}
+
+.dataminr-alert-widget .intel-agent-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    padding: 0;
+    background: transparent;
+}
+
+.dataminr-alert-widget .intel-agent-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .assessment-section {
+    margin-bottom: 20px;
+}
+
+.dataminr-alert-widget .assessment-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    margin-bottom: 12px;
+}
+
+.dataminr-alert-widget .assessment-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.dataminr-alert-widget .assessment-item {
+    color: #e2e8f0;
+    font-size: 14px;
+    line-height: 1.5;
+    position: relative;
+    padding-left: 12px;
+}
+
+.dataminr-alert-widget .assessment-item::before {
+    content: '\2022';
+    color: var(--dataminr-white);
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+}
+
+.dataminr-alert-widget .assessment-item strong {
+    color: var(--dataminr-white);
+    font-weight: 600;
+}
+
+.dataminr-alert-widget .live-brief-content {
+    padding: 0;
+    color: #e2e8f0;
+    margin-bottom: 8px;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.dataminr-alert-widget .live-brief-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .live-brief-title {
+    color: var(--dataminr-white);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.dataminr-alert-widget .live-brief-timestamp {
+    color: var(--dataminr-text-light);
+    font-size: 12px;
+    margin-bottom: 8px;
+}
+
+.dataminr-alert-widget .live-brief-content.collapsed {
+    max-height: 150px;
+    overflow: hidden;
+    position: relative;
+}
+
+.dataminr-alert-widget .live-brief-content.collapsed::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 40px;
+    background: linear-gradient(transparent, #3d4a5c);
+}
+
+.dataminr-alert-widget .copy-success {
+    position: relative;
+}
+
+.dataminr-alert-widget .copy-tooltip {
+    position: absolute;
+    top: -30px;
+    right: 0;
+    background-color: var(--dataminr-primary);
+    color: var(--dataminr-white);
+    padding: 4px 8px;
+    border-radius: var(--dataminr-border-radius-sm);
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 200;
+}
+
+.dataminr-alert-widget .copy-tooltip.show {
+    opacity: 1;
+}
+
+.dataminr-alert-widget .copy-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    right: 10px;
+    border: 4px solid transparent;
+    border-top-color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .show-more-btn {
+    background: none;
+    border: 1px solid var(--dataminr-primary);
+    color: var(--dataminr-primary);
+    padding: 6px 12px;
+    border-radius: var(--dataminr-border-radius-sm);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 16px;
+}
+
+.dataminr-alert-widget .show-more-btn:hover {
+    background-color: var(--dataminr-primary);
+    color: var(--dataminr-white);
+}
+
+.dataminr-alert-widget .live-brief-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.dataminr-alert-widget .copy-btn {
+    background: none;
+    border: none;
+    color: var(--dataminr-text-light);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: var(--dataminr-border-radius-sm);
+    transition: color 0.2s ease;
+}
+
+.dataminr-alert-widget .copy-btn:hover {
+    color: var(--dataminr-white);
+}
+
+.dataminr-alert-widget .copy-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Intel Agents Section - Clean bordered design */
+.dataminr-alert-widget .intel-section {
+    background-color: transparent;
+    border: 1px solid #069381;
+    border-radius: var(--dataminr-border-radius-lg);
+    margin: 0;
+    overflow: hidden;
+}
+
+.dataminr-alert-widget .intel-header {
+    background: transparent;
+    color: var(--dataminr-white);
+    padding: 16px 20px 12px 20px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.dataminr-alert-widget .intel-content {
+    padding: 0 20px 8px 20px;
+    color: #e2e8f0;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.dataminr-alert-widget .intel-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.dataminr-alert-widget .intel-content li {
+    position: relative;
+    padding-left: 12px;
+}
+
+.dataminr-alert-widget .intel-content li::before {
+    content: '\2022';
+    color: var(--dataminr-white);
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+}
+
+.dataminr-alert-widget .intel-content strong {
+    color: var(--dataminr-white);
+    font-weight: 600;
+}
+
+.dataminr-alert-widget .intel-content .explore-link,
+.dataminr-alert-widget .explore-link,
+.explore-more-link {
+    color: #33B2FF;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 400;
+    cursor: pointer;
+    transition: color 0.2s ease;
+}
+
+.dataminr-alert-widget .intel-content .explore-link {
+    margin-top: 16px;
+    display: inline-block;
+}
+
+.dataminr-alert-widget .intel-content .explore-link:hover,
+.dataminr-alert-widget .explore-link:hover,
+.explore-more-link:hover {
+    color: var(--dataminr-white);
+    text-decoration: underline;
+}
+
+/* Show More Entities Link Styles */
+.show-more-entities-container {
+    margin-top: 12px;
+    text-align: left;
+}
+
+/* Entity Summary Truncation Styles */
+.entity-summary {
+    font-size: 12px;
+    color: #cdced6;
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    /* Show only 2 lines */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    max-height: 2.8em;
+    /* 2 lines 1.4 line-height */
+}
+
+/* Fallback for browsers that don't support -webkit-line-clamp */
+.entity-summary.fallback {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* Alert Metadata Section */
+.dataminr-alert-widget .alert-metadata {
+    background-color: var(--dataminr-bg-darker);
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 20px;
+    margin-bottom: 24px;
+    border: 1px solid var(--dataminr-border);
+}
+
+.dataminr-alert-widget .metadata-title {
+    color: var(--dataminr-white);
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--dataminr-border);
+    padding-bottom: 10px;
+}
+
+.dataminr-alert-widget .metadata-section {
+    margin-bottom: 24px;
+}
+
+.dataminr-alert-widget .metadata-section:last-child {
+    margin-bottom: 0;
+}
+
+.dataminr-alert-widget .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    cursor: pointer;
+}
+
+.dataminr-alert-widget .section-header h3 {
+    color: var(--dataminr-text-light);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin: 0;
+    letter-spacing: 0.5px;
+}
+
+.dataminr-alert-widget .dropdown-icon {
+    color: var(--dataminr-text-light);
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+
+.dataminr-alert-widget .section-header.expanded .dropdown-icon {
+    transform: rotate(180deg);
+}
+
+.dataminr-alert-widget .url-list {
+    background-color: var(--dataminr-bg-medium);
+    border-radius: var(--dataminr-border-radius-sm);
+    padding: 12px;
+}
+
+.dataminr-alert-widget .url-item {
+    color: var(--dataminr-white);
+    font-size: 13px;
+    font-family: monospace;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--dataminr-border);
+}
+
+.dataminr-alert-widget .url-item:last-child {
+    border-bottom: none;
+}
+
+.dataminr-alert-widget .metadata-table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--dataminr-bg-medium);
+    border-radius: var(--dataminr-border-radius-sm);
+    overflow: hidden;
+}
+
+.dataminr-alert-widget .metadata-table th {
+    background-color: var(--dataminr-bg-darker);
+    color: var(--dataminr-text-light);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--dataminr-border);
+    letter-spacing: 0.5px;
+}
+
+.dataminr-alert-widget .metadata-table td {
+    color: var(--dataminr-white);
+    font-size: 13px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--dataminr-border);
+    vertical-align: top;
+}
+
+.dataminr-alert-widget .metadata-table tr:last-child td {
+    border-bottom: none;
+}
+
+.dataminr-alert-widget .metadata-table tr:hover {
+    background-color: #3d4a5c;
+}
+
+.dataminr-alert-widget .cve-link {
+    color: #4a9eff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.dataminr-alert-widget .cve-link:hover {
+    color: #6bb6ff;
+    text-decoration: underline;
+}
+
+.dataminr-alert-widget .severity-badge {
+    padding: 4px 8px;
+    border-radius: var(--dataminr-border-radius-sm);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.dataminr-alert-widget .severity-critical {
+    background-color: #310302;
+    color: #f57370;
+}
+
+.dataminr-alert-widget .severity-high {
+    background-color: #E1211E;
+    color: var(--dataminr-white);
+}
+
+.dataminr-alert-widget .severity-medium {
+    background-color: #f47d3e;
+    color: #070e1e;
+}
+
+.dataminr-alert-widget .severity-low {
+    background-color: #f9b637;
+    color: #070e1e;
+}
+
+.dataminr-alert-widget .severity-none {
+    background-color: #cdced6;
+    color: #070e1e;
+}
+
+.dataminr-alert-widget .malware-name {
+    color: #4a9eff;
+    font-weight: 500;
+}
+
+/* Location and other sections */
+.dataminr-alert-widget .location-section {
+    background-color: #3d4a5c;
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.dataminr-alert-widget .location-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.dataminr-alert-widget .location-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+}
+
+.dataminr-alert-widget .location-title {
+    color: var(--dataminr-white);
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.dataminr-alert-widget .location-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dataminr-alert-widget .location-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dataminr-alert-widget .location-label {
+    color: var(--dataminr-text-light);
+    font-size: 12px;
+    font-weight: 500;
+    min-width: 80px;
+}
+
+.dataminr-alert-widget .location-value {
+    color: var(--dataminr-white);
+    font-size: 14px;
+}
+
+.dataminr-alert-widget .coordinates {
+    font-family: monospace;
+    background-color: var(--dataminr-bg-darker);
+    padding: 4px 8px;
+    border-radius: var(--dataminr-border-radius-sm);
+    font-size: 13px;
+}
+
+/* Footer and other styles */
+.dataminr-alert-widget .footer-info {
+    border-top: 1px solid var(--dataminr-border);
+    padding-top: 20px;
+}
+
+.dataminr-alert-widget .info-item {
+    margin-bottom: 16px;
+}
+
+.dataminr-alert-widget .info-item .label {
+    font-weight: 600;
+    color: #a0a7b4;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.dataminr-alert-widget .info-item .value {
+    color: var(--dataminr-white);
+    font-size: 14px;
+}
+
+/* Modal styles */
+.dataminr-alert-widget .modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+}
+
+.dataminr-alert-widget .modal.active {
+    display: flex;
+}
+
+.dataminr-alert-widget .modal-content {
+    background-color: var(--dataminr-bg-dark);
+    border-radius: var(--dataminr-border-radius-lg);
+    max-width: min(800px, 90vw);
+    max-height: min(80vh, calc(100% - 40px));
+    margin: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Entity styles */
+.dataminr-alert-widget .discovered-entities-main {
+    margin-top: 16px;
+}
+
+.dataminr-alert-widget .discovered-entities-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    margin-bottom: 12px;
+}
+
+.dataminr-alert-widget .discovered-entities-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.dataminr-alert-widget .discovered-entity-item {
+    background-color: #FFFFFF14;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 13px;
+    color: #FAFAFF;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid #4a5568;
+    white-space: nowrap;
+}
+
+.dataminr-alert-widget .discovered-entity-item:hover {
+    background-color: #FFFFFF20;
+}
+
+
+.os-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.country-flag {
+    width: 20px;
+    height: 15px;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.malware-name {
+    color: #4a9eff;
+    font-weight: 500;
+}
+
+.section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    margin-bottom: 16px;
+}
+
+
+.dataminr-alert-widget .discovered-entity-icon {
+    font-size: 12px;
+    color: #FAFAFF;
+}
+
+.dataminr-alert-widget .discovered-entity-name {
+    font-weight: 500;
+}
+
+/* Entities Section */
+.entities-section {
+    background-color: #3d4a5c;
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.entity-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background-color: var(--dataminr-bg-dark);
+    border-radius: var(--dataminr-border-radius-md);
+    margin-bottom: 8px;
+    border-left: 3px solid var(--dataminr-primary);
+}
+
+.clickable-entity {
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+
+.clickable-entity:hover {
+    background-color: var(--dataminr-bg-medium);
+}
+
+.chevron-right {
+    color: #7f8c8d;
+    font-size: 18px;
+    font-weight: bold;
+    margin-left: auto;
+}
+
+.entity-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--dataminr-primary);
+    flex-shrink: 0;
+}
+
+.entity-name {
+    color: var(--dataminr-white);
+    font-size: 14px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.entity-type {
+    background-color: #606470;
+    color: var(--dataminr-white);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 12px;
+    text-transform: uppercase;
+}
+
+
+.dataminr-modal {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 50;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    /* Allow scrolling if needed */
+}
+
+.dataminr-modal.active {
+    display: flex;
+}
+
+.dataminr-modal-content {
+    background-color: var(--dataminr-bg-dark);
+    border-radius: var(--dataminr-border-radius-lg);
+    max-width: min(800px, 90vw);
+    /* Responsive width */
+    max-height: min(80vh, calc(100% - 40px));
+    /* Fits in container */
+    margin: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.dataminr-modal-header {
+    display: flex;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--dataminr-border);
+    background: linear-gradient(90deg, #007061 0.83%, #19373F 99.72%);
+}
+
+.back-btn {
+    background: none;
+    border: none;
+    color: #a0a7b4;
+    font-size: 16px;
+    cursor: pointer;
+    margin-right: 16px;
+}
+
+.back-btn:hover {
+    color: var(--dataminr-white);
+}
+
+.dataminr-modal-header h3 {
+    color: var(--dataminr-white);
+    font-size: 18px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.dataminr-modal-tabs {
+    display: flex;
+    background-color: #3d4a5c;
+    border-bottom: 1px solid #606470;
+}
+
+.tab {
+    background: none;
+    border: none;
+    color: #a0a7b4;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 16px 24px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.tab.active {
+    color: var(--dataminr-primary);
+    border-bottom-color: var(--dataminr-primary);
+}
+
+.tab:hover {
+    color: var(--dataminr-white);
+}
+
+.dataminr-modal-body {
+    padding: 24px;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+
+/* Entity Detail Modal Styles */
+.entity-detail-modal {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    z-index: 60;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+}
+
+.entity-detail-modal.active {
+    display: flex;
+}
+
+.entity-detail-content {
+    background-color: var(--dataminr-bg-darker);
+    border-radius: var(--dataminr-border-radius-lg);
+    max-width: min(700px, 90vw);
+    max-height: min(85vh, calc(100% - 40px));
+    margin: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.entity-detail-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--dataminr-border);
+    background-color: var(--dataminr-bg-darker);
+}
+
+.entity-header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.entity-title-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Alternative Entity Title Alignment Fix */
+.entity-title {
+    display: flex;
+    align-items: baseline;
+    /* Aligns to text baseline */
+    gap: 12px;
+    color: var(--dataminr-white);
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.entity-title .entity-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--dataminr-primary);
+    flex-shrink: 0;
+    margin-top: 2px;
+    /* Fine-tune vertical position if needed */
+}
+
+.entity-type-badge {
+    color: #95a5a6;
+    font-size: 14px;
+    font-weight: 400;
+    text-transform: capitalize;
+}
+
+.entity-detail-tabs {
+    display: flex;
+    background-color: #3d4a5c;
+    border-bottom: 1px solid #606470;
+}
+
+.entity-tab {
+    background: none;
+    border: none;
+    color: #a0a7b4;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 16px 24px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+}
+
+.entity-tab.active {
+    color: var(--dataminr-primary);
+    border-bottom-color: var(--dataminr-primary);
+}
+
+.entity-tab:hover {
+    color: var(--dataminr-white);
+}
+
+.entity-detail-body {
+    padding: 0;
+    max-height: 60vh;
+    overflow-y: auto;
+    flex: 1;
+    background-color: #2c3e50;
+}
+
+.entity-tab-content {
+    display: none;
+    padding: 24px;
+}
+
+.entity-tab-content.active {
+    display: block;
+}
+
+.entity-info-item {
+    background-color: var(--dataminr-bg-medium);
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.entity-info-item:last-child {
+    margin-bottom: 0;
+}
+
+.entity-info-label {
+    font-weight: 600;
+    color: #a0a7b4;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.entity-info-value {
+    color: var(--dataminr-white);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.entity-threat-actors {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.entity-threat-actors li {
+    padding: 8px 12px;
+    border-radius: var(--dataminr-border-radius-md);
+    margin-bottom: 8px;
+    color: var(--dataminr-white);
+}
+
+.entity-references {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.entity-references li {
+    margin-bottom: 8px;
+}
+
+.entity-references a {
+    color: var(--dataminr-primary);
+    text-decoration: none;
+}
+
+.entity-references a:hover {
+    text-decoration: underline;
+}
+
+.products-container {
+    background-color: var(--dataminr-bg-medium);
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.products-container:last-child {
+    margin-bottom: 0;
+}
+
+.vendor-name {
+    color: #95a5a6;
+    font-size: 14px;
+    font-weight: 600;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.product-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.product-item {
+    color: var(--dataminr-white);
+    font-size: 14px;
+    padding: 6px 0;
+    position: relative;
+    padding-left: 16px;
+    line-height: 1.5;
+}
+
+.product-item::before {
+    content: '\2022';
+    color: var(--dataminr-white);
+    position: absolute;
+    left: 0;
+    font-weight: bold;
+}
+
+.yara-rules-section {
+    background-color: var(--dataminr-bg-medium);
+    border-radius: var(--dataminr-border-radius-lg);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.yara-rules-section:last-child {
+    margin-bottom: 0;
+}
+
+.yara-rule-label {
+    font-weight: 600;
+    color: #95a5a6;
+    font-size: 14px;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.yara-rules-container {
+    background-color: #1a1a1a;
+    border-radius: var(--dataminr-border-radius-md);
+    padding: 16px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--dataminr-white);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    border: 1px solid var(--dataminr-border);
+}
+
+.entity-source {
+    padding: 16px 24px;
+    border-top: 1px solid var(--dataminr-border);
+    background-color: var(--dataminr-bg-darker);
+    font-size: 12px;
+    color: #a0a7b4;
+    text-align: center;
+}
+
+/* Country display styling */
+.country-flag {
+    display: inline-block;
+    width: 20px;
+    height: 15px;
+    object-fit: cover;
+    border-radius: 2px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* Add fallback for when flag doesn't load */
+.country-flag[src$=".png"]:not([src*="undefined"]):not([src*="null"]) {
+    background-color: #f0f0f0;
+}
+
+/* Country code styling */
+.country-code {
+    font-weight: 500;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .header {
+        padding: 12px 16px;
+    }
+
+    .main-content {
+        padding: 16px;
+    }
+
+    .alert-title {
+        font-size: 20px;
+    }
+
+    .key-point {
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .key-point-label {
+        min-width: auto;
+        margin-right: 0;
+    }
+
+    .dataminr-modal-content {
+        margin: 10px;
+        max-height: 95vh;
+    }
+
+    .dataminr-modal-tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab {
+        flex: 1;
+        min-width: 120px;
+    }
+}
+
+/* TTPs Tab Styling */
+.ttps-container {
+    padding: 0;
+}
+
+.ttp-tactic-section {
+    margin-bottom: 8px;
+    border-radius: var(--dataminr-border-radius-lg);
+    background-color: #374151;
+    overflow: hidden;
+}
+
+.ttp-tactic-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    cursor: pointer;
+    background-color: #374151;
+    border: none;
+    width: 100%;
+    text-align: left;
+    transition: background-color 0.2s ease;
+}
+
+.ttp-tactic-header:hover {
+    background-color: #4b5563;
+}
+
+.ttp-tactic-info {
+    flex: 1;
+}
+
+.ttp-tactic-name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--dataminr-white);
+    margin-bottom: 4px;
+}
+
+.ttp-technique-details {
+    font-size: 14px;
+    color: #d1d5db;
+    line-height: 1.4;
+}
+
+.ttp-expand-icon {
+    color: var(--dataminr-text-light);
+    transition: transform 0.2s ease;
+    margin-left: 12px;
+}
+
+.ttp-expand-icon.expanded {
+    transform: rotate(180deg);
+}
+
+.ttp-tactic-content {
+    background-color: #1f2937;
+    border-top: 1px solid #4b5563;
+}
+
+.ttp-technique-item {
+    padding: 12px 20px;
+    border-bottom: 1px solid #374151;
+}
+
+.ttp-technique-item:last-child {
+    border-bottom: none;
+}
+
+.ttp-technique-name {
+    font-size: 14px;
+    color: var(--dataminr-white);
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.ttp-technique-id {
+    font-size: 12px;
+    color: var(--dataminr-text-light);
+    font-family: 'Courier New', monospace;
+}
+
+/* Sortable Table Headers */
+.sortable-header {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 20px !important;
+    transition: background-color 0.2s ease;
+}
+
+.sortable-header:hover {
+    background-color: #374151;
+}
+
+.sort-icon {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.5;
+    transition: all 0.2s ease;
+    color: var(--dataminr-text-light);
+}
+
+.sortable-header:hover .sort-icon {
+    opacity: 1;
+    color: var(--dataminr-white);
+}
+
+.sortable-header.sort-asc .sort-icon {
+    opacity: 1;
+    color: var(--dataminr-primary);
+    transform: translateY(-50%) rotate(0deg);
+}
+
+.sortable-header.sort-desc .sort-icon {
+    opacity: 1;
+    color: var(--dataminr-primary);
+    transform: translateY(-50%) rotate(180deg);
+}
+
+/* Table styling improvements */
+.metadata-table th {
+    position: relative;
+}
+
+.metadata-table td[data-sort-value] {
+    position: relative;
+}
+
+/* ====================================================================
+   PUBLIC POST LINK STYLES
+   ==================================================================== */
+.public-post-section {
+    margin: 20px 0;
+}
+
+.public-post-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 0;
+    transition: color 0.2s ease;
+}
+
+.public-post-link:hover {
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.public-post-link svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+  </style>
+  <!-- SVG Symbol Definitions -->
+  <svg style="display: none;">
+    <symbol id="alert-star-icon" viewBox="0 0 16 16">
+    <path d="M12.666 5.99984L13.4993 4.1665L15.3327 3.33317L13.4993 2.49984L12.666 0.666504L11.8327 2.49984L9.99935 3.33317L11.8327 4.1665L12.666 5.99984ZM7.66602 6.33317L5.99935 2.6665L4.33268 6.33317L0.666016 7.99984L4.33268 9.6665L5.99935 13.3332L7.66602 9.6665L11.3327 7.99984L7.66602 6.33317ZM12.666 9.99984L11.8327 11.8332L9.99935 12.6665L11.8327 13.4998L12.666 15.3332L13.4993 13.4998L15.3327 12.6665L13.4993 11.8332L12.666 9.99984Z" fill="#53DFCD" />
+    </symbol>
+    <symbol id="shield-icon" viewBox="0 0 16 20">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M2.73997 15.5116C4.12261 17.4137 5.87574 18.6321 7.99935 19.1668C10.123 18.6321 11.8761 17.4137 13.2587 15.5116C14.6414 13.6095 15.3327 11.4974 15.3327 9.17516V3.5835L7.99935 0.833496L0.666016 3.5835V9.17516C0.666016 11.4974 1.35734 13.6095 2.73997 15.5116ZM11.941 14.2168C10.9021 15.7293 9.58824 16.7377 7.99935 17.2418C6.41046 16.7377 5.09657 15.7293 4.05768 14.2168C3.01879 12.7043 2.49935 11.0238 2.49935 9.17516V4.84391L7.99935 2.78141L13.4993 4.84391V9.17516C13.4993 11.0238 12.9799 12.7043 11.941 14.2168ZM7.08268 11.8335V13.6668H8.91602V11.8335H7.08268ZM7.08268 6.3335V10.0002H8.91602V6.3335H7.08268Z" fill="#F5F6F9" />
+    </symbol>
+    <symbol id="sort-arrow-icon" viewBox="0 0 24 24">
+    <path d="M7 14L12 9L17 14H7Z" fill="currentColor" />
+    </symbol>
+    <symbol id="intel-agent-icon" viewBox="0 0 22 22">
+    <path fill-rule="evenodd" clip-rule="evenodd" d="M19.4785 6.646L18.3327 9.16683L17.1868 6.646L14.666 5.50016L17.1868 4.35433L18.3327 1.8335L19.4785 4.35433L21.9993 5.50016L19.4785 6.646ZM10.9421 6.35954L10.0827 8.25016L9.22331 6.35954L7.33268 5.50016L9.22331 4.64079L10.0827 2.75016L10.9421 4.64079L12.8327 5.50016L10.9421 6.35954ZM14.1257 11.0735C13.7021 9.58339 12.7122 8.32999 11.4037 7.55915L11.6343 7.05178L12.6584 6.5863C13.6222 7.26199 14.4193 8.15964 14.9751 9.20483L14.1257 11.0735ZM14.078 14.4885C13.8127 15.3302 13.3654 16.0909 12.7842 16.7258C12.5902 16.1212 12.0378 15.6882 11.366 15.6882H10.6196V13.449C10.6196 13.0384 10.2837 12.7025 9.87316 12.7025H5.39459V11.2097H6.88744C7.29798 11.2097 7.63387 10.8738 7.63387 10.4632V8.97039H9.12673C9.2173 8.97039 9.30606 8.96221 9.3923 8.94656L8.53103 7.05178L5.66388 5.74853C2.8855 6.83561 0.916016 9.54047 0.916016 12.7025C0.916016 16.8228 4.26002 20.1668 8.3803 20.1668C11.1886 20.1668 13.6362 18.6134 14.9103 16.3195L14.078 14.4885ZM7.63387 18.6217C4.68548 18.256 2.40887 15.748 2.40887 12.7025C2.40887 12.2397 2.46859 11.7993 2.56562 11.3664L6.14101 14.9418V15.6882C6.14101 16.5093 6.8128 17.1811 7.63387 17.1811V18.6217ZM16.4421 13.6929L15.5827 15.5835L14.7233 13.6929L12.8327 12.8335L14.7233 11.9741L15.5827 10.0835L16.4421 11.9741L18.3327 12.8335L16.4421 13.6929Z" fill="#F5F6F9" />
+    </symbol>
+  </svg>
+  <body>
+    {% for result in results %}
+      {% if not result.data %}
+        <div class="dataminr-alert-widget">
+          <div id="app-no-data">
+            <div class="main-content">
+              <div class="alert-title">No alert data found</div>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        {% for alert_data in result.data %}
+          <div class="dataminr-alert-widget">
+            <div id="app-alert">
+              <!-- Header -->
+              <div class="header">
+                <div class="header-content">
+                  <div class="alert-badge alert-type-{% if alert_data.alertType.name|upper == 'URGENT' or alert_data.alertType.name|upper == 'URGENT UPDATE' %}urgent{% elif alert_data.alertType.name|upper == 'FLASH' %}flash{% else %}default{% endif %}">
+                    {{ alert_data.alertType.name|default:"ALERT"|upper }}
+                  </div>
+                  {% if alert_data.intelAgents or alert_data.liveBrief %}
+                    <svg width="16" height="16">
+                      <use href="#alert-star-icon" />
+                    </svg>
+                  {% endif %}
+                  <div class="timestamp">{{ alert_data.alertTimestamp|default:"No timestamp available" }}</div>
+                  {% if alert_data.dataminrAlertUrl %}
+                    <a href="{{ alert_data.dataminrAlertUrl }}"
+                       target="_blank"
+                       rel="noopener noreferrer"
+                       class="dataminr-link">
+                      <svg width="16"
+                           height="16"
+                           viewBox="0 0 16 16"
+                           fill="none"
+                           xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 8.5V12.5C12 13.0523 11.5523 13.5 11 13.5H3.5C2.94772 13.5 2.5 13.0523 2.5 12.5V5C2.5 4.44772 2.94772 4 3.5 4H7.5M10 2.5H13.5M13.5 2.5V6M13.5 2.5L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      View in Dataminr
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+              <!-- Main Content -->
+              <div class="main-content">
+                {% if alert_data.intelAgents or alert_data.liveBrief %}
+                  <!-- ReGenAI Section - Unified Design -->
+                  <div class="regen-section">
+                    <!-- ReGenAI Header -->
+                    <div class="regen-header">
+                      <svg width="32"
+                           height="32"
+                           viewBox="0 0 32 32"
+                           fill="none"
+                           xmlns="http://www.w3.org/2000/svg">
+                        <rect width="32" height="32" rx="2" fill="#53DFCD" />
+                        <path d="M23 13L24.25 10.25L27 9L24.25 7.75L23 5L21.75 7.75L19 9L21.75 10.25L23 13ZM15.5 13.5L13 8L10.5 13.5L5 16L10.5 18.5L13 24L15.5 18.5L21 16L15.5 13.5ZM23 19L21.75 21.75L19 23L21.75 24.25L23 27L24.25 24.25L27 23L24.25 21.75L23 19Z" fill="#19373F" />
+                      </svg>
+                      <span>ReGenAI</span>
+                    </div>
+                    <!-- ReGenAI Content Container -->
+                    <div class="regen-content">
+                      <!-- Live Brief Section -->
+                      {% if alert_data.liveBrief %}
+                        <div class="live-brief-section">
+                          <div class="live-brief-header">
+                            <svg width="18"
+                                 height="19"
+                                 viewBox="0 0 18 19"
+                                 fill="none"
+                                 xmlns="http://www.w3.org/2000/svg">
+                              <path d="M3.79861 10.6805H6.88663L8.10503 8.99995H3.79861V10.6805ZM3.79861 14.0416H6.16667V12.3611H3.79861V14.0416ZM2.11806 17.4027C1.6559 17.4027 1.26027 17.2382 0.931163 16.9091C0.602054 16.58 0.4375 16.1843 0.4375 15.7222V2.27772C0.4375 1.81557 0.602054 1.41994 0.931163 1.09083C1.26027 0.761722 1.6559 0.597168 2.11806 0.597168H8.84028L13.8819 5.63883V8.54102L12.2014 7.62435V6.47911H8V2.27772H2.11806V15.7222H7.54167L8.45833 17.4027H2.11806Z" fill="#F5F6F9" />
+                              <path d="M15.334 11.7502L15.9069 10.4897L17.1673 9.91683L15.9069 9.34391L15.334 8.0835L14.7611 9.34391L13.5007 9.91683L14.7611 10.4897L15.334 11.7502ZM11.8965 11.9793L10.7507 9.4585L9.60482 11.9793L7.08398 13.1252L9.60482 14.271L10.7507 16.7918L11.8965 14.271L14.4173 13.1252L11.8965 11.9793ZM15.334 14.5002L14.7611 15.7606L13.5007 16.3335L14.7611 16.9064L15.334 18.1668L15.9069 16.9064L17.1673 16.3335L15.9069 15.7606L15.334 14.5002Z" fill="#F5F6F9" />
+                            </svg>
+                            <span class="live-brief-title">Live Brief</span>
+                          </div>
+                          {% for brief in alert_data.liveBrief %}
+                            <div class="live-brief-timestamp">
+                              Last updated
+                              {% if brief.timestamp %}{{ brief.timestamp|slice:":10" }} {{ brief.timestamp|slice:"11:19" }}{% endif %}
+                            </div>
+                            <div class="live-brief-content" id="liveBriefContent">{{ brief.summary }}</div>
+                            <button class="show-more-btn"
+                                    id="showMoreBtn"
+                                    onclick="toggleLiveBrief()"
+                                    style="display: none">Show more</button>
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                      <!-- Intel Agents Section -->
+                      {% if alert_data.intelAgents %}
+                        <div class="intel-agent-section">
+                          <div class="intel-agent-header">
+                            <svg width="22"
+                                 height="22"
+                                 viewBox="0 0 22 22"
+                                 fill="none"
+                                 xmlns="http://www.w3.org/2000/svg">
+                              <path fill-rule="evenodd" clip-rule="evenodd" d="M19.4785 6.646L18.3327 9.16683L17.1868 6.646L14.666 5.50016L17.1868 4.35433L18.3327 1.8335L19.4785 4.35433L21.9993 5.50016L19.4785 6.646ZM10.9421 6.35954L10.0827 8.25016L9.22331 6.35954L7.33268 5.50016L9.22331 4.64079L10.0827 2.75016L10.9421 4.64079L12.8327 5.50016L10.9421 6.35954ZM14.1257 11.0735C13.7021 9.58339 12.7122 8.32999 11.4037 7.55915L11.6343 7.05178L12.6584 6.5863C13.6222 7.26199 14.4193 8.15964 14.9751 9.20483L14.1257 11.0735ZM14.078 14.4885C13.8127 15.3302 13.3654 16.0909 12.7842 16.7258C12.5902 16.1212 12.0378 15.6882 11.366 15.6882H10.6196V13.449C10.6196 13.0384 10.2837 12.7025 9.87316 12.7025H5.39459V11.2097H6.88744C7.29798 11.2097 7.63387 10.8738 7.63387 10.4632V8.97039H9.12673C9.2173 8.97039 9.30606 8.96221 9.3923 8.94656L8.53103 7.05178L5.66388 5.74853C2.8855 6.83561 0.916016 9.54047 0.916016 12.7025C0.916016 16.8228 4.26002 20.1668 8.3803 20.1668C11.1886 20.1668 13.6362 18.6134 14.9103 16.3195L14.078 14.4885ZM7.63387 18.6217C4.68548 18.256 2.40887 15.748 2.40887 12.7025C2.40887 12.2397 2.46859 11.7993 2.56562 11.3664L6.14101 14.9418V15.6882C6.14101 16.5093 6.8128 17.1811 7.63387 17.1811V18.6217ZM16.4421 13.6929L15.5827 15.5835L14.7233 13.6929L12.8327 12.8335L14.7233 11.9741L15.5827 10.0835L16.4421 11.9741L18.3327 12.8335L16.4421 13.6929Z" fill="#F5F6F9" />
+                            </svg>
+                            <span class="intel-agent-title">Intel Agents</span>
+                          </div>
+                          <!-- Assessment Section -->
+                          <div class="assessment-section">
+                            <div class="intel-content" id="intelContent">
+                              {% for agent in alert_data.intelAgents %}
+                                {% if agent.summary %}
+                                  <ul class="assessment-list">
+                                    {% for summary_item in agent.summary %}
+                                      <li class="assessment-item">
+                                        <strong>{{ summary_item.title }}:</strong>
+                                        {% if summary_item.content %}
+                                          {% for content_item in summary_item.content %}
+                                            {{ content_item }}
+                                            {% if not forloop.last %}{% endif %}
+                                          {% endfor %}
+                                        {% else %}
+                                          No content available
+                                        {% endif %}
+                                      </li>
+                                    {% endfor %}
+                                  </ul>
+                                {% endif %}
+                              {% endfor %}
+                            </div>
+                            <a href="#" class="explore-link" onclick="openIntelModal()">Explore related activity</a>
+                          </div>
+                          <!-- Discovered Entities Section -->
+                          {% for agent in alert_data.intelAgents %}
+                            {% if agent.discoveredEntities %}
+                              <div class="discovered-entities-main">
+                                <div class="discovered-entities-title">Discovered entities</div>
+                                <div class="discovered-entities-list">
+                                  {% for entity in agent.discoveredEntities %}
+                                    {% if forloop.counter <= 6 %}
+                                      <div class="discovered-entity-item"
+                                           onclick="openEntityDetailModal('{{ forloop.counter }}')">
+                                        <svg width="16" height="20">
+                                          <use href="#shield-icon" />
+                                        </svg>
+                                        <span class="discovered-entity-name">{{ entity.name }}</span>
+                                      </div>
+                                    {% endif %}
+                                  {% endfor %}
+                                </div>
+                                {% if agent.discoveredEntities|length > 4 %}
+                                  <div class="show-more-entities-container">
+                                    <a href="#"
+                                       class="explore-link"
+                                       onclick="openIntelModal('entities'); return false;">Explore more</a>
+                                  </div>
+                                {% endif %}
+                              </div>
+                            {% endif %}
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  <div class="alert-title" id="alertTitle">{{ alert_data.headline|default:"No headline available" }}</div>
+                  <!-- Public Post Link Section -->
+                  {% if alert_data.publicPost and alert_data.publicPost.href %}
+                    <div class="public-post-section">
+                      <a href="{{ alert_data.publicPost.href }}"
+                         target="_blank"
+                         rel="noopener noreferrer"
+                         class="public-post-link">
+                        <svg width="16"
+                             height="16"
+                             viewBox="0 0 16 16"
+                             fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                          <path d="M12 8.5V12.5C12 13.0523 11.5523 13.5 11 13.5H3.5C2.94772 13.5 2.5 13.0523 2.5 12.5V5C2.5 4.44772 2.94772 4 3.5 4H7.5M10 2.5H13.5M13.5 2.5V6M13.5 2.5L8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        View Public Post
+                      </a>
+                    </div>
+                  {% endif %}
+                  <!-- Alert Metadata Section -->
+                  {% if alert_data.metadata and alert_data.metadata.0.cyber %}
+                    <div class="alert-metadata" id="alertMetadata">
+                      <div class="metadata-title">Alert Metadata</div>
+                      <!-- URL Section -->
+                      {% if alert_data.metadata.0.cyber.URL %}
+                        <div class="metadata-section">
+                          <div class="section-header" onclick="toggleMetadataSection('url-section')">
+                            <h3>URL</h3>
+                            <span class="dropdown-icon">&#9660;</span>
+                          </div>
+                          <div id="url-section" class="url-list">
+                            {% for url in alert_data.metadata.0.cyber.URL %}
+                              <div class="url-item">
+                                {% if url.name %}
+                                  {{ url.name }}
+                                {% else %}
+                                  {{ url }}
+                                {% endif %}
+                              </div>
+                            {% endfor %}
+                          </div>
+                        </div>
+                      {% endif %}
+                      <!-- Threat Actor Section -->
+                      {% if alert_data.metadata.0.cyber.threatActors %}
+                        <div class="metadata-section">
+                          <div class="section-header"
+                               onclick="toggleMetadataSection('threat-actor-section')">
+                            <h3>Threat Actor</h3>
+                            <span class="dropdown-icon">&#9660;</span>
+                          </div>
+                          <div id="threat-actor-section">
+                            <table class="metadata-table">
+                              <thead>
+                                <tr>
+                                  <th>Threat Actor</th>
+                                  <th>Country of origin</th>
+                                  <th>Type</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for actor in alert_data.metadata.0.cyber.threatActors %}
+                                  <tr>
+                                    <td>
+                                      <a href="#"
+                                         class="cve-link entity-clickable"
+                                         onclick="openEntityByName('{{ actor.name }}', event)">{{ actor.name }}</a>
+                                    </td>
+                                    <td>
+                                      {% if actor.countryOfOrigin %}
+                                        {{ actor.countryOfOrigin }}
+                                      {% else %}
+                                        -
+                                      {% endif %}
+                                    </td>
+                                    <td>{{ actor.type|default:"-" }}</td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      {% endif %}
+                      <!-- Malware Section -->
+                      {% if alert_data.metadata.0.cyber.malware %}
+                        <div class="metadata-section">
+                          <div class="section-header"
+                               onclick="toggleMetadataSection('malware-section')">
+                            <h3>Malware</h3>
+                            <span class="dropdown-icon">&#9660;</span>
+                          </div>
+                          <div id="malware-section">
+                            <table class="metadata-table">
+                              <thead>
+                                <tr>
+                                  <th>Malware</th>
+                                  <th>Affected Operating System</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {% for malware in alert_data.metadata.0.cyber.malware %}
+                                  <tr>
+                                    <td>
+                                      <span class="malware-name entity-clickable"
+                                            onclick="openEntityByName('{{ malware.name }}', event)">{{ malware.name }}</span>
+                                    </td>
+                                    <td>
+                                      {% for os in malware.affectedOperatingSystems %}
+                                        {% if os == "win" %}
+                                          Windows
+                                        {% elif os == "linux" %}
+                                          Linux
+                                        {% elif os == "mac" %}
+                                          macOS
+                                        {% else %}
+                                          {{ os|title }}
+                                        {% endif %}
+                                        {% if not forloop.last %},{% endif %}
+                                      {% endfor %}
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      {% endif %}
+                      <!-- Vulnerability Section -->
+                      {% if alert_data.metadata.0.cyber.vulnerabilities %}
+                        <div class="metadata-section">
+                          <div class="section-header"
+                               onclick="toggleMetadataSection('vulnerability-section')">
+                            <h3>Vulnerability</h3>
+                            <span class="dropdown-icon">&#9660;</span>
+                          </div>
+                          <div id="vulnerability-section">
+                            <table class="metadata-table" id="vulnerabilityTable">
+                              <thead>
+                                <tr>
+                                  <th class="sortable-header">Vulnerability</th>
+                                  <th class="sortable-header" onclick="sortVulnerabilityTable(1, 'number')">
+                                    CVSS score
+                                    <span class="sort-icon">
+                                      <svg width="12" height="12">
+                                        <use href="#sort-arrow-icon" />
+                                      </svg>
+                                    </span>
+                                  </th>
+                                  <th class="sortable-header"
+                                      onclick="sortVulnerabilityTable(2, 'severity')">
+                                    Severity
+                                    <span class="sort-icon">
+                                      <svg width="12" height="12">
+                                        <use href="#sort-arrow-icon" />
+                                      </svg>
+                                    </span>
+                                  </th>
+                                  <th class="sortable-header" onclick="sortVulnerabilityTable(3, 'number')">
+                                    EPSS score
+                                    <span class="sort-icon">
+                                      <svg width="12" height="12">
+                                        <use href="#sort-arrow-icon" />
+                                      </svg>
+                                    </span>
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody id="vulnerabilityTableBody">
+                                {% for vuln in alert_data.metadata.0.cyber.vulnerabilities %}
+                                  <tr>
+                                    <td>
+                                      <a href="#"
+                                         class="cve-link entity-clickable"
+                                         onclick="openEntityByName('{{ vuln.id }}', event)">{{ vuln.id }}</a>
+                                    </td>
+                                    <td data-sort-value="{{ vuln.cvss|default:0 }}">
+                                      {% if vuln.cvss and vuln.cvss != 0 %}
+                                        {{ vuln.cvss|floatformat:1 }}
+                                      {% else %}
+                                        -
+                                      {% endif %}
+                                    </td>
+                                    <td data-sort-value="{% if vuln.cvss >= 9.0 %}4{% elif vuln.cvss >= 7.0 %}3{% elif vuln.cvss >= 4.0 %}2{% else %}1{% endif %}">
+                                      {% if vuln.cvss >= 9.0 %}
+                                        <span class="severity-badge severity-critical">Critical</span>
+                                      {% elif vuln.cvss >= 7.0 %}
+                                        <span class="severity-badge severity-high">High</span>
+                                      {% elif vuln.cvss >= 4.0 %}
+                                        <span class="severity-badge severity-medium">Medium</span>
+                                      {% else %}
+                                        <span class="severity-badge severity-low">Low</span>
+                                      {% endif %}
+                                    </td>
+                                    <td data-sort-value="{{ vuln.epssScore|default:0 }}">
+                                      {% if vuln.epssScore and vuln.epssScore != 0 %}
+                                        {{ vuln.epssScore|floatformat:1 }}%
+                                      {% else %}
+                                        -
+                                      {% endif %}
+                                    </td>
+                                  </tr>
+                                {% endfor %}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  <!-- Location Section -->
+                  {% if alert_data.estimatedEventLocation %}
+                    <div class="location-section">
+                      <div class="location-header">
+                        <svg class="location-icon"
+                             viewBox="0 0 24 24"
+                             fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                          <path d="M21 10C21 17 12 23 12 23S3 17 3 10C3 5.02944 7.02944 1 12 1C16.9706 1 21 5.02944 21 10Z" stroke="currentColor" stroke-width="2" />
+                          <circle cx="12" cy="10" r="3" stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        <span class="location-title">Location</span>
+                      </div>
+                      <div class="location-content">
+                        {% if alert_data.estimatedEventLocation.name %}
+                          <div class="location-item">
+                            <span class="location-value">{{ alert_data.estimatedEventLocation.name }}</span>
+                          </div>
+                        {% endif %}
+                        {% if alert_data.estimatedEventLocation.coordinates %}
+                          <div class="location-item">
+                            <span class="location-label">Coordinates:</span>
+                            <span class="location-value coordinates">
+                              {{ alert_data.estimatedEventLocation.coordinates.0 }}&#176;N,
+                              {{ alert_data.estimatedEventLocation.coordinates.1 }}&#176;E
+                            </span>
+                          </div>
+                        {% endif %}
+                        {% if alert_data.estimatedEventLocation.probabilityRadius %}
+                          <div class="location-item">
+                            <span class="location-label">Radius:</span>
+                            <span class="location-value">Within {{ alert_data.estimatedEventLocation.probabilityRadius }}
+                            miles</span>
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% endif %}
+                  <!-- Footer Info -->
+                  <div class="footer-info">
+                    {% if alert_data.listsMatched %}
+                      <div class="info-item">
+                        <span class="label">Lists</span>
+                        <span class="value" id="lists">
+                          {% for list in alert_data.listsMatched %}
+                            {{ list.name }}
+                            {% if not forloop.last %},{% endif %}
+                          {% endfor %}
+                        </span>
+                      </div>
+                    {% endif %}
+                    {% if alert_data.alertCompanies %}
+                      <div class="info-item">
+                        <span class="label">Companies</span>
+                        <span class="value" id="companies">
+                          {% for company in alert_data.alertCompanies %}
+                            {{ company.name }}
+                            {% if not forloop.last %},{% endif %}
+                          {% endfor %}
+                        </span>
+                      </div>
+                    {% endif %}
+                    {% if alert_data.alertTopics %}
+                      <div class="info-item">
+                        <span class="label">Topics</span>
+                        <span class="value" id="topics">
+                          {% for topic in alert_data.alertTopics %}
+                            {{ topic.name }}
+                            {% if not forloop.last %},{% endif %}
+                          {% endfor %}
+                        </span>
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+                <!-- Intel Agents Modal -->
+                <div id="intelModal" class="dataminr-modal">
+                  <div class="dataminr-modal-content">
+                    <div class="dataminr-modal-header">
+                      <button class="back-btn" onclick="closeIntelModal()">&#8592; Back</button>
+                      <br>
+                      <svg width="22" height="22">
+                        <use href="#intel-agent-icon" />
+                      </svg>
+                      <h3>Intel Agents</h3>
+                      <button class="close-btn" onclick="closeIntelModal()">&#215;</button>
+                    </div>
+                    <div class="dataminr-modal-tabs">
+                      <button class="tab active" onclick="switchTab('overview')">Overview</button>
+                      {% if alert_data.intelAgents.0.discoveredEntities %}
+                        <button class="tab" onclick="switchTab('entities')">Discovered entities</button>
+                      {% endif %}
+                    </div>
+                    <div class="dataminr-modal-body">
+                      <div id="overview-content" class="tab-content active">
+                        {% if alert_data.intelAgents %}
+                          {% for agent in alert_data.intelAgents %}
+                            {% if agent.summary %}
+                              {% for summary_item in agent.summary %}
+                                <div style="margin-bottom: 16px;">
+                                  <strong>{{ summary_item.title }}:</strong>
+                                  <br>
+                                  {% if summary_item.content %}
+                                    {% for content_item in summary_item.content %}
+                                      {{ content_item }}
+                                      {% if not forloop.last %}{% endif %}
+                                    {% endfor %}
+                                  {% else %}
+                                    No content available
+                                  {% endif %}
+                                </div>
+                              {% endfor %}
+                            {% endif %}
+                          {% endfor %}
+                        {% else %}
+                          <div style="margin-bottom: 16px;">
+                            <strong>No Intel Agents data available</strong>
+                            <br>
+                            Please check the alert data source.
+                          </div>
+                        {% endif %}
+                      </div>
+                      <div id="entities-content" class="tab-content">
+                        {% if alert_data.intelAgents %}
+                          {% for agent in alert_data.intelAgents %}
+                            {% if agent.discoveredEntities %}
+                              {% for entity in agent.discoveredEntities %}
+                                <div class="entity-item clickable-entity"
+                                     onclick="closeIntelModal(); openEntityDetailModal('{{ forloop.counter }}')"
+                                     style="cursor: pointer">
+                                  <svg width="16" height="20">
+                                    <use href="#shield-icon" />
+                                  </svg>
+                                  <div style="flex: 1;">
+                                    <div class="entity-name">{{ entity.name }}</div>
+                                    {% if entity.summary %}<div class="entity-summary">{{ entity.summary }}</div>{% endif %}
+                                  </div>
+                                  <span class="entity-type">{{ entity.type }}</span>
+                                  <span class="chevron-right">&#8250;</span>
+                                </div>
+                              {% endfor %}
+                            {% endif %}
+                          {% endfor %}
+                        {% else %}
+                          <div class="entity-item">
+                            <span class="entity-icon">
+                              <svg width="20"
+                                   height="20"
+                                   viewBox="0 0 24 24"
+                                   fill="none"
+                                   xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 1L3 5V11C3 16.55 6.84 21.74 12 23C17.16 21.74 21 16.55 21 11V5L12 1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                              </svg>
+                            </span>
+                            <div style="flex: 1;">
+                              <div class="entity-name">No entities available</div>
+                              <div style="font-size: 12px; color: #cdced6; margin-top: 4px;">
+                                Check alert data
+                                source
+                              </div>
+                            </div>
+                            <span class="entity-type">N/A</span>
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- Entity Detail Modals - Dynamic content populated via Django templates -->
+                {% for agent in alert_data.intelAgents %}
+                  {% if agent.discoveredEntities %}
+                    {% for entity in agent.discoveredEntities %}
+                      <div id="entityDetailModal{{ forloop.counter }}"
+                           class="entity-detail-modal">
+                        <div class="entity-detail-content">
+                          <div class="entity-detail-header">
+                            <div class="entity-header-top">
+                              <button class="back-btn"
+                                      onclick="closeEntityDetailModal('{{ forloop.counter }}')">&#8592; Back</button>
+                              <button class="close-btn"
+                                      onclick="closeEntityDetailModal('{{ forloop.counter }}')">&#215;</button>
+                            </div>
+                            <div class="entity-title-section">
+                              <div class="entity-title">
+                                <svg width="16" height="20">
+                                  <use href="#shield-icon" />
+                                </svg>
+                                <span>{{ entity.name }}</span>
+                              </div>
+                              <div class="entity-type-badge">{{ entity.type }}</div>
+                            </div>
+                          </div>
+                          <!-- Tabs -->
+                          <div class="entity-detail-tabs">
+                            <button class="entity-tab active"
+                                    onclick="switchEntityTab('{{ forloop.counter }}', 'about')">About</button>
+                            {% if entity.products %}
+                              <button class="entity-tab"
+                                      onclick="switchEntityTab('{{ forloop.counter }}', 'products')">
+                                Affected
+                                Products
+                              </button>
+                            {% endif %}
+                            {% if entity.yaraRules %}
+                              <button class="entity-tab"
+                                      onclick="switchEntityTab('{{ forloop.counter }}', 'yara')">
+                                Yara
+                                Rules
+                              </button>
+                            {% endif %}
+                            {% if entity.ttps %}
+                              <button class="entity-tab"
+                                      onclick="switchEntityTab('{{ forloop.counter }}', 'ttps')">TTPs</button>
+                            {% endif %}
+                          </div>
+                          <div class="entity-detail-body">
+                            <div id="about-content{{ forloop.counter }}"
+                                 class="entity-tab-content active">
+                              {% if entity.summary %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Summary</span>
+                                  <div class="entity-info-value">{{ entity.summary }}</div>
+                                  {% if entity.countryOfOrigin %}
+                                    <div class="entity-info-label">Country of Origin</div>
+                                    <img class="country-flag"
+                                         src="https://flagcdn.com/w20/{{ entity.countryOfOrigin|lower }}.png"
+                                         srcset="https://flagcdn.com/w40/{{ entity.countryOfOrigin|lower }}.png 2x"
+                                         alt="{{ entity.countryOfOrigin }}"
+                                         width="20"
+                                         height="15">
+                                    <span class="entity-info-value">{{ entity.countryName|default:entity.countryOfOrigin }}</span>
+                                  {% endif %}
+                                </div>
+                              {% endif %}
+                              {% if entity.name %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Name</span>
+                                  <div class="entity-info-value">{{ entity.name }}</div>
+                                </div>
+                              {% endif %}
+                              {% if entity.cvss %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">CVSS Score</span>
+                                  <div class="entity-info-value">{{ entity.cvss }}</div>
+                                </div>
+                              {% endif %}
+                              {% if entity.publishedDate %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">CVE Publish Date</span>
+                                  <div class="entity-info-value">{{ entity.publishedDate }}</div>
+                                </div>
+                              {% endif %}
+                              {% if entity.aliases %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Aliases</span>
+                                  <div class="entity-info-value">
+                                    <ul class="entity-aliases-list">
+                                      {% for alias in entity.aliases %}<li class="entity-alias-item">{{ alias|escape }}</li>{% endfor %}
+                                    </ul>
+                                  </div>
+                                </div>
+                              {% endif %}
+                              {% if entity.knownExploitedDate %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Known Exploited Date</span>
+                                  <div class="entity-info-value">{{ entity.knownExploitedDate }}</div>
+                                </div>
+                              {% endif %}
+                              {% if entity.operatingSystems %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Affected Operating Systems</span>
+                                  <div class="entity-info-value">
+                                    {% for os in entity.operatingSystems %}
+                                      {{ os }}
+                                      {% if not forloop.last %},{% endif %}
+                                    {% endfor %}
+                                  </div>
+                                </div>
+                              {% endif %}
+                              {% if entity.threatActors %}
+                                <div class="entity-info-item">
+                                  <span class="entity-info-label">Associated Threat Actors</span>
+                                  <ul class="entity-threat-actors">
+                                    {% for actor in entity.threatActors %}<li>{{ actor.name }}</li>{% endfor %}
+                                  </ul>
+                                </div>
+                              {% endif %}
+                            </div>
+                            {% if entity.products %}
+                              <div id="products-content{{ forloop.counter }}" class="entity-tab-content">
+                                {% regroup entity.products by productVendor as vendor_groups %}
+                                {% for vendor_group in vendor_groups %}
+                                  <div class="products-container">
+                                    <span class="vendor-name">{{ vendor_group.grouper }}</span>
+                                    <ul class="product-list">
+                                      {% for product in vendor_group.list %}<li class="product-item">{{ product.productName }}</li>{% endfor %}
+                                    </ul>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                            <!-- TTPs Tab Content -->
+                            {% if entity.ttps %}
+                              <div id="ttps-content{{ forloop.counter }}" class="entity-tab-content">
+                                <div class="ttps-container">
+                                  {% regroup entity.ttps by tacticName as tactics_grouped %}
+                                  {% for tactic_group in tactics_grouped %}
+                                    <div class="ttp-tactic-section">
+                                      <div class="ttp-tactic-header"
+                                           onclick="toggleTTPSection('{{ forloop.parentloop.counter }}-{{ forloop.counter }}')">
+                                        <div class="ttp-tactic-info">
+                                          <div class="ttp-tactic-name">{{ tactic_group.grouper }} {{ tactic_group.list.0.techniqueId }}</div>
+                                          <div class="ttp-technique-details">
+                                            {% for ttp in tactic_group.list %}
+                                              {% if ttp.topLevelTechniqueName %}
+                                                {{ ttp.topLevelTechniqueName }}: {{ ttp.techniqueName }}
+                                              {% else %}
+                                                {{ ttp.techniqueName }}
+                                              {% endif %}
+                                              {% if not forloop.last %},{% endif %}
+                                            {% endfor %}
+                                          </div>
+                                        </div>
+                                        <div class="ttp-expand-icon">
+                                          <svg width="16"
+                                               height="16"
+                                               viewBox="0 0 24 24"
+                                               fill="none"
+                                               xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                          </svg>
+                                        </div>
+                                      </div>
+                                      <div id="ttp-section-{{ forloop.parentloop.counter }}-{{ forloop.counter }}"
+                                           class="ttp-tactic-content"
+                                           style="display: none">
+                                        {% for ttp in tactic_group.list %}
+                                          <div class="ttp-technique-item">
+                                            <div class="ttp-technique-name">
+                                              {% if ttp.topLevelTechniqueName %}
+                                                {{ ttp.topLevelTechniqueName }}: {{ ttp.techniqueName }}
+                                              {% else %}
+                                                {{ ttp.techniqueName }}
+                                              {% endif %}
+                                            </div>
+                                            <div class="ttp-technique-id">{{ ttp.techniqueId }}</div>
+                                          </div>
+                                        {% endfor %}
+                                      </div>
+                                    </div>
+                                  {% endfor %}
+                                </div>
+                              </div>
+                            {% endif %}
+                            {% if entity.yaraRules %}
+                              <div id="yara-content{{ forloop.counter }}" class="entity-tab-content">
+                                {% for rule in entity.yaraRules %}
+                                  <div class="yara-rules-section">
+                                    <span class="yara-rule-label">Yara Rule {{ forloop.counter }}</span>
+                                    <div class="yara-rules-container">{{ rule }}</div>
+                                  </div>
+                                {% endfor %}
+                              </div>
+                            {% endif %}
+                          </div>
+                          <div class="entity-source">
+                            {% if entity.type == 'vulnerability' %}
+                              Source: NVD
+                            {% elif entity.type == 'malware' %}
+                              Source: MITRE ATT&CK
+                            {% else %}
+                              Source: Threat Intelligence
+                            {% endif %}
+                          </div>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  {% endif %}
+                {% endfor %}
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </body>
+    <script>
+    /**
+ * Opens entity detail modal by searching for matching entity name
+ * @param {string} entityName - Name of the entity to find and open
+ * @param {Event} event - Click event object
+ */
+function openEntityByName(entityName, event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const entityModals = document.querySelectorAll('[id^="entityDetailModal"]');
+    let foundEntityId = null;
+
+    entityModals.forEach(modal => {
+        const modalId = modal.id.replace('entityDetailModal', '');
+        const entityTitle = modal.querySelector('.entity-title span:last-child');
+
+        if (entityTitle && entityTitle.textContent.trim() === entityName.trim()) {
+            foundEntityId = modalId;
+        }
+    });
+
+    if (foundEntityId) {
+        openEntityDetailModal(foundEntityId);
+    } else {
+        showEntityNotFoundMessage(entityName);
+    }
+}
+
+/**
+ * Shows notification when entity is not found in discovered entities
+ * @param {string} entityName - Name of the entity that was not found
+ */
+function showEntityNotFoundMessage(entityName) {
+    const notification = document.createElement('div');
+    notification.className = 'entity-not-found-notification';
+    notification.innerHTML = `
+        <div class="notification-title">Entity Details Not Available</div>
+        <div class="notification-message">"${entityName}" is not in the discovered entities list.</div>
+    `;
+
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
+        }
+    }, 5000);
+}
+
+/**
+ * Truncates text to specified maximum length
+ * @param {string} text - Text to truncate
+ * @param {number} maxLength - Maximum length (default: 150)
+ * @returns {string} Truncated text with ellipsis if needed
+ */
+function truncateText(text, maxLength = 150) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + '...';
+}
+
+/**
+ * Applies truncation to all entity summaries after modal opens
+ */
+function truncateEntitySummaries() {
+    const summaries = document.querySelectorAll('.entity-summary');
+    summaries.forEach(summary => {
+        const originalText = summary.textContent;
+        summary.textContent = truncateText(originalText);
+    });
+}
+
+/**
+ * Opens the intelligence modal with specified tab
+ * @param {string} selectedTab - Tab to activate (default: 'overview')
+ */
+function openIntelModal(selectedTab = 'overview') {
+    const modal = document.getElementById('intelModal');
+    modal.classList.add('active');
+
+    // Clear all active states
+    document.querySelectorAll('#intelModal .tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('#intelModal .tab-content').forEach(content => content.classList.remove('active'));
+
+    // Set the selected tab as active
+    if (selectedTab === 'entities') {
+        const entitiesTab = document.querySelector('#intelModal .tab[onclick="switchTab(\'entities\')"]');
+        const entitiesContent = document.getElementById('entities-content');
+        if (entitiesTab && entitiesContent) {
+            entitiesTab.classList.add('active');
+            entitiesContent.classList.add('active');
+            // Truncate summaries when entities tab is opened
+            setTimeout(truncateEntitySummaries, 100);
+        }
+    } else {
+        // Default to overview tab
+        const overviewTab = document.querySelector('#intelModal .tab[onclick="switchTab(\'overview\')"]');
+        const overviewContent = document.getElementById('overview-content');
+        if (overviewTab && overviewContent) {
+            overviewTab.classList.add('active');
+            overviewContent.classList.add('active');
+        }
+    }
+}
+
+/**
+ * Closes the intelligence modal
+ */
+function closeIntelModal() {
+    const modal = document.getElementById('intelModal');
+    modal.classList.remove('active');
+}
+
+/**
+ * Switches active tab in intelligence modal
+ * @param {string} tabName - Name of the tab to activate
+ */
+function switchTab(tabName) {
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+    event.target.classList.add('active');
+    document.getElementById(tabName + '-content').classList.add('active');
+}
+
+// Close modal when clicking outside
+document.getElementById('intelModal').addEventListener('click', function (e) {
+    if (e.target === this) {
+        closeIntelModal();
+    }
+});
+
+/**
+ * Opens entity detail modal and defaults to About tab
+ * @param {string} modalId - ID of the modal to open
+ */
+function openEntityDetailModal(modalId) {
+    const modal = document.getElementById('entityDetailModal' + modalId);
+
+    // Reset all tabs to inactive state
+    const tabs = modal.querySelectorAll('.entity-tab');
+    const tabContents = modal.querySelectorAll('.entity-tab-content');
+
+    tabs.forEach(tab => tab.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+
+    // Always activate the "About" tab and its content
+    const aboutTab = modal.querySelector('.entity-tab[onclick*="about"]');
+    const aboutContent = modal.querySelector('#about-content' + modalId);
+
+    if (aboutTab) aboutTab.classList.add('active');
+    if (aboutContent) aboutContent.classList.add('active');
+
+    // Show the modal
+    modal.classList.add('active');
+}
+
+/**
+ * Closes entity detail modal
+ * @param {string} modalId - ID of the modal to close
+ */
+function closeEntityDetailModal(modalId) {
+    const modal = document.getElementById('entityDetailModal' + modalId);
+    modal.classList.remove('active');
+}
+
+/**
+ * Switches active tab in entity detail modal
+ * @param {string} modalId - ID of the modal
+ * @param {string} tabName - Name of the tab to activate
+ */
+function switchEntityTab(modalId, tabName) {
+    const modal = document.getElementById('entityDetailModal' + modalId);
+    modal.querySelectorAll('.entity-tab').forEach(tab => tab.classList.remove('active'));
+    modal.querySelectorAll('.entity-tab-content').forEach(content => content.classList.remove('active'));
+
+    event.target.classList.add('active');
+    document.getElementById(tabName + '-content' + modalId).classList.add('active');
+}
+
+/**
+ * Toggles live brief content expansion/collapse
+ */
+function toggleLiveBrief() {
+    const content = document.getElementById('liveBriefContent');
+    const btn = document.getElementById('showMoreBtn');
+
+    if (content.classList.contains('collapsed')) {
+        content.classList.remove('collapsed');
+        btn.textContent = 'Show less';
+    } else {
+        content.classList.add('collapsed');
+        btn.textContent = 'Show more';
+    }
+}
+
+/**
+ * Toggles metadata section visibility
+ * @param {string} sectionId - ID of the section to toggle
+ */
+function toggleMetadataSection(sectionId) {
+    const section = document.getElementById(sectionId);
+    const header = event.target.closest('.section-header');
+
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        header.classList.add('expanded');
+    } else {
+        section.style.display = 'none';
+        header.classList.remove('expanded');
+    }
+}
+
+/**
+ * Initialize all event listeners and UI components when DOM is loaded
+ */
+document.addEventListener('DOMContentLoaded', function () {
+    // Add click outside listeners for all entity modals
+    const entityModals = document.querySelectorAll('.entity-detail-modal');
+    entityModals.forEach(function (modal) {
+        modal.addEventListener('click', function (e) {
+            if (e.target === this) {
+                const modalId = this.id.replace('entityDetailModal', '');
+                closeEntityDetailModal(modalId);
+            }
+        });
+    });
+
+    // Initialize Live Brief show more/less functionality
+    const liveBriefContent = document.getElementById('liveBriefContent');
+    const showMoreBtn = document.getElementById('showMoreBtn');
+
+    if (liveBriefContent && showMoreBtn) {
+        const contentText = liveBriefContent.textContent || liveBriefContent.innerText;
+        if (contentText.length > 300) {
+            liveBriefContent.classList.add('collapsed');
+            showMoreBtn.style.display = 'inline-block';
+            showMoreBtn.textContent = 'Show more';
+        }
+    }
+
+    // Add hover effects to sortable headers
+    const sortableHeaders = document.querySelectorAll('.sortable-header');
+    sortableHeaders.forEach(header => {
+        header.addEventListener('mouseenter', function () {
+            this.style.backgroundColor = '#374151';
+        });
+        header.addEventListener('mouseleave', function () {
+            if (!this.classList.contains('sort-asc') && !this.classList.contains('sort-desc')) {
+                this.style.backgroundColor = '';
+            }
+        });
+    });
+});
+
+/**
+ * Toggles TTP (Tactics, Techniques, Procedures) section visibility
+ * @param {string} sectionId - ID of the TTP section to toggle
+ */
+function toggleTTPSection(sectionId) {
+    const content = document.getElementById('ttp-section-' + sectionId);
+    const icon = event.currentTarget.querySelector('.ttp-expand-icon');
+
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        icon.classList.add('expanded');
+    } else {
+        content.style.display = 'none';
+        icon.classList.remove('expanded');
+    }
+}
+
+// Vulnerability table sorting state
+window.vulnerabilityCurrentSort = window.vulnerabilityCurrentSort || {column: -1, direction: 'asc'};
+
+/**
+ * Sorts vulnerability table by specified column with animations
+ * @param {number} columnIndex - Index of column to sort by
+ * @param {string} dataType - Type of data ('number', 'severity', or 'text')
+ */
+ function sortVulnerabilityTable(columnIndex, dataType) {
+    const table = document.getElementById('vulnerabilityTable');
+    const tbody = document.getElementById('vulnerabilityTableBody');
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    // Add loading state
+    tbody.style.opacity = '0.6';
+    tbody.style.transition = 'opacity 0.2s ease';
+
+    // Immediately update the header visuals for better feedback
+    // Remove sort classes from all headers first
+    table.querySelectorAll('.sortable-header').forEach(header => {
+        header.classList.remove('sort-asc', 'sort-desc');
+    });
+
+    // Determine sort direction (do this before the setTimeout)
+    let direction = 'asc';
+    if (vulnerabilityCurrentSort.column === columnIndex) {
+        direction = vulnerabilityCurrentSort.direction === 'asc' ? 'desc' : 'asc';
+    }
+
+    // Update current sort state
+    window.vulnerabilityCurrentSort  = {column: columnIndex, direction: direction};
+
+    // Add sort class to current header immediately
+    const currentHeader = table.querySelectorAll('.sortable-header')[columnIndex];
+    currentHeader.classList.add(direction === 'asc' ? 'sort-asc' : 'sort-desc');
+
+    setTimeout(() => {
+        // Sort rows
+        rows.sort((a, b) => {
+            let aVal, bVal;
+
+            if (dataType === 'number') {
+                aVal = parseFloat(a.cells[columnIndex].getAttribute('data-sort-value')) || 0;
+                bVal = parseFloat(b.cells[columnIndex].getAttribute('data-sort-value')) || 0;
+            } else if (dataType === 'severity') {
+                aVal = parseInt(a.cells[columnIndex].getAttribute('data-sort-value')) || 0;
+                bVal = parseInt(b.cells[columnIndex].getAttribute('data-sort-value')) || 0;
+            } else {
+                aVal = a.cells[columnIndex].textContent.trim().toLowerCase();
+                bVal = b.cells[columnIndex].textContent.trim().toLowerCase();
+            }
+
+            if (dataType === 'number' || dataType === 'severity') {
+                return direction === 'asc' ? aVal - bVal : bVal - aVal;
+            } else {
+                if (aVal < bVal) return direction === 'asc' ? -1 : 1;
+                if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+                return 0;
+            }
+        });
+
+        // Re-append sorted rows
+        rows.forEach(row => tbody.appendChild(row));
+
+        // Remove loading state
+        tbody.style.opacity = '1';
+    }, 100);
+}
+    </script>
+  {% endblock %}

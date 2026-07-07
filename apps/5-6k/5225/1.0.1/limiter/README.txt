@@ -1,0 +1,1 @@
+Throttle the amount of indexed data. Set quotas for individual indexes. After reaching defined threshold, new events will be discarded until specified time span elapses. This is done by disabling specified index. An alias index is created that allows searching events in disabled index.

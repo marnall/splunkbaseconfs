@@ -1,0 +1,20 @@
+[<name>]
+help = 
+hostname = 
+limit_role = 
+projectid = 
+token = 
+user = 
+repo = 
+secret_name = 
+aws_accessid = 
+aws_secretkey = 
+iamrole = 
+region = 
+secretpath = 
+connect_host = 
+connect_token = 
+item_field = 
+item_title = 
+service_account_token = 
+vault = 

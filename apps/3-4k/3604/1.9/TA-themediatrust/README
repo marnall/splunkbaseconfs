@@ -1,0 +1,87 @@
+README file for The Media Trust Add-On for Splunk
+
+Author:  Kinney Group (info@kinneygroup.com)
+
+Publication Date: November 2017
+
+What Is This Add-On for:
+
+The Media Trust's malware attack data is collected from our 24/7/365 monitoring of the most popular internet sites and most active ad networks. It is verified accurate, enabling you to immediately block threats without further analysis and without disrupting user productivity. We recommend that indicators designated as Blacklist or Watchlist be immediately added to your firewall block lists.
+
+The primary use case and major benefit of The Media Trust's malware attack data is that it can be directly used to strengthen firewall rules and immediately block IP addresses provided in the feed, without the overhead of additional validation.  This Add-On enables access to The Media Trust's malware attack data, and includes sample Firewall rules that you can use to immediately block traffic. In addition, you can correlate our unique threat indicators against other data sources in your core Splunk environment, and directly integrate the malware attack data into your Enterprise Security Threat Feed (if available).
+
+Support: Email support available 24 hours by sending questions to datasupport@themediatrust.com
+
+Version Support: This app version is 1.8. Check for the latest version on SplunkBase.
+
+This app was tested on the following platforms:
+- Linux: CentOS Linux release 7.0.1406, Splunk: Splunk 6.4.1 and 6.6.1
+Windows: Windows Server 2012, Splunk: Splunk 6.6.1
+
+System Requirements:
+
+* In addition to having Splunk installed in a working configuration, and understanding that while we believe this app will perform well on almost any recent version of Splunk and OS, the version above are what we tested with, so we only know for sure it will work without obvious errors on those versions.
+
+1.  Install the requests module for python.
+
+2.  This Add-On is designed to ONLY be installed on the system where you want to use it, so that is either a Core SearchHead or an Enterprise Security SearchHead.
+
+3.  Third party librarys - splunklib version 1.0.0, used to enable making REST call using Splunk API's. 
+
+Installation:
+
+1.  Install The Media Trust Add-On for Splunk via normal methods.
+
+Configuration:
+
+1.  To access the threat feed, you'll have to enter a valid license key in the app setup screen.  To obtain a paid or trial license key from The Media Trust, please email data@themediatrust.com.
+
+2.  Fill out all of the setup screen options and save your choices.
+
+3.  Once configured the app will download the threat feed to the DA-ESS-ThreatIntelligence/local/data/threat_intel directory.
+
+4.  To get all of the dashboards to work, you need the following sets of tags setup:
+
+    a.  tag=network tag=communicate
+
+    b.  tag=change tag=endpoint
+
+Troubleshooting:
+
+
+1.  If you have an error during setup (or any normal operation), go to Troubleshooting, Threat Feed Log Review.  Here is a high level overview of each log file:
+
+	a.  threat_feed.log  - contains logging for setup and feed management.
+
+	b.  report_metrics.log - contains logging for the process that sends metrics to The Media Trust (if you selected that option during setup)
+
+	c.  LOG_FILE_NAME found in queries.conf (defaults to EventGen_MediaTrust.log) - log file to our custom eventgen setup
+
+2.  How do you know that the Threat Feed was downloaded successfully:  Go to Threat-Intel Overview and see whether there is data.  If you see data populated, the feed is being downloaded.  If you don't see data, it's not being downloaded.  Remember that it can take you waiting out the first download interval to start to see data.  So if you have it set to 60 minutes, you'll either have to wait out that interval or go to {$SPLUNK_HOME}/etc/apps/TA-themediatrust/local/inputs.conf and set the interval for the download_threatfeed.py script to something shorter - 600 - temporarily so the feed will be downloaded within 5 minutes.  If you change inputs.conf, don't forget to restart Splunk.
+
+If data is not being downloaded, check the threat_feed.log log file using instructions provided in #1.  But for a pro-tip, remember that The Media Trust has to have allowed access to your specific EXTERNAL ip address that is accessing the feed.  Contact The Media Trust via email to datasupport@themediatrust.com to resolve the issue.  You can use this command to test:
+
+	Test Command for The Media Trust whitelisting issues:  curl -post301 -L "https://www.themediatrust.com/api?key={license_key}&action=fjord_base"
+	* be sure to replace {license_key} with the actual license key provided by The Media Trust.
+	- success is a threat feed download in the file st301 in the same directory where you run the command.
+	- failure is an empty st301 file in the same directory where you run the command
+
+3.  If you aren't seeing anything on the bottom four panels Threat Artifacts + Activity and want to know if that's expected, open search and run the following searches:
+
+    a.  tag=network tag=communicate:  make sure all of the networking sources are reporting in appropriate against those tags.  If you are missing sources or events, fix your tags.  Those tags feed the second row of dashboards.
+
+    b.  tag=change tag=endpoint:  Make sure all of the endpoint changes are reporting in appropriately on that tag.  Those should include changes made to Firewall rules and proxy blocklists based on the threat feed.  Please remember the following:  The Media Trust's malware attack data is collected from our 24/7/365 monitoring of the most popular internet sites and most active ad networks. It is verified accurate, enabling you to immediately block threats without further analysis and without disrupting user productivity. We recommend that indicators designated as Blacklist or Watchlist be immediately added to your firewall block lists.
+
+Running the Add-On:
+
+     - After successful setup of the app, the app runs the following scripts at intervals to perform the described functions:
+
+	a.  download_threatfeed.py - checks to see that the license file is valid; updates the message of the day; download the MediaTrunt threat feed log and places it in the DSS-ThreatIntelligence apps local/data directory so it can be consumed by DSS-ThreatIntelligence and The Media Trust Add-On dashboards.
+
+	b.  report_metrics.py - reports the following metrics to The Media Trust (only for those who have enabled this option and in which case we thank you as it helps us understand how our data is working in your specific environment.)
+
+		- Counts of Threat Activity that matches The Media Trust malware attack data over the last 30 days - as rolled up by Summary Index.
+
+		- Counts of Endpoint Changes made in response to The Media Trust malware attack data over the last 30 days - as rolled up by Summary Index.
+
+      - You'll also see Mediatrust_python_handler.py in the bin directory.  This is used during setup to setup all of the configuration files correctly based on setup entries.

@@ -1,0 +1,98 @@
+#!/usr/bin/python
+from __future__ import print_function
+
+import sys
+from splunk.appserver.mrsparkle.lib.util import make_splunkhome_path
+def add_to_sys_path(paths, prepend=False):
+    for path in paths:
+        if prepend:
+            if path in sys.path:
+                sys.path.remove(path)
+            sys.path.insert(0, path)
+        elif not path in sys.path:
+            sys.path.append(path)
+
+def add_python_version_specific_paths():
+    '''
+        Adds extra paths for libraries specific to Python2 or Python3,
+        determined at a runtime
+    '''
+    # We should not rely on core enterprise packages:
+    if sys.version_info >= (3, 0):
+        add_to_sys_path([make_splunkhome_path(['etc', 'apps', 'SA-devforall', 'lib', 'py3'])], prepend=True)
+    else:
+        add_to_sys_path([make_splunkhome_path(['etc', 'apps', 'SA-devforall', 'lib', 'py2'])], prepend=True)
+    # Common libraries like future
+    add_to_sys_path([make_splunkhome_path(['etc', 'apps', 'SA-devforall', 'lib', 'py23'])], prepend=True)
+    from six.moves import reload_module
+    try:
+        if 'future' in sys.modules:
+            import future
+            reload_module(future)
+    except Exception:
+        '''noop: future was not loaded yet'''
+add_to_sys_path([make_splunkhome_path(['etc', 'apps', 'SA-devforall', 'lib', 'py23', 'splunklib'])], prepend=True)
+add_python_version_specific_paths()
+
+import json, csv, re, os
+import six.moves.urllib.request, six.moves.urllib.error, six.moves.urllib.parse
+import time
+import splunklib.results as results
+import splunklib.client as client
+
+# First we pull the some data from the incoming tokens. There are, I'm sure, better ways to do this... but this has worked for me for 4 years so let it roll!
+sessionKey = ""
+owner = "" 
+app = "" 
+for line in sys.stdin:
+  m = re.search("sessionKey:\s*(.*?)$", line)
+  if m:
+          sessionKey = m.group(1)
+  m = re.search("owner:\s*(.*?)$", line)
+  if m:
+          owner = m.group(1)
+  m = re.search("namespace:\s*(.*?)$", line)
+  if m:
+          app = m.group(1)
+
+
+# Now we detect the splunkd port, so we can define the base_url. 
+import splunk.entity, splunk.Intersplunk
+settings = dict()
+records = splunk.Intersplunk.readResults(settings = settings, has_header = True)
+entity = splunk.entity.getEntity('/server','settings', namespace=app, sessionKey=sessionKey, owner='-')
+mydict = dict()
+mydict = entity
+myPort = mydict['mgmtHostPort']
+base_url = "https://127.0.0.1:" + myPort
+
+
+#This is how we do a get request to the basic URI (less commonly used)
+# request = urllib2.Request(base_url + '/servicesNS/nobody/' + app + '/storage/collections/data/example_test',
+#     headers = { 'Authorization': ('Splunk %s' % sessionKey)})
+# search_results = urllib2.urlopen(request)
+
+# kvstore_output = json.loads(search_results.read())
+
+# print "_time,user,status,message"
+# for item in kvstore_output:
+#     print str(item['_time']) + "," + item['user'] + "," + item['status'] + "," + item['message']
+#End KVStore Example
+
+
+#This is how we run a normal Splunk search (more commonly used)
+service = client.Service(token=sessionKey, host="127.0.0.1", port=myPort, user=owner)
+kwargs_normalsearch = {"exec_mode": "normal", "app": app}
+searchquery_normal = '| makeresults | eval _time = now(), user="admin", status="success", message="This is just a single event so that we can show how we can run Splunk searches. Replace with a search of your choosing." '
+job = service.jobs.create(searchquery_normal, **kwargs_normalsearch)
+while True:
+    job.refresh()
+    if job["isDone"] == "1":
+        break
+    time.sleep(0.1)
+
+print("_time,user,status,message")
+for item in results.ResultsReader(job.results()):
+    print(str(item['_time']) + "," + item['user'] + "," + item['status'] + "," + item['message'])
+
+#End normal Splunk search

@@ -1,0 +1,227 @@
+[windows_auth]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+FIELDALIAS-windows_auth_User_Name_to_user = User_Name AS user
+
+[bluecoat_proxy]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[bro_conn]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[bro_ftp]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[bro_http]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[bro_smtp]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[bro_ssh]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[cisco_asa]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+[cisco_wsa]
+DATETIME_CONFIG = 
+INDEXED_EXTRACTIONS = csv
+KV_MODE = none
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Structured
+disabled = false
+pulldown_type = true
+
+###############################
+#  WINDOWS SYSMON PROPS - TA
+###############################
+
+[XmlWinEventLog:Microsoft-Windows-Sysmon/Operational]
+REPORT-sysmon = sysmon-eventid,sysmon-version,sysmon-level,sysmon-task,sysmon-opcode,sysmon-keywords,sysmon-created,sysmon-record,sysmon-correlation,sysmon-channel,sysmon-computer,sysmon-sid,sysmon-data,sysmon-host,win_host_assign
+EVAL-src_ip = SourceIp
+EVAL-src_host = SourceHostname
+EVAL-src = if(isnotnull(SourceHostname),SourceHostname,SourceIp)
+EVAL-src_port = SourcePort
+EVAL-action = "allowed"
+EVAL-app = Image
+EVAL-dest_ip = DestinationIp
+EVAL-dest_host = DestinationHostname
+EVAL-dest = case(EventCode=="3" AND isnotnull(DestinationHostname),DestinationHostname,EventCode=="3",DestinationIp,EventCode=="1",Computer)
+EVAL-dest_port = DestinationPort
+EVAL-direction = if(Initiated=="true","outbound","inbound")
+EVAL-dvc = Computer
+EVAL-transport = Protocol
+EVAL-protocol = if(Initiated=="true",DestinationPortName,SourcePortName)
+EVAL-session_id = ProcessGuid
+EVAL-user = User
+EVAL-process = Image
+EVAL-process_id = ProcessId
+EVAL-vendor_product = "Microsoft Sysmon"
+LOOKUP-eventcode = eventcode EventCode OUTPUTNEW EventDescription
+SHOULD_LINEMERGE = FALSE
+MAX_TIMESTAMP_LOOKAHEAD = 500
+
+[windows_sysmon]
+DATETIME_CONFIG = 
+MAX_TIMESTAMP_LOOKAHEAD = 500
+NO_BINARY_CHECK = true
+category = Custom
+disabled = false
+pulldown_type = true
+
+
+###############################
+#  BLUE COAT PROPS - TA
+###############################
+
+[bcoat_cacheflow]
+TRANSFORMS-main = nullPound
+REPORT-main = accessExtractions,category_extract
+SHOULD_LINEMERGE = false
+TIME_FORMAT = %Y-%m-%d %T
+MAX_TIMESTAMP_LOOKAHEAD = 19
+KV_MODE = none
+FIELDALIAS-srcip = c_ip AS src_ip
+FIELDALIAS-dest_host = cs_host AS dest_host
+
+[packetshaper_log]
+REPORT-flow = bc-flow,class_id
+
+[bcoat_proxy]
+TRANSFORMS-main = nullPound
+REPORT-main = delimExtractions
+REPORT-category = category_extract
+SHOULD_LINEMERGE = false
+TIME_FORMAT = %Y-%m-%d %T
+MAX_TIMESTAMP_LOOKAHEAD = 19
+KV_MODE = none
+
+[dns_named]
+DATETIME_CONFIG = 
+NO_BINARY_CHECK = true
+SHOULD_LINEMERGE = false
+category = Custom
+description = dns_named
+pulldown_type = true
+
+[source::....nix]
+sourcetype = linux_secure
+
+###### Linux Security ######
+[source::....linux_secure]
+sourcetype = linux_secure
+
+[linux_secure]
+## Event extractions by type
+REPORT-0authentication_for_linux_secure = ssh-login-events, ssh-session-close, ssh-disconnect, sshd_authentication_kerberos_success, sshd_authentication_refused, sshd_authentication_tried, sshd_login_restricted, pam_unix_authentication_success, pam_unix_authentication_failure, sudo_cannot_identify, ksu_authentication, ksu_authorization, su_simple, su_authentication, su_successful, wksh_authentication, login_authentication, ftpd_authentication
+EVAL-action = if(app="su" AND isnull(action),"success",action)
+REPORT-account_management_for_linux_secure = useradd, userdel
+REPORT-firewall = ipfw, ipfw-stealth, ipfw-icmp, pf
+REPORT-routing = iptables
+EVAL-signature = if(isnotnull(inbound_interface),"firewall",null())
+REPORT-signature_for_linux_secure_timesync = signature_for_nix_timesync
+
+#REPORT-dest_for_linux_secure = host_as_dest
+REPORT-pid-process_for_linux_secure = syslog-extractions
+REPORT-src_for_linux_secure = src_dns_as_src, src_ip_as_src, host_as_src
+
+EXTRACT-dest = ^\w+\s+\d+\s+\d+:\d+:\d+\s+(?P<dest>\w+)
+
+
+[oracle:audit:xml]
+SHOULD_LINEMERGE = False
+LINE_BREAKER = ([\r\n]+)<AuditRecord>
+TIME_PREFIX= <Extended_Timestamp>
+TIME_FORMAT = %Y-%m-%dT%H:%M:%S.%6N
+KV_MODE = None
+EXTRACT-DB_UNIQUE_NAME = [\\|/]admin[\\|/](?<DB_UNIQUE_NAME>.*)[\\|/]adump[\\|/] in source
+EVAL-app = "oracle"
+REPORT-AUDITTYPE_xml = AUDITTYPE_xml
+REPORT-SESSIONID_xml = SESSIONID_xml
+REPORT-STATEMENT_xml = STATEMENT_xml
+REPORT-ENTRYID_xml = ENTRYID_xml
+REPORT-USERID_xml = USERID_xml
+FIELDALIAS-userid = USERID AS DATABASE_USER
+FIELDALIAS-user = USERID AS user
+REPORT-CLIENT_USER_xml = CLIENT_USER_xml
+REPORT-OSUSERID_xml = OSUSERID_xml
+REPORT-USERHOST_xml = USERHOST_xml
+FIELDALIAS-dest = USERHOST AS dest
+REPORT-OSPROCESS_xml = OSPROCESS_xml
+REPORT-CLIENT_TERMINAL_xml = CLIENT_TERMINAL_xml
+REPORT-INSTANCE_xml = INSTANCE_xml
+REPORT-OBJCREATOR_xml = OBJCREATOR_xml
+REPORT-OBJNAME_xml = OBJNAME_xml
+REPORT-POLICYNAME_xml = POLICYNAME_xml
+REPORT-NEWOWNER_xml = NEWOWNER_xml
+REPORT-ACTION_xml = ACTION_xml
+REPORT-STMTTYPE_xml = STMTTYPE_xml
+REPORT-RETURNCODE_xml = RETURNCODE_xml
+REPORT-AUTHPRIVILEGE_xml = AUTHPRIVILEGE_xml
+REPORT-OSPRIVILEGE_xml = OSPRIVILEGE_xml
+REPORT-GRANTEE_xml = GRANTEE_xml
+REPORT-PRIVUSED_xml = PRIVUSED_xml
+REPORT-PRIVGRANTED_xml = PRIVGRANTED_xml
+REPORT-DBID_xml = DBID_xml
+REPORT-SQLTEXT_xml = SQLTEXT_xml
+REPORT-COMMENTTEXT_xml = COMMENTTEXT_xml
+REPORT-CLIENTIP_xml = CLIENTIP_xml
+FIELDALIAS-src = CLIENTIP AS src
+REPORT-CLIENTPORT_xml = CLIENTPORT_xml

@@ -1,0 +1,2 @@
+@placement search-head
+[<stack>]

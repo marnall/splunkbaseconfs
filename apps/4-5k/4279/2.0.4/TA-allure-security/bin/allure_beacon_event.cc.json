@@ -1,0 +1,107 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.allure_server",
+        "__settings__.additional_parameters.api_auth_token",
+        "beid"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{beid}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_beid"
+                    }
+                ]
+            },
+            "request": {
+                "url": "{{__settings__.additional_parameters.allure_server}}/api/v2/beaconevent/afterids?beaconEventIds={{beid}}",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "Bearer {{__settings__.additional_parameters.api_auth_token}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.[*].beaconEventId"
+                        ],
+                        "method": "json_path",
+                        "output": "beid"
+                    },
+                    {
+                        "input": [
+                            "{{beid != ''}}",
+                            "The value of token 'beid' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{beid == _raw_beid}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{beid}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_beid"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": []
+            },
+            "checkpoint": {
+                "content": {
+                    "beid": "{{_raw_beid}}"
+                }
+            }
+        }
+    ]
+}

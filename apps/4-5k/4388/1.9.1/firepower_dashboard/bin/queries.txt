@@ -1,0 +1,14 @@
+| islocal src_ip=10.10.10.10 dest_ip=10.1.1.1 }| table direction
+
+`FMC-index` (src_ip="*" OR dest_ip="*") AND blocked="*" AND num_ioc > 0  | table src_ip, dest_ip, blocked | join [rest /services/configs/conf-umbrella  | fields homenet ] | makemv delim="," homenet | mvexpand homenet | eval status = if(cidrmatch(homenet, src_ip), "MATCH", "NO MATCH")
+
+`FMC-index` (src_ip="*" OR dest_ip="*") AND blocked="*" AND num_ioc > 0  | table src_ip, dest_ip, blocked | join [rest /services/configs/conf-umbrella  | fields homenet ]  | outputlookup homenet.csv | lookup localip homenet as src_ip OUTPUT homenet as src_match  | lookup localip homenet as dest_ip OUTPUT homenet as dest_match
+
+ | rest /services/configs/conf-umbrella  | fields homenet | makemv delim="," homenet | mvexpand homenet | outputlookup homenet.csv
+
+
+| lookup localip homenet as src_ip OUTPUT homenet as src_homenet  | lookup localip homenet as dest_ip OUTPUT homenet as dest_homenet | eval trafficType =if((src_homenet!="NONE" AND dest_homenet!="NONE"), "inside to inside", if((src_homenet!="NONE" AND dest_homenet="NONE"), "inside to outside", if((src_homenet="NONE" AND dest_homenet="NONE"), "outside to outside", "outside to inside")))| where trafficType like "$trafficType_tok$" |
+
+  <search>
+    <query> | rest /services/configs/conf-umbrella  | fields homenet | makemv delim="," homenet | mvexpand homenet | eval homenet=replace (homenet, " ", "")  | outputlookup homenet.csv</query>
+  </search>

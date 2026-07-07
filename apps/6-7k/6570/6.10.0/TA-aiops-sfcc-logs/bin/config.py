@@ -1,0 +1,25 @@
+from re import compile, MULTILINE
+
+
+SECURE_HTTP_PROTOCOL = r"^https://"
+CONNECTION_READ_TIMEOUT = 55
+ACCESS_TOKEN_EXPIRATION_BUFFER_TIME = 30
+CREATED_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+CREATED_DATETIME_FORMAT_WITHOUT_SEMICOLONS = "%Y%m%dT%H%M%SZ"
+WEBDAV_CONNECTION_READ_TIMEOUT = 30
+DEFAULT_AUTH_URL = "https://account.demandware.com/dw/oauth2/access_token"
+REQUEST_PARAMETERS_W_STACKTRACE_PATTERN = compile(
+    r"Request Parameters\n([^$]+)\nStack trace <(\w+)>", MULTILINE
+)
+REQUEST_PARAMETERS_W_STACKTRACE_SUBSTITUTE = (
+    r"Request Parameters ARE REMOVED FOR SECURITY REASONS\nStack trace <\2>"
+)
+REQUEST_PARAMETERS_PATTERN = compile(r"Request Parameters\n([^$]+)", MULTILINE)
+REQUEST_PARAMETERS_SUBSTITUTE = r"Request Parameters ARE REMOVED FOR SECURITY REASONS"
+LOG_FILE_CREATED_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+MESSAGE_SEPARATOR_PATTERN = compile(
+    r"^(\[[0-9]{4}-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9].[0-9]{3} \S*\])",
+    MULTILINE,
+)
+FILE_STATE_KVSTORE_FORMAT = "{file_creation_date}:{byte_range_start}"
+SALESFORCE_OCAPI_ORDER_SEARCH_FETCH_LIMIT = 10_000

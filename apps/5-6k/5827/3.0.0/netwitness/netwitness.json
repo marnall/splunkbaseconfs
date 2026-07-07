@@ -1,0 +1,453 @@
+{
+    "appid": "cedf3b46-0aeb-4d08-8097-3019ad4c42c7",
+    "name": "NetWitness Logs and Packets",
+    "description": "This app supports investigative actions to collect log and packet captures from RSA NetWitness Logs and Packets",
+    "publisher": "Splunk Community",
+    "package_name": "phantom_netwitness",
+    "type": "investigative",
+    "license": "Copyright (c) 2017-2024 Splunk Inc.",
+    "main_module": "netwitness_connector.py",
+    "app_version": "3.0.0",
+    "utctime_updated": "2024-09-30T06:21:40.000000Z",
+    "product_vendor": "RSA",
+    "product_name": "NetWitness Logs and Packets",
+    "product_version_regex": ".*",
+    "python_version": "3",
+    "min_phantom_version": "6.2.2",
+    "fips_compliant": true,
+    "latest_tested_versions": [
+        "RSA NetWitness v11.7"
+    ],
+    "logo": "logo_rsa.svg",
+    "logo_dark": "logo_rsa_dark.svg",
+    "configuration": {
+        "url": {
+            "required": true,
+            "description": "URL",
+            "data_type": "string",
+            "order": 0
+        },
+        "verify_server_cert": {
+            "default": false,
+            "description": "Verify server certificate",
+            "data_type": "boolean",
+            "order": 1
+        },
+        "username": {
+            "required": true,
+            "description": "Username",
+            "data_type": "string",
+            "order": 2
+        },
+        "password": {
+            "required": true,
+            "description": "Password",
+            "data_type": "password",
+            "order": 3
+        }
+    },
+    "actions": [
+        {
+            "action": "test connectivity",
+            "description": "Validate the credentials provided for connectivity",
+            "type": "test",
+            "identifier": "test_asset_connectivity",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get pcap",
+            "description": "Download a packet capture file from Netwitness Logs and Packets and add it to the vault",
+            "verbose": "There are several ways to search NetWitness Logs and Packets to get capture files:<ul><li>By session ID, which can be done in three ways:<ul><li>Searching by a single session ID. The downloaded capture file would have the name <b>netwitness-&lt;id&gt;</b>.</li><li>Searching by a list of session IDs. In this case the <b>session_ids</b> parameter should be a comma separated list. The downloaded capture file would have the name <b>netwitness-&lt;id1_id2_id3...&gt;</b>. The session ID list will be cut off at 50 characters.</li><li>Searching by a range of session IDs. In this case the <b>session_ids</b> parameter would have the format <b>start_id-end_id</b>. The downloaded capture file would have the name <b>netwitness-&lt;start_id&gt;-&lt;end_id&gt;</b>. NOTE: Including spaces when specifying a range of sessions IDs will cause the action to fail.</li></ul></li><li>By query. The <b>query</b> parameter should be treated as the <b>where</b> clause of a database query using the meta keys configured on the NetWitness server. The downloaded capture file would have the name <b>netwitness-&lt;random_uuid&gt;</b>. Some example queries:<ul><li>ip.src=10.10.10.10</li><li>ip.dst=10.10.0.1 || ip.dst=10.10.0.2</li><li>ip.src=10.10.0.7 && ip.dst=10.10.0.8</li><li>ip.src exists</li></ul></li><li>By time frame, which requires both the <b>start_time</b> and <b>end_time</b> parameters be given. The downloaded capture file would have the name <b>netwitness-&lt;start_time&gt;_&lt;end_time&gt;</b>.</li></ul>NOTE: If <b>start_time</b> and <b>end_time</b> are included along with a <b>query</b>, then the time-frame will be appended to the end of the query. For example: if the query is ip.src=10.10.10.10, the start time is 2018-01-01 00:00:00, and the end time is 2018-01-01 23:59:59, then the final query would be ip.src=10.10.0.7 && time=&quot;2018-01-01 00:00:00&quot;-&quot;2018-01-01 23:59:59&quot;<br><br><b>file_name</b> is an optional parameter that, if specified, will result in the capture file being given that name. It will override the filenames mentioned above. The appropriate extension, <b>.pcap</b> (or <b>.json</b> for <b>get log</b>), will be appended to the file name if it is not already present.<br><br>If a query returns no data, the action will pass, but no file will be added to the vault. Queries to decoders that return large amounts of data, which take more than five minutes, can time out, in which case the action will fail.",
+            "type": "investigate",
+            "identifier": "get_pcap",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "parameters": {
+                "session_ids": {
+                    "description": "Session IDs in a list (72,637,1298...), as a range (0-9999), or singly (485)",
+                    "data_type": "string",
+                    "contains": [
+                        "netwitness session ids"
+                    ],
+                    "order": 0,
+                    "primary": true
+                },
+                "query": {
+                    "description": "A where query using configured meta keys",
+                    "data_type": "string",
+                    "order": 1
+                },
+                "start_time": {
+                    "description": "Start time in UTC (YYYY-MM-DD HH:MM:SS)",
+                    "data_type": "string",
+                    "order": 2
+                },
+                "end_time": {
+                    "description": "End time in UTC (YYYY-MM-DD HH:MM:SS)",
+                    "data_type": "string",
+                    "order": 3
+                },
+                "file_name": {
+                    "description": "File name to give the downloaded capture",
+                    "data_type": "string",
+                    "order": 4
+                }
+            },
+            "render": {
+                "width": 12,
+                "height": 5,
+                "type": "table",
+                "title": "Get Pcap"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.file_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.query",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.session_ids",
+                    "data_type": "string",
+                    "contains": [
+                        "netwitness session ids"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.file_name",
+                    "data_type": "string",
+                    "contains": [
+                        "file name"
+                    ],
+                    "column_name": "File Name",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data.*.size",
+                    "data_type": "numeric",
+                    "column_name": "File Size",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.data.*.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "column_name": "Vault ID",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.summary.file_availability",
+                    "data_type": "boolean",
+                    "example_values": [
+                        false,
+                        true
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "get log",
+            "description": "Download a log capture file from Netwitness Logs and Packets and add it to the vault",
+            "verbose": "See <b>get pcap</b> for further information on this action.",
+            "type": "investigate",
+            "identifier": "get_log_capture",
+            "read_only": true,
+            "versions": "EQ(*)",
+            "parameters": {
+                "session_ids": {
+                    "description": "Session IDs in a list (72,637,1298...), as a range (0-9999), or singly (485)",
+                    "data_type": "string",
+                    "contains": [
+                        "netwitness session ids"
+                    ],
+                    "order": 0,
+                    "primary": true
+                },
+                "query": {
+                    "description": "A where query using configured meta keys",
+                    "data_type": "string",
+                    "order": 1
+                },
+                "start_time": {
+                    "description": "Start time in UTC (YYYY-MM-DD HH:MM:SS)",
+                    "data_type": "string",
+                    "order": 2
+                },
+                "end_time": {
+                    "description": "End time in UTC (YYYY-MM-DD HH:MM:SS)",
+                    "data_type": "string",
+                    "order": 3
+                },
+                "file_name": {
+                    "description": "File name to give the downloaded capture",
+                    "data_type": "string",
+                    "order": 4
+                }
+            },
+            "render": {
+                "width": 12,
+                "height": 5,
+                "type": "table",
+                "title": "Get Log"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.file_name",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.query",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.parameter.session_ids",
+                    "data_type": "string",
+                    "contains": [
+                        "netwitness session ids"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.file_name",
+                    "data_type": "string",
+                    "contains": [
+                        "file name"
+                    ],
+                    "column_name": "File Name",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data.*.size",
+                    "data_type": "numeric",
+                    "column_name": "File Size",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.data.*.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "column_name": "Vault ID",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.summary.file_availability",
+                    "data_type": "boolean",
+                    "example_values": [
+                        false,
+                        true
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "upload file",
+            "description": "Upload a feed or parser file to a NetWitness Decoder",
+            "type": "generic",
+            "identifier": "upload_file",
+            "read_only": false,
+            "versions": "EQ(*)",
+            "parameters": {
+                "vault_id": {
+                    "description": "Vault ID of parser/feed to upload",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "primary": true,
+                    "required": true,
+                    "order": 0
+                }
+            },
+            "render": {
+                "width": 12,
+                "height": 5,
+                "type": "table",
+                "title": "Upload File"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ],
+                    "column_name": "Status",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.parameter.vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "column_name": "Vault ID",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ]
+        },
+        {
+            "action": "restart device",
+            "description": "Restart the configured device",
+            "type": "generic",
+            "identifier": "restart_device",
+            "read_only": false,
+            "parameters": {},
+            "render": {
+                "width": 12,
+                "height": 5,
+                "type": "table",
+                "title": "Restart Device"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ],
+                    "column_name": "Status",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.data",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "versions": "EQ(*)"
+        }
+    ]
+}

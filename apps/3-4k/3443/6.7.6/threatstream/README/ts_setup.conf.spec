@@ -1,0 +1,20 @@
+[<name>]
+es_integrated= <integer>
+summary_index_enabled= <integer>
+siem_integrator= <integer>
+optic= <integer
+url= <string>
+tm_poll_time= <integer>
+tm_retention_period= <integer>
+tm_max_body_size = <integer>
+force_sync= <integer>
+create_ts_index= <integer>
+custom_search_command_matching= <integer>
+log_level= <string>
+proxy_host= <string>
+proxy_port= <integer>
+on_prem_url = <string>
+dm_acceleration_enabled = <integer>
+snapshot_id = <integer>
+no_proxy = <string>
+use_proxy_env = <integer>

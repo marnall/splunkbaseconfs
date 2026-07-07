@@ -1,0 +1,1 @@
+Splunk Security App for SAP® solutions version 1.0.0

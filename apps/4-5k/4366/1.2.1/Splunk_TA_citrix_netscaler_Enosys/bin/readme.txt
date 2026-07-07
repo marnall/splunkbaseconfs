@@ -1,0 +1,1 @@
+## The Enosys Add-on for Citrix NetScaler works only when Citrix Netscaler syslog is forwarded to Splunk Enterprise or Splunk Cloud via Splunk Heavy Forwarder.

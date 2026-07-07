@@ -1,0 +1,56 @@
+Architecture of TA-recorded_future
+==================================
+
+ Overview
+ --------
+
+  The app regularly fetches a number of risk lists from Recorded
+  Future's API. These risk lists are processed and filtered in various
+  ways and then made available to Splunk's Threat Intelligence
+  framework (which is part of Splunk Enterprise Security).
+
+  The framework is then responsible for detecting notable events in
+  the event flow.
+
+  The app then looks at every notable event that the framework has
+  detected and enriches it with additional information where
+  possible.
+
+ Download and processing of risk lists
+ -------------------------------------
+
+  The download script will download current versions of the risk lists
+  unless the cached version is more recent than the configured
+  interval (currently 1 hour for ip and domain, 24 hours for hashes).
+
+  The downloaded risk lists are stored in the tmp directory.
+
+  Next, the most dangerous ranked entries for each list are selected
+  until each list reach the specified number of entries (see
+  README.txt on how to configure the max_entries).
+
+  Two versions of the list are generated with the selected entries,
+  one lookup file used to enrich notable events and one threat
+  intelligence file used by the Threat Intelligence Framework to
+  detect notable events. These are stored in the lookups and
+  local/data/threat_intelligence directories respectively.
+
+  The lookup file contains the full set of information while the
+  threat intelligence file is limited to a short description and the
+  relevant field (ip, domain or file_hash).
+
+ Correlation Searches
+ --------------------
+
+  Splunk ES runs a number of searches to detect notable events which
+  make use of data in the Threat Intelligence framework. Any detected
+  is stored in the notable index.
+
+  Recorded Future's app uses saved searches which are run a little
+  while after Splunk ES's searches to look for notable events which
+  can be enriched. If such an event is found, a new event is created
+  which contain all the original information and all additional
+  information.
+
+  Theses searches uses the lookup tables created by the download
+  script.

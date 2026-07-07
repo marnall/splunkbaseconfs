@@ -1,0 +1,737 @@
+#!/bin/bash 
+exec > /tmp/splunkconf-restore-debug.log  2>&1
+
+# in normal condition
+#!/bin/bash
+# only for really verbose debug
+#!/bin/bash -x
+# you may enable debug logging by setting debug variable in configuration file or via tag
+
+
+# Copyright 2022 Splunk Inc.
+# 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# 
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Contributor :
+#
+# Matthieu Araman, Splunk
+
+# This script restore kvdump at Splunk start if needed
+# This script also does a preventive log file rotation 
+
+# 201610 initial
+# 20170123 move to use ENVSPL, add kvstore backup
+# 20170123 small fixes, disabling etc selective backup by default as we do full etc
+# 20170131 force change dir to find envspl
+# 20170515 add host in filename
+# 20180528 add instance.cfg,licences, ... when not using a full version
+# 20180619 move to subdirectory backup and specific configuration file for parameters
+# 20180705 add scheduler state (DM accel state and scheduler suppression, to avoid breaking throttling (used by ES))
+# 20180816 change servername detection to call splunk command to avoid some false positives 
+# 20180906 add remote option 3 for scp
+# 20190129 add automatic version detection to use online kvstore backup
+# 20190212 move to splunk apps (lots of changes)
+# 20190404 add exclude for etc backup for case where temo files in apps dir
+# 20190401 add system local support
+# 20190926 add more state files
+# 20190927 prevent conflict between python version and commands like aws which need to use the system shipped python
+# 20190927 change storage class for backup to hopefully optimize costs
+# 20190929 use ec2-data when available so that we dont need to set in conf files the s3 bucket location
+# 20191001 add more exclusion to exclude files shipped with splunk from etc backup (to avoid overriding after upgrade)
+# 20191006 finalize online kvstore backup
+# 20191007 change kvdump name to be consistent with purging
+# 20191008 add minspaceavailable protection, improve logging and tune default
+# 20191010 more logging improvements
+# 20191018 correct exit codes to have ES checks happy, change version test to less depend on external command, change manageport detection that dont work on all env, reduce tar kvstore loop try as we have kvdump
+# 20200203 restore (kvdump) version
+# 20200413 small change to how we build file and path var to handle more cases + add checkpoint file to be used by splunkconf-aws-recovery script in order to prevent breaking during a huge kvdump restore, increase allowed time for big kvdump and/or slow env
+# 20200413 add timer at start to allow kvstore some time to finish initializing and to avoid trying a restore is splunk is just being restarted as part of a installation script (prevent race condition)
+# 20200414 add comments about possible error/solution when restore fail in some conditions
+# 20201105 add /bin to PATH as required for AWS1
+# 20220326 add preventive log file rotation and improve logging by moving part to debug
+# 20230913 add version variable, sync code for splunkconf-backup.conf detection
+# 20231204 small log change + add SPLUNK_HOME variable for lock file
+# 20231204 serialize to do full back after kvdump restore 
+# 20232120 more serialize at start with purge followed by init backup
+# 20231221 add support for controlling debug level via external config setting or tag
+# 20240212 fix typo in restore support for non kvdump (for autorestore)
+# 20240212 fix for kvdumpautorestore to exit as it will be done at splunk start
+# 20240213 typo fix
+# 20230213 arg fix
+# 20240213 replace timer with kvstore check logic in case we want to restore
+# 20240213 add remote to restore arg when called from remote for rsync usage and add link logic for kvdump
+# 20240213 fix sessionkey handling for case where init without backup being restored but we still need it to call backup at init time
+# 20240213 pass sessionkey as ENV instead of stdin
+# 20240213 add checks for ready status fpr kvstore initialization at start
+# 20230213 fix kvarchive regression and typo
+# 20240629 replace direct var inclusion with loading function logic
+# 20251201 add more info log for restore non kvdump
+# 20251201 rework version detection, update with the one from backup to change the logic to be consistent (help with v10)
+# 20251202 align load settings with backup version
+# 20251215 remove version check for kvdump, assuming always version at minimum 7.1
+# 20251215 add backup dir creation to avoid error and delay du to check disk space not working correctly
+# 20251215 add timeout for curl command to speed up backup for on prem with firewalls
+# 20251219 add failure log for backup in disk space situation at first start in order to fill dashboard from start with correct info
+# 20260105 update time logging format
+# 20260105 rework logging, rework case for disk space to really call splunkconf-backup to produce better error message
+# 20260506 add more info logging at end of restore
+# 20260510 add error handling for removing files and link
+
+VERSION="20260510a"
+
+###### BEGIN default parameters 
+# dont change here, use the configuration file to override them
+# note : this script wont backup any index data
+
+# get script dir
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cd $DIR
+# we are in bin
+cd ..
+# we are in the app dir
+#pwd
+
+# SPLUNK_HOME needs to be set
+# if this is a link, use the real path here
+#SPLUNK_HOME="/opt/splunk"
+#SPLUNK_HOME=`cd ../../..;pwd`
+SPLUNK_HOME=`cd ../../..;pwd`
+# note : we could get this from env now that we run via input
+
+# debug -> verify the env that splunk set (python version may affect aws command for example,...)
+#env
+# unsetting env to not depend on splunk python version 
+# this is because we may call aws command which is in python itself and can break du to this
+unset LD_LIBRARY_PATH
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+unset PYTHONHASHSEED
+unset NODE_PATH
+unset PYTHONPATH
+#env
+
+
+# set timeout to avoid very long timeout when calling curl to autodetect AWS (for on prem with firewalls droping it)
+CURLCONNECTTIMEOUT=10
+CURLMAXTIME=60
+
+# FIXME , get it automatically from splunk-launch.conf 
+SPLUNK_DB="${SPLUNK_HOME}/var/lib/splunk"
+
+# backup type selection 
+# 1 = targeted etc -> use a list of directories and files to backup
+# 2 = full etc   (bigger)
+# default to targeted etc
+BACKUPTYPE=1
+
+# LOCAL AND REMOTE BACKUP options
+
+# LOCAL options
+# NOT used this is enforced ! DOLOCALBACKUP=1
+# type : 1 = date versioned backup (preferred for local),2 = only one backup file with instance name in it (dangerous, we need other feature to do versioning like filesystem (btrfs) , classic backup on top, ...  3 = only one backup, no instance name in it (tehy are still sorted by instance directory, may be easier for automatic reuse by install scripts)
+LOCALTYPE=1
+# where to store local backups
+# depending on partitions
+# splunk user should be able to write to this directory
+LOCALBACKUPDIR="${SPLUNK_HOME}/var/backups"
+# Reserve enough space or backups will fail ! IMPORTANT
+# see below for check on min free space
+
+
+# KVSTORE Backup options
+# stop splunk for kvstore backup (that can be a bad idea if you have cluster and stop all instances at same time or whitout maintenance mode)
+# risk is that data could be corrupted if something is written to kvstore while we do the backup
+#RESTARTFORKVBACKUP=1
+# default path, change if you need, especially if you customized splunk_db
+KVDBPATH="${SPLUNK_DB}/kvstore"
+
+#minfreespace
+
+# 5000000 = 5G
+# should we try to restore in low disk confition -> if the value is too high, that is not ideal as we probably want to restore
+# in all case, the disk should be sized correctly initially for the restore to be sucesfull
+# note the kvdump format and the real space on disk are linked but not directly (for example a emppty kvdump will still create kvstore files)
+MINFREESPACE=2000000
+
+# logging
+# file will be indexed by local splunk instance
+# allowing dashboard and alerting as a consequence
+LOGFILE="${SPLUNK_HOME}/var/log/splunk/splunkconf-backup.log"
+
+
+###### END default parameters
+SCRIPTNAME="splunkconf-restore"
+
+
+###### function definition
+
+function echo_log_ext {
+  LANG=C
+  #NOW=(date "+%Y/%m/%d %H:%M:%S")
+  #NOW=(date)
+  NOW=$(/bin/date -u +"%d-%m-%Y %H:%M:%S.%3N %z")
+  echo "$NOW ${SCRIPTNAME} $1 " >> $LOGFILE
+}
+
+function debug_log {
+  # set DEBUG=1 in conf file or splunkbackupdebug=1 via tag to enable debugging
+  if [ -z ${splunkbackupdebug+x} ]; then
+    splunkbackupdebug=0
+  fi
+  if [ -z ${DEBUG+x} ]; then
+    DEBUG=0
+  fi
+  if [ "$DEBUG" == "1" ] || [ "$splunkbackupdebug" == "1" ] ; then
+    echo_log_ext  "DEBUG id=$ID $1"
+  fi
+}
+
+function echo_log {
+  echo_log_ext  "INFO id=$ID $1"
+}
+
+function warn_log {
+  echo_log_ext  "WARN id=$ID $1"
+}
+
+function fail_log {
+  echo_log_ext  "FAIL id=$ID $1"
+}
+
+function rotate_log {
+  if [ -e "${LOGFILE}.4" ]; then
+    rm ${LOGFILE}.4  || fail_log "could not remove old file ${LOGFILE}.4 , please check permissions"
+    debug_log "removing oldest log file ${LOGFILE}.4"
+  fi
+  for i in 3 2 1 
+  do
+    if [ -e "${LOGFILE}.$i" ]; then
+      let "j=i+1"
+      mv ${LOGFILE}.$i ${LOGFILE}.$j  || fail_log "could not rotate log file ${LOGFILE}.$i , please check permissions"
+      debug_log "rotating log file ${LOGFILE}.$i"
+    fi
+  done
+  if [ -e "${LOGFILE}" ]; then
+    echo_log "Splunk start : rotating file=${LOGFILE}"
+    j=1
+    mv ${LOGFILE} ${LOGFILE}.$j  || fail_log "could not rotate log file ${LOGFILE} , please check permissions"
+    echo_log "Starting new log file"
+  fi
+}
+
+
+function load_settings_from_file () {
+ FI=$1
+ if [ -e "$FI" ]; then
+   debug_log "loading settings for file $FI"
+   # to match empty line or comment line
+   regclass2="^(#|\[)"
+    # Read the file line by line, remove spaces then create a variable if start by splunk
+    while read -r line; do
+      if [[ "${line}" =~ $regclass2 ]]; then
+        debug_log "form: comment line or stanza line with line=$line"
+      elif [ -z "${line-unset}" ]; then
+        debug_log "form : empty line"
+      elif [[ $(echo "$line" | sed -nE 's/([a-zA-Z0-9_]+)\s*=\s*"?([a-zA-Z0-9_:\/\.\-\,]+)"?/\1 \2/p') ]]; then
+        # sed -E turn PCRE like syntax
+        read -r var_name var_value <<< "$(echo "$line" | sed -nE 's/([a-zA-Z0-9_]+)\s*=\s*"?([a-zA-Z0-9_:\/\.\-\,]+)"?/\1 \2/p')"
+        # sed may leave a trailing " (even if not supposed to....) doing a extra cleanup here
+        var_value2=$(echo "$var_value" | sed 's/"$//')
+        # Dynamically create the variable with its value
+        declare -g "$var_name=${var_value2}"
+        debug_log "OK:form ok, start with splunk setting $var_name=${var_value2}, var_name=${var_name}   var_value=${var_value} var_value2=${var_value2}."
+      else
+        debug_log "KO:invalid form line=$line"
+      fi
+    done < $FI
+   debug_log "end of loading settings for file $FI"
+  else
+    debug_log "file $FI is not present"
+  fi
+}
+
+# --- Usage Examples ---
+# removeifexist "testfile.txt"
+# removeifexist "/path/to/symlink"
+function removeifexist () {
+    local TARGET="$1"
+    local ERR_MSG
+    
+    # 1. Check if the target exists (as a file or a symbolic link)
+    # -e checks existence; -L checks for symbolic links (even broken ones)
+    if [ -e "$TARGET" ] || [ -L "$TARGET" ]; then
+        
+        # 2. Check for permissions on the parent directory
+        # Deleting a file requires write permission on the folder it is in
+        local PARENT_DIR
+        PARENT_DIR=$(dirname "$TARGET")
+
+        if [ ! -w "$PARENT_DIR" ]; then
+            fail_log "Permission Error: You do not have write access to the directory '$PARENT_DIR'. This will prevent removing ${TARGET}" 
+            return 1
+        fi
+
+        # 3. Attempt to remove and capture the error message
+        # 2>&1 redirects the system error message into the variable
+        ERR_MSG=$(rm "$TARGET" 2>&1)
+
+        # 4. Check if the rm command succeeded
+        if [ $? -eq 0 ]; then
+            debug_log "Success: '$TARGET' has been removed."
+        else
+            # 5. Report the captured system error
+            fail_log "Could not remove '$TARGET'  even with write permission on folderSystem Error: $ERR_MSG"
+            return 1
+        fi
+    else
+        # Do nothing if the file/link does not exist
+        return 0
+    fi
+}
+
+
+
+###### start
+
+# %u is day of week , we may use this for custom purge
+TODAY=`date '+%Y%m%d-%H%M_%u'`;
+ID=`date '+%s'`;
+
+# initialization
+ERROR=0
+ERROR_MESS=""
+
+
+
+debug_log "checking that we were not launched by root for security reasons"
+# check that we are not launched by root
+if [[ $EUID -eq 0 ]]; then
+   fail_log "Exiting ! This script must be run as splunk user, not root !" 
+   exit 1
+fi
+
+
+# include VARs
+APPDIR=`pwd`
+debug_log "app=splunkconf-restorebackup result=running SPLUNK_HOME=$SPLUNK_HOME splunkconfappdir=${APPDIR} loading splukconf-backup.conf file"
+if [[ -f "./default/splunkconf-backup.conf" ]]; then
+#  . ./default/splunkconf-backup.conf
+  load_settings_from_file ./default/splunkconf-backup.conf
+  debug_log "INFO: splunkconf-backup.conf default succesfully included"
+else
+  debug_log "INFO: splunkconf-backup.conf default  not found or not readable. Using defaults from script "
+fi
+
+if [[ -f "./local/splunkconf-backup.conf" ]]; then
+  #. ./local/splunkconf-backup.conf
+  load_settings_from_file ./local/splunkconf-backup.conf
+  debug_log "INFO: splunkconf-backup.conf local succesfully included"
+else
+  debug_log "INFO: splunkconf-backup.conf local not present, using only default"
+fi
+# take over over default and local
+if [[ -f "${SPLUNK_HOME}/system/local/splunkconf-backup.conf" ]]; then
+  load_settings_from_file ${SPLUNK_HOME}/system/local/splunkconf-backup.conf
+  #. ${SPLUNK_HOME}/system/local/splunkconf-backup.conf && (echo_log "INFO: splunkconf-backup.conf system local succesfully included") 
+else
+  debug_log "INFO: splunkconf-backup.conf in system/local not present, no need to include it"
+fi
+
+#debug_log "INFO: MYVAR=$MYVAR, MYTEST=$MYTEST"
+
+
+
+# ARGUMENT CHECK
+if [ $# -eq 2 ]; then
+  debug_log "Your command line contains $# argument"
+  MODE=$1
+  FILE=$2
+elif [ $# -gt 2 ]; then
+  warn_log "Your command line contains too many ($#) arguments. Ignoring the extra data"
+  MODE=$1
+  FILE=$2
+elif [ $# -eq 1 ]; then
+  debug_log "Your command line contains $# argument"
+  MODE=$1
+  FILE=""
+  if [ "${MODE}" = "kvdumprestore" ]; then
+    debug_log "OK: got one arg only but this is kvdumprestore situation from input at start"
+  else
+    fail_log "ATTENTION: invalid MODE=$MODE or missing second arg for file. Exiting, please correct arguments"
+    exit 1
+  fi
+else
+  debug_log "No arguments given, running with kvdump restore and assuming called via inputs (or it will block)"
+  MODE="kvdumprestore"
+fi
+
+# set root for restore here if not kvdump
+RESTOREPATH=$SPLUNK_HOME
+
+debug_log "$0 running with MODE=${MODE}"
+
+####### ATTENTION : we are in restore but we need the backupdir to exist or the checkspace will fail after and it will delay restore which is not what we want
+
+# creating dir
+
+# warning : if this fail because splunk can't create it, then root should create it and give it to splunk"
+# this is context dependant
+
+if [ ! -d "$LOCALBACKUPDIR" ]; then
+  echo_log "backup dir $LOCALBACKUPDIR doesnt exist yet, attempting to create it"
+  mkdir -p $LOCALBACKUPDIR
+
+  if [ ! -d "$LOCALBACKUPDIR" ]; then
+    fail_log "backupdir=${LOCALBACKUPDIR} type=local object=creation result=failure dir couldn't be created by script. Please check and fix permissions or create it and allow splunk to write into it";
+    ERROR=1
+    ERROR_MESSAGE="backupdircreateerror"
+    exit 1;
+  fi
+else
+  debug_log "OK: backup dir $LOCALBACKUPDIR already exist"
+fi
+
+if [ ! -w $LOCALBACKUPDIR ] ; then 
+  fail_log "backupdir=${LOCALBACKUPDIR} type=local object=write result=failure dir isn't writable by splunk !. Please check and fix permissions and allow splunk to write into it";
+  ERROR=1
+  ERROR_MESSAGE="backupdirmissingwritepermissionerror"
+  exit 1;
+fi
+
+case $MODE in
+  "etcremoterestore"|"stateremoterestore"|"scriptsremoterestore") 
+     # This is usually launched remotely by backup when in rsync mode in order to prepare the second host (for which Splunk status is currently down)
+     debug_log "argument valid, we are in autorestoremode with MODE=$MODE and FILE=$FILE"
+     if [ -e $FILE ]; then
+       echo_log "MODE=$MODE  file=$FILE, restoring with tar under ${RESTOREPATH}"
+       tar -C ${RESTOREPATH} -xf $FILE
+       exit 0
+     else
+       fail_log "MODE=$MODE  file=$FILE file is not present on filesystem, something wrong , impossible to restore it,please investigate"
+       exit 1
+     fi
+   ;;
+  "kvdumpremoterestore") 
+     # This is usually launched remotely by backup when in rsync mode in order to prepare the second host (for which Splunk status is currently down)
+     debug_log "argument valid , we are in kvdump restore mode launched remotely so we are going to alias backup so kvdump restore at start will use it"
+     KVARCHIVE="backupconfsplunk-kvdump-toberestored.tar.gz"
+     LFICKVDUMP="${SPLUNK_DB}/kvstorebackup/${KVARCHIVE}"
+     LFICKVDUMP2=${LFICKVDUMP}."processed"
+     removeifexist "${LFICKVDUMP2}"
+     removeifexist "${LFICKVDUMP}"
+     if [ -e $FILE ]; then
+       ln -s $FILE ${LFICKVDUMP} 
+       if [ $? -eq 0 ]; then
+         debug_log "created link ${LFICKVDUMP} pointing to $FILE so the kvdump will be used at next splunk start"
+         exit 0
+       else 
+         fail_log "error creating link with ln -s $FILE ${LFICKVDUMP} Please check permissions"
+         exit 1
+       fi
+    else
+       fail_log "MODE=$MODE  file=$FILE file is not present on filesystem, something wrong (did rsync worked ?)  , impossible to create link to make it restored at start,please investigate"
+       exit 1
+     fi
+     ;;
+  "kvdumprestore") 
+     debug_log "argument valid , we are in kvdump restore mode launched locally so we will continue on"
+     ;;
+  *) 
+    fail_log "argument $MODE is NOT a valid value, please fix"
+    exit 1
+    ;;
+esac
+
+# from here we are in kvdump restore mode called via input at start time
+# important : this need passauth correctly set or the script could block !
+read sessionkey
+
+###### LOCK   #######
+# we need to set lock asap so if other input start it will see the lock
+`touch ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+
+###### Rotate ########
+rotate_log;
+
+# disabled as now using a logic to check kvstore before doing restore
+#debug_log "sleeping one minute to prevent race condition at kvstore start"
+#sleep 60
+#debug_log "done sleeping, starting real restore"
+
+#if [ -z ${BACKUP+x} ]; then fail_log "BACKUP not defined in ENVSPL file. Not doing backup as requested!"; exit 0; else echo_log "BACKUP=${BACKUP}"; fi
+#if [ -z ${LOCALBACKUPDIR+x} ]; then echo_log "LOCALBACKUPDIR not defined in ENVSPLBACKUP file. CANT BACKUP !!!!"; exit 1; else echo_log "LOCALBACKUPDIR=${LOCALBACKUPDIR}"; fi
+if [ -z ${LOCALBACKUPDIR+x} ]; then echo_log "LOCALBACKUPDIR not defined !!!!"; exit 1; else debug_log "LOCALBACKUPDIR=${LOCALBACKUPDIR}"; fi
+
+if [ -z ${SPLUNK_HOME+x} ]; then 
+  fail_log "SPLUNK_HOME not defined. CANT BACKUP !!!!"; 
+  if [ -e "${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock" ]; then
+    `rm ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+    echo_log "cleaning up kvstore restore lock"
+  fi
+  exit 1
+else 
+  echo_log "SPLUNK_HOME=${SPLUNK_HOME}"
+fi
+if [ -z ${SPLUNK_DB+x} ]; then 
+  fail_log "SPLUNK_DB not defined. CANT BACKUP !!!!";
+  if [ -e "${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock" ]; then
+    `rm ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+    echo_log "cleaning up kvstore restore lock"
+  fi
+  exit 1
+else 
+  echo_log "SPLUNK_DB=${SPLUNK_DB}"
+fi
+
+
+
+
+echo_log "launching initial purgebackup (to maximize chance to have enough space for doing restore backups now)"
+$SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-purgebackup.sh 
+
+KVARCHIVE="backupconfsplunk-kvdump-toberestored.tar.gz"
+LFICKVDUMP="${SPLUNK_DB}/kvstorebackup/${KVARCHIVE}"
+
+CURRENTAVAIL=`df --output=avail -k  ${LOCALBACKUPDIR} | tail -1`
+
+TYPE="local"
+
+if [[ ${MINFREESPACE} -gt ${CURRENTAVAIL} ]]; then
+        OBJECT="kvdump"
+        ERROR_MESS="insufficientspaceleft"
+        debug_log "willing to restore $KVARCHIVE from $LFICKVDUMP with MGMTURL=$MGMTURL"
+        if [ -e "${LFICKVDUMP}" ]; then 
+          MESS1="minfreespace=${MINFREESPACE}, currentavailable=${CURRENTAVAIL} ERROR : Insufficient disk space left , disabling restore ! Please fix"
+          result="failure"
+        else
+          MESS1="minfreespace=${MINFREESPACE}, currentavailable=${CURRENTAVAIL} ERROR : Insufficient disk space left , but no kvdump to restore"
+          result="noop"
+        fi
+        fail_log "action=restorebackup type=${TYPE} object=${OBJECT} result=failure dest=$FIC reason=${ERROR_MESS} ${MESS1}"
+	#fail_log "minfreespace=${MINFREESPACE}, currentavailable=${CURRENTAVAIL} result=insufficientspaceleft ERROR : Insufficient disk space left , disabling restore ! Please fix "
+        # disbling direct logging better to call real backup script which will contain logic to correctly log failures 
+        #debug_log "creating failure logs so dashboard is filled with the correct info from the beginning and the admin understand there is not enough space"
+        #for OBJECT in etc state scripts kvdump do
+        #  for TYPE in local remote do
+	#    fail_log "action=backup type=$TYPE object=$OBJECT result=failure dest=disabled reason=localdiskspacecheck cant backup at Splunk start minfreespace=${MINFREESPACE}, currentavailable=${CURRENTAVAIL} "
+        #  done
+        #done
+        if [ -e "${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock" ]; then
+          `rm ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+          echo_log "cleaning up kvstore restore lock"
+        fi
+        echo_log "launching initial backup via $SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init , even if it will probably fail as it will log failures so dashboard are filled with correct error about insufficient disk space"
+        SESSIONKEY=$sessionkey
+        export SESSIONKEY
+        ##echo $sessionkey | $SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init 
+        # using ENV method as input doesnt work here and we dont want to pass it as a arg
+        $SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init 
+	exit 1
+else
+	echo_log "minfreespace=${MINFREESPACE}, currentavailable=${CURRENTAVAIL} result=success min free available check OK"
+fi
+
+
+HOST=`hostname`;
+
+#SERVERNAME=`grep guid ${SPLUNK_HOME}/etc/instance.cfg`;
+# warning may contain spaces, line with comments ...
+SERVERNAME=`grep ^serverName ${SPLUNK_HOME}/etc/system/local/server.conf  | awk '{print $3}'`
+# disabled : require logged in user...
+#SERVERNAME=`${SPLUNK_HOME}/bin/splunk show servername  | awk '{print $3}'`
+#splunk show servername
+ 
+if [ ${#INSTANCE} -ge 3 ]; then 
+  INSTANCE=$SERVERNAME
+  echo_log "using servername for instance, instance=${INSTANCE} src=servername"
+else 
+  INSTANCE=$HOST
+  echo_log "using host for instance, instance=${INSTANCE} src=host"
+fi
+# servername is more reliable in dynamic env like AWS 
+#INSTANCE=$SERVERNAME
+
+
+cd /
+
+FIC="disabled"
+#if [ -z ${BACKUPKV+x} ]; then echo_log "backuptype=kvstore result=disabled"; else
+# we do a tail to get the last line as sometimes there can be warning on first lines so the version is always last line
+version=`${SPLUNK_HOME}/bin/splunk version | tail -1 | cut -d ' ' -f 2`;
+if [[ $version =~ ^([^.]+\.[^.]+)\. ]]; then
+  ver=${BASH_REMATCH[1]}
+  vermajor=$(printf "%.0f" "$ver")
+  debug_log "splunkversion=$ver vermajor=$ver"
+else
+  fail_log "splunkversion : unable to parse string $version"
+  # in order to force kvdump when version detection fail as we are probably in a compatible version
+  vermajor=10
+fi
+# integer here
+minimalversion=7
+kvdump_done=0
+kvbackupmode=taronline
+MESSVER="currentversion=$ver, minimalversionover=${minimalversion}";
+btoolkvstore=`${SPLUNK_HOME}/bin/splunk btool server list kvstore | grep disabled`;
+if [[ $btoolkvstore =~ "true" ]] || [[ $btoolkvstore =~ "1" ]]; then
+  echo_log "action=restorebackup type=$TYPE object=${OBJECT} result=disabled reason=kvstoredisabledonsplunkbyconfig";
+elif [ -z ${BACKUPKV+x} ] || [ $BACKUPKV -eq 0 ]; then
+  # we echo here to have it appear in logs as it will allow to identify disabled versus missing case
+  echo_log "action=restorebackup type=$TYPE object=${OBJECT} result=disabled dest=$FIC reason=disabled ${MESS1}"
+elif [ $ERROR -ne 0 ]; then
+  fail_log "action=restorebackup type=$TYPE object=${OBJECT} result=failure dest=$FIC reason=${ERROR_MESS} ${MESS1}"
+  # bc not present on some os changing if (( $(echo "$ver >= $minimalversion" |bc -l) )); then
+  #if [[ $ver \> $minimalversion ]]  && [[ "$MODE" == "0"  || "$MODE" == "kvdump" || "$MODE" == "kvauto" ]]; then
+  #elif (( $vermajor > $minimalversion ))  && ([[ "$MODE" == "0" ]] || [[ "$MODE" == "kvdump" ]] || [[ "$MODE" == "kvauto" ]]  || [[ "$MODE" == "kvdumprestore" ]]); then
+  # we really need bc for floating but not always present. now assuming true ie splunk is at least 7.1 
+elif ([[ "$MODE" == "0" ]] || [[ "$MODE" == "kvdump" ]] || [[ "$MODE" == "kvauto" ]]  || [[ "$MODE" == "kvdumprestore" ]]); then
+  kvbackupmode=kvdump
+  #echo_log "splunk version 7.1+ detected : using online kvstore backup "
+  # get the management uri that match the current instance (we cant assume it is always 8089)
+  #disabled we dont want to log this for obvious security reasons debug: echo "session key is $sessionkey"
+  #MGMTURL=`${SPLUNK_HOME}/bin/splunk btool web list settings --debug | grep mgmtHostPort | grep -v \#| cut -d ' ' -f 4|tail -1`
+  MGMTURL=`${SPLUNK_HOME}/bin/splunk btool web list settings --debug | grep mgmtHostPort | grep -v \# | sed -r 's/.*=\s*([0-9\.:]+)/\1/' |tail -1`
+  debug_log "willing to restore $KVARCHIVE from $LFICKVDUMP with MGMTURL=$MGMTURL"
+  if [ -e "${LFICKVDUMP}" ]; then 
+      debug_log "willing to restore $KVARCHIVE from $LFICKVDUMP with MGMTURL=$MGMTURL file exist"
+      # ok we are sure we want to restore so let's check kvstore status now
+      COUNTER=49
+      RES=""
+
+      RESREADY=`curl --silent -k  --connect-timeout $CURLCONNECTTIMEOUT --max-time $CURLMAXTIME https://${MGMTURL}/services/kvstore/status  --header "Authorization: Splunk ${sessionkey}" | grep 'name="status"' | grep -i ready`
+      debug_log "PREKVDUMP kvstore status before launching backup RES=$RESi RESREADY=$RESREADY"
+      #debug_log "COUNTER=$COUNTER $MESSVER $MESS1 type=$TYPE object=${kvbackupmode} action=backup result=running "
+
+      #KVARCHIVE="backupconfsplunk-kvdump-${TODAY}"
+      MESS1="MGMTURL=${MGMTURL} KVARCHIVE=${KVARCHIVE}";
+      debug_log "pre backup : checking in case kvstore is not ready like initialization at start"
+      COUNTER=50
+      RES=""
+      RES2=""
+      # increase here if needed (ie take more time !)
+      # until either we do max try or combined result from kvstorebackup ready and status ready are ok
+      until [[ $COUNTER -lt 1 || -n "$RES2" ]]; do
+        RES=`curl --silent -k  --connect-timeout $CURLCONNECTTIMEOUT --max-time $CURLMAXTIME https://${MGMTURL}/services/kvstore/status  --header "Authorization: Splunk ${sessionkey}" | grep backupRestoreStatus | grep -i Ready`
+        RESREADY=`curl --silent -k  --connect-timeout $CURLCONNECTTIMEOUT --max-time $CURLMAXTIME https://${MGMTURL}/services/kvstore/status  --header "Authorization: Splunk ${sessionkey}" | grep 'name="status"' | grep -i ready`
+        if [[ -n "$RES" && -n "$RESREADY" ]]; then
+          RES2=$RES
+        else
+          RES2=""
+        fi
+        #echo_log "RES=$RES" 
+        debug_log "COUNTER=$COUNTER $MESSVER $MESS1 type=$TYPE object=${kvbackupmode} info=prerestore RES=$RES RESREADY=$RESREADY RES2=$RES"
+        let COUNTER-=1
+        sleep 30
+      done
+      #echo_log "RES=$RES"
+      if [[ -z "$RES" ]];  then
+        warn_log "action=restorebackup type=$TYPE COUNTER=$COUNTER $MESSVER $MESS1 object=$kvbackupmode result=failure ATTENTION : we didnt get ready status before trying to restore ! kvstore hasnt started in time or is not working at all"
+      else
+        echo_log "action=restorebackup type=$TYPE COUNTER=$COUNTER $MESSVER $MESS1 object=$kvbackupmode dest=${LFICKVDUMP} result=success kvstore status is ok before doing restore"
+      fi
+
+       # we are restoring as the backup file has been pushed there by the recovery script
+      MESS1="MGMTURL=${MGMTURL} KVARCHIVE=${KVARCHIVE}";
+      RES=`curl --silent -k  --connect-timeout $CURLCONNECTTIMEOUT --max-time $CURLMAXTIME https://${MGMTURL}/services/kvstore/backup/restore -X post --header "Authorization: Splunk ${sessionkey}" -d"archiveName=${KVARCHIVE}"`
+      echo_log "launching kvdump restore KVDUMP RESTORE RES=$RES"
+# if splunk cant find the file, it will outout sonething like that, which will be in the error message (but should not happen because -e check above) 
+# <?xml version="1.0" encoding="UTF-8"?>
+#<response>
+#  <messages>
+#    <msg type="ERROR">Specified Archive 'backupconfsplunk-kvdump-toberestored' not found in /opt/splunk/var/lib/splunk/kvstorebackup. Archives available:
+#backupconfsplunk-kvdump-toberestored.tar.gz
+#</msg>
+#  </messages>
+#</response> 
+
+
+# succesfull res look like
+#<!--This is to override browser formatting; see server.conf[httpServer] to disable. . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .-->
+#<?xml-stylesheet type="text/xml" href="/static/atom.xsl"?>
+#<feed xmlns="http://www.w3.org/2005/Atom" xmlns:s="http://dev.splunk.com/ns/rest" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/">
+#  <title>kvstorebackup</title>
+#  <id>https://127.0.0.1:8089/services/kvstore/backup</id>
+#  <updated>date here</updated>
+#  <generator build="86fd62efc3d7" version="7.3.5"/>
+#  <author>
+#    <name>Splunk</name>
+#  </author>
+#  <opensearch:totalResults>0</opensearch:totalResults>
+#  <opensearch:itemsPerPage>30</opensearch:itemsPerPage>
+#  <opensearch:startIndex>0</opensearch:startIndex>
+#  <s:messages/>
+#</feed> 
+
+      COUNTER=99
+      RES=""
+      # wait a bit (up to 20*10= 200s) for restore to complete, especially for big kvstore/busy env (io)
+      # increase here if needed (ie take more time !)
+      until [[  $COUNTER -lt 1 || -n "$RES"  ]]; do
+        RES=`curl --silent -k  --connect-timeout $CURLCONNECTTIMEOUT --max-time $CURLMAXTIME https://${MGMTURL}/services/kvstore/status  --header "Authorization: Splunk ${sessionkey}" | grep backupRestoreStatus | grep -i Ready`
+        #echo_log "RES=$RES"
+        echo_log "action=restorebackup type=$TYPE COUNTER=$COUNTER $MESSVER $MESS1 kvbackupmode=$kvbackupmode "
+        let COUNTER-=1
+        sleep 30
+      done
+      #echo_log "RES=$RES"
+      if [[ -z "$RES" ]];  then
+	warn_log "action=restorebackup type=$TYPE COUNTER=$COUNTER $MESSVER $MESS1 object=$kvbackupmode result=failure ATTENTION : we didnt get ready status ! Either restore kvstore (kvdump) has failed or takes too long"
+	kvdump_done="-1"
+# FIXME, add detection here 
+# kvstore may fail without having a error via the kvstore rest endpoint
+# in that case , error message in splunkd.log looks like :
+#04-13-2020 19:44:30.660 +0000 ERROR KVStorageProvider - An error occurred during the last operation ('saveBatchData', domain: '2', code: '4'): Failed to send "update" command with database "s_outputbAen4+myH4PImzzZrQ1P@SFE_mycollrNPu1fxvGhtmDefhPySrmi2r": Failed to read 4 bytes: socket error or timeout
+#04-13-2020 19:44:30.835 +0000 ERROR KVStoreAdminHandler - KVStore Restore encountered problem:  response='[ "{ \"ErrorMessage\" : \"Failed to send \\\"update\\\" command with database \\\"s_outputbAen4+myH4PImzzZrQ1P@SFE_mycollrNPu1fxvGhtmDefhPySrmi2r\\\": Failed to read 4 bytes: socket error or timeout\" }" ]'
+# current workaround (implentented via limits in splunkconf app is to increase some limits 
+# also please check for RN 
+# SPL-154925 (fixed long time ago)
+# SPL-173029 (hang at busy apply for large collection, fixed, available in 7.2.11, 7.3.6, 8.0.3 
+      else
+	kvdump_done="1"
+	LFICKVDUMP="${SPLUNK_DB}/kvstorebackup/${KVARCHIVE}"
+	echo_log "action=restorebackup type=$TYPE COUNTER=$COUNTER $MESSVER $MESS1 object=$kvbackupmode dest=${LFICKVDUMP} result=success kvstore online (kvdump) restore complete"
+      fi
+      echo_log "renaming local backup file to avoid restoring it again at next start"
+      LFICKVDUMP2=${LFICKVDUMP}."processed"
+      # backuprestore dir should be owned by splunk or the operation will fail and the restore op will occur at each start which you dont want !
+      `mv ${LFICKVDUMP} ${LFICKVDUMP2}` || fail_log "cant rename ${LFICKVDUMP} . Please correct asap and give write permission to splunk user on backuprestore dir at ${SPLUNK_DB}/kvstorebackup OR the restore operation will be repeated at next Splunk start, which you probably dont want !";
+  else
+      kvbackupmode=kvdump
+      debug_log "willing to restore $KVARCHIVE from $LFICKVDUMP with MGMTURL=$MGMTURL but file not present which is probably because we are not in a restore situation, which is fine"
+      echo_log "action=restorebackup type=$TYPE object=$kvbackupmode result=noop Splunk started but not in restore situation, Nothing to do, all fine";
+      #if [ -e "${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock" ]; then
+      #  `rm ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+      #  warn_log "ERROR: cleaning up stale kvstore restore lock! This is not expected, please investigate and check for issues that could have killed the restore in the middle !"
+      #fi
+  fi
+else
+    echo_log "action=restorebackup type=$TYPE object=kvdump result=failure reason=unsupportedversion splunk_version not yet 7.1, cant use online kvdump restore, nothing to do here, please restore outside this script"
+    kvbackupmode=taronline
+fi
+#fi
+
+if [ -e "${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock" ]; then
+  `rm ${SPLUNK_HOME}/var/run/splunkconf-kvrestore.lock`
+  echo_log "cleaning up kvstore restore lock"
+fi
+
+echo_log "launching initial purgebackup (to maximize chance to have enough space for doing backups now)"
+$SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-purgebackup.sh 
+echo_log "launching initial backup via $SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init"
+SESSIONKEY=$sessionkey
+export SESSIONKEY
+##echo $sessionkey | $SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init 
+# using ENV method as input doesnt work here and we dont want to pass it as a arg
+$SPLUNK_HOME/etc/apps/splunkconf-backup/bin/splunkconf-backup.sh init 
+
+echo_log "end of splunkconf_restore script"
+

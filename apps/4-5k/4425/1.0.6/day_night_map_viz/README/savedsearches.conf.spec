@@ -1,0 +1,15 @@
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.size = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.sizemultiplier = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.color = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.overlayDropOpacity = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.fontstyle = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.clockFormat = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.bgColorLeft = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.bgColorRight = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.landcoloring = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.landColorLeft = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.landColorRight = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.lightsColor = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.lightsOpacity = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.shadowOpacity = <string>
+display.visualizations.custom.day_night_map_viz.day_night_map_viz.sunOpacity = <string>

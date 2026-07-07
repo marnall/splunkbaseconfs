@@ -1,0 +1,338 @@
+import exec_anaconda
+exec_anaconda.exec_anaconda()
+import numpy as np
+import pandas as pd
+import sys, os, zipfile
+import logging
+import logging.handlers
+import requests, json, time, xlsxwriter, csv, argparse, smtplib, ssl
+from collections import OrderedDict
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email.utils import formatdate
+from email import encoders
+from os import path
+from pathlib import Path
+from smtplib import *
+import re
+from time import localtime,strftime
+from xml.dom import minidom
+import gzip
+import uuid
+from datetime import date
+from datetime import datetime
+import splunklib.client as client
+import splunklib.results as results
+import platform
+csv.field_size_limit(sys.maxsize)
+
+sys.path.append('/usr/local/lib/python3.6/site-packages')
+from splunkFunc import *
+
+smtpServer=""
+smtpPort=25
+smtpLogin=False
+isTls=False
+smtpUsername=""
+smtpPassword=""
+send_from='Splunk Notification <splunk-donotreply@dsta.gov.sg>'
+
+isMaxRow = False
+        
+def setup_logger(level):
+    logger = logging.getLogger("mergeReport_alert_logger")
+    logger.propagate = False
+    logger.setLevel(level)
+    file_handler = logging.handlers.RotatingFileHandler(os.environ['SPLUNK_HOME'] + '/var/log/splunk/mergeReport_alert.log', maxBytes = 2300000000000000000, backupCount = 5)
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    return logger
+
+logger = setup_logger(logging.INFO)
+
+# A Function to remove any columns starting with '__'
+def remove_columns(file_dir):
+    df = pd.read_csv(file_dir)
+    df = df.loc[:,~df.columns.str.contains('^__')]
+    df.to_csv(file_dir)
+
+# A Function to remove any columns starting with '_'
+def remove_info_columns(file_dir):
+    df = pd.read_csv(file_dir)
+    df = df.loc[:,~df.columns.str.contains('^info_')]
+    df.to_csv(file_dir)
+
+def remove_first_column(file_dir):
+    df = pd.read_csv(file_dir)
+    df = df.iloc[: , 1:]
+    df.to_csv(file_dir, index=False)
+
+# A Function to convert the csv to excel
+def add_csv_to_excel(wb, sheet_name, file_dir):
+        ws = wb.add_worksheet(sheet_name)
+        with open(file_dir, 'r') as f:
+            reader = csv.reader(f)
+            for r, row in enumerate(reader):
+                for c, val in enumerate(row):
+                    if r==0:
+                        cell_format = wb.add_format({'bold': True})
+                        ws.write_string(r, c, val, cell_format)
+                    else:
+                        ws.write(r, c, val)
+
+# A function to get all the sheet names from user's input
+def get_sheet_names(config):
+        originalSheetName = config.get('OriginalSearchSheetName')
+        firstAdditionalSearchSheetName = config.get('firstAdditionalSearchSheetName')
+        secondAdditionalSearchSheetName = config.get('secondAdditionalSearchSheetName')
+        thirdAdditionalSearchSheetName = config.get('thirdAdditionalSearchSheetName')
+        fourthAdditionalSearchSheetName = config.get('fourthAdditionalSearchSheetName')
+        fifthAdditionalSearchSheetName = config.get('fifthAdditionalSearchSheetName')
+        sixthAdditionalSearchSheetName = config.get('sixthAdditionalSearchSheetName')
+        seventhAdditionalSearchSheetName = config.get('seventhAdditionalSearchSheetName')
+        eighthAdditionalSearchSheetName = config.get('eighthAdditionalSearchSheetName')
+        ninethAdditionalSearchSheetName = config.get('ninethAdditionalSearchSheetName')
+        return (originalSheetName, firstAdditionalSearchSheetName, secondAdditionalSearchSheetName, thirdAdditionalSearchSheetName, 
+                fourthAdditionalSearchSheetName, fifthAdditionalSearchSheetName, sixthAdditionalSearchSheetName, seventhAdditionalSearchSheetName,
+                eighthAdditionalSearchSheetName, ninethAdditionalSearchSheetName)
+
+# A function to get all the search strings from the user's input
+def get_search_strings(config):
+        firstAdditionalResult = config.get('firstSearch')
+        secondAdditionalResult = config.get('secondSearch')
+        thirdAdditionalResult = config.get('thirdSearch')
+        fourthAdditionalResult = config.get('fourthSearch')
+        fifthAdditionalResult = config.get('fifthSearch')
+        sixthAdditionalResult = config.get('sixthSearch')
+        seventhAdditionalResult = config.get('seventhSearch')
+        eighthAdditionalResult = config.get('eighthSearch')
+        ninethAdditionalResult = config.get('ninethSearch')
+        return (firstAdditionalResult, secondAdditionalResult, thirdAdditionalResult, fourthAdditionalResult, fifthAdditionalResult,
+                sixthAdditionalResult, seventhAdditionalResult, eighthAdditionalResult, ninethAdditionalResult)
+
+# A function to check if the search string is blank
+def isNotBlank (myString):
+    return bool(myString and myString.strip())
+
+# A function to create a folder in splunk to store the files
+def makeDirectoryIfNotExists(dirname):
+    path=Path(dirname)
+    path.mkdir(parents=True, exist_ok=True)
+
+# A function to check the file name for saving
+def checkFilename(filename):
+    ext = ""
+    try:
+        ext = filename.rsplit('.', 1)[1]
+    except:
+        ext = ""
+    if ext:
+        if ext.lower() == "xlsx":
+            xlsxfilename = filename
+            zipfilename=filename.rsplit('.', 1)[0] + ".zip"
+        else:
+            xlsxfilename = filename.rsplit('.', 1)[0] + ".xlsx"
+            zipfilename=filename.rsplit('.', 1)[0] + ".zip"        
+        return xlsxfilename, zipfilename
+    else:
+        xlsxfilename = filename + ".xlsx"
+        zipfilename = filename + ".zip"
+        return xlsxfilename, zipfilename
+
+# A function to run the additional search strings using the existing session_key and generate the result to csv
+def search_string_to_csv(session_key, earliest, latest, search_string, output_file):
+    service = client.connect(token=session_key)
+    search_string = search_string.strip()
+    if (search_string[0] != "|"):
+        search_string = "search " + search_string
+    job = service.jobs.create(search_string, earliest_time=earliest, latest_time=latest)
+    # Wait for the job to complete
+    while not job.is_done():
+        time.sleep(0.2)
+    #logger.info(type(job))
+    resultCount = int(job["resultCount"])
+    logger.info("The RDS OS jobresult count is " + str(job['resultCount']))
+    offset = 0;                                # Start at result 0
+    count = 50000;                       # Get sets of count results at a time
+    while (offset < int(resultCount)):
+        #logger.info("The offset is " + str(offset))
+        kwargs_paginate = {"count": count, "offset": offset, "output_mode": "csv"}
+        # Get the search results and display them
+        if offset < 50000:
+            with open(output_file, 'wb') as out_f:
+                rs = job.results(**kwargs_paginate)
+                for result in rs:
+                    out_f.write(result)
+        else:
+            with open(output_file, 'ab') as out_f:
+                rs = job.results(**kwargs_paginate)
+                for result in rs:
+                    out_f.write(result)
+            df = pd.read_csv(output_file, skiprows=[offset+1])
+            df.to_csv(output_file, index = False)
+        offset += count
+        #logger.info("The offset is " + str(offset))
+    remove_columns(output_file)
+    remove_first_column(output_file)
+
+
+def csv_rows_count(file_dir):
+    global isMaxRow
+    file = open(file_dir)
+    reader = csv.reader(file)
+    lines= len(list(reader))
+    if lines>1000000:
+        isMaxRow = True
+    return lines
+
+def logger_record(sid, sheet_name, search_string, dirname):
+    logger.info(sid + sheet_name + ' is generated using the search string "' + 
+    search_string + '" and has generated ' + str(csv_rows_count(dirname + sheet_name + '.csv')) + ' rows of results')
+
+def main():
+
+    if len(sys.argv) > 1 and sys.argv[1] == "--execute":
+        payload = json.loads(sys.stdin.read())
+        #logger.info(payload)
+        search_name = payload.get('search_name')
+        session_key = payload.get('session_key')
+        sid = payload.get('sid')
+        sid = "Search Name=" + search_name + ", SID=" + sid + ", "
+        today=date.today().strftime("%Y%m%d")
+        dirname= os.environ['SPLUNK_HOME'] + '/var/run/splunk/mergeReport/savedsearch/'
+        dirname=dirname + search_name + "/" + today + "/" + str(uuid.uuid4()) + "/"
+        makeDirectoryIfNotExists(dirname)
+        xlsxfilename,zipfilename = checkFilename(search_name)
+
+
+        # Original Search on the splunk Search Bar
+        originalResult = payload.get('results_file')
+        with gzip.open(originalResult, mode='rt') as f:
+            logger.info(sid + originalResult)
+            df = pd.read_csv(f)
+            df = df.loc[:,~df.columns.str.contains('^__')]
+            earliest_time = df['info_min_time'].values[0]
+            print(earliest_time)
+            latest_time = df['info_max_time'].values[0]
+            print(latest_time)
+            df.to_csv(dirname + 'originalSearch.csv', index=False)
+
+        logger.info(sid + 'App excuted, generating searches...')    
+        logger.info(sid + 'Report generates result from ' + str(datetime.fromtimestamp(earliest_time)) + ' to ' + str(datetime.fromtimestamp(latest_time)))
+        config = payload.get('configuration')
+ 
+        emailtext = config.get('EmailBody')
+        to = config.get('To')
+        cc = config.get('cc')
+        if not cc:
+            cc=""
+
+        bcc = config.get('bcc')
+        if not bcc:
+            bcc=""
+
+        subject = config.get('Subject')
+        (originalSheetName, firstAdditionalSearchSheetName, secondAdditionalSearchSheetName, thirdAdditionalSearchSheetName, fourthAdditionalSearchSheetName,
+        fifthAdditionalSearchSheetName, sixthAdditionalSearchSheetName, seventhAdditionalSearchSheetName,
+        eighthAdditionalSearchSheetName, ninethAdditionalSearchSheetName) = get_sheet_names(config)
+        (firstAdditionalResult, secondAdditionalResult, thirdAdditionalResult, fourthAdditionalResult, fifthAdditionalResult,
+        sixthAdditionalResult, seventhAdditionalResult, eighthAdditionalResult, ninethAdditionalResult) = get_search_strings(config)
+
+        if isNotBlank(firstAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), firstAdditionalResult, dirname + firstAdditionalSearchSheetName + '.csv')
+            logger_record(sid, firstAdditionalSearchSheetName, firstAdditionalResult, dirname)
+        if isNotBlank(secondAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), secondAdditionalResult, dirname +secondAdditionalSearchSheetName + '.csv')
+            logger_record(sid, secondAdditionalSearchSheetName, secondAdditionalResult, dirname)
+        if isNotBlank(thirdAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), thirdAdditionalResult, dirname +thirdAdditionalSearchSheetName + '.csv')
+            logger_record(sid, thirdAdditionalSearchSheetName, thirdAdditionalResult, dirname)
+        if isNotBlank(fourthAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), fourthAdditionalResult, dirname +fourthAdditionalSearchSheetName + '.csv')
+            logger_record(sid, fourthAdditionalSearchSheetName, fourthAdditionalResult, dirname)
+        if isNotBlank(fifthAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), fifthAdditionalResult, dirname +fifthAdditionalSearchSheetName + '.csv')
+            logger_record(sid, fifthAdditionalSearchSheetName, fifthAdditionalResult, dirname)
+        if isNotBlank(sixthAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), sixthAdditionalResult, dirname +sixthAdditionalSearchSheetName + '.csv')
+            logger_record(sid, sixthAdditionalSearchSheetName, sixthAdditionalResult, dirname)
+        if isNotBlank(seventhAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), seventhAdditionalResult, dirname +seventhAdditionalSearchSheetName + '.csv')
+            logger_record(sid, seventhAdditionalSearchSheetName, seventhAdditionalResult, dirname)
+        if isNotBlank(eighthAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), eighthAdditionalResult, dirname +eighthAdditionalSearchSheetName + '.csv')
+            logger_record(sid, eighthAdditionalSearchSheetName, eighthAdditionalResult, dirname)
+        if isNotBlank(ninethAdditionalResult):
+            search_string_to_csv(session_key, str(earliest_time), str(latest_time), ninethAdditionalResult, dirname +ninethAdditionalSearchSheetName + '.csv')
+            logger_record(sid, ninethAdditionalSearchSheetName, ninethAdditionalResult, dirname)
+
+        remove_info_columns(dirname + 'originalSearch.csv')
+        remove_first_column(dirname + 'originalSearch.csv')
+        # Creating the Excel File, name stamped with the current date
+        xlsxname = xlsxfilename.rsplit(".")[0]
+        xlsxfilename = xlsxname + ' (' + str(datetime.fromtimestamp(earliest_time).date()) + ' to ' + str(datetime.fromtimestamp(latest_time).date()) + ').xlsx'
+        xlsxfilename,zipfilename = checkFilename(xlsxfilename)
+        subject = subject + ' ' + str(datetime.fromtimestamp(earliest_time).date()) + ' - ' + str(datetime.fromtimestamp(latest_time).date())
+        #wb = xlsxwriter.Workbook(dirname + xlsxname + ' (' + str(datetime.fromtimestamp(earliest_time).date()) + ' to ' + str(datetime.fromtimestamp(latest_time).date()) + ').xlsx')
+        wb = xlsxwriter.Workbook(dirname + xlsxfilename)
+        
+        add_csv_to_excel(wb, originalSheetName, dirname + 'originalSearch.csv')
+        if isNotBlank(firstAdditionalResult):
+            add_csv_to_excel(wb, firstAdditionalSearchSheetName, dirname + firstAdditionalSearchSheetName + '.csv')
+        if isNotBlank(secondAdditionalResult):
+            add_csv_to_excel(wb, secondAdditionalSearchSheetName, dirname +secondAdditionalSearchSheetName + '.csv')
+        if isNotBlank(thirdAdditionalResult):
+            add_csv_to_excel(wb, thirdAdditionalSearchSheetName, dirname +thirdAdditionalSearchSheetName + '.csv')
+        if isNotBlank(fourthAdditionalResult): 
+            add_csv_to_excel(wb, fourthAdditionalSearchSheetName, dirname +fourthAdditionalSearchSheetName + '.csv')
+        if isNotBlank(fifthAdditionalResult):
+            add_csv_to_excel(wb, fifthAdditionalSearchSheetName, dirname +fifthAdditionalSearchSheetName + '.csv')
+        if isNotBlank(sixthAdditionalResult):
+            add_csv_to_excel(wb, sixthAdditionalSearchSheetName, dirname +sixthAdditionalSearchSheetName + '.csv')
+        if isNotBlank(seventhAdditionalResult):
+            add_csv_to_excel(wb, seventhAdditionalSearchSheetName, dirname +seventhAdditionalSearchSheetName + '.csv')
+        if isNotBlank(eighthAdditionalResult):
+            add_csv_to_excel(wb, eighthAdditionalSearchSheetName, dirname +eighthAdditionalSearchSheetName + '.csv')
+        if isNotBlank(ninethAdditionalResult):
+            add_csv_to_excel(wb, ninethAdditionalSearchSheetName, dirname +ninethAdditionalSearchSheetName + '.csv')
+        wb.close()
+
+        xlsxFileSize = os.path.getsize(dirname + xlsxfilename)
+        logger.info(sid + "Action=Xlsx file created, Size=" + str(xlsxFileSize))
+
+        logger.info(sid + "Action=Checking more than 1million rows, Result=" + str(isMaxRow))
+
+        logger.info(sid + "Action=Creating zip file, Path=" + dirname + zipfilename)
+        zip_obj = zipfile.ZipFile(dirname + zipfilename,"w",compression=zipfile.ZIP_DEFLATED)
+        zip_obj.write(dirname + xlsxfilename, arcname=xlsxfilename)
+        zip_obj.close()
+
+        zipFileSize = os.path.getsize(dirname + zipfilename)
+        logger.info(sid + "Action=Zip file created, Size=" + str(zipFileSize))
+
+        #send_from = to.split(",")[0]
+        logger.info(sid + "Action=Sending email, SmtpServer=" + smtpServer + ", SmtpPort=" + str(smtpPort)) 
+
+        if isMaxRow:
+            emailtext=emailtext + "\r\n\r\nYour report has more than 1million rows and might be truncated.  Please split  up your report and re-send.  Thank you.\r\n\r\n"
+
+        if zipFileSize > 20000000:
+            emailtext=emailtext + "Your report attachment exceed the permitted file size of 20MB per email.  Please split up your report and re-send.  Thank you.\r\n\r\nSplunk server: " + platform.node() + "\r\nPath: " + dirname + zipfilename + "\r\nSize: " + str(zipFileSize) + " bytes"
+            sendEmailOk,sendEmailErr=sendEmail(send_from=send_from,send_to=to,send_cc=cc,send_bcc=bcc,subject="[ERROR] " + subject,attachmentFile="",emailText=emailtext,smtpPort=smtpPort,smtpServer=smtpServer,smtpLogin=smtpLogin,smtpUsername=smtpUsername,smtpPassword=smtpPassword,isTls=isTls)
+        else:
+            #emailtext="Report " + search_name + " is generated.\r\n\r\nSplunk server: " + platform.node() + "\r\nSize: " + str(zipFileSize) + " bytes"
+            sendEmailOk,sendEmailErr=sendEmail(send_from=send_from,send_to=to,send_cc=cc,send_bcc=bcc,subject=subject,attachmentFile=dirname + zipfilename,emailText=emailtext,smtpPort=smtpPort,smtpServer=smtpServer,smtpLogin=smtpLogin,smtpUsername=smtpUsername,smtpPassword=smtpPassword,isTls=isTls)
+
+        if sendEmailOk:
+            logger.info(sid + "Action=Email sent, From=" + send_from + ", To=" + to + ", CC=" + cc + ", BCC=" + bcc + ", Subject=" + subject)
+        else:
+            logger.error(sid + "Failed to send email")
+
+
+
+        logger.info(sid + 'App excution completed')
+if __name__=="__main__":
+    main()

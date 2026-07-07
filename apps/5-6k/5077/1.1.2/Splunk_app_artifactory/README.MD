@@ -1,0 +1,1 @@
+To run Artifactory App you need to sun settings page

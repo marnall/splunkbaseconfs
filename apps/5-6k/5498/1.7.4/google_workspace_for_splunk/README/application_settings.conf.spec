@@ -1,0 +1,2 @@
+[google_workspace_for_splunk]
+base_index = <string>

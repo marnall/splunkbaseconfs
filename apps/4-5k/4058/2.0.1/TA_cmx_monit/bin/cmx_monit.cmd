@@ -1,0 +1,1 @@
+@"%SPLUNK_HOME%"\bin\splunk cmd python "%~dp0\app\cmx_monit.py" %*

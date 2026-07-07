@@ -1,0 +1,88 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    }, 
+    "tokens": [
+        "__settings__.logging.loglevel", 
+        "__settings__.proxy.proxy_enabled", 
+        "__settings__.proxy.proxy_url", 
+        "__settings__.proxy.proxy_port", 
+        "__settings__.proxy.proxy_type", 
+        "__settings__.proxy.proxy_username", 
+        "__settings__.proxy.proxy_rdns", 
+        "__settings__.proxy.proxy_password", 
+        "eiplatform_api_credentials.username", 
+        "eiplatform_api_credentials.password", 
+        "eiplatform_api_url", 
+        "log_entries_per_interval"
+    ], 
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [], 
+                "pipeline": []
+            }, 
+            "request": {
+                "url": "{{eiplatform_api_url}}/eip-rest/logs/DownloadFileEIPLog?MaxLogs={{log_entries_per_interval}}", 
+                "method": "GET", 
+                "auth": {
+                    "type": "basic_auth", 
+                    "options": {
+                        "username": "{{eiplatform_api_credentials.username}}", 
+                        "password": "{{eiplatform_api_credentials.password}}"
+                    }
+                }, 
+                "headers": {}
+            }, 
+            "iteration_mode": {
+                "stop_conditions": [], 
+                "iteration_count": "1"
+            }, 
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$"
+                        ]
+                    }
+                ], 
+                "pipeline": [
+                    {
+                        "output": "__stdout__", 
+                        "method": "splunk_xml", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "", 
+                            "{{index}}", 
+                            "{{host}}", 
+                            "{{source}}", 
+                            "{{sourcetype}}"
+                        ]
+                    }, 
+                    {
+                        "method": "std_output", 
+                        "input": [
+                            "{{__stdout__}}"
+                        ]
+                    }
+                ]
+            }
+        }
+    ], 
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }, 
+        "proxy": {
+            "username": "{{__settings__.proxy.proxy_username}}", 
+            "port": "{{__settings__.proxy.proxy_port}}", 
+            "password": "{{__settings__.proxy.proxy_password}}", 
+            "host": "{{__settings__.proxy.proxy_url}}", 
+            "rdns": "{{__settings__.proxy.proxy_rdns}}", 
+            "enabled": "{{__settings__.proxy.proxy_enabled}}", 
+            "type": "{{__settings__.proxy.proxy_type}}"
+        }
+    }
+}

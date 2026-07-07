@@ -1,0 +1,36 @@
+The Time Macros app provides a set of globally shared eval based macros for doing time maths.
+
+# Supported Macros
+
+As of 1.2.1, these are included:
+
+* `tm_relative_time(epoch, relative)` wraps the `relative_time()` eval function to shift an epoch time by a relative time modifier.
+* `tm_strptime(timestr, format)` wraps the `strptime()` eval function to convert a formatted time string to an epoch.
+* `tm_strftime(epoch, format)` wraps the `strftime()` eval function to convert an epoch into a formatted time string.
+* `tm_trp2epoch(trp)` converts the output of a timerangepicker into an epoch.
+* `tm_relative_trp(trp, relative)` combines `tm_trp2epoch()` with `tm_relative_time()`, it converts a timerangepicker output into epoch and then shifts that by a relative time modifier. Combining two macro calls like you would combine function calls in eval is not a thing, that's why a whole new macro is needed.
+* `tm_business_hour_delta(start, end, output, resolution)` writes the seconds that passed between `start` and `end` in `resolution` minute steps into the `output` field, but stops the clock outside business hours.
+* `tm_business_hour_filter` defines what your business hours are, predefined as "Mon-Fri, 08:30 inclusive to 18:00 exclusive". Override locally with an mvfilter() expression as needed for your business hours.
+* `tm_strftime_in_tz(timefield, format, tz)` wraps the `strftime()` eval function together with timezone shifting. Example: Your user's TZ is set to Europe/Berlin and _time is 11:00:00, calling `tm_strftime_in_tz(_time, "%T", "Asia/Kolkata")` will return "14:30:00" while Berlin is on standard time and "13:30:00" while Berlin is on daylight savings time.
+
+# Known Issues
+
+* The macros use `time()` instead of `now()` for relative time calculations due to eval macro restrictions. In most scenarios relative time modifiers snapping to an hour, a day, etc. smooth over this difference. Keep it in mind if you manually override the value of `now`, such as when re-running old summary searches with fill_summary_index.py!
+* `tm_business_hour_filter` only works up to 10000 resolution-minute-steps, ie at the default 10-minute resolution it's good for 69 days (all hours, not just business hours). Consider 60-minute resolution if you need just over a year of working deltas, 1-minute-resolution if you need precision but don't care for deltas of a week or more. Excessively high resolution for long durations has a measurable command.eval impact if executed for many events.
+* `tm_strftime_in_tz` does not produce the destination TZ when %z or %Z are used in the format string.
+* `tm_strftime_in_tz` can be incorrect if called with values close to the switchover times between standard time and daylight savings time.
+
+# Usage Examples:
+
+Let's say your events contain an expiration_date field in epoch, and you want to find things that expired before August 1st 2020 in your user timezone:
+```index=foo sourcetype=bar expiration_date < `tm_strptime("2020-08-01", "%F")` | ...```
+This is converted to normalizedSearch/phase0 `expiration_date<1596232800.000000` (see Job Inspector), and will use a lispy-based filter powered off tsidx files if `expiration_date` is declared as an indexed field for massive speed benefits.
+
+If you used subsearches to do this calculation in the past, Time Macros is for you! Example by @jeffland:
+Old style: ```index=foo some_epoch_field >= [| makeresults | eval search = relative_time(now(), "-1h@h")]```
+Time Macro style: ```index=foo some_epoch_field >= `tm_trp2epoch("-1h@h")` ```
+Instead of launching a whole new search process to do one simple calculation, the eval-based macro will do the calculation during search expansion for virtually no added execution time.
+
+Author: Martin Müller, Consist Software Solutions GmbH
+License: CC-BY-SA 4.0
+

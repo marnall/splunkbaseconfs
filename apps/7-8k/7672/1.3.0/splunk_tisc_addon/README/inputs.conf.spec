@@ -1,0 +1,9 @@
+[splunk_tisc_addon://<name>]
+account = Account to use for this input.
+additional_attributes = Enter additional attributes from below list separated by a comma to include in the KV store.   Example: First Seen, Description, Language.     {Allowed Attributes: Additional Context, Attack Phases, Author, Comments, Created, Description, Expiration Time, Extensions, First Observed, First Seen, Historically Significant, ID, Is Defanged, Is False Positive, Language, Last Observed, Last Seen, No of Sources, Notes, Number, Security Type, Sources, Status, TISC Tags, TLP, Taxonomies, Updated, Usage Categories, Watch List.    Note that the following Mandatory attributes are already included in the base configuration : Confidence, Created Time, Days Till Expiry, Instance URL, Reputation, Source Reported Score, sys_id, Threat Level, Threat Score, Threat Severity, Type, Updated By, Updated Time, Value.}
+advanced = 
+days_till_expiry = The number of days after which the API data is deleted from the key value(KV) store. (Default: 30)
+filters = Filters for API call. Select JSON filters checkbox to add JSON format filters.   Example: reputation IN ("clean","suspicious","malicious") AND threat_score > 90 AND confidence > 90 AND type = "ip_v4_address".     {Allowed Tokens: threat_score, confidence, reputation, type, value. Allowed Integer Operators: =, !=, >, <, >=, <=. Allowed String Operators: =, !=, IN.}
+interval = Time in seconds. (Default: 120)
+json_filters = Enter JSON object for complex filters as shown in the example. (Default: {"boolean_operator":"AND","filters":[{"field_name":"reputation","operator":"IN","field_value":"clean,suspicious,malicious"},{"field_name":"threat_score","operator":">","field_value":"90"},{"field_name":"confidence","operator":">","field_value":"90"},{"field_name":"type","operator":"=","field_value":"ip_v4_address"}]})
+never_expire = 

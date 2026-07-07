@@ -1,0 +1,242 @@
+{% extends 'widgets/widget_template.html' %}
+{% load custom_template %}
+{% block custom_title_prop %}
+  {% if title_logo %}
+    style="background-size: auto 60%; background-position: 50%;
+    background-repeat: no-repeat; background-image: url('/app_resource/{{ title_logo }}');"
+  {% endif %}
+{% endblock %}
+{% block widget_content %}
+  <!-- File: reversinglabs_get_classification.html
+  Copyright (c) ReversingLabs, 2023-2025
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed under
+the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+either express or implied. See the License for the specific language governing permissions
+and limitations under the License.
+-->
+  <style>
+    .widget-container {
+        width: 1170px !important;
+        height: 600px;
+    }
+
+    .c-app-run-widget {
+        height: 680px;
+        width: 100%;
+        position: relative;
+    }
+
+    .rl-table {
+        line-break: auto;
+    }
+
+    .result-table {
+        margin-top: 50px !important;
+    }
+
+    .rl-table thead th {
+        text-align: center;
+        font-size: 1.4rem;
+    }
+
+    .rl-table td {
+        padding: 7px;
+    }
+
+    .rl-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    #rl-target {
+        padding-top: 0.5rem;
+        text-transform: initial;
+        font-size: 1.4rem;
+        font-weight: bold;
+        -moz-user-select: text;
+        -khtml-user-select: text;
+        -webkit-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+    }
+
+    .rl-table td:first-child {
+        color: #6c818b;
+        text-transform: uppercase;
+        font-weight: 500;
+        white-space: nowrap;
+        padding-left: 0.8rem;
+        padding-right: 2rem;
+        width: 11%;
+    }
+
+    .result-table thead tr th {
+        text-transform: none !important;
+    }
+    .charts {
+        display: flex;
+    }
+
+    .chartjs {
+        width: 99%;
+        height: 250px;
+        padding: 25px;
+    }
+  </style>
+  <script src="/app_resource/{{ summary.directory }}/chart-4-2-1.js"></script>
+  <div class="rl-content">
+    <div class="charts">
+      <div class="pad30 chartjs">
+        <canvas id="myChartBar-statistics"></canvas>
+      </div>
+    </div>
+    <table class="rl-table">
+      <thead>
+        <tr>
+          <th colspan="2">
+            ReversingLabs A1000 Retrieve YARA rule matches for
+            <div id="rl-target" class="main-grid">{{ param.ruleset_name }}</div>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#matches</td>
+          <td>{{ data.count }}</td>
+        </tr>
+        <tr>
+          <td>Next page</td>
+          <td>{{ data.next }}</td>
+        </tr>
+      </tbody>
+    </table>
+    <table class="rl-table result-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Filename</th>
+          <th>SHA1</th>
+          <th>Rule</th>
+          <th>Classification</th>
+          <th>Classification result</th>
+          <th>Risk score</th>
+          <th>File type</th>
+          <th>Cloud</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for match in data.results %}
+          <tr>
+            <td>{{ forloop.counter }}.</td>
+            <td>
+              <a href="javascript:;"
+                 onclick="context_menu(this, [{'contains': ['search query'], 'value': 'filename:{{ match.filename }}' }], 0, {{ container.id }}, null, false);">
+                {{ match.filename }}&nbsp;
+                <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+              </a>
+            </td>
+            <td>
+              <a href="javascript:;"
+                 onclick="context_menu(this, [{'contains': ['sha1'], 'value': '{{ match.sha1 }}' }], 0, {{ container.id }}, null, false);">
+                {{ match.sha1 }}&nbsp;
+                <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+              </a>
+            </td>
+            <td>{{ match.rule }}</td>
+            <td>
+              <a href="javascript:;"
+                 onclick="context_menu(this, [{'contains': ['search query'], 'value': 'classification:{{ match.classification }}' }], 0, {{ container.id }}, null, false);"
+                 style="color: {{ match.classification_color }}">
+                {{ match.classification }}&nbsp;
+                <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+              </a>
+            </td>
+            <td>{{ match.classification_result }}</td>
+            <td>
+              <a href="javascript:;"
+                 onclick="context_menu(this, [{'contains': ['search query'], 'value': 'riskscore:{{ match.riskscore }}' }], 0, {{ container.id }}, null, false);">
+                {{ match.riskscore }}&nbsp;
+                <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+              </a>
+            </td>
+            <td>
+              <a href="javascript:;"
+                 onclick="context_menu(this, [{'contains': ['search query'], 'value': 'filetype:{{ match.file_type }}' }], 0, {{ container.id }}, null, false);">
+                {{ match.file_type }}&nbsp;
+                <span class="fa fa-caret-down" style="font-size: smaller;"></span>
+              </a>
+            </td>
+            <td>{{ match.cloud }}</td>
+            <td>{{ match.created }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <script>
+    var endpoint = window.location.href;
+
+    // Statistics
+    var ReputationTotal = {{chart.classification.total}};
+    var ReputationKnown = {{chart.classification.known}};
+    var ReputationMalicious = {{chart.classification.malicious}};
+    var ReputationSuspicious = {{chart.classification.suspicious}};
+    var ReputationUnknown = {{chart.classification.unknown}};
+    var RepData = [ReputationTotal, ReputationKnown, ReputationMalicious, ReputationSuspicious, ReputationUnknown];
+    var titleStat = "Statistics"
+    var chartLabelsStat = ['Total', 'Known', 'Malicious', 'Suspicious', 'Unknown']
+
+    $.ajax({
+      method: "GET",
+      url: endpoint,
+      success: function(data) {
+        drawBarGraph(data, 'myChartBar-statistics', titleStat, RepData, chartLabelsStat);
+      },
+      error: function(error_data) {
+        console.log(error_data);
+      }
+    })
+
+    function drawBarGraph(data, id, title, stats, chartLabels) {
+      var labels = data.labels;
+      var chartLabel = data.chartLabel;
+      var ctx = document.getElementById(id).getContext('2d');
+      var myChart{{ forloop.counter }} = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: chartLabels,
+          datasets: [{
+            label: title,
+            data: stats,
+            borderColor: [
+              '#afc7d7',
+              '#83ffa0',
+              '#f6143f',
+              '#afc7d7',
+              '#ffde83'
+            ],
+            backgroundColor: [
+              '#afc7d7',
+              '#83ffa0',
+              '#f6143f',
+              '#afc7d7',
+              '#ffde83'
+            ],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          maintainAspectRatio: false,
+          responsive: true,
+          offset: false
+        }
+      });
+    }
+  </script>
+  >
+{% endblock %}

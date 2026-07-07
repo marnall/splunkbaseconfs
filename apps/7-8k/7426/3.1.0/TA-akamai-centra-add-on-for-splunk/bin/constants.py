@@ -1,0 +1,10 @@
+# encoding = utf-8
+DEFAULT_BACKTRACK_DAYS = 365
+DEFAULT_DAILY_CONNECTIONS_BACKTRACK_DAYS = 3
+CONNECTIONS = "connections"
+REPUTATION_LOG = "reputation-log"
+AGENTS = "agents"
+PREV_TIMESTAMP_C = "prev_timestamp_c"
+PREV_TIMESTAMP_R = "prev_timestamp_r"
+DC_STATES = "dc_states"
+VERIFY_REQUESTS = True 

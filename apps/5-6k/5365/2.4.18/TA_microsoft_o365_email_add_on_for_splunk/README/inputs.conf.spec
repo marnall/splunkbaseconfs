@@ -1,0 +1,46 @@
+[o365_email://<name>]
+audit_email_account = Please enter the audit email configured in the O365 mail flow rule
+folder = Select which folder you want to retrieve email from
+tenant = Please enter the Tenant ID from the Azure App registration process
+message_num = Tune this down if you are getting frequent timeouts or throttling from Microsoft Graph. Before lowering it, consider increasing the input interval to reduce API pressure.
+endpoint = 
+get_attachment_info = Gathers basic attachment info (name, type, size, hash, etc).
+file_hash_algorithm = Used for attachment and zip file hashing.
+get_s_mime_info = Collects S/MIME signature and signature validity if a message is signed.
+macro_analysis = Detects and analyses macros within Office document formats.
+read_zip_files = Attempts to read file names and file hashes from within zip files.  Requires Get Attachment Info to be selected.
+try_zip_password = Attempts to extract file info from password-protected zip files.  Requires Read Zip Files
+extract_body_iocs = Attempts to extract IOCs from email bodies. (URLs, domains, ipv4, ipv6, hashes, etc).
+analyze_link_mismatch = Flags HTML links where the displayed text looks like a trusted URL or domain but the actual destination points elsewhere.
+analyze_url_risk = Flags risky URLs such as shorteners, redirect-style links, IP-literal hosts, punycode domains, and credential-harvest patterns.
+analyze_html_risk = Flags HTML abuse indicators such as forms, hidden text, suspicious inline CSS, remote images, and tiny tracking images.
+analyze_attachment_risk = Flags risky attachment types, disguised double extensions, embedded messages, nested archives, extraction issues, and macro-bearing files.
+analyze_encoded_content = Detects large encoded blobs in message bodies and flags embedded payload patterns such as HTML, JavaScript, URLs, and zip-like content.
+decode_encoded_content = When encoded content is detected, stores a bounded decoded preview and payload classification. Leave disabled to detect only.
+encoded_content_max_blob_length = Maximum encoded blob size to inspect per blob. Larger values improve coverage but increase processing cost.
+encoded_content_max_decoded_preview_length = Maximum decoded preview characters to store for each detected encoded blob.
+encoded_content_max_blobs = Maximum number of encoded blobs to inspect per message body.
+analyze_message_risk = Calculates an overall message risk score and level from the phishing-analysis signals collected for the email.
+get_body = Retrieves the whole message body for emails and any emails that are attached.WARNING- POTENTIALLY LARGE INGEST IF ENABLED
+get_body_preview = Only retrieves the first 255 characters in the email body
+body_type = If you select Get Body or Get Body Preview select how you want the body contents ingested into Splunk
+get_message_path = Gathers all MTA hops the message traversed
+get_auth_results = Gathers authentication results headers
+get_arc_results = Gathers ARC-Seal, ARC-Message-Signature, and ARC-Authentication-Results headers.
+normalize_auth_results = Normalizes SPF, DKIM, DMARC, and ARC header results into analyst-friendly fields and summaries.
+get_spf_results = Gathers SPF results from the headers
+get_dkim_signature = Gathers DKIM signature results from the headers
+get_x_headers = Gathers all X-Headers from the headers
+get_internet_headers = Retrieves All Internet Headers
+get_tracking_pixel = Basic tracking pixel detection
+analyze_sender_impersonation = Flags sender, reply-to, and display-name mismatches commonly seen in phishing and BEC messages.
+debug_mode = Enables additional troubleshooting logs for this input. Use only when troubleshooting, since it can increase log volume.
+debug_sample_limit = When Debug Mode is enabled, limits verbose per-message diagnostics to the first N processed messages. Set to 0 for no limit.
+debug_message_id = When Debug Mode is enabled, restricts verbose per-message diagnostics to one specific Microsoft Graph message ID.
+global_account = 
+
+[o365_email_groups://<name>]
+tenant = 
+endpoint = Select your O365 tenant type
+debug_mode = Enables additional troubleshooting logs for this input. Use only when troubleshooting, since it can increase log volume.
+global_account =

@@ -1,0 +1,58 @@
+  <search>
+    <query>| rest /services/configs/conf-umbrella | fields fmc_ip | rename fmc_ip as managementIp</query>
+    <earliest>$time_tok.earliest$</earliest>
+    <latest>$time_tok.latest$</latest>
+    <done>
+      <eval token="fmcLink">$managementIp$</eval>
+      <eval token="tokTime">$job.earliestTime$</eval>
+      <eval token="tokEarliestTime">strftime(strptime($job.earliestTime$,"%Y/%m/%dT%H:%M:%S.%3N %p"),"%B %dth %y %I:%M %p")</eval>
+      <eval token="tokLatestTime">strftime(strptime($job.latestTime$,"%Y/%m/%dT%H:%M:%S.%3N %p"),"%B %dth %y %I:%M %p")</eval>
+    </done>
+    <finalized>
+      <condition match=" 'job.resultCount' != 0">
+        <set token="fmcLink">$result.managementIp$</set>
+      </condition>
+      <condition>
+        <set token="fmcLink">No FMC found</set>
+      </condition>
+    </finalized>
+  </search>
+  <search>
+    <query> | rest /services/configs/conf-umbrella  | fields homenet | makemv delim="," homenet | mvexpand homenet | outputlookup homenet.csv</query>
+  </search>
+
+  | eval Umbrella="view" | eval pcap="view"
+
+  event_id as "Event
+
+            <condition field="Dst">
+            <link target="_blank">https://$fmcLink$/network_map/view_host.cgi?ip=$row.Dst$</link>
+          </condition>
+          <condition field="Src">
+            <link target="_blank">https://$fmcLink$/network_map/view_host.cgi?ip=$row.Src$</link>
+          </condition>
+          <condition field="Umbrella">
+            <link target="_blank">
+              <![CDATA[/app/firepower_dashboard/umbrella_lookup?src_ip=$row.Src$&dest_ip=$row.Dst$&fmcLink=$fmcLink$&form.time_tok.latest=$latest$&hostname=$row.Hostname$&blocked_tok=$blocked_tok$&trafficType_tok=$trafficType_tok$]]>
+            </link>
+          </condition>
+          <condition field="PCAP">
+            <link target="_blank">
+              <![CDATA[/app/firepower_dashboard/search?q= `FMC-index` rec_type=2 event_id=$row.Event$ | table packet_type_desc, packet_sec, packet]]>
+            </link>
+          </condition>
+
+                  <drilldown>
+          <condition field="Time"></condition>
+          <condition field="Dst">
+            <link target="_blank">https://$fmcLink$/network_map/view_host.cgi?ip=$row.Dst$</link>
+          </condition>
+          <condition field="Src">
+            <link target="_blank">https://$fmcLink$/network_map/view_host.cgi?ip=$row.Src$</link>
+          </condition>
+          <condition field="Umbrella">
+            <link target="_blank">
+              <![CDATA[/app/firepower_dashboard/umbrella_lookup?src_ip=$row.Src$&dest_ip=$row.Dst$&fmcLink=$fmcLink$&form.time_tok.latest=$latest$&hostname=$row.Hostname$&blocked_tok=$blocked_tok$&trafficType_tok=$trafficType_tok$]]>
+            </link>
+          </condition>          
+        </drilldown>

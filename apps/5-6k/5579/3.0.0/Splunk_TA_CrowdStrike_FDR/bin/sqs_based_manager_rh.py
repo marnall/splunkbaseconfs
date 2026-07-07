@@ -1,0 +1,257 @@
+
+import import_declare_test
+
+from splunktaucclib.rest_handler.endpoint import (
+    field,
+    validator,
+    RestModel,
+    DataInputModel,
+)
+from splunktaucclib.rest_handler import admin_external, util
+from splunktaucclib.rest_handler.admin_external import AdminExternalHandler
+import logging
+
+util.remove_http_proxy_env_vars()
+
+
+special_fields = [
+    field.RestField(
+        'name',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=validator.Pattern(
+            regex=r"""^[0-9|a-z|A-Z][\w\-]*$""", 
+        )
+    )
+]
+
+fields = [
+    field.RestField(
+        'aws_collection',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=None
+    ), 
+    field.RestField(
+        'aws_sqs_url',
+        required=True,
+        encrypted=False,
+        default=None,
+        validator=None
+    ), 
+    field.RestField(
+        'aws_sqs_ignore_before',
+        required=False,
+        encrypted=False,
+        default='',
+        validator=validator.Pattern(
+            regex=r"""^\s*\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2]\d|3[0-1])\s+([0-1]\d|2[0-3]):([0-5]\d)\s*$""", 
+        )
+    ), 
+    field.RestField(
+        'aws_sqs_visibility_timeout',
+        required=True,
+        encrypted=False,
+        default='21600',
+        validator=None
+    ), 
+    field.RestField(
+        'cs_event_encoding',
+        required=True,
+        encrypted=False,
+        default='utf-8',
+        validator=None
+    ), 
+    field.RestField(
+        'cs_event_filter_name',
+        required=False,
+        encrypted=False,
+        default='Drop Heartbeats',
+        validator=None
+    ), 
+    field.RestField(
+        'cs_ithr_type',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=None
+    ), 
+    field.RestField(
+        'cs_device_field_filter_name',
+        required=False,
+        encrypted=False,
+        default='',
+        validator=None
+    ), 
+    field.RestField(
+        'index',
+        required=True,
+        encrypted=False,
+        default='default',
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_external_events',
+        required=False,
+        encrypted=False,
+        default=0,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_external_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_ztha_events',
+        required=False,
+        encrypted=False,
+        default=0,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_ztha_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_inventory_aidmaster',
+        required=False,
+        encrypted=False,
+        default=1,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_aidmaster_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_inventory_managedassets',
+        required=False,
+        encrypted=False,
+        default=1,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_managedassets_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_inventory_notmanaged',
+        required=False,
+        encrypted=False,
+        default=0,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_notmanaged_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_inventory_appinfo',
+        required=False,
+        encrypted=False,
+        default=1,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_appinfo_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'collect_inventory_userinfo',
+        required=False,
+        encrypted=False,
+        default=1,
+        validator=None
+    ), 
+    field.RestField(
+        'index_for_userinfo_events',
+        required=False,
+        encrypted=False,
+        default=None,
+        validator=validator.String(
+            max_len=80, 
+            min_len=1, 
+        )
+    ), 
+    field.RestField(
+        'checkpoint_type',
+        required=True,
+        encrypted=False,
+        default='sqs',
+        validator=None
+    ), 
+    field.RestField(
+        'interval',
+        required=True,
+        encrypted=False,
+        default=200,
+        validator=validator.Number(
+            max_val=3600, 
+            min_val=30, 
+        )
+    ), 
+
+    field.RestField(
+        'disabled',
+        required=False,
+        validator=None
+    )
+
+]
+model = RestModel(fields, name=None, special_fields=special_fields)
+
+
+
+endpoint = DataInputModel(
+    'sqs_based_manager',
+    model,
+)
+
+
+if __name__ == '__main__':
+    logging.getLogger().addHandler(logging.NullHandler())
+    admin_external.handle(
+        endpoint,
+        handler=AdminExternalHandler,
+    )

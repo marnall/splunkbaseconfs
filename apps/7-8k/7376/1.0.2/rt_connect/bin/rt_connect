@@ -1,0 +1,73 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+use JSON;
+use LWP::UserAgent;
+
+my $ua = LWP::UserAgent->new;
+
+my $arg = shift @ARGV;
+if( $arg ne '--execute') {
+    warn "FATAL Unsupported execution mode (expected --execute flag)\n";
+    exit 1;
+}
+
+my $in_json= join( '', <STDIN>);
+warn ".pl called. in: [$in_json]\n";
+
+my $in= decode_json( $in_json);
+my $settings= $in->{configuration};
+
+my $queue      = $settings->{queue} || 4; # 4 => Incident Reports
+my $base_url   = $settings->{base_url};
+my $auth_token = $settings->{auth_token};
+$base_url=~ s{/\s*$}{};
+
+warn "INFO Creating ticket in $queue\n";
+
+my $url = "$base_url/ticket";
+
+my $subject = $settings->{subject} || '';
+my $content = $settings->{content} || '';
+my $requestor = $settings->{requestor} || '';
+
+my $custom_fields={};
+
+if( $queue == 4) {
+    my %cf_name_to_id= ( 'How Reported' => 8, 'Reporter Type' => 9, 'IP' => 10);
+    foreach my $custom_field ( 'How Reported', 'Reporter Type', 'IP') {
+        # the setting is lower case with no spaces ('_' instead of spaces)
+        my $setting = 'rt_' . lc $custom_field;
+        $setting =~ s{ }{_}g;
+        my $cf_id = $cf_name_to_id{$custom_field};
+        $custom_fields->{$cf_id} = $settings->{$setting};
+        warn "INFO setting cf [$custom_field - $cf_id] to [$custom_fields->{$cf_id}] (from [$setting])\n";
+    }
+}
+
+my $content_limit = 500;
+if( length( $content) > $content_limit) {
+    warn "WARN Message is longer than limit of $content_limit characters and will be truncated\n";
+    $content = substr( $content, 0, $content_limit - 3) . '...';
+}
+
+my $data= { Queue => $queue, Subject => $subject, Content => $content, Requestor => $requestor, CustomFields => $custom_fields };
+my $body = encode_json( $data );
+
+my $request = HTTP::Request->new( POST => $url );
+$request->content_type( "application/json" );
+$request->authorization( "token $auth_token" );
+$request->content( $body );
+
+my $res = $ua->request( $request);
+
+if ($res->is_success) {
+    warn "INFO Ticket created\n";
+    exit 0 ;
+}
+else {
+    warn "FATAL Failed trying to create a ticket Error: " . $res->status_line . "\n";
+    die 2;
+}

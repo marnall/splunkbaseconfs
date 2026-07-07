@@ -1,0 +1,119 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "series_id",
+        "fred_chk"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "INFO"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{fred_chk}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_fred_chk"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://api.stlouisfed.org/fred/series/observations?api_key={{__settings__.additional_parameters.fred_api_key}}&series_id={{series_id}}&observation_start={{fred_chk}}&file_type=json",
+                "method": "GET",
+                "headers": {}
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.observations"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.observations[*].date"
+                        ],
+                        "method": "json_path",
+                        "output": "fred_chk"
+                    },
+                    {
+                        "input": [
+                            "{{fred_chk != ''}}",
+                            "The value of token 'fred_chk' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{fred_chk == _raw_fred_chk}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{fred_chk}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_fred_chk"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.observations"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.observations"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "fred_chk": "{{_raw_fred_chk}}"
+                }
+            }
+        }
+    ]
+}

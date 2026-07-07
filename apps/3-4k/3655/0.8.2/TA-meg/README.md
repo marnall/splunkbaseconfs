@@ -1,0 +1,38 @@
+# TA-meg
+TA-meg 0.8.1
+Mcafee Email Gateway Technology Adapter
+Supports all tested versions of Splunk (tested up to 6.6.1)
+This TA attempts to accept ALL mcafee email gateway fileformats
+
+This application is primarily supported via the following relevant links:
+https://answers.splunk.com/app/questions/3655.html
+https://github.com/AlaskaSSO/TA-meg
+https://splunkbase.splunk.com/app/3655/
+
+This application is under the following license:
+(CC BY-SA 3.0)
+see: https://creativecommons.org/licenses/by-sa/3.0/legalcode to view the license
+
+This is a Splunk Technology Adapter for Mcafee Email Gateway (referenced by meg in the rest of this document);  the nomenclature has changed in recent releases to be called a "splunk add-on".  This app uses the classic naming.
+
+TA-meg expects incoming data to be of sourcetype=meg.  Mcafee Emailgateway has the ability to push logs our in a large amount of formats.  TA-meg will attempt to support EVERY format provided by Mcafee Email Gateway.  As of version 0.0.1 it supports the "splunk log format", and then "CEF log format".  I strongly recommend the "splunk log format" as it is most tested.
+
+If you run an alternative or custom format send me a sample and I will support that in the next release (which will be accelerated).
+
+Because of the many formats supported the props and transforms are a little bit spaghetti and not 100% consistent.  I don't use all features of Mcafee Email Gateway, and as such not all fields are mapped as I cannot test them.
+
+Request: Please send me sample logs which I can test with!  Some redacted sample logs I have collected are in the samples directory.
+
+CHANGELOG: 
+Version 0.8.2
+Fixed CSV for AppInspect compatibility
+
+Version 0.8.1
+release under the CC BY-SA 3.0 license
+
+Version 0.8.0
+First public release
+
+Version 0.0.1
+Initial release
+

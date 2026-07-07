@@ -1,0 +1,2 @@
+###The Enosys Add-on for Check Point OPSEC LEA works only when Check Point logs are forwarded to Splunk Enterprise or Splunk Cloud via Splunk Heavy Forwarder with an installed Splunk Add-on for Check Point OPSEC LEA version 4.3.1.
+##This product should be installed on search heads and indexers.

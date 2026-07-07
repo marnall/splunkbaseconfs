@@ -1,0 +1,37 @@
+# Binary File Declaration
+The following binaries are written in C and required by multiple python modules used within this app:
+- bin/lib/py3_linux_x86_64/_cffi_backend.cpython-37m-x86_64-linux-gnu.so
+- bin/lib/py3_linux_x86_64/_libs_cffi_backend/libffi-806b1a9d.so.6.0.4
+- bin/lib/py3_linux_x86_64/cryptography/hazmat/bindings/_padding.abi3.so
+- bin/lib/py3_linux_x86_64/cryptography/hazmat/bindings/_constant_time.abi3.so
+- bin/lib/py3_linux_x86_64/cryptography/hazmat/bindings/_openssl.abi3.so
+- bin/lib/py3_linux_x86_64/bcrypt/_bcrypt.abi3.so
+- bin/lib/py3_linux_x86_64/nacl/_sodium.abi3.so
+- bin/lib/py3_win_amd64/_cffi_backend.cp37-win_amd64.pyd
+- bin/lib/py3_win_amd64/cryptography/hazmat/bindings/_padding.cp37-win_amd64.pyd
+- bin/lib/py3_win_amd64/cryptography/hazmat/bindings/_openssl.cp37-win_amd64.pyd
+- bin/lib/py3_win_amd64/cryptography/hazmat/bindings/_constant_time.cp37-win_amd64.pyd
+- bin/lib/py3_win_amd64/nacl/_sodium.cp37-win_amd64.pyd
+- lib/PIL/_imagingmath.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imagingmath.c
+- lib/PIL/_webp.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_webp.c
+- lib/PIL/_imagingtk.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imagingtk.c
+- lib/PIL/_imagingmorph.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imagingmorph.c
+- lib/PIL/_imagingft.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imagingft.c
+- lib/PIL/_imagingcms.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imagingcms.c
+- lib/PIL/_imaging.cpython-37m-x86_64-linux-gnu.so: https://github.com/python-pillow/Pillow/blob/main/src/_imaging.c
+- lib/Pillow.libs/libwebp-e2184a5a.so.7.1.6: https://github.com/webmproject/libwebp
+- lib/Pillow.libs/libjpeg-2caf4b68.so.62.3.0: https://github.com/libjpeg-turbo/libjpeg-turbo
+- lib/Pillow.libs/libbrotlidec-97e69943.so.1.0.9: https://github.com/google/brotli
+- lib/Pillow.libs/libwebpmux-66cd43f5.so.3.0.11: https://github.com/webmproject/libwebp
+- lib/Pillow.libs/libsharpyuv-0ce1224c.so.0.0.0: https://github.com/webmproject/libwebp
+- lib/Pillow.libs/liblzma-72f7b2a5.so.5.4.2: https://github.com/xz-mirror/xz
+- lib/Pillow.libs/libtiff-ac0c3d92.so.6.0.0: https://gitlab.com/libtiff/libtiff
+- lib/Pillow.libs/libfreetype-e831c4c2.so.6.19.0: https://gitlab.freedesktop.org/freetype/freetype
+- lib/Pillow.libs/libharfbuzz-a3d224ae.so.0.60710.0: https://github.com/harfbuzz/harfbuzz
+- lib/Pillow.libs/libXau-00ec42fe.so.6.0.0: https://gitlab.freedesktop.org/xorg/lib/libxau
+- lib/Pillow.libs/libwebpdemux-8172cb3a.so.2.0.12: https://github.com/webmproject/libwebp
+- lib/Pillow.libs/libbrotlicommon-cf2297e4.so.1.0.9: https://github.com/google/brotli
+- lib/Pillow.libs/liblcms2-faac3155.so.2.0.15: https://github.com/mm2/Little-CMS
+- lib/Pillow.libs/libopenjp2-fca9bf24.so.2.5.0: https://github.com/uclouvain/openjpeg
+- lib/Pillow.libs/libxcb-421a6fdb.so.1.1.0: https://gitlab.freedesktop.org/xorg/lib/libxcb
+- lib/Pillow.libs/libpng16-021811b1.so.16.39.0: https://github.com/glennrp/libpng

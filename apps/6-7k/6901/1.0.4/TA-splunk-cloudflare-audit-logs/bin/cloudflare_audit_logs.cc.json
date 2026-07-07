@@ -1,0 +1,82 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.proxy.proxy_enabled",
+        "__settings__.proxy.proxy_url",
+        "__settings__.proxy.proxy_port",
+        "__settings__.proxy.proxy_type",
+        "__settings__.proxy.proxy_username",
+        "__settings__.proxy.proxy_rdns",
+        "__settings__.proxy.proxy_password",
+        "account_identifier",
+        "bearer_token"
+    ],
+    "global_settings": {
+        "proxy": {
+            "enabled": "{{__settings__.proxy.proxy_enabled}}",
+            "host": "{{__settings__.proxy.proxy_url}}",
+            "port": "{{__settings__.proxy.proxy_port}}",
+            "username": "{{__settings__.proxy.proxy_username}}",
+            "password": "{{__settings__.proxy.proxy_password}}",
+            "rdns": "{{__settings__.proxy.proxy_rdns}}",
+            "type": "{{__settings__.proxy.proxy_type}}"
+        },
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": []
+            },
+            "request": {
+                "url": "https://api.cloudflare.com/client/v4/accounts/{{account_identifier}}/audit_logs\n",
+                "method": "GET",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer {{bearer_token}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "1",
+                "stop_conditions": []
+            }
+        }
+    ]
+}

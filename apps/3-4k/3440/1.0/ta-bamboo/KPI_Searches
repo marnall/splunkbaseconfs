@@ -1,0 +1,109 @@
+
+
+
+***************************	Useful fields && Notes ***********************
+
+
+plan.key = The plan without its latest build number.  eg. ITSI-ITGT.
+
+projectName = Just the main project name.  eg. ITSI, APPSC etc.
+
+number = latest build number. (This is what we care about in most KPI's.) eg.
+223
+
+The following two categories are useful in subdividing the results:
+
+1. Tests + Build or Only Build
+# Useful for separating out testless builds from the ones with tests.
+isTestlessBuild="false" or "true"
+
+
+2. Main branch OR feature branches
+# The main branch of a plan is "chain", and various feature branches would be
+# in "chain_branch". 
+
+plan.type = "chain" or "chain_branch"
+
+# Also, note: they have slightly different names.  plan.type = chain, name eg.
+# ITSI-ITGT plan.type = chain_type  eg. ITSI-ITGT255
+
+
+****************************************Useful Searches**********************
+
+Note: We can add isTestlessBuild = "false" / "true" to the searches.
+
+1. stdev of buildDuration:				
+
+    sourcetype="Bamboo Input" | stats stdev(buildDurationInSeconds) by
+    projectName sourcetype="Bamboo Input" | stats stdev(buildDurationInSeconds)
+    by plan.key.
+
+    No way to get LOC's for now unfortunately as we aren't getting that
+    information from bitbucket.
+
+2. avg duration: 
+
+
+
+
+3. Get the Mean success rate of all builds of the release plans:
+
+Q: Do you want to consider only the latest builds of each plan or combine them all?
+
+  index="bamboo" AND sourcetype="Bamboo Input" AND plan.type="chain" AND isTestlessBuild="true" earliest=1 AND latest=now
+| dedup buildResultKey | eval total_build=1, success = if(buildState == "Successful", 1, 0), successful_build_rate = round ((success/total_build)*100, 2)
+
+Only latest plans: 
+
+--> add | sort -number | dedup plan.key in the search.
+
+index="bamboo" AND sourcetype="Bamboo Input" AND plan.type="chain" AND isTestlessBuild="true" earliest=1 AND latest=now
+| dedup buildResultKey | sort -number | dedup plan.key  | eval total_build=1, success = if(buildState == "Successful", 1, 0), successful_build_rate = round ((success/total_build)*100, 2)
+
+
+
+#### This should perhaps be a KPI itself?
+4. The above one averaged over all the builds of each plan. Now, lets get just
+the latest build of each plan:
+
+index="bamboo" AND sourcetype="Bamboo Input" AND plan.type="chain" earliest=1 AND latest=now
+| dedup buildResultKey 
+| sort -number | dedup plan.key       
+| table projectName, plan.key, number
+
+The critical command is sort -number - which sorts it in reverse order by the build number.
+Next, with dedup plan.key we get rid of all the other builds in the plan except the latest
+one.
+
+Instead of the last table command we can plug in the eval total_build.... stuff from the
+previous search to get the successful percentage of only the latest builds in each
+release plan.
+
+****************************** KPI's******************************
+
+*copy from Services* *Add the zipped Services file by exporting?*
+
+
+generic search =>
+
+# Note: In Searches involving seconds, we just / 3600 to convert to hours, or
+# /60 to convert it to minutes.
+
+
+Building:
+
+MeanTimeToBuildRecovery - MTTBR:
+
+index="bamboo" AND sourcetype="Bamboo Input" AND plan.type = "chain" earliest=1
+AND latest=now | eval recover_hours = round((meanTimeToRecover/3600),1)
+
+field = recover_hours
+
+MTTB - Mean Time To Build:
+
+
+field = avg_hours
+
+
+
+

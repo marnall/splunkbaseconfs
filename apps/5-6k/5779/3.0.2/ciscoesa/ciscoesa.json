@@ -1,0 +1,2191 @@
+{
+    "appid": "7bf76da9-f31c-448b-906b-7c6de9d3cc70",
+    "name": "Cisco ESA",
+    "description": "This app supports investigation on the Cisco Email Security Appliance (ESA) device",
+    "publisher": "Splunk",
+    "package_name": "phantom_ciscoesa",
+    "license": "Copyright (c) 2017-2025 Splunk Inc.",
+    "main_module": "ciscoesa_connector.py",
+    "type": "investigative",
+    "app_version": "3.0.2",
+    "utctime_updated": "2025-09-05T16:08:44.583089Z",
+    "product_vendor": "Cisco",
+    "product_name": "Cisco ESA",
+    "product_version_regex": ".*",
+    "min_phantom_version": "5.4.0",
+    "logo": "logo_cisco.svg",
+    "logo_dark": "logo_cisco_dark.svg",
+    "latest_tested_versions": [
+        "Cisco Secure Email Gateway Virtual C100V Version: 14.2.0-620"
+    ],
+    "python_version": "3.9, 3.13",
+    "fips_compliant": true,
+    "configuration": {
+        "url": {
+            "required": true,
+            "description": "URL (e.g. https://10.10.10.10:6443)",
+            "data_type": "string",
+            "order": 0
+        },
+        "verify_server_cert": {
+            "default": false,
+            "description": "Verify server certificate",
+            "data_type": "boolean",
+            "order": 1
+        },
+        "username": {
+            "required": true,
+            "description": "Username",
+            "data_type": "string",
+            "order": 2
+        },
+        "password": {
+            "required": true,
+            "description": "Password",
+            "data_type": "password",
+            "order": 3
+        },
+        "ssh_username": {
+            "description": "SSH Username (Used for dictionary related actions)",
+            "data_type": "string",
+            "order": 4
+        },
+        "ssh_password": {
+            "description": "SSH Password (Used for dictionary related actions)",
+            "data_type": "password",
+            "order": 5
+        }
+    },
+    "actions": [
+        {
+            "action": "test connectivity",
+            "description": "Validate credentials provided for connectivity",
+            "type": "test",
+            "identifier": "test_asset_connectivity",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "decode url",
+            "description": "Process Cisco encoded URL",
+            "verbose": "Parse and decode URL from \"secure-web.cisco.com\" to get the redirected URL.<ul><li>It will accept the entire URL:<p><code>http://secure-web.cisco.com/{random_chars}/https%3A%2F%2Fmy.phantom.us%2F4.1%2Fdocs%2Fapp_reference%2Fphantom_ciscoesa</code></li><li>Everything except the protocol:<p><code>secure-web.cisco.com/{random_chars}/https%3A%2F%2Fmy.phantom.us%2F4.1%2Fdocs%2Fapp_reference%2Fphantom_ciscoesa</code></li><li>Or just the quoted section:<p><code>https%3A%2F%2Fmy.phantom.us%2F4.1%2Fdocs%2Fapp_reference%2Fphantom_ciscoesa</code></li></ul>",
+            "type": "investigate",
+            "identifier": "decode_url",
+            "read_only": true,
+            "parameters": {
+                "encoded_url": {
+                    "description": "Encoded URL to process",
+                    "data_type": "string",
+                    "required": true,
+                    "contains": [
+                        "url",
+                        "encoded url"
+                    ],
+                    "order": 0,
+                    "primary": true
+                }
+            },
+            "render": {
+                "width": 12,
+                "height": 5,
+                "type": "table",
+                "title": "Decode URL"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.encoded_url",
+                    "data_type": "string",
+                    "example_values": [
+                        "https://www.w3schools.com/tags/ref_urlencode.ASP#:~:text=URL%20Encoding%20(Percent%20Encoding)&text=URLs%20can%20only%20be%20sent,followed%20by%20two%20hexadecimal%20digits."
+                    ],
+                    "contains": [
+                        "url",
+                        "encoded url"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.decoded_url",
+                    "data_type": "string",
+                    "example_values": [
+                        "https://www.w3schools.com/tags/ref_urlencode.ASP#:~:text=URL Encoding (Percent Encoding)&text=URLs can only be sent,followed by two hexadecimal digits."
+                    ],
+                    "contains": [
+                        "url"
+                    ],
+                    "column_name": "Decoded URL",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.summary",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Decoded entire URL",
+                        "Parsed from secure-web.cisco.com URL and decoded"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get report",
+            "description": "Retrieve statistical reports from ESA",
+            "verbose": "This action is used to query \"Query-based Reports\" which counts various events in your appliance against a user-specified entity such as IP address, domain name, etc. for a specified duration.<br>If <b>start_time</b> and <b>end_time</b> are not given, then the report will be queried for the last 250 days.<br>If either <b>start_time</b> or <b>end_time</b> is provided, then the report will be queried for 250 days relative to the given parameter.<br>Following is the mapping of the report title and its corresponding entity that can be provided to filter reports:<table><tbody><tr class='plain'><th>Report Title</th><th>Entity Value</th></tr><tr><td>Internal Users</td><td>Email ID of the internal user (e.g. user@example.com)</td></tr><tr><td>Incoming Mail: Domains</td><td>Domain name (e.g. abc.com)</td></tr><tr><td>Incoming Mail: IP Addresses</td><td>IPv4 or IPv6 address</td></tr><tr><td>Incoming Mail: Network Owners</td><td>Name of the network owner (e.g. Xyz Corporation)</td></tr><tr><td>Outgoing Senders: Domains</td><td>Domain name (e.g. abc.com)</td></tr><tr><td>Outgoing Senders: IP Addresses</td><td>IPv4 or IPv6 address</td></tr><tr><td>Outgoing Destinations</td><td>Domain name (e.g. abc.com)</td></tr><tr><td>Outgoing Content Filters</td><td>Name of the outgoing Content Filter</td></tr><tr><td>Virus Types</td><td>Name of virus</td></tr><tr><td>Inbound SMTP Authentication</td><td>Domain name (e.g. abc.com)</td></tr><tr><td>Data Loss Prevention (DLP) Outgoing Policy</td><td>Name of the DLP policy</td></tr></tbody></table><br>The action supports limiting the number of items returned using the <b>limit</b> parameter. If the <b>limit</b> parameter is 0, then the action will fetch no data for the selected report(s). If the limit is not specified, the action will fetch by default 10 items for all specified reports. For a particular report, if the limit specified is greater than the available data, the action will fetch all data for that report.",
+            "type": "investigate",
+            "identifier": "get_report",
+            "read_only": true,
+            "parameters": {
+                "report_title": {
+                    "required": true,
+                    "description": "Report Title",
+                    "data_type": "string",
+                    "order": 0,
+                    "value_list": [
+                        "Internal Users",
+                        "Incoming Mail: Domains",
+                        "Incoming Mail: IP Addresses",
+                        "Incoming Mail: Network Owners",
+                        "Outgoing Senders: Domains",
+                        "Outgoing Senders: IP Addresses",
+                        "Outgoing Destinations",
+                        "Outgoing Content Filters",
+                        "Virus Types",
+                        "Inbound SMTP Authentication",
+                        "DLP Outgoing Policy"
+                    ],
+                    "primary": true,
+                    "contains": [
+                        "ciscoesa report title"
+                    ]
+                },
+                "filter_by": {
+                    "description": "Entity to filter the results",
+                    "data_type": "string",
+                    "order": 1
+                },
+                "filter_value": {
+                    "description": "Entity value to filter the results",
+                    "data_type": "string",
+                    "order": 2
+                },
+                "starts_with": {
+                    "description": "Retrieve items starting with specified filter value",
+                    "data_type": "boolean",
+                    "order": 3
+                },
+                "start_time": {
+                    "description": "Start time (YYYY-MM-DDTHH:00)",
+                    "data_type": "string",
+                    "order": 4
+                },
+                "end_time": {
+                    "description": "End time (YYYY-MM-DDTHH:00)",
+                    "data_type": "string",
+                    "order": 5
+                },
+                "limit": {
+                    "default": 10,
+                    "description": "Maximum number of items to retrieve",
+                    "data_type": "numeric",
+                    "order": 6
+                },
+                "offset": {
+                    "default": 0,
+                    "description": "Starting index of overall result set",
+                    "data_type": "numeric",
+                    "order": 7
+                },
+                "order_by": {
+                    "description": "The attribute by which to order the data in the response",
+                    "data_type": "string",
+                    "order": 8
+                },
+                "order_dir": {
+                    "description": "Sort direction of results",
+                    "data_type": "string",
+                    "order": 9,
+                    "value_list": [
+                        "asc",
+                        "desc"
+                    ]
+                }
+            },
+            "render": {
+                "type": "json"
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2001-12-12T11:00"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.filter_by",
+                    "data_type": "string",
+                    "example_values": [
+                        "ip_address"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.filter_value",
+                    "data_type": "string",
+                    "example_values": [
+                        "Test Policy"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.limit",
+                    "data_type": "numeric",
+                    "example_values": [
+                        11
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.offset",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.order_by",
+                    "data_type": "string",
+                    "example_values": [
+                        "bulk_mail"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.order_dir",
+                    "data_type": "string",
+                    "example_values": [
+                        "asc"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.report_title",
+                    "data_type": "string",
+                    "contains": [
+                        "ciscoesa report title"
+                    ],
+                    "example_values": [
+                        "DLP Outgoing Policy"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2001-11-12T11:00"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.starts_with",
+                    "data_type": "boolean",
+                    "example_values": [
+                        "Test"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_dmarc.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_dmarc.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_invalid_recipient.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_invalid_recipient.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_reputation.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_reputation.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_sdr.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.blocked_sdr.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.bulk_mail.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.bulk_mail.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_amp.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_amp.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_spam.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_spam.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_virus.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.detected_virus.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.dns_verified.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.dns_verified.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.last_sender_group.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.last_sender_group.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.last_sender_group_name.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.last_sender_group_name.resultSet.*.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "UNKNOWNLIST"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.marketing_mail.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.marketing_mail.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.auth_disallow.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.auth_fail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.auth_success.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_dmarc.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_dmarc.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_invalid_recipient.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_invalid_recipient.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_invalid_recipient.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_invalid_recipient.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_invalid_recipient.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        24
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_reputation.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_sdr.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_sdr.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_sdr.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_sdr.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.blocked_sdr.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.bulk_mail.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.bulk_mail.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.bulk_mail.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.bulk_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.bulk_mail.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.cert_fail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.cert_fallback_fail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.cert_fallback_success.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.cert_success.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_plain.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_tls_fail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_tls_opt_fail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_tls_opt_success.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_tls_success.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.conn_tls_total.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_amp.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_amp.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_amp.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_amp.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_amp.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_spam.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_virus.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_virus.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_virus.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_virus.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.detected_virus.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.dns_verified.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.dns_verified.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.dns_verified.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.dns_verified.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.dns_verified.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.encrypted_tls.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_bulk_mail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_bulk_mail.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_bulk_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_amp.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_amp.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_amp.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_content_filter.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_content_filter.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_content_filter.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_ims_spam_increment_over_case.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_ims_spam_increment_over_case.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_ims_spam_increment_over_case.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_spam.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_spam.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_spam.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_virus.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_virus.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_detected_virus.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_graymail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_graymail.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_graymail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_marketing_mail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_marketing_mail.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_marketing_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_social_mail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_social_mail.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_social_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_threat_content_filter.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_threat_content_filter.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_threat_content_filter.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_clean_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_clean_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        2
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_clean_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        2
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.incoming_total_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group_name.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group_name.*.count.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "UNKNOWNLIST"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group_name.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group_name.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.last_sender_group_name.*.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "UNKNOWNLIST"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.marketing_mail.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.marketing_mail.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.marketing_mail.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.marketing_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.marketing_mail.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.noauth.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_amp.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_amp.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_amp.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_content_filter.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_content_filter.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_content_filter.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_ims_spam_increment_over_case.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_ims_spam_increment_over_case.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_ims_spam_increment_over_case.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_spam.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_spam.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_spam.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_virus.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_virus.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_detected_virus.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_threat_content_filter.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_threat_content_filter.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_threat_content_filter.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_clean_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_clean_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_clean_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.outgoing_total_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.sbrs_score.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.sbrs_score.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.sbrs_score.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.sbrs_score.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.sbrs_score.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.social_mail.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.threat_content_filter.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.threat_content_filter.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.threat_content_filter.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.threat_content_filter.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_accepted_connections.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_clean_recipients.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_graymail_recipients.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_recipients.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_rejected_connections.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*.count.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*.count.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "10.1.16.99"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_threat_recipients.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.resultSet.total_throttled_recipients.*",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.data.sbrs_score.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.sbrs_score.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.social_mail.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.social_mail.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.threat_content_filter.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.threat_content_filter.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_clean_recipients.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_clean_recipients.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_graymail_recipients.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_graymail_recipients.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        0
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_recipients.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_recipients.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_threat_recipients.resultSet.*.key",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.total_threat_recipients.resultSet.*.value",
+                    "data_type": "numeric",
+                    "example_values": [
+                        42
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.data.type",
+                    "data_type": "string",
+                    "example_values": [
+                        "mail_sender_domain_detail"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.blocked_reputation.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        6702
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.blocked_reputation.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        6702
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_rejected_connections.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        2234
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_rejected_connections.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_threat_recipients.*.count",
+                    "data_type": "numeric",
+                    "example_values": [
+                        6702
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.data.total_threat_recipients.*.recipient",
+                    "data_type": "string",
+                    "example_values": [
+                        "unknown domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_incoming_domain_detail.uri",
+                    "data_type": "string",
+                    "example_values": [
+                        "/api/v1.0/stats/mail_incoming_domain_detail?duration=2021-07-30T12%3A00%2B00%3A00%2F2022-04-05T12%3A00%2B00%3A00&max=10"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.mail_users_detail.uri",
+                    "data_type": "string",
+                    "example_values": [
+                        "/api/v1.0/stats/mail_users_detail?duration=2021-07-31T10%3A00%2B00%3A00%2F2022-04-06T10%3A00%2B00%3A00&max=10"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.meta.totalCount",
+                    "data_type": "numeric",
+                    "example_values": [
+                        -1
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Report queried successfully"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        12
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        34
+                    ]
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "list dictionary items",
+            "description": "List all entries of an ESA dictionary",
+            "type": "investigate",
+            "identifier": "list_dictionary_items",
+            "read_only": true,
+            "parameters": {
+                "name": {
+                    "description": "Name of dictionary to list",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "order": 0,
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                "cluster_mode": {
+                    "description": "Enable machine mode as cluster on ESA",
+                    "data_type": "boolean",
+                    "order": 1
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.cluster_mode",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string",
+                    "example_values": [
+                        "Mail_To"
+                    ],
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "test@user.com"
+                    ],
+                    "contains": [
+                        "ciscoesa item value"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.weight",
+                    "data_type": "string",
+                    "example_values": [
+                        " 1"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.total_items",
+                    "data_type": "numeric",
+                    "example_values": [
+                        36
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully listed all entries of dictionary"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "width": 12,
+                "title": "List Dictionary Items",
+                "type": "custom",
+                "height": 5,
+                "view": "ciscoesa_view.display_reports"
+            }
+        },
+        {
+            "action": "add dictionary item",
+            "description": "Add an entry to an ESA dictionary",
+            "verbose": "Per the documentation, the action will handle escaping special regex character prior to adding to the dictionary.",
+            "type": "contain",
+            "identifier": "add_dictionary_item",
+            "undo": "remove dictionary item",
+            "read_only": false,
+            "parameters": {
+                "name": {
+                    "description": "Name of dictionary to add an item to",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "order": 0,
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                "value": {
+                    "description": "Value of entry to add to dictionary",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 1,
+                    "primary": true,
+                    "contains": [
+                        "ciscoesa item value"
+                    ]
+                },
+                "commit_message": {
+                    "description": "Commit message to add the item to the dictionary on the server at the end of this action",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 2
+                },
+                "cluster_mode": {
+                    "description": "Enable machine mode as cluster on ESA",
+                    "data_type": "boolean",
+                    "order": 3
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.cluster_mode",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.commit_message",
+                    "data_type": "string",
+                    "example_values": [
+                        "This is a test message"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string",
+                    "example_values": [
+                        "test_dict"
+                    ],
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "test_value"
+                    ],
+                    "contains": [
+                        "ciscoesa item value"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully added entry to dictionary"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully added entry to dictionary"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully added entry to dictionary"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "width": 12,
+                "title": "Added Dictionary Items",
+                "type": "custom",
+                "height": 5,
+                "view": "ciscoesa_view.display_reports"
+            }
+        },
+        {
+            "action": "remove dictionary item",
+            "description": "Remove an entry from an ESA dictionary",
+            "verbose": "Per the documentation, the action will handle escaping special regex character prior to removing from the dictionary.",
+            "type": "correct",
+            "identifier": "remove_dictionary_item",
+            "undo": "add dictionary item",
+            "read_only": false,
+            "parameters": {
+                "name": {
+                    "description": "Name of dictionary to remove an item from",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "order": 0,
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                "value": {
+                    "description": "Value of entry to remove from dictionary",
+                    "data_type": "string",
+                    "required": true,
+                    "primary": true,
+                    "order": 1,
+                    "contains": [
+                        "ciscoesa item value"
+                    ]
+                },
+                "commit_message": {
+                    "description": "Commit message to remove the item from the dictionary on the server at the end of this action",
+                    "data_type": "string",
+                    "required": true,
+                    "order": 2
+                },
+                "cluster_mode": {
+                    "description": "Enable machine mode as cluster on ESA",
+                    "data_type": "boolean",
+                    "order": 3
+                }
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.cluster_mode",
+                    "data_type": "boolean",
+                    "example_values": [
+                        true,
+                        false
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.commit_message",
+                    "data_type": "string",
+                    "example_values": [
+                        "This is a test message"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.name",
+                    "data_type": "string",
+                    "example_values": [
+                        "test_dict"
+                    ],
+                    "contains": [
+                        "ciscoesa dictionary name"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.value",
+                    "data_type": "string",
+                    "example_values": [
+                        "test_value"
+                    ],
+                    "contains": [
+                        "ciscoesa item value"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully removed entry from dictionary"
+                    ]
+                },
+                {
+                    "data_path": "action_result.summary.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully removed entry from dictionary"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "example_values": [
+                        "Successfully removed entry from dictionary"
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric",
+                    "example_values": [
+                        1
+                    ]
+                }
+            ],
+            "versions": "EQ(*)",
+            "render": {
+                "width": 12,
+                "title": "Removed Dictionary Items",
+                "type": "custom",
+                "height": 5,
+                "view": "ciscoesa_view.display_reports"
+            }
+        }
+    ],
+    "pip39_dependencies": {
+        "wheel": []
+    },
+    "pip313_dependencies": {
+        "wheel": []
+    }
+}

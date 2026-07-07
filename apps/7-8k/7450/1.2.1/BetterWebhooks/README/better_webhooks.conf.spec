@@ -1,0 +1,5 @@
+[settings]
+
+proxy = <string>
+* A proxy string which if set will apply to all requests made by the alert action.
+  For example: "http://proxy-server-ip:port"

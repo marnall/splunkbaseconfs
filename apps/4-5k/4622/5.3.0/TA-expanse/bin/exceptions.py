@@ -1,0 +1,2 @@
+class AbortSyncException(Exception):
+    pass

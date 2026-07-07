@@ -1,0 +1,26 @@
+[default]
+display.visualizations.custom.treeview-viz.treeview-viz.skin = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.showConnectors = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.showCheckbox = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.showIcons = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.selectMode = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.fontSize = <int>
+display.visualizations.custom.treeview-viz.treeview-viz.accordionMode = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.accordionModeBgColor = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.accordionModeTextColor = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.autoCollapse = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.accordionMinWidth = <int>
+display.visualizations.custom.treeview-viz.treeview-viz.showFoldersFirst = <boolean>
+display.visualizations.custom.treeview-viz.treeview-viz.sortBy = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.sortMethod = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenLabel = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenParentId = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenId = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenValuePrefix = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenValueSuffix = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenPrefix = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenSuffix = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.tokenDelimiter = <string>
+display.visualizations.custom.treeview-viz.treeview-viz.initialState = <string>
+# Version 1.7
+display.visualizations.custom.treeview-viz.treeview-viz.defaultSelection = <boolean>

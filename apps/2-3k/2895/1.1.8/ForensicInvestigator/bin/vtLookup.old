@@ -1,0 +1,54 @@
+#!/usr/bin/python 
+# Parts of this have been copied from Splunks DNSLookup and other examples.
+# You can sumbit up to 25 "resources" to VT, however this script does not do that.
+
+import re,collections,json,csv,sys,urllib,urllib2,splunk.Intersplunk,string
+
+apikey = "fb5cf0b1e498dc4c26f24a38b460d1dc138cc3d48e3c4bf1f3e11c97f7d24604"
+def makehash():
+	return collections.defaultdict(makehash)
+
+def hashlookup(md5):
+  try:
+    response = urllib2.urlopen('https://www.virustotal.com/vtapi/v2/file/report', \
+      'apikey=' + apikey + '&resource=' + md5)
+    json = response.read()
+    return json
+  except:
+    print 'error will robinson'
+    return ''
+
+def urllookup(url):
+  try:
+    response = urllib2.urlopen('https://www.virustotal.com/vtapi/v2/url/report', \
+      'apikey=' + apikey + '&resource=' + url + '&scan=1')
+    json = response.read()
+    return json
+  except:
+    print 'error will robinson'
+    return ''
+
+
+def main():
+  (isgetinfo, sys.argv) = splunk.Intersplunk.isGetInfo(sys.argv)
+  if len(sys.argv) < 2:
+    splunk.Intersplunk.parseError("No arguments provided")
+    #print "python vt.py MD5 VT"
+    sys.exit(0)
+
+  userinput=sys.argv[1].strip()
+  #print userinput
+
+  if (re.findall(r"(^[a-fA-F\d]{32})", userinput)):
+    md5f = userinput
+    result_json = hashlookup(md5f)
+  else:
+    urlf = userinput
+    result_json = urllookup(urlf)
+
+
+  output = csv.writer(sys.stdout)
+  data = [['vt'],[result_json]]
+  output.writerows(data)
+
+main()

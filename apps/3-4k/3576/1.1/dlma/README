@@ -1,0 +1,92 @@
+Detailed License Monitoring and Alerting for Splunk (DLMA)
+
+Overview
+##################################################################################################
+The DLMA App for Splunk is a plug and play license monitoring app that will work out of the
+box for all current Splunk deployments. This app provides a granular overview of license usage 
+over time for indexes, sourcetypes, and individual sources. It goes as far as allowing indexes 
+to be assigned to groups to track data ownership and allow for a chargeback model if necessary.
+
+Support
+----------------------
+Questions or feature requests may be sent to Madison.Moss@jhuapl.edu. Hours are typically
+8:00AM-5:00PM EST and support may depend on availability. Support is to only include bug fixes
+in the case any feature or process does not work as described within documentation. In this case
+I will work to resolve the issue and update the app with the fix in place. Feature requests may be
+sent but are not guaranteed in any future releases of the app.
+
+Installation
+----------------------
+The DLMA App for Splunk is an app that provides searches and visualizations and should be
+installed on a search head. The app will work in a standalone, distributed, or clustered 
+environment. On a standalone search head place the app in ../splunk/etc/apps/ and restart Splunk
+ or install from file directly from the web GUI. In a clustered environement place the app in 
+../splunk/etc/shcluster/apps/ on the Deployer and apply the cluster bundle to the search 
+head cluster (splunk apply shcluster-bundle -target <shcluster-captain>:8089)
+
+Requirements
+----------------------
+The search head must have access to _internal index data for the license master in the environment.
+Users require access to _internal index in order to view data for most of the app. The app will
+have 1 scheduled search by default with the ability to configure an additional 4 searches for
+alerts. Follow Splunk recommended requirements for OS and hardware guidelines.
+
+App Components
+##################################################################################################
+
+License Usage
+----------------------
+The License Usage dashboard provides detailed trendline analysis of indexes, sourcetypes, and
+sources for time periods of the current day, last 7 days, and last 30 days. The dashboard allows
+for filtering down by index and sourcetype.
+
+Data Owner Usage
+----------------------
+The Data Owner Usage dashboard pulls information from a lookup table (license_owners.csv) that is 
+populated by user input (the Lookup File Editor (https://splunkbase.splunk.com/app/1724/) app is highly 
+recommended for this but not required) and a scheduled search (dlma_data_owner_usage_sched_output) 
+that by default will run once a day at 3:00AM. The dashboard will show 30 day average usage and 
+yesterday's license usage based on indexes assigned to groups. The app contains the lookup table 
+license_owners.csv which contains the base structure of the table. A single run of the scheduled 
+search will populate the lookup table with all indexes listed under "Unassigned". To create a group 
+add a row above "Unassigned" and provide a group name and index(es) it is assigned to. An email is 
+optional but may also be inserted. Currently an index may only be assigned to one group and if a 
+group is created an index must be assigned. If no index is assigned the group will be removed during 
+the next scheduled run. If an index appears twice in the lookup it will be pulled out and assigned 
+to the group that appears highest up in the lookup table.
+
+Reports
+-----------------------
+Reports currently contains four searches labeled "dlma_alert" these may be opened and saved as
+alerts to run on a daily schedule. Each alert labeled dlma_alert_*_sourcetype_datachange provides 
+monitoring to detect large increases/decreases in license consumption by a sourcetype. This 
+currently can result in a high number of false positives due to it being an anomoly based detection 
+and any spike/drops will affect the average used for a 30 day period. They are split into three 
+categories since many organizations likely see changes in data traffic over weekend periods. These 
+searches currently require Splunk 6.5 since the comment macro was used to label the filtering section of the 
+search. The comment macro must have global permissions to work. If not on 6.5 or comment macro cannot 
+be made global this part may be removed. The filtering section allows for setting percentage thresholds
+for changes in license consumption as well as filtering out of low volume sourcetypes where a small 
+change in license usage will result in a high delta. In future iterations of the app the machine 
+learning toolkit may be implemented to look at changes in license consumption. The other alert named
+dlma_group_exceeded_quota will monitor the overall license pool and assigned quotas in license_owners.csv.
+To enabled any of the of the searches as alerts open the report in search and save as an alert to run
+daily and to trigger when results are >0. Please note for the exceeded quota search it will need to be
+scheduled after the dlma_data_owner_usage_sched_output is scheduled in order to get results for the
+previous day and not results for the day before yesterday. The default schedule for
+dlma_data_owner_usage_sched_output is 3:00AM daily.
+
+The other search in the reports section is dlma_data_owner_usage_sched_output. This is the search
+used to populate the lookup table license_owners.csv and powers the Data Owner Usage page.
+
+Alerts
+------------------------
+Will be populated if any *alerts* saved searches from the Reports section are converted to alerts.
+
+License_Owners.csv
+------------------------
+The license_owners.csv contains the base of the lookup in order to initialize the first search. The 
+headers are Group,Email,Indexname,Sourcetypename,Quota,Yesterday,Average. The
+dlma_data_owner_usage_sched_output will populate the lookup. If no custom groups are created the lookup will
+be populated with everything under the "Unassigned" group with an unlimited quota.
+

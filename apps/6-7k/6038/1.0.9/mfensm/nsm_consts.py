@@ -1,0 +1,13 @@
+NSM_IP = "ip"
+NSM_USER = "user"
+NSM_PW = "pw"
+NSM_SENSOR = "sensor_id"
+NSM_BLOCK_IP = "ip"
+NSM_DURATION = "duration"
+
+NSM_ERR_QUERY = "NSM command failed"
+NSM_SUCC_QUERY = "NSM command successful"
+NSM_ERR_QUERY_RETURNED_NO_DATA = "NSM did not return any information"
+NSM_ERR_SERVER_CONNECTION = "Connection to server failed"
+NSM_ERR_CONNECTIVITY_TEST = "Connectivity test failed"
+NSM_SUCC_CONNECTIVITY_TEST = "Connectivity test passed"

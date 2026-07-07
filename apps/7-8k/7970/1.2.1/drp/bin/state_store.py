@@ -1,0 +1,93 @@
+import json
+import os
+import os.path as op
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from splunklib import client
+
+
+class BaseStateStore(object):
+    def __init__(self, meta_configs, appname):
+        self._meta_configs = meta_configs
+        self._appname = appname
+
+    def update_state(self, key, states):
+        pass
+
+    def get_state(self, key):
+        pass
+
+    def delete_state(self, key):
+        pass
+
+
+class FileStateStore(BaseStateStore):
+    def __init__(self, meta_configs, appname):
+        """
+        :meta_configs: dict like and contains checkpoint_dir, session_key,
+        server_uri etc
+        """
+
+        super(FileStateStore, self).__init__(meta_configs, appname)
+
+    def update_state(self, key, states):
+        """
+        :state: Any JSON serializable
+        :return: None if successful, otherwise throws exception
+        """
+
+        fname = op.join(self._meta_configs["checkpoint_dir"], key)
+        with open(fname + ".new", "w") as jsonfile:
+            json.dump(states, jsonfile)
+
+        if op.exists(fname):
+            os.remove(fname)
+
+        os.rename(fname + ".new", fname)
+        # commented this to disable state cache for local file
+        # if key not in self._states_cache:
+        # self._states_cache[key] = {}
+        # self._states_cache[key] = states
+
+    def get_state(self, key):
+        fname = op.join(self._meta_configs["checkpoint_dir"], key)
+        if op.exists(fname):
+            with open(fname) as jsonfile:
+                state = json.load(jsonfile)
+                # commented this to disable state cache for local file
+                # self._states_cache[key] = state
+                return state
+        else:
+            return None
+
+
+class Credentials:
+    @staticmethod
+    def get_api_key(sessionKey, username, logger):
+        try:
+            service = client.connect(app="drp", host=os.environ.get("SPLUNK_BINDIP", "localhost"), token=sessionKey)
+            secrets = service.storage_passwords
+            for secret in secrets:
+                if secret.username == username:
+                    return secret.clear_password
+            raise Exception(f"API key for username '{username}' not found.")
+        except Exception as e:
+            error_msg = (
+                f"Failed to retrieve API key for username '{username}': {str(e)}"
+            )
+            logger.error(error_msg)
+            raise Exception(error_msg) from e
+
+    @staticmethod
+    def get_username(sessionKey, logger):
+        try:
+            service = client.connect(app="drp", host=os.environ.get("SPLUNK_BINDIP", "localhost"), token=sessionKey)
+            secrets = service.storage_passwords
+            for secret in secrets:
+                return secret.username
+            raise Exception("No usernames found in storage passwords.")
+        except Exception as e:
+            error_msg = f"Failed to retrieve username using sessionKey: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg) from e

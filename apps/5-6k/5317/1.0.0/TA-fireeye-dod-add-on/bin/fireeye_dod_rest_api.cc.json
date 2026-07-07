@@ -1,0 +1,133 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.feye_auth_key",
+        "type",
+        "connector_type",
+        "completed_at"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{completed_at}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_completed_at"
+                    },
+                    {
+                        "input": [
+                            "{{completed_at}}",
+                            "%s",
+                            "%s"
+                        ],
+                        "method": "time_str2str",
+                        "output": "completed_at"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://feapi.marketplace.apps.fireeye.com/telemetry?type={{type}}&connector_type={{connector_type}}",
+                "method": "GET",
+                "headers": {
+                    "feye-auth-key": "{{__settings__.additional_parameters.feye_auth_key}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$..completed_at"
+                        ],
+                        "method": "json_path",
+                        "output": "completed_at"
+                    },
+                    {
+                        "input": [
+                            "{{completed_at != ''}}",
+                            "The value of token 'completed_at' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{completed_at == _raw_completed_at}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{completed_at}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_completed_at"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.data"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "completed_at": "{{_raw_completed_at}}"
+                }
+            }
+        }
+    ]
+}

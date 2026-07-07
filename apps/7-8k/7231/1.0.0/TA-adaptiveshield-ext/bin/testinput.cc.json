@@ -1,0 +1,118 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.api_key",
+        "__settings__.additional_parameters.account_id",
+        "days_ago",
+        "sensitivity",
+        "test_checkpoint_adaptiveshield"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{test_checkpoint_adaptiveshield}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_test_checkpoint_adaptiveshield"
+                    },
+                    {
+                        "input": [
+                            "{{test_checkpoint_adaptiveshield}}",
+                            "%Y-%m-%d %H:%M:%S",
+                            "%Y-%m-%d %H:%M:%S"
+                        ],
+                        "method": "time_str2str",
+                        "output": "test_checkpoint_adaptiveshield"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://api.adaptive-shield.com/api/v1/accounts/{{__settings__.additional_parameters.account_id}}/activity_monitor?days_ago={{days_ago}}&sensitivity={{sensitivity}}",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "Token {{__settings__.additional_parameters.api_key}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.data[-1].activity_time"
+                        ],
+                        "method": "json_path",
+                        "output": "test_checkpoint_adaptiveshield"
+                    },
+                    {
+                        "input": [
+                            "{{test_checkpoint_adaptiveshield != ''}}",
+                            "The value of token 'test_checkpoint_adaptiveshield' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{test_checkpoint_adaptiveshield == _raw_test_checkpoint_adaptiveshield}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{test_checkpoint_adaptiveshield}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_test_checkpoint_adaptiveshield"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": []
+            },
+            "checkpoint": {
+                "content": {
+                    "test_checkpoint_adaptiveshield": "{{_raw_test_checkpoint_adaptiveshield}}"
+                }
+            }
+        }
+    ]
+}

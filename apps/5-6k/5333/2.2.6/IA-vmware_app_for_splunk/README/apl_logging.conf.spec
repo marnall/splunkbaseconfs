@@ -1,0 +1,27 @@
+[vmware_app_for_splunk]
+vmware-cbc-alerts-modularinput = <string>
+vmware-cbc-auditlogs-modularinput = <string>
+vmware-cbc-assets-modularinput = <string>
+vmware-kill-process = <string>
+vmware-list-process = <string>
+vmware-get-file-metadata = <string>
+vmware-add-ioc-watchlist = <string>
+vmware-quarantine-device = <string>
+vmware-unquarantine-device = <string>
+vmware-remove-ioc-watchlist = <string>
+modularinput = <string>
+restclient = <string>
+vmware-ban-hash = <string>
+utilities = <string>
+vmware-cbc-vuln-modularinput = <string>
+kenny_loggins = <string>
+cbc_sdk.rest_api = <string>
+cbc_sdk.connection = <string>
+vmware-cbc-live-query = <string>
+vmware_cbc_client = <string>
+vmware-run-livequery = <string>
+vmware-close-alert = <string>
+vmware-update-device-policy = <string>
+vmware-enrich-events = <string>
+cbchashinfo = <string>
+cbcdvcinfo = <string>

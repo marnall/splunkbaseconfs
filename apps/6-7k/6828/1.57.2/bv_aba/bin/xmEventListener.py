@@ -1,0 +1,48 @@
+# ==============================================================================
+# Copyright 2023 BlueVoyant Inc. All Rights Reserved. Reproduction
+# or unauthorized use is prohibited. Unauthorized use is illegal. Violators will
+# be prosecuted. This software contains proprietary trade and business secrets.
+# ==============================================================================
+#
+# This command is an example of one that uses a pre-op to generate data.
+# It runs xsPreListDir to generate data and then invokes xsListDir to
+# process the data.
+#
+import sys
+import saUtils
+import splunk.Intersplunk as si
+import os
+import logging
+
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s %(levelname)s  %(message)s',datefmt='%m-%d-%Y %H:%M:%S.000 %z',
+     filename=os.path.join(os.environ['SPLUNK_HOME'],'var','log','splunk','scm-framework.log'),
+     filemode='a')
+
+def usage(message):
+
+    if len (message) > 0:
+        sys.stderr.write (message + "\n");
+        logging.error (message);
+
+    usageStatement = "xmEventListener ON trendOnFieldName BY groupByField1[,groupByField2,...]\n";
+    logging.error (usageStatement)
+    sys.stderr.write (usageStatement);
+    raise Exception (usageStatement);
+
+if __name__ == '__main__':
+
+    argList = []
+    logging.info ("-------------------------------------------------------------------------------------")
+    logging.info("xmEventListener starting, args [" + repr(sys.argv) + "]");
+    logging.info("args count [" + str(len(sys.argv)) + "]");
+
+#    print str(len(sys.argv))
+
+    try:
+
+        saUtils.runProcess(sys.argv[0], "xmEventListener", argList, False)
+
+        logging.info ("-------------------------------------------------------------------------------------")
+
+    except Exception as e:
+        si.generateErrorResults(e)

@@ -1,0 +1,2 @@
+SENTRYWIRE_DEBUG_MODE = False
+SECRET_REALM = "sentrywireV3"

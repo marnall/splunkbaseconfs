@@ -1,0 +1,132 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "customer_url",
+        "apitoken",
+        "from"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{from}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_from"
+                    },
+                    {
+                        "input": [
+                            "{{from}}",
+                            "%s%3N",
+                            "%s%3N"
+                        ],
+                        "method": "time_str2str",
+                        "output": "from"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://{{customer_url }}/api/v1/audit?_limit=400&order=desc\n",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "{{apitoken}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.items"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.scrollCursor"
+                        ],
+                        "method": "json_path",
+                        "output": "from"
+                    },
+                    {
+                        "input": [
+                            "{{from != ''}}",
+                            "The value of token 'from' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{from == _raw_from}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{from}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_from"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.items"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.items"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "from": "{{_raw_from}}"
+                }
+            }
+        }
+    ]
+}

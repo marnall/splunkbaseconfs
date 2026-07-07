@@ -1,0 +1,132 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.access_token",
+        "start_date"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{start_date}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_start_date"
+                    },
+                    {
+                        "input": [
+                            "{{start_date}}",
+                            "%Y-%m-%d %H:%M:%S",
+                            "%Y-%m-%d %H:%M:%S"
+                        ],
+                        "method": "time_str2str",
+                        "output": "start_date"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://webapi.teamviewer.com/api/v1/reports/connections",
+                "method": "GET",
+                "headers": {
+                    "Authorization": "Bearer 25840749-KY3btvqoPWooKkEuntF2",
+                    "Content-Type": "application/json"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.records[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.records[*].start_date"
+                        ],
+                        "method": "json_path",
+                        "output": "start_date"
+                    },
+                    {
+                        "input": [
+                            "{{start_date != ''}}",
+                            "The value of token 'start_date' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{start_date == _raw_start_date}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{start_date}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_start_date"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.records[*]"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.records[*]"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "start_date": "{{_raw_start_date}}"
+                }
+            }
+        }
+    ]
+}

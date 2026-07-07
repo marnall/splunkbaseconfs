@@ -1,0 +1,104 @@
+﻿# Template for db_inputs.conf file for DB Connect App, to collect data for 3CX App
+
+###########################################################################
+## <provide host-name for 3CX> -> Replace with 3CX host name
+##
+## Also update the date and time for tail_rising_column_init_ckpt_value parameter in all the inputs based on how long in the past you want to backfill the data.
+##  * Please use `YYYY-mm-dd HH:MM:SS.000` date-time format.
+##  * Example: `tail_rising_column_init_ckpt_value = {"value":"2021-09-21 00:00:00.000","columnType":93}`
+##  * Please do not go long in the past as all queries will timed-out and you will never be able to collect the data.
+###########################################################################
+
+
+[default]
+host = <provide host-name for 3CX>
+query_timeout = 120
+
+
+[3cx_calls]
+connection = 3CX
+disabled = 0
+index = 3cx
+index_time_mode = dbColumn
+input_timestamp_column_number = 9
+# input_timestamp_column_name = seg_start_time
+interval = */15 * * * *
+mode = rising
+tail_rising_column_name = seg_end_time
+tail_rising_column_init_ckpt_value = {"value":"YYYY-mm-dd HH:MM:SS.000","columnType":93}
+query = SELECT calls.id AS call_id, calls.start_time as call_start_time, calls.end_time as call_end_time, calls.is_answered as call_is_answered, calls.ringing_dur as call_ringing_dur, calls.talking_dur as call_talking_dur, calls.q_wait_dur as call_q_wait_dur, \
+segments.id as seg_id, segments.start_time as seg_start_time, segments.end_time as seg_end_time, segments.seq_group as seg_group, segments.seq_order as seg_order, segments.type as seg_type, segments.action_id as seg_action_id, segments.action_party_id as seg_action_party_id, \
+src_participants.role as src_role, src_participants.is_inbound as src_is_inbound, src_participants.end_status as src_end_status, src_participants.forward_reason as src_forward_reason, src_participants.failure_reason as src_failure_reason, src_participants.answer_time as answer_time, src_participants.recording_url as src_recording_url, \
+src_info.dn_type as src_type, src_info.dn as src_dn, src_info.caller_number as src_caller_number, src_info.display_name as src_display_name, \
+dst_participants.role as dst_role, dst_participants.is_inbound as dst_is_inbound, dst_participants.end_status as dst_end_status, dst_participants.forward_reason as dst_forward_reason, dst_participants.failure_reason as dst_failure_reason, dst_participants.recording_url as dst_recording_url, \
+dst_info.dn_type as dst_type, dst_info.dn as dst_dn, dst_info.caller_number as dst_caller_number, dst_info.display_name as dst_display_name, \
+act_participants.role as act_role, act_participants.is_inbound as act_is_inbound, act_participants.end_status as act_end_status, act_participants.forward_reason as act_forward_reason, act_participants.failure_reason as act_failure_reason, \
+act_info.dn_type as act_type, act_info.dn as act_dn, act_info.caller_number as act_caller_number, act_info.display_name as act_display_name \
+FROM cl_calls as calls JOIN cl_segments as segments ON calls.id = segments.call_id AND segments.end_time>=? \
+JOIN cl_participants as src_participants ON segments.src_part_id = src_participants.id \
+JOIN cl_participants as dst_participants ON segments.dst_part_id = dst_participants.id \
+JOIN cl_party_info as src_info ON src_participants.info_id = src_info.id \
+JOIN cl_party_info as dst_info ON dst_participants.info_id = dst_info.id  \
+LEFT OUTER JOIN cl_participants as act_participants ON segments.action_party_id = act_participants.id \
+LEFT OUTER JOIN cl_party_info as act_info ON act_participants.info_id = act_info.id \
+ORDER BY seg_end_time ASC
+sourcetype = 3cx:calls
+
+
+
+[3cx_agent_login]
+connection = 3CX
+disabled = 0
+index = 3cx
+index_time_mode = dbColumn
+input_timestamp_column_number = 2
+# input_timestamp_column_name = timeofupdate
+interval = */15 * * * *
+mode = rising
+tail_rising_column_name = timeofupdate
+tail_rising_column_init_ckpt_value = {"value":"YYYY-mm-dd HH:MM:SS.000","columnType":93}
+query = SELECT queue_status.idcallcent_ag_queuestatus as idcallcent_ag_queuestatus, (queue_status.timeofupdate AT TIME ZONE 'UTC')::timestamptz as timeofupdate, queue_status.is_loggedin_in_queue as is_loggedin_in_queue, queue_status.is_loggedin_in_allqueues as is_loggedin_in_allqueues, \
+queue_status.q_num as q_num, info.name as q_name, \
+queue_status.ag_num as agent_num, users.iduser as user_id, users.firstname as agent_fname, users.lastname as agent_lname \
+FROM callcent_ag_queuestatus as queue_status \
+INNER JOIN dn as dn ON queue_status.q_num = dn.value AND queue_status.timeofupdate >= ? \
+INNER JOIN ( SELECT queue.name, 'queue', queue.fkiddn FROM queue \
+             UNION ALL SELECT ringgroup.name, 'RG', ringgroup.fkiddn FROM ringgroup \
+             UNION ALL SELECT ivr.name, 'ivr', ivr.fkiddn FROM ivr ) info ON info.fkiddn = dn.iddn \
+INNER JOIN dn as agent_directory ON agent_directory.value = queue_status.ag_num \
+INNER JOIN extension ON extension.fkiddn = agent_directory.iddn \
+INNER JOIN users ON users.fkidextension = extension.fkiddn
+sourcetype = 3cx:queue_agent_logins
+
+
+
+[3cx_queuecalls]
+connection = 3CX
+disabled = 0
+index = 3cx
+index_time_mode = dbColumn
+input_timestamp_column_number = 3
+# input_timestamp_column_name = start_time
+interval = */15 * * * *
+mode = rising
+tail_rising_column_name = end_time
+tail_rising_column_init_ckpt_value = {"value":"YYYY-mm-dd HH:MM:SS.000","columnType":93}
+query = SELECT queue_call.idcallcent_queuecalls as queuecall_id, queue_call.q_num as q_num, (queue_call.time_start AT TIME ZONE 'UTC')::timestamptz as start_time, (queue_call.time_end AT TIME ZONE 'UTC')::timestamptz as end_time, \
+queue_call.ts_waiting as ts_waiting, queue_call.ts_polling as ts_polling, queue_call.ts_servicing as ts_servicing, queue_call.ts_locating as ts_locating, \
+queue_call.count_polls as count_polls, queue_call.count_dialed as count_dialed, queue_call.count_rejected as count_rejected, queue_call.count_dials_timed as count_dials_timed, \
+queue_call.reason_noanswercode as reason_noanswercode, queue_call.reason_noanswerdesc as reason_noanswerdesc, queue_call.reason_failcode as reason_failcode, queue_call.reason_faildesc as reason_faildesc, \
+queue_call.call_history_id as call_history_id, queue_call.q_cal as q_cal, queue_call.from_userpart as from_userpart, queue_call.from_displayname as queue_call_displayname, queue_call.to_dialednum as to_dialednum, \
+queue_call.to_dn as to_dn, queue_call.to_dntype as to_dntype, queue_call.call_result as call_result, queue_call.is_visible as is_visible, queue_call.is_agent as is_agent, \
+dn.iddn as dn_iddn, \
+info.name as q_name, \
+extension.fkiddn as extension_iddn, \
+users.iduser as user_id, users.firstname as agent_fname, users.lastname as agent_lname \
+FROM callcent_queuecalls as queue_call \
+INNER JOIN dn as dn ON queue_call.q_num = dn.value AND queue_call.time_end >= ? \
+INNER JOIN ( SELECT queue.name, 'queue', queue.fkiddn FROM queue \
+             UNION ALL SELECT ringgroup.name, 'RG', ringgroup.fkiddn FROM ringgroup \
+             UNION ALL SELECT ivr.name, 'ivr', ivr.fkiddn FROM ivr ) info ON info.fkiddn = dn.iddn \
+LEFT OUTER JOIN dn as directory ON directory.value = queue_call.to_dn \
+LEFT OUTER JOIN extension ON extension.fkiddn = directory.iddn \
+LEFT OUTER JOIN users ON users.fkidextension = extension.fkiddn
+sourcetype = 3cx:queuecalls

@@ -1,0 +1,2 @@
+[blackvue://<name>]
+ip = <string>

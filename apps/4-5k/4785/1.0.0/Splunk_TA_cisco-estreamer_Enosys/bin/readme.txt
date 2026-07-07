@@ -1,0 +1,2 @@
+###This Add-on version 1.0 works only when Cisco Firepower and eStreamer logs are forwarded to Splunk Enterprise or Splunk Cloud via Splunk Heavy Forwarder with an installed Cisco eStreamer eNcore Add-on for Splunk version 3.6.8.
+##This product should be installed on search heads and indexers.

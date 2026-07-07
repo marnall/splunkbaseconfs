@@ -1,0 +1,1926 @@
+#!/bin/sh
+
+#set -x
+
+# Program name: metricator_helper.sh
+# Purpose - nmon sample script to start collecting data with a 1mn interval refresh
+# Author - Guilhem Marchand
+
+# Version 2.0.2
+
+# For AIX / Linux / Solaris
+
+#################################################
+## 	Your Customizations Go Here            ##
+#################################################
+
+# hostname
+HOST=`hostname`
+
+# format date output to strftime dd/mm/YYYY HH:MM:SS
+log_date () {
+    date "+%d-%m-%Y %H:%M:%S"
+}
+
+if [ -z "${SPLUNK_HOME}" ]; then
+	echo "`log_date`, ${HOST} ERROR, SPLUNK_HOME variable is not defined"
+	exit 1
+fi
+
+# Splunk Home variable: This should automatically defined when this script is being launched by Splunk
+# If you intend to run this script out of Splunk, please set your custom value here
+SPL_HOME=${SPLUNK_HOME}
+
+# Check SPL_HOME variable is defined, this should be the case when launched by Splunk scheduler
+if [ -z "${SPL_HOME}" ]; then
+	echo "`log_date`, ${HOST} ERROR, SPL_HOME (SPLUNK_HOME) variable is not defined"
+	exit 1
+fi
+
+# APP path discovery
+if [ -d "$SPLUNK_HOME/etc/apps/TA-metricator-for-nmon" ]; then
+        APP=$SPLUNK_HOME/etc/apps/TA-metricator-for-nmon
+
+elif [ -d "$SPLUNK_HOME/etc/peer-apps/TA-metricator-for-nmon" ];then
+        APP=$SPLUNK_HOME/etc/peer-apps/TA-metricator-for-nmon
+
+else
+        echo "`log_date`, ${HOST} ERROR, the APP directory could not be defined, is the TA-metricator-for-nmon installed ?"
+        exit 1
+fi
+
+# pre-action scripts, run any script available in bin/pre_action_scripts
+pre_action_scripts=`find $APP/bin/pre_action_scripts -name "*.sh" -type f`
+for pre_action_script in $pre_action_scripts; do
+    if [ -x $pre_action_script ]; then
+        echo "`log_date`, ${HOST} INFO, executing pre-action script: $pre_action_script"
+        $pre_action_script
+    fi
+done
+
+# Var directory for data generation
+APP_VAR=$SPLUNK_HOME/var/log/metricator
+
+# Create directory if not existing already
+[ ! -d $APP_VAR ] && { mkdir -p $APP_VAR; }
+
+# Mutex: avoid running metricator_helper.sh and metricator_consumer.sh concurrently
+mutex="${APP_VAR}/mutex"
+
+# Allow 10s mini to acquire mutex and break
+count=0
+while [ -f $mutex ]; do
+    sleep 2
+    count=`expr $count + 1`
+    if [ $count -gt 5 ]; then
+        break
+    fi
+done
+
+# acquire mutex
+touch $mutex
+
+remove_mutex () {
+    rm -f $mutex
+}
+
+# Which type of OS are we running
+UNAME=`uname`
+
+# Linux binaries are stored in the bin/linux.tgz archive file
+# At first startup only, if the linux directory does not exist, extract the binaries archive file
+case $UNAME in
+
+Linux )
+
+if [ ! -d ${APP}/bin/linux ]; then
+    cd ${APP}/bin
+    tar -xzpf linux.tgz
+fi
+
+;;
+esac
+
+# Manage sarmon binaries for Solaris
+case $UNAME in
+
+SunOS)
+
+if [ ! -d ${APP}/bin/sarmon_bin_i386 ]; then
+    cd ${APP}/bin
+    gunzip sarmon_bin_i386.tgz
+    tar xf sarmon_bin_i386.tar
+fi
+
+if [ ! -d ${APP}/bin/sarmon_bin_sparc ]; then
+    cd ${APP}/bin
+    gunzip sarmon_bin_sparc.tgz
+    tar xf sarmon_bin_sparc.tar
+fi
+
+;;
+esac
+
+# Silently update bin content to run directory (see after this)
+# Note: on some systems, cp is an alias to cp -i which would prevent this from working as expected
+update_var_bin () {
+cd ${APP}/bin
+case $UNAME in
+    Linux )
+    tar -xzpf linux.tgz ;;
+esac
+\cp -pf ${APP}/default/app.conf ${APP_VAR}/app.conf > /dev/null 2>&1
+\cp -rpf ${APP}/bin ${APP_VAR}/ > /dev/null 2>&1
+}
+
+# To prevents binaries overwrites during upgrades and sh cluster deployment issues, cache the bin directory
+# Binaries will be launched from the cache directory
+if [ -d ${APP_VAR}/bin ]; then
+
+    # the bin directory has been already cached, verify if an update is required
+    if [ -f ${APP_VAR}/app.conf ]; then
+
+        diff ${APP}/default/app.conf ${APP_VAR}/app.conf >/dev/null
+
+            # if return code does not equal to 0, update is required
+            if [ $? -ne 0 ]; then
+                update_var_bin
+            fi
+
+    else
+
+        # no app.conf found, force copy of app.conf and update
+        update_var_bin
+    fi
+
+else
+
+    # the bin directory has not been cached already
+    update_var_bin
+
+fi
+
+# Remove stanza name, prevent any change from the SHC deployer
+reformat_default_nmon_conf () {
+
+    # Retrieve category from first arg
+    nmon_conf=$1
+
+    # This function removes Splunk-added stanzas (like [default], [nmon], etc.) and normalizes
+    # variable assignments by removing spaces around = signs to make the file sourceable as a shell script
+
+    case $UNAME in
+    "Linux")
+            # Remove all stanza lines (lines matching pattern ^\[.*\]$)
+            sed -i '/^\[.*\]$/d' ${nmon_conf}
+            # Normalize variable assignments: remove spaces around = sign
+            sed -i 's/ = /=/g' ${nmon_conf}
+            sed -i 's/ =/=g' ${nmon_conf}
+            sed -i 's/= /=/g' ${nmon_conf}
+    ;;
+    *)
+            # Remove all stanza lines and normalize variable assignments
+            cat ${nmon_conf} | sed '/^\[.*\]$/d' | sed 's/ = /=/g' | sed 's/ =/=g' | sed 's/= /=/g' > /tmp/metricator_helper.tmp.$$
+            mv /tmp/metricator_helper.tmp.$$ ${nmon_conf}
+    ;;
+    esac
+
+}
+
+###
+### FIFO options:
+###
+
+# Using FIFO files (named pipe) are now used to minimize the CPU footprint of the technical addons
+# As such, it is not required anymore to use short cycle of Nmon run to reduce the CPU usage
+
+# You can still want to manage the volume of data to be generated by managing the interval and snapshot values
+# as a best practice recommendation, the time to live of nmon processes writing to FIFO should be 24 hours
+
+# value for interval: time in seconds between 2 performance measures
+fifo_interval="60"
+
+# value for snapshot: number of measure to perform
+fifo_snapshot="1440"
+
+# AIX common options default, will be overwritten by nmon.conf (unless the file would not be available)
+
+# Note: Since the version 1.3.0, AIX uses fifo files to minimize the CPU footprint, this requires the -F option
+# and is not compatible with the "-f" option that defines output to csv
+# The -F option is implicitly added by the metricator_helper.sh script during processing
+
+AIX_options="-T -A -d -K -L -M -P -O -W -S -^ -p"
+
+# Linux max devices (-d option), default to 1500
+Linux_devices="1500"
+
+# Change the priority applied while looking at nmon binary
+# by default, the metricator_helper.sh script will use any nmon binary found in PATH
+# Set to "1" to give the priority to embedded nmon binaries
+Linux_embedded_nmon_priority="0"
+
+# Change the limit for processes and disks capture of nmon for Linux
+# In default configuration, nmon will capture most of the process table by capturing main consuming processes
+# You can set nmon to an unlimited number of processes to be captured, and the entire process table will be captured.
+# Note this will affect the number of disk devices captured by setting it to an unlimited number.
+# This will also increase the volume of data to be generated and may require more cpu overhead to process nmon data
+# The default configuration uses the default mode (limited capture), you can set bellow the limit number of capture to unlimited mode
+# Change to "1" to set capture of processes and disks to no limit mode
+Linux_unlimited_capture="0"
+
+# endtime_margin defines the time in seconds before a new nmon process will be started
+# in default configuration, a new process will be spawned 240 seconds before the current process ends
+# see nmon.conf (this value will be overwritten by nmon.conf)
+endtime_margin="240"
+
+# Linux disks extended statistics (see nmon.conf)
+Linux_disk_dg_enable="1"
+
+# Name of the DG group file
+Linux_disk_dg_group="auto"
+
+# nmon external generation, default is activated
+nmon_external_generation="1"
+
+# source default / local / per server nmon.conf
+for nmon_conf_file in $APP/default/nmon.conf $APP/local/nmon.conf /etc/nmon.conf; do
+    if [ -f $nmon_conf_file ]; then
+        # Verify and reformat if required (check for any Splunk stanza pattern)
+        grep '^\[.*\]$' $nmon_conf_file >/dev/null
+        if [ $? -eq 0 ]; then
+            reformat_default_nmon_conf $nmon_conf_file
+            . $nmon_conf_file
+        else
+            . $nmon_conf_file
+        fi
+    fi
+done
+
+# Manage FQDN option
+echo $nmonparser_options | grep '\-\-use_fqdn' >/dev/null
+if [ $? -eq 0 ]; then
+    # Only relevant for Linux OS
+    case $UNAME in
+    Linux)
+        HOST=`hostname -f` ;;
+    AIX)
+        HOST=`hostname` ;;
+    SunOS)
+        HOST=`hostname` ;;
+    esac
+else
+    HOST=`hostname`
+fi
+
+# Manage host override option based on Splunk hostname defined
+case $override_sys_hostname in
+"1")
+    # Retrieve the Splunk host value
+    HOST=`cat $SPLUNK_HOME/etc/system/local/inputs.conf | grep '^host =' | awk -F\= '{print $2}' | sed 's/ //g'`
+;;
+esac
+
+# Nmon Binary
+case $UNAME in
+
+##########
+#	AIX	#
+##########
+
+AIX )
+
+# Use topas_nmon in priority
+
+if [ -x /usr/bin/topas_nmon ]; then
+	NMON="/usr/bin/topas_nmon"
+	AIX_topas_nmon="true"
+
+else
+	NMON=`which nmon 2>&1`
+
+	if [ ! -x "$NMON" ]; then
+		echo "`log_date`, ${HOST} ERROR, Nmon could not be found, cannot continue."
+		remove_mutex
+		exit 1
+	fi
+	AIX_topas_nmon="false"	
+
+fi
+
+;;
+
+##########
+#	Linux	#
+##########
+
+# Nmon App comes with most of nmon versions available from http://nmon.sourceforge.net/pmwiki.php?n=Site.Download
+
+Linux )
+
+case $Linux_embedded_nmon_priority in
+
+0)
+
+	# give priority to any nmon binary found in local PATH
+
+	# Nmon BIN full path (including bin name), please update this value to reflect your Nmon installation
+	which nmon >/dev/null 2>&1
+
+	if [ $? -eq 0 ]; then
+
+		NMON=`which nmon`
+
+	else
+
+		NMON=""
+
+	fi
+
+;;
+
+1)
+
+	# give priority to embedded binaries
+	# if none of embedded binaries can suit the local system, we will switch to local nmon binary, if it's available
+
+	NMON=""
+
+;;
+
+esac
+
+if [ ! -x "$NMON" ];then
+
+	# No nmon found in env, so using prepackaged version
+
+	# First, define the processor architecture, use the arch command in priority, fall back to uname -m if not available
+	which arch >/dev/null 2>&1
+	if [ $? -eq 0 ]; then
+
+			ARCH=`arch`
+			
+	else
+	
+			ARCH=`uname -m`	
+	
+	fi
+	
+	# Let's convert some of architecture names to more conventional names, specially used by the nmon community to name binaries (not that ppc32 is more or less clear than power_32...)
+
+	case $ARCH in
+	
+	i686 )
+	
+		ARCH_NAME="x86" ;; # x86 32 bits
+		
+	x86_64 )
+	
+		ARCH_NAME="x86_64" ;; # x86 64 bits
+		
+	ia64 )
+	
+		ARCH_NAME="ia64" ;; # Itanium 64 bits	
+	
+	ppc32* )
+	
+		ARCH_NAME="power_32" ;; # powerpc 32 bits
+		
+	ppc64* )
+	
+		ARCH_NAME="power_64" ;; # powerpc 64 bits	
+
+	s390 )
+	
+		ARCH_NAME="mainframe_32" ;; # s390 32 bits mainframe	
+
+	s390x )
+	
+		ARCH_NAME="mainframe_64" ;; # s390x 64 bits mainframe
+
+    arm* )
+
+        ARCH_NAME="arm" ;; # arm architecture
+
+    * )
+
+        ARCH_NAME="${ARCH}" ;; # None of those!
+	
+	esac
+
+	### PowerLinux specific ###
+
+	# On PowerLinux arch, some OS can run in Big Endian while most will run in Little Endian
+    # On a Little Endian system, the following command will return "1" for a Little Endian arch
+
+    # See this nice article: https://www.mainline.com/linux-on-power-to-be-or-not-to-be-why-should-i-care
+    # And specifically "Ubuntu is LE only; SLES 11 is BE only; SLES 12 is LE only; RedHat 6.x is BE only; RedHat 7.1 has two distributions – one LE, the other BE"
+
+    # For convenience, all powerLinux binaries are suffixed by "_le" or "_be"
+
+    case $ARCH in
+
+    ppc32* | ppc64* )
+
+        # Assign default to Little Endian in case of failure
+        BYTE_ORDER_STATUS="1"
+        BYTE_ORDER="le"
+
+        BYTE_ORDER_STATUS=`echo I | tr -d [:space:] | od -to2 | head -n1 | awk '{print $2}' | cut -c6`
+        case ${BYTE_ORDER_STATUS} in
+
+        0 )
+        # Big Endian
+            BYTE_ORDER="be" ;;
+
+        # Little Endian
+        1 )
+            BYTE_ORDER="le" ;;
+
+        esac
+
+    ;;
+    esac
+
+	# Initialize linux_vendor
+	linux_vendor=""
+	linux_mainversion=""
+	linux_subversion=""
+	linux_fullversion=""
+	
+	# Try to find the better embedded binary depending on Linux version
+	
+	# Most modern Linux comes with an /etc/os-release, this is (from far) the better scenario for system identification
+	
+	OSRELEASE="/etc/os-release"	
+	
+	if [ -f $OSRELEASE ]; then
+
+		# Great, let's try to find the better binary for that system
+	
+		linux_vendor=`grep '^ID=' $OSRELEASE | awk -F= '{print $2}' | sed 's/\"//g' | sed 's/ //g'`	# The Linux distribution
+		linux_mainversion=`grep '^VERSION_ID=' $OSRELEASE | awk -F'"' '{print $2}' | awk -F'.' '{print $1}'`	# The main release (eg. rhel 7)
+
+        # some distribution (eg. Fedora) seem to use a non standard format
+        case $linux_mainversion in
+        "")
+            linux_mainversion=`grep '^VERSION_ID=' $OSRELEASE | sed 's/ //g' | sed 's/\"//' | awk -F'=' '{print $2}'` ;;
+        esac
+
+		linux_subversion=`grep '^VERSION_ID=' $OSRELEASE | awk -F'"' '{print $2}' | awk -F'.' '{print $2}'`	# The sub level release (eg. "1" from rhel 7.1)
+		linux_fullversion=`grep '^VERSION_ID=' $OSRELEASE | awk -F'"' '{print $2}' | sed 's/\.//g'`	# Concatenated version of the release (eg. 71 for rhel 7.1)	
+
+        case $ARCH in
+
+        # PowerLinux
+        ppc32* | ppc64* )
+
+            # Manage Big / Little Endian arch
+            case ${BYTE_ORDER} in
+
+            # Big Endian
+            "be" )
+
+                # Try the most accurate
+                if [ -f $APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion}_be ]; then
+                    NMON="$APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion}_be"
+
+                # try the mainversion
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_be ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_be"
+
+                # try the linux_vendor
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}_be ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}_be"
+
+                fi
+
+            ;;
+
+            # Little Endian
+            "le" )
+
+                # Try the most accurate
+                if [ -f $APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion}_le ]; then
+                    NMON="$APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion}_le"
+
+                # try the mainversion
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_le ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_le"
+
+                # try the linux_vendor
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}_le ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}_le"
+
+                fi
+
+            ;;
+
+            esac
+
+        ;;
+
+        # All other arch
+        *)
+
+                # Try the most accurate
+                if [ -f $APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion} ]; then
+                    NMON="$APP_VAR/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_fullversion}"
+
+                # try the mainversion
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion} ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+                # try the linux_vendor
+                elif [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor} ]; then
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}"
+
+                fi
+
+        ;;
+
+        esac
+
+
+	# So bad, no os-release, probably old linux, things becomes a bit harder
+
+	# centOS, OS and version detection
+    elif [ -f /etc/centos-release ]; then
+
+       for version in 5 6 7; do
+           if grep "CentOS release $version" /etc/centos-release >/dev/null; then
+
+               linux_vendor="centos"
+               linux_mainversion="$version"
+               NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+           fi
+
+        done
+
+    # rhel, OS and version detection
+	elif [ -f /etc/redhat-release ]; then
+
+        # Redhat has some version for PowerLinux that can be Little or Big endian
+
+		for version in 4 5 6 7; do
+	
+			# search for rhel		
+			if grep "Red Hat Enterprise Linux Server release $version" /etc/redhat-release >/dev/null; then
+		
+				linux_vendor="rhel"
+				linux_mainversion="$version"
+
+                case $ARCH in
+
+                # PowerLinux
+                ppc32* | ppc64* )
+
+                    # Manage Big / Little Endian arch
+                    case ${BYTE_ORDER} in
+
+                    # Big endian
+                    "be" )
+                        NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_be"
+
+				    ;;
+
+				    # Little endian
+				    "le")
+    				    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_le"
+				    ;;
+
+				    esac
+
+				;;
+
+				# Other arch
+				* )
+				    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+                ;;
+
+                esac
+
+			fi
+			
+		done
+
+	# Second chance for sles and opensuse, /etc/SuSE-release is deprecated and should be removed in future version
+	elif [ -f /etc/SuSE-release ]; then
+	
+		# sles
+		
+		if grep "SUSE Linux Enterprise Server" /etc/SuSE-release >/dev/null; then
+		
+			linux_vendor="sles"
+			# Get the main version only
+			linux_mainversion=`grep 'VERSION =' /etc/SuSE-release | sed 's/ //g' | awk -F= '{print $2}' | awk -F. '{print $1}'`
+            linux_subversion=`grep 'PATCHLEVEL =' /etc/SuSE-release | sed 's/ //g' | awk -F= '{print $2}' | awk -F. '{print $1}'`
+
+            case $ARCH in
+
+            # PowerLinux
+            ppc32* | ppc64* )
+
+                # Manage Big / Little Endian arch
+                case ${BYTE_ORDER} in
+
+                # Big endian
+                "be" )
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_be"
+
+                ;;
+
+                # Little endian
+                "le")
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_le"
+                ;;
+
+                esac
+
+            ;;
+
+            # Other arch
+            * )
+                NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+            ;;
+
+            esac
+
+		elif grep "openSUSE" /etc/SuSE-release >/dev/null; then
+		
+			linux_vendor="opensuse"
+			# Get the main version only
+			linux_mainversion=`grep 'VERSION =' /etc/SuSE-release | sed 's/ //g' | awk -F= '{print $2}' | awk -F. '{print $1}'`
+            linux_subversion=`grep 'PATCHLEVEL =' /etc/SuSE-release | sed 's/ //g' | awk -F= '{print $2}' | awk -F. '{print $1}'`
+
+            # try the most accurate
+            if [ -f ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}${linux_subversion} ]; then
+                    NMON=" ${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}${linux_subversion}"
+            else
+                    NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+            fi
+
+		fi
+	
+	elif [ -f /etc/issue ]; then
+
+		# search for debian (note: starting debian 7, the /etc/os-release should be available)
+		# This shall not be updated in the future as the /etc/os-release is now available by default
+
+		if grep "Debian GNU/Linux" /etc/issue >/dev/null; then
+
+			for version in 5 6 7; do
+	
+				if grep "Debian GNU/Linux $version" /etc/issue >/dev/null; then
+		
+					linux_vendor="debian"
+					linux_mainversion="$version"
+					NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+				fi
+		
+			done
+
+        # Ubuntu is Little Endian only
+		elif grep "Ubuntu" /etc/issue >/dev/null; then
+
+			for version in 6 7 8 9 10 11 12 13 14 15; do
+	
+				if grep "Ubuntu $version" /etc/issue >/dev/null; then
+		
+					linux_vendor="ubuntu"
+					linux_mainversion="$version"
+
+                    case $ARCH in
+
+                    # PowerLinux
+                    ppc32* | ppc64* )
+
+                        # Manage Big / Little Endian arch
+                        case ${BYTE_ORDER} in
+
+                        # Big endian
+                        "be" )
+                            NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_be"
+
+                        ;;
+
+                        # Little endian
+                        "le")
+                            NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}_le"
+                        ;;
+
+                        esac
+
+                    ;;
+
+                    # Other arch
+                    * )
+                        NMON="${APP_VAR}/bin/linux/${linux_vendor}/nmon_${ARCH_NAME}_${linux_vendor}${linux_mainversion}"
+
+                    ;;
+
+                    esac
+
+				fi
+		
+			done
+
+		fi
+		
+	fi
+
+	# Verify NMON is set and exists, if not, try falling back to generic builds
+
+	case $NMON in
+	
+	"")
+	
+		# Look for local binary in PATH
+		which nmon >/dev/null 2>&1
+		
+		if [ $? -eq 0 ]; then
+			NMON=`which nmon 2>&1`
+		else
+
+            case $ARCH in
+
+            # PowerLinux
+            ppc32* | ppc64* )
+
+                # Manage Big / Little Endian arch
+                case ${BYTE_ORDER} in
+
+                # Big endian
+                "be" )
+                    NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}_be"
+
+                ;;
+
+                # Little endian
+                "le")
+                    NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}_le"
+                ;;
+
+                esac
+
+            ;;
+
+            # Other arch
+            * )
+                NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}"
+
+            ;;
+
+            esac
+
+		fi
+    ;;
+
+    *)
+        if [ ! -x ${NMON} ]; then
+
+            # Look for local binary in PATH
+            which nmon >/dev/null 2>&1
+
+            if [ $? -eq 0 ]; then
+                    NMON=`which nmon 2>&1`
+            fi
+
+        fi
+
+    ;;
+
+	esac
+
+	# Finally verify we have a binary that exists and is executable
+	
+	if [ ! -x ${NMON} ]; then
+
+		if [ -x ${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH} ]; then
+		
+			# Try switching to embedded generic
+
+            case $ARCH in
+
+            # PowerLinux
+            ppc32* | ppc64* )
+
+                # Manage Big / Little Endian arch
+                case ${BYTE_ORDER} in
+
+                # Big endian
+                "be" )
+                    NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}_be"
+
+                ;;
+
+                # Little endian
+                "le")
+                    NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}_le"
+                ;;
+
+                esac
+
+            ;;
+
+            # Other arch
+            * )
+                NMON="${APP_VAR}/bin/linux/generic/nmon_linux_${ARCH_NAME}"
+
+            ;;
+
+            esac
+
+		else
+			
+			echo "`log_date`, ${HOST} ERROR, could not find an nmon binary suitable for this system, please install nmon manually and set it available in the user PATH"
+			remove_mutex
+			exit 1
+
+		fi	
+	
+	fi
+
+fi
+
+;;
+
+##########
+#	SunOS	#
+##########
+
+SunOS )
+
+# Nmon BIN full path (including bin name), please update this value to reflect your Nmon installation
+NMON=`which sadc 2>&1`
+if [ ! -x "$NMON" ];then
+
+	# No nmon found in env, so using prepackaged version
+	sun_arch=`uname -a`
+	
+	echo ${sun_arch} | grep sparc >/dev/null
+	case $? in
+	0 )
+		NMON="$APP_VAR/bin/sarmon_bin_sparc/sadc" ;;
+	* )
+		# arch is x86
+		NMON="$APP_VAR/bin/sarmon_bin_i386/sadc" ;;
+	esac
+
+fi
+
+;;
+
+* )
+
+	echo "`log_date`, ${HOST} ERROR, Unsupported system ! Nmon is available only for AIX / Linux / Solaris systems, please check and deactivate nmon data collect"
+	remove_mutex
+	exit 2
+
+;;
+
+esac
+
+# Nmon file final destination
+# Default to nmon_repository of Nmon Splunk App
+NMON_REPOSITORY=${APP_VAR}/var/nmon_repository
+[ ! -d $NMON_REPOSITORY ] && { mkdir -p $NMON_REPOSITORY; }
+
+#also needed - 
+[ -d ${APP_VAR}/var/csv_repository ] || { mkdir -p ${APP_VAR}/var/csv_repository; }
+[ -d ${APP_VAR}/var/config_repository ] || { mkdir -p ${APP_VAR}/var/config_repository; }
+
+# Nmon PID file
+PIDFILE=${APP_VAR}/nmon.pid
+
+# FIFO file 1
+FIFO1_DIR=${NMON_REPOSITORY}/fifo1
+FIFO1=${FIFO1_DIR}/nmon.fifo
+
+# FIFO file 2
+FIFO2_DIR=${NMON_REPOSITORY}/fifo2
+FIFO2=${FIFO2_DIR}/nmon.fifo
+
+# outdated net if state file: used to inform the script that parsers have detected an outdated definition of network
+# interfaces. If the outdated state file exist, the current running process will be terminated
+# If a network change has occurred and the list of interfaces have changed, network metrics will not be available
+# until a new process is started
+OUTDATED_NETIF_NMON_STATE=${APP_VAR}/var/outdated_network_int_nmon.state
+
+# create dir
+[ -d ${FIFO1_DIR} ] || { mkdir -p ${FIFO1_DIR}; }
+[ -d ${FIFO2_DIR} ] || { mkdir -p ${FIFO2_DIR}; }
+
+# ensure fifo files do not exist currently as regular files instead of named pipe
+if [ -s $FIFO1 ]; then
+    rm -f $FIFO1
+fi
+
+if [ -s $FIFO2 ]; then
+    rm -f $FIFO2
+fi
+
+# create fifo files if required
+if [ ! -p $FIFO1 ]; then
+    mkfifo $FIFO1
+fi
+
+if [ ! -p $FIFO2 ]; then
+    mkfifo $FIFO2
+fi
+
+# csv_repository
+[ -d ${APP_VAR}/var/csv_repository ] || { mkdir -p ${APP_VAR}/var/csv_repository; }
+
+#
+# Interpreter choice
+#
+
+PYTHON=0
+PYTHON2=0
+PYTHON3=0
+PERL=0
+# Set the default interpreter
+INTERPRETER="python"
+
+# Get the version for both worlds
+PYTHON2=`which python 2>&1`
+PYTHON3=`which python3 2>&1`
+PERL=`which perl 2>&1`
+
+# Handle Python
+PYTHON_available="false"
+case $PYTHON3 in
+*python*)
+    PYTHON_available="true"
+    INTERPRETER="python3" ;;
+*)
+    case $PYTHON2 in
+    *python*)
+        PYTHON_available="true"
+        INTERPRETER="python" ;;
+    esac
+;;
+esac
+
+# Handle Perl
+case $PERL in
+*perl*)
+   PERL_available="true"
+   ;;
+*)
+   PERL_available="false"
+   ;;
+esac
+
+case `uname` in
+
+# AIX priority is Perl
+"AIX")
+     case $PERL_available in
+     "true")
+           INTERPRETER="perl" ;;
+     "false")
+           INTERPRETER="$INTERPRETER" ;;
+ esac
+;;
+
+# Other OS, priority is Python
+*)
+     case $PYTHON_available in
+     "true")
+           INTERPRETER="$INTERPRETER" ;;
+     "false")
+           INTERPRETER="perl" ;;
+     esac
+;;
+esac
+
+############################################
+# functions
+############################################
+
+# create snap scripts for nmon_external
+
+create_nmon_external () {
+
+# fifo_started variable is exported by the function start_fifo_reader
+case $fifo_started in
+"fifo1")
+    cat ${APP}/bin/nmon_external_cmd/nmon_external_start.sh | sed "s|NMON_FIFO_PATH|$NMON_EXTERNAL_DIR|g" > "${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo1.sh"
+    chmod +x "${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo1.sh"
+    cat ${APP}/bin/nmon_external_cmd/nmon_external_snap.sh | sed "s|NMON_FIFO_PATH|$NMON_EXTERNAL_DIR|g" > "${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo1.sh"
+    chmod +x "${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo1.sh"
+    ;;
+"fifo2")
+    cat ${APP}/bin/nmon_external_cmd/nmon_external_start.sh | sed "s|NMON_FIFO_PATH|$NMON_EXTERNAL_DIR|g" > "${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo2.sh"
+    chmod +x "${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo2.sh"
+    cat ${APP}/bin/nmon_external_cmd/nmon_external_snap.sh | sed "s|NMON_FIFO_PATH|$NMON_EXTERNAL_DIR|g" > "${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo2.sh"
+    chmod +x "${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo2.sh"
+    ;;
+esac
+
+}
+
+# Verify that we don't spawn multiple instances of nmon external snap script
+# this issue is unexpected and has been reported on some cases in AIX
+# If this occurs, don't let processes multiplication happening
+
+# Any process running more than 2 minutes will be killed
+
+check_duplicated_external_snap () {
+
+        # get the list of occurrences
+        count="0"
+        count=`ps -ef | grep nmon_external_snap | grep -v grep | wc -l`
+
+        if [ $count -gt 0 ]; then
+                oldPidList=`ps -ef | grep nmon_external_snap | grep -v grep | awk '{print $2}'`
+                for pid in $oldPidList; do
+                    pid_runtime=0
+                    # only run the process is running
+                    if [ -d /proc/${pid} ]; then
+                        # get the process runtime in seconds
+                        pid_runtime=`ps -p ${pid} -oetime= | tr '-' ':' | awk -F: '{ total=0; m=1; } { for (i=0; i < NF; i++) {total += $(NF-i)*m; m *= i >= 2 ? 24 : 60 }} {print total}'`
+
+                        case ${pid_runtime} in
+
+                            ''|*[!0-9]*)
+                                echo "`log_date`, ${HOST} WARN: run time identification of process with pid ${pid} failed, it has been probably terminated"
+                                ;;
+                            *)
+
+                                if [ ${pid_runtime} -gt 120 ]; then
+                                    echo "`log_date`, ${HOST} WARN: fifo nmon external snap script took long and will be killed (SIGTERM): `ps -p ${pid} -ouser,pid,command,etime,args | grep -v PID`"
+                                    kill $pid
+
+                                    # Allow some time for the process to end
+                                    sleep 1
+
+                                    # re-check the status
+                                    ps -p ${pid} -oetime= >/dev/null
+
+                                    if [ $? -eq 0 ]; then
+                                    echo "`log_date`, ${HOST} WARN, fifo nmon external snap due to `ps -eo user,pid,command,etime,args | grep $pid | grep -v grep` failed to stop, killing (-9) process $pid"
+                                        kill -9 $pid
+                                    fi
+
+                                fi
+                                ;;
+
+                        esac
+
+                    fi
+                done
+        fi
+
+}
+
+# For AIX / Linux, the -p option when launching nmon will output the instance pid in stdout
+
+start_nmon () {
+
+#
+# Set Nmon command line
+#
+
+# NOTE:
+
+# Collecting NFS Statistics:
+
+# --> Since Nmon App Version 1.5.0, NFS activation can be controlled by the nmon.conf file in default/local directories
+
+# - Linux: Add the "-N" option if you want to extract NFS Statistics (NFS V2/V3/V4)
+# - AIX: Add the "-N" option for NFS V2/V3, "-NN" for NFS V4
+
+# For AIX, the default command options line "-f -T -A -d -K -L -M -P -O -W -S -^" includes: (see http://www-01.ibm.com/support/knowledgecenter/ssw_aix_61/com.ibm.aix.cmds4/nmon.htm)
+
+# AIX options can be managed using local/nmon.conf, do not modify options here
+
+# -A	Includes the Asynchronous I/O section in the view.
+# -d	Includes the Disk Service Time section in the view.
+# -K	Includes the RAW Kernel section and the LPAR section in the recording file. The -K flag dumps the raw numbers
+# of the corresponding data structure. The memory dump is readable and can be used when the command is recording the data.
+# -L	Includes the large page analysis section.
+# -M	Includes the MEMPAGES section in the recording file. The MEMPAGES section displays detailed memory statistics per page size.
+# -O    Includes the Shared Ethernet adapter (SEA) VIOS sections in the recording file.
+# -W    Includes the WLM sections into the recording file.
+# -S	Includes WLM sections with subclasses in the recording file.
+# -P	Includes the Paging Space section in the recording file.
+# -T	Includes the top processes in the output and saves the command-line arguments into the UARG section. You cannot specify the -t, -T, or -Y flags with each other.
+# -^	Includes the Fiber Channel (FC) sections.
+# -p  print pid in stdout
+
+# For Linux, the default command options line "-f -T -d 1500" includes:
+
+# -t	include top processes in the output
+# -T	as -t plus saves command line arguments in UARG section
+# -d <disks>    to increase the number of disks [default 256]
+# -p  print pid in stdout
+
+case $UNAME in
+
+AIX )
+
+	# -p option is mandatory to get the pid of the launched instances, ensure it has been set
+
+	echo ${AIX_options} | grep '\-p' >/dev/null
+	if [ $? -ne 0 ]; then
+		AIX_options="${AIX_options} -p"
+	fi
+
+	# Since release 1.3.0, we use fifo files, -f option is prohibited
+    echo ${AIX_options} | grep '\-f' >/dev/null
+    if [ $? -eq 0 ]; then
+            AIX_options=`echo ${AIX_options} | sed 's/\-f //g'`
+    fi
+
+    # option -y is compatible and mandatory, ensure it has been set
+    echo ${AIX_options} | grep 'yoverwrite' >/dev/null
+    if [ $? -ne 0 ]; then
+            echo "`log_date`, ${HOST}, WARN, the -yoverwrite=1 option was not used while loading local settings (please review nmon.conf), option is mandatory and will be forced"
+            AIX_options="${AIX_options} -yoverwrite=1"
+    fi
+
+    # Manage NFS
+    if [ ${AIX_NFS23} -eq 1 ]; then
+        nmon_command="-N -s ${fifo_interval} -c ${fifo_snapshot}"
+    elif [ ${AIX_NFS4} -eq 1 ]; then
+        nmon_command="-NN -s ${fifo_interval} -c ${fifo_snapshot}"
+    else
+        nmon_command="-s ${fifo_interval} -c ${fifo_snapshot}"
+    fi
+
+    # Set the nmon command for AIX
+    nmon_command_fifo1="${NMON} -F ${FIFO1} ${AIX_options} ${nmon_command}"
+    nmon_command_fifo2="${NMON} -F ${FIFO2} ${AIX_options} ${nmon_command}"
+
+;;
+
+SunOS )
+
+	nmon_command="${NMON} ${fifo_interval} ${fifo_snapshot}"
+;;
+
+Linux )
+
+    # Since 1.2.47, Linux_unlimited_capture feature has changed
+    # For historical reason, and in case the old activation value (1) has been set in local/nmon.conf, manage it.
+    case ${Linux_unlimited_capture} in
+    "1")
+        Linux_unlimited_capture="-1" ;;
+    esac
+
+    # Set the default Linux minimal args list
+    Linux_nmon_args="-T -s ${fifo_interval} -c ${fifo_snapshot} -d ${Linux_devices}"
+
+    case ${Linux_NFS} in
+    "1" )
+        Linux_nmon_args="$Linux_nmon_args -N" ;;
+    esac
+
+    case ${Linux_unlimited_capture} in
+    "0" )
+        Linux_nmon_args="$Linux_nmon_args" ;;
+    "-1" )
+        Linux_nmon_args="$Linux_nmon_args -I ${Linux_unlimited_capture}" ;;
+    * )
+        if [ `echo "${Linux_unlimited_capture}" | grep -E "^[0-9]+(\.[0-9]+)?$"` ]; then
+            Linux_nmon_args="$Linux_nmon_args -I ${Linux_unlimited_capture}"
+        else
+            echo "`log_date`, ${HOST} ERROR, invalid value for Linux_unlimited_capture (${Linux_unlimited_capture} is not an integer or a floating number)"
+            remove_mutex
+            exit 2
+        fi
+        ;;
+    esac
+
+    case ${Linux_disk_dg_enable} in
+    "1" )
+        Linux_nmon_args="$Linux_nmon_args -g auto -D" ;;
+    esac
+
+    # Set command lines
+    nmon_command_fifo1="${NMON} -F ${FIFO1} $Linux_nmon_args -p"
+    nmon_command_fifo2="${NMON} -F ${FIFO2} $Linux_nmon_args -p"
+
+;;
+
+esac
+
+#
+# Starting Nmon
+#
+
+case $UNAME in
+
+	AIX )
+
+     # on AIX, prevent error messages linked to /usr/opt/freeware/bin/rpm
+     unset LIBPATH
+
+     # global nmon_external
+     NMON_EXTERNAL_DIR="${APP_VAR}/var/nmon_repository/${fifo_started}"
+     export NMON_EXTERNAL_DIR
+     NMON_EXTERNAL_FIFO="${APP_VAR}/var/nmon_repository/${fifo_started}/nmon.fifo"
+     export NMON_EXTERNAL_FIFO
+     TIMESTAMP=0
+     export TIMESTAMP
+     NMON_ONE_IN=1
+     export NMON_ONE_IN
+     unset NMON_END
+
+     # fifo_started variable is exported by the function start_fifo_reader
+     case $fifo_started in
+     "fifo1")
+         case $nmon_external_generation in
+         1)
+             # nmon_external
+             create_nmon_external
+             NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo1.sh"
+             export NMON_START
+             NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo1.sh"
+             export NMON_SNAP
+         ;;
+         esac
+
+         echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command_fifo1} in ${NMON_EXTERNAL_DIR}"
+         ${nmon_command_fifo1} 2>&1 > ${APP_VAR}/nmon_output.txt
+
+         if [ $? -ne 0 ]; then
+             echo "`log_date`, ${HOST} ERROR, nmon binary returned a non 0 code while trying to start, please verify error traces in splunkd log"
+         fi
+
+         # old topas-nmon version might not be compatible with the -y option, let's manage this
+         cat ${APP_VAR}/nmon_output.txt | grep -i 'invalid option[^y]*y' >/dev/null
+         if [ $? -eq 0 ]; then
+             # option -y is not compatible and not mandatory
+             echo "`log_date`, ${HOST}, ERROR, This system is running a topas-nmon version that does not support the -y option, you might need to consider an AIX upgrade: `cat ${APP_VAR}/nmon_output.txt`"
+             nmon_command_fifo1=`echo ${nmon_command_fifo1} | sed 's/\-yoverwrite=1//g'`
+             ${nmon_command_fifo1} 2>&1 > ${APP_VAR}/nmon_output.txt
+         fi
+
+         # Store the PID file (very last line of nmon output)
+         if [ -f ${APP_VAR}/nmon_output.txt ]; then
+             tail -1 ${APP_VAR}/nmon_output.txt > ${PIDFILE}
+         fi
+
+     ;;
+
+     "fifo2")
+         case $nmon_external_generation in
+         1)
+             # nmon_external
+             create_nmon_external
+             NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo2.sh"
+             export NMON_START
+             NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo2.sh"
+             export NMON_SNAP
+         ;;
+         esac
+
+         echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command_fifo2} in ${NMON_EXTERNAL_DIR}"
+         ${nmon_command_fifo2} 2>&1 > ${APP_VAR}/nmon_output.txt
+
+         if [ $? -ne 0 ]; then
+             echo "`log_date`, ${HOST} ERROR, nmon binary returned a non 0 code while trying to start, please verify error traces in splunkd log"
+         fi
+
+         # old topas-nmon version might not be compatible with the -y option, let's manage this
+         cat ${APP_VAR}/nmon_output.txt | grep -i 'invalid option[^y]*y' >/dev/null
+         if [ $? -eq 0 ]; then
+             # option -y is not compatible and not mandatory
+             echo "`log_date`, ${HOST}, ERROR, This system is running a topas-nmon version that does not support the -y option, you might need to consider an AIX upgrade: `cat ${APP_VAR}/nmon_output.txt`"
+             nmon_command_fifo2=`echo ${nmon_command_fifo2} | sed 's/\-yoverwrite=1//g'`
+             ${nmon_command_fifo2} 2>&1 > ${APP_VAR}/nmon_output.txt
+         fi
+
+         # Store the PID file (very last line of nmon output)
+         if [ -f ${APP_VAR}/nmon_output.txt ]; then
+             tail -1 ${APP_VAR}/nmon_output.txt > ${PIDFILE}
+         fi
+
+     ;;
+
+     esac
+
+	;;
+
+	Linux )
+
+     # global nmon_external
+     NMON_EXTERNAL_DIR="${APP_VAR}/var/nmon_repository/${fifo_started}"
+     export NMON_EXTERNAL_DIR
+     NMON_EXTERNAL_FIFO="${APP_VAR}/var/nmon_repository/${fifo_started}/nmon.fifo"
+     export NMON_EXTERNAL_FIFO
+     TIMESTAMP=0
+     export TIMESTAMP
+     NMON_ONE_IN=1
+     export NMON_ONE_IN
+     unset NMON_END
+
+     # fifo_started variable is exported by the function start_fifo_reader
+     case $fifo_started in
+     "fifo1")
+         case $nmon_external_generation in
+         1)
+             # nmon_external
+             create_nmon_external
+             NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo1.sh"
+             export NMON_START
+             NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo1.sh"
+             export NMON_SNAP
+         ;;
+         esac
+         nmon_command=${nmon_command_fifo1} ;;
+     "fifo2")
+         case $nmon_external_generation in
+         1)
+             # nmon_external
+             create_nmon_external
+             NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo2.sh"
+             export NMON_START
+             NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo2.sh"
+             export NMON_SNAP
+         ;;
+         esac
+         nmon_command=${nmon_command_fifo2} ;;
+     esac
+
+	    # Retrieve the nmon Linux version
+	    # Nmon 16x or superior is required to run disk group statistics
+
+        NMON_VERSION=`$NMON -h | sed -n 's/.*[v|V]ersion[^0-9]*\([0-9][0-9]*\).*$/\1/p' | head -1`
+
+        # Assume we can fail
+        case $NMON_VERSION in
+        "")
+            # Set a default to 14 in case of identification failure
+            NMON_VERSION="14" ;;
+        esac
+
+        if [ $NMON_VERSION -ge "16" ]; then
+
+            # Activation of Linux disks extended stats generate a message in stdout
+            # We don't want this as we need to retrieve the pid from nmon output
+            # However, we also want to analyse the return code, so we can't filter out in only one operation
+
+            # Manage exceptions - these systems will not generate data but will start and output an lsblk message
+            linux_distrib="${linux_vendor}_${linux_mainversion}"
+            disk_group_option_exception="sles_11"
+            echo $disk_group_option_exception | grep -o $linux_distrib >/dev/null
+            if [ $? -eq 0 ]; then
+                     nmon_command=`echo ${nmon_command} | sed "s/-g ${Linux_disk_dg_group} -D//g"`
+            fi
+
+            echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command} in ${NMON_EXTERNAL_DIR}"
+            ${nmon_command} > ${APP_VAR}/nmon_output.txt
+
+            if [ $? -ne 0 ]; then
+                echo "`log_date`, ${HOST} ERROR, nmon binary returned a non 0 code while trying to start, please verify error traces in splunkd log (missing shared libraries?)"
+            fi
+
+            # Store the PID file (very last line of nmon output)
+            if [ -f ${APP_VAR}/nmon_output.txt ]; then
+                awk 'END{print}' ${APP_VAR}/nmon_output.txt > ${PIDFILE}
+            fi
+
+            # old nmon versions might not be compatible with disks extended stats, or the group file does not exist
+            # In such a case, echo a WARN, remove the option and last chance start
+            if grep 'opening disk group file' ${APP_VAR}/nmon_output.txt >/dev/null; then
+
+                echo "`log_date`, ${HOST} WARN, nmon disks extended statistics cannot be collected, either this nmon version is not compatible or the disk group file does not exist, see ${APP_VAR}/nmon_output.txt"
+
+                nmon_command=`echo ${nmon_command} | sed "s/-g ${Linux_disk_dg_group} -D//g"`
+                echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command} in ${NMON_EXTERNAL_DIR}"
+                ${nmon_command} &> ${PIDFILE}
+
+                if [ $? -ne 0 ]; then
+                    echo "`log_date`, ${HOST} ERROR, nmon binary returned a non 0 code while trying to start, please verify error traces in splunkd log (missing shared libraries?)"
+                fi
+
+            fi
+
+        else
+
+            # This version is not compatible with the auto group disk
+            nmon_command=`echo ${nmon_command} | sed "s/-g ${Linux_disk_dg_group} -D//g"`
+            echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command} in ${NMON_EXTERNAL_DIR}"
+            ${nmon_command} > ${PIDFILE}
+
+            if [ $? -ne 0 ]; then
+                echo "`log_date`, ${HOST} ERROR, nmon binary returned a non 0 code while trying to start, please verify error traces in splunkd log (missing shared libraries?)"
+            fi
+
+        fi
+
+	;;
+
+	SunOS )
+
+       # global nmon_external
+       NMON_EXTERNAL_DIR="${APP_VAR}/var/nmon_repository/${fifo_started}"
+       export NMON_EXTERNAL_DIR
+       NMON_EXTERNAL_FIFO="${APP_VAR}/var/nmon_repository/${fifo_started}/nmon.fifo"
+       export NMON_EXTERNAL_FIFO
+       TIMESTAMP=0
+       export TIMESTAMP
+       NMON_ONE_IN=1
+       export NMON_ONE_IN
+       unset NMON_END
+
+       # fifo_started variable is exported by the function start_fifo_reader
+       case $fifo_started in
+       "fifo1")
+           case $nmon_external_generation in
+           1)
+               # nmon_external
+               create_nmon_external
+               NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo1.sh"
+               export NMON_START
+               NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo1.sh"
+               export NMON_SNAP
+           ;;
+           esac
+           NMONOUTPUTFILE="${APP_VAR}/var/nmon_repository/${fifo_started}/nmon.fifo"
+           export NMONOUTPUTFILE
+           ;;
+       "fifo2")
+           case $nmon_external_generation in
+           1)
+               # nmon_external
+               create_nmon_external
+               NMON_START="${APP_VAR}/bin/nmon_external_cmd/nmon_external_start_fifo2.sh"
+               export NMON_START
+               NMON_SNAP="${APP_VAR}/bin/nmon_external_cmd/nmon_external_snap_fifo2.sh"
+               export NMON_SNAP
+           ;;
+           esac
+           NMONOUTPUTFILE="${APP_VAR}/var/nmon_repository/${fifo_started}/nmon.fifo"
+           export NMONOUTPUTFILE
+           ;;
+       esac
+
+		NMONNOSAFILE=1 # Do not generate useless sa files
+		export NMONNOSAFILE
+
+		# Manage UARG activation, default is on (1)
+		NMONUARG_VALUE=${Solaris_UARG}
+		if [ ! -z ${NMONUARG_VALUE} ]; then
+
+			if [ ${NMONUARG_VALUE} -eq 1 ]; then
+			NMONUARG=1
+			export NMONUARG
+			fi
+
+		fi
+
+		# Manage VxVM volume statistics activation, default is off (0)
+		NMONVXVM_VALUE=${Solaris_VxVM}
+		if [ ! -z ${NMONVXVM_VALUE} ]; then
+		
+			if [ ${NMONVXVM_VALUE} -eq 1 ]; then
+			NMONVXVM=1
+			export NMONVXVM
+			fi
+			
+		fi
+
+        echo "`log_date`, ${HOST} INFO: starting nmon : ${nmon_command} in ${NMON_REPOSITORY}"
+		${nmon_command} >/dev/null 2>&1 &
+	;;
+
+esac
+
+}
+
+verify_pid() {
+
+	givenpid=$1	
+
+	# Verify proc fs before checking PID
+	if [ -d /proc/${givenpid} ]; then
+	
+		case $UNAME in
+	
+			AIX )
+			
+				ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | grep $givenpid ;;
+		
+			Linux )
+
+				ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | grep $givenpid ;;
+				
+			SunOS )
+			
+				/usr/bin/pwdx $givenpid ;;
+							
+		esac
+		
+	else
+	
+		# Just return nothing		
+		echo ""
+		
+	fi
+
+}
+
+# Search for running process and write PID file
+write_pid() {
+
+# Only SunOS will look for running processes to identify nmon instances
+# AIX and Linux will save the pid at launch time
+
+case $UNAME in 
+
+	SunOS)
+
+        # In main priority, use pgrep (no truncation trouble), pgrep should always be available
+        # whether running on Solaris 10 or 11
+        if [ -x /usr/bin/pgrep ]; then
+            PIDs=`pgrep -f ${NMON}`
+        # Second priority, use BSD ps command with the appropriated syntax (mainly for Solaris 10)
+        elif [ -x /usr/ucb/ps ]; then
+            PIDs=`/usr/ucb/ps auxww | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+        # Last, use the ps command with BSD style syntax (no -) for Solaris 11 and later
+        # Solaris 10 cannot use BSD syntax with native ps, hopefully previous options should have been found !
+        else
+            if grep 'Solaris 10' /etc/release >/dev/null; then
+                PIDs=`/usr/ucb/ps -ef | grep sarmon | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+            else
+                PIDs=`/usr/ucb/ps auxww | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+            fi
+        fi
+
+		for p in ${PIDs}; do
+
+			verify_pid $p | grep -v grep | grep ${APP_VAR} >/dev/null
+
+			if [ $? -eq 0 ]; then
+				echo ${PIDs} > ${PIDFILE}
+			fi
+
+		done
+	;;		
+		
+	esac
+			
+}
+
+# Just Search for running process
+search_nmon_instances() {
+
+case $UNAME in 
+
+	Linux)
+
+		PIDs=`ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+		
+	;;
+	
+	SunOS)
+
+		PIDs=`ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+
+		for p in ${PIDs}; do
+
+			verify_pid $p | grep -v grep | grep ${APP_VAR} >/dev/null
+
+		done
+	;;		
+		
+	AIX)
+
+		case ${AIX_topas_nmon} in
+	
+		true )	
+			PIDs=`ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | grep ${NMON_REPOSITORY} | awk '{print $2}'`
+		;;
+		
+		false)
+			PIDs=`ps -ef | grep ${NMON} | grep -v grep | grep -v metricator_helper.sh | awk '{print $2}'`
+		;;
+		
+		esac
+
+	;;
+			
+	esac
+			
+}
+
+start_fifo_reader () {
+
+ # Check fifo readers, start if either fifo1 or fifo2 is free
+ fifo_started="none"
+
+ # be portable
+ running_fifo=`ps auxww | awk '/metricator_reader.py --fifo fifo1/ || /metricator_reader.py --fifo fifo2/ || /metricator_reader.pl --fifo fifo1/ || /metricator_reader.pl --fifo fifo2/' | grep -v awk`
+
+ # Initiate
+ fifo1_running=0
+ fifo2_running=0
+
+ # check fifo1
+ echo $running_fifo | grep 'fifo1' >/dev/null
+ if [ $? -eq 0 ]; then
+    fifo1_running=1
+ fi
+
+ # check fifo2
+ echo $running_fifo | grep 'fifo2' >/dev/null
+ if [ $? -eq 0 ]; then
+    fifo2_running=1
+ fi
+
+ # Start
+ if [ $fifo1_running -eq 0 ]; then
+     echo "`log_date`, ${HOST} INFO: starting the fifo_reader fifo1"
+     case $INTERPRETER in
+     "perl")
+         nohup $APP/bin/metricator_reader.pl --fifo fifo1 </dev/null >/dev/null 2>&1 & ;;
+     "python"|"python3")
+         nohup $INTERPRETER $APP/bin/metricator_reader.py --fifo fifo1 </dev/null >/dev/null 2>&1 & ;;
+     esac
+     echo $! > ${APP_VAR}/var/fifo_reader_fifo1.pid
+     fifo_started="fifo1"
+     export fifo_started
+ elif [ $fifo1_running -eq 1 ] && [ $fifo2_running -ne 1 ]; then
+     echo "`log_date`, ${HOST} INFO: starting the fifo_reader fifo2"
+     case $INTERPRETER in
+     "perl")
+         nohup $APP/bin/metricator_reader.pl --fifo fifo2 </dev/null >/dev/null 2>&1 & ;;
+     "python"|"python3")
+         nohup $INTERPRETER $APP/bin/metricator_reader.py --fifo fifo2 </dev/null >/dev/null 2>&1 & ;;
+     esac
+     echo $! > ${APP_VAR}/var/fifo_reader_fifo2.pid
+     fifo_started="fifo2"
+     export fifo_started
+ elif [ $fifo1_running -eq 1 ]; then
+     echo "`log_date`, ${HOST} INFO: The fifo_reader fifo1 is running"
+ elif [ $fifo2_running -eq 1 ]; then
+     echo "`log_date`, ${HOST} INFO: The fifo_reader fifo2 is running"
+ fi
+
+}
+
+####################################################################
+#############		Main Program 			############
+####################################################################
+
+# Initialize PID variable
+PIDs="" 
+
+# Initialize nmon status
+nmon_isstarted=0
+
+# Check nmon binary exists and is executable
+if [ ! -x ${NMON} ]; then
+	
+	echo "`log_date`, ${HOST} ERROR, could not find Nmon binary (${NMON}) or execution is unauthorized"
+	remove_mutex
+	exit 2
+fi
+
+# cd to root dir
+cd ${NMON_REPOSITORY}
+
+# Check PID file, if no PID file is found, start nmon
+if [ ! -f ${PIDFILE} ]; then
+
+	# search for any App related instances
+	search_nmon_instances
+
+	case ${PIDs} in
+	
+	"")
+        start_fifo_reader
+        sleep 1
+        start_nmon
+		sleep 5 # Let nmon time to start
+		write_pid
+		remove_mutex
+		exit 0
+	;;
+	
+	*)
+
+		echo "`log_date`, ${HOST} INFO: found Nmon running with PID ${PIDs}"
+		# Retry to write pid file
+		write_pid
+		remove_mutex
+		exit 0
+	;;
+	
+	esac
+
+else
+
+	# PID file found
+
+	SAVED_PID=`cat ${PIDFILE} | awk '{print $1}'`
+
+	if [ ${endtime_margin} -gt 0 ]; then
+	
+		# Initialize PIDAGE to 01 Jan 2000 00:00:00 GMT for later failure verification
+		EPOCHTEST="946684800"
+		PIDAGE=$EPOCHTEST
+
+        case ${INTERPRETER} in
+
+        "perl")
+
+            # Use Perl to get PID file age in seconds
+            perl -e "\$mtime=(stat(\"$PIDFILE\"))[9]; \$cur_time=time();  print \$cur_time - \$mtime;" > ${APP_VAR}/metricator_helper.sh.tmp.$$
+            ;;
+
+        "python"|"python3")
+
+            # Use Python to get PID file age in seconds
+            $INTERPRETER -c "import os; import time; now = time.strftime(\"%s\"); print(int(int(now)-(os.path.getmtime('$PIDFILE'))))" > ${APP_VAR}/metricator_helper.sh.tmp.$$
+            ;;
+
+        esac
+
+		PIDAGE=`cat ${APP_VAR}/metricator_helper.sh.tmp.$$`
+		rm ${APP_VAR}/metricator_helper.sh.tmp.$$
+
+        case $PIDAGE in
+        "")
+                echo "`log_date`, ${HOST} WARN: failed to eval the age of the current pid file, gaps may occur between nmon processes run."
+                PIDAGE=0
+                ;;
+        esac
+
+		# Estimate the end time of current Nmon binary less 4 minutes (enough time for new nmon process to start collecting)
+		# Use expr for portability with sh
+  endtime=`expr ${fifo_interval} \* ${fifo_snapshot}`
+  endtime=`expr ${endtime} - ${endtime_margin}`
+	
+	fi
+
+	case ${SAVED_PID} in
+	
+	# PID file is empty
+	"")
+
+		echo "`log_date`, ${HOST} INFO: Removing stale pid file (empty file)"
+		rm -f ${PIDFILE}
+
+		# search for any App related instances
+		search_nmon_instances
+
+		case ${PIDs} in
+	
+		"")
+            start_fifo_reader
+            sleep 1
+            start_nmon
+
+            sleep 5 # Let nmon time to start
+			# Relevant for Solaris Only
+			write_pid
+			remove_mutex
+			exit 0
+		;;
+	
+		*)
+
+			echo "`log_date`, ${HOST} INFO: found Nmon running with PID ${PIDs}"
+			# Relevant for Solaris Only
+			write_pid
+			remove_mutex
+			exit 0
+		;;
+	
+		esac
+
+	;;
+
+	# PID file is not empty
+	*)
+	
+	case $UNAME in
+
+	Linux)
+		if [ -d /proc/${SAVED_PID} ]; then
+			istarted="true"
+		else
+			istarted="false"
+		fi
+		;;
+
+	SunOS)
+		verify_pid ${SAVED_PID} | grep -v grep | grep ${NMON_REPOSITORY} >/dev/null
+		if [ $? -eq 0 ]; then
+			istarted="true"
+		else
+			istarted="false"
+		fi
+		;;
+				
+	AIX)
+	
+		if [ -d /proc/${SAVED_PID} ]; then
+			istarted="true"
+		else
+			istarted="false"
+		fi
+		;;		
+		
+	esac	
+
+	case $istarted in
+	
+	"true")
+
+        # Check if outdated state file exists, if so the current instance needs to be terminated and next script execution will spawn a new process
+        # there is an acceptable risk of 1 minute gaps in metrics
+        if [ -f $OUTDATED_NETIF_NMON_STATE ]; then
+            echo "`log_date`, ${HOST} WARN: the current nmon process has an outdated definition of network interfaces. The current process with PID ${SAVED_PID} will be terminated and a new process will be spawned at next occurrence."
+            kill ${SAVED_PID}
+            rm -f $OUTDATED_NETIF_NMON_STATE
+            remove_mutex
+            exit 0
+        fi
+
+		if [ ${endtime_margin} -gt 0 ]; then
+
+			# If the current age of the Nmon process requires starting a new one to prevent data gaps between collections
+			# Note that the pidfile will be overwritten, for a few minutes 2 Nmon binaries are running in the same time
+			# Data duplication will be managed by nmonparser files	
+		
+			# Prevent any failure in determining nmon process age
+			if [ $PIDAGE -gt $EPOCHTEST ]; then
+				echo "`log_date`, ${HOST} ERROR: Failed to determine age in seconds of current Nmon process, gaps may occur between Nmon collections"
+		
+			else		
+				case $PIDAGE in
+			
+				"")
+					echo "`log_date`, ${HOST} ERROR: Failed to determine age in seconds of current Nmon process, gaps may occur between Nmon collections"
+				;;
+				*)
+					if [ $PIDAGE -gt $endtime ]; then
+						echo "`log_date`, ${HOST} INFO: To prevent data gaps between 2 Nmon collections, a new process will be started, its PID will be available on next execution"
+
+                        start_fifo_reader
+                        sleep 1
+                        start_nmon
+
+						sleep 5 # Let nmon time to start
+						# Relevant for Solaris Only		
+						write_pid
+					fi
+				;;
+				esac
+			fi
+
+			# Process found	
+			echo "`log_date`, ${HOST} INFO: Nmon process is $PIDAGE sec old, a new process will be spawned when this value will be greater than estimated end in seconds ($endtime sec based on parameters)"
+	
+		fi
+
+        # Prevent infinite spawn of nmon external snap processes (in case of unexpected issue)
+        check_duplicated_external_snap
+
+        echo "`log_date`, ${HOST} INFO: found Nmon running with PID ${SAVED_PID}"
+		remove_mutex
+		exit 0
+		;;
+		
+	"false")
+	
+		# Process not found, Nmon has terminated or is not yet started		
+		echo "`log_date`, ${HOST} INFO: Removing stale pid file (process not found)"
+		rm -f ${PIDFILE}
+
+        start_fifo_reader
+        sleep 1
+        start_nmon
+
+		sleep 5 # Let nmon time to start
+		# Relevant for Solaris Only		
+		write_pid
+		remove_mutex
+		exit 0
+		;;
+	
+	esac
+	
+	;;
+	
+	esac
+
+fi
+
+remove_mutex
+exit 0
+
+####################################################################
+#############		End of Main Program 			############
+####################################################################

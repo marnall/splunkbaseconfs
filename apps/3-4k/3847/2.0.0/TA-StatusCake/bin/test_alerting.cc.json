@@ -1,0 +1,149 @@
+{
+    "tokens": [
+        "__settings__.logging.loglevel", 
+        "__settings__.proxy.proxy_enabled", 
+        "__settings__.proxy.proxy_url", 
+        "__settings__.proxy.proxy_port", 
+        "__settings__.proxy.proxy_type", 
+        "__settings__.proxy.proxy_username", 
+        "__settings__.proxy.proxy_rdns", 
+        "__settings__.proxy.proxy_password", 
+        "username", 
+        "api", 
+        "data_pull_date_new"
+    ], 
+    "meta": {
+        "apiVersion": "1.0.0"
+    }, 
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }, 
+        "proxy": {
+            "username": "{{__settings__.proxy.proxy_username}}", 
+            "port": "{{__settings__.proxy.proxy_port}}", 
+            "password": "{{__settings__.proxy.proxy_password}}", 
+            "enabled": "{{__settings__.proxy.proxy_enabled}}", 
+            "host": "{{__settings__.proxy.proxy_url}}", 
+            "rdns": "{{__settings__.proxy.proxy_rdns}}", 
+            "type": "{{__settings__.proxy.proxy_type}}"
+        }
+    }, 
+    "requests": [
+        {
+            "request": {
+                "url": "https://app.statuscake.com/API/Alerts/?Since={{data_pull_date_new}}", 
+                "method": "GET", 
+                "headers": {
+                    "Username": "{{username}}", 
+                    "API": "{{api}}"
+                }
+            }, 
+            "checkpoint": {
+                "content": {
+                    "data_pull_date_new": "{{_raw_data_pull_date_new}}"
+                }
+            }, 
+            "pre_process": {
+                "skip_conditions": [], 
+                "pipeline": [
+                    {
+                        "method": "set_var", 
+                        "input": [
+                            "{{data_pull_date_new}}"
+                        ], 
+                        "output": "_raw_data_pull_date_new"
+                    }, 
+                    {
+                        "method": "time_str2str", 
+                        "input": [
+                            "{{data_pull_date_new}}", 
+                            "%s", 
+                            "%s"
+                        ], 
+                        "output": "data_pull_date_new"
+                    }
+                ]
+            }, 
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.[*]"
+                        ]
+                    }
+                ], 
+                "pipeline": [
+                    {
+                        "method": "json_path", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$..Unix"
+                        ], 
+                        "output": "data_pull_date_new"
+                    }, 
+                    {
+                        "method": "assert_true", 
+                        "input": [
+                            "{{data_pull_date_new != ''}}", 
+                            "The value of token 'data_pull_date_new' extracted from response cannot be empty!"
+                        ]
+                    }, 
+                    {
+                        "method": "exit_if_true", 
+                        "input": [
+                            "{{data_pull_date_new == _raw_data_pull_date_new}}"
+                        ]
+                    }, 
+                    {
+                        "method": "set_var", 
+                        "input": [
+                            "{{data_pull_date_new}}"
+                        ], 
+                        "output": "_raw_data_pull_date_new"
+                    }, 
+                    {
+                        "method": "json_path", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.[*]"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "splunk_xml", 
+                        "input": [
+                            "{{__stdout__}}", 
+                            "", 
+                            "{{index}}", 
+                            "{{host}}", 
+                            "{{source}}", 
+                            "{{sourcetype}}"
+                        ], 
+                        "output": "__stdout__"
+                    }, 
+                    {
+                        "method": "std_output", 
+                        "input": [
+                            "{{__stdout__}}"
+                        ]
+                    }
+                ]
+            }, 
+            "iteration_mode": {
+                "stop_conditions": [
+                    {
+                        "method": "json_empty", 
+                        "input": [
+                            "{{__response__.body}}", 
+                            "$.$.[*]"
+                        ]
+                    }
+                ], 
+                "iteration_count": "100"
+            }
+        }
+    ]
+}

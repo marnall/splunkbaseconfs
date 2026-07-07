@@ -1,0 +1,2124 @@
+{
+    "appid": "e8f8d8dc-916f-4267-be15-e9b697dd58c5",
+    "name": "ProtectWise",
+    "description": "This app integrates with the ProtectWise cloud platform to implement ingestion and investigative actions",
+    "publisher": "Splunk",
+    "type": "siem",
+    "main_module": "protectwise_connector.py",
+    "app_version": "2.1.3",
+    "utctime_updated": "2025-09-05T16:21:51.586847Z",
+    "package_name": "phantom_protectwise",
+    "product_name": "ProtectWise",
+    "product_vendor": "ProtectWise",
+    "product_version_regex": ".*",
+    "min_phantom_version": "6.2.1",
+    "fips_compliant": true,
+    "latest_tested_versions": [
+        "ProtectWise API v1 06/10/2021"
+    ],
+    "python_version": "3.9, 3.13",
+    "logo": "logo_protectwise.svg",
+    "logo_dark": "logo_protectwise_dark.svg",
+    "license": "Copyright (c) 2016-2025 Splunk Inc.",
+    "configuration": {
+        "auth_token": {
+            "description": "Authentication Token",
+            "data_type": "password",
+            "order": 0,
+            "required": true
+        },
+        "max_containers": {
+            "data_type": "numeric",
+            "description": "Maximum events for scheduled polling",
+            "order": 1,
+            "default": 100,
+            "required": true
+        },
+        "first_run_max_events": {
+            "data_type": "numeric",
+            "order": 2,
+            "description": "Maximum events to poll the first time (For scheduled polling)",
+            "default": 2000,
+            "required": true
+        },
+        "poll_hours": {
+            "data_type": "numeric",
+            "order": 3,
+            "description": "Ingest events in last N hours (Poll Now and First Run)",
+            "default": 1,
+            "required": true
+        },
+        "allow_duplicate_artifacts": {
+            "data_type": "boolean",
+            "order": 4,
+            "description": "Display duplicate artifacts from polling",
+            "default": false
+        },
+        "allow_duplicate_containers": {
+            "data_type": "boolean",
+            "order": 5,
+            "description": "Display duplicate containers from polling",
+            "default": false
+        },
+        "retry_count": {
+            "data_type": "numeric",
+            "order": 6,
+            "description": "Maximum attempts to retry the API call in case of rate limit (Default: 3)",
+            "default": 3
+        }
+    },
+    "actions": [
+        {
+            "action": "test connectivity",
+            "description": "Validate the asset configuration for connectivity",
+            "type": "test",
+            "identifier": "test_asset_connectivity",
+            "read_only": true,
+            "parameters": {},
+            "output": [],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "get pcap",
+            "description": "Download pcap for an event or observation",
+            "type": "investigate",
+            "identifier": "get_packets",
+            "read_only": true,
+            "verbose": "A few things to note:<ul><li>Valid values for the <b>type</b> parameter are: <ul><li>Event</li><li>Observation</li></ul></li><li>The app adds the <i>Event ID</i> to every container as its <b>Source ID</b>(source_data_identifier)<a href=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/sdi.png\"><img src=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/sdi.png\"/></a><br>Unfortunately, this value can get clipped in the UI. Instead, use the download button to download the container json and extract the source_data_identifier key value<a href=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/sdi2.png\"><img src=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/sdi2.png\"/></a><br></li><li>The app adds the <i>Observation ID</i> to every Artifact in a key named <b>observationId</b> of the cef dictionary<a href=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/artifact.png\"><img src=\"/app_resource/protectwise_e8f8d8dc-916f-4267-be15-e9b697dd58c5/img/artifact.png\"/></a><br></li><li>The <b>sensorid</b> parameter is only required if the <b>type</b> is <b>Observation</b></li><li>The pcap file is added to the vault with a file name of &lt;<b>id</b>&gt;.pcap</li></ul>.",
+            "parameters": {
+                "type": {
+                    "data_type": "string",
+                    "order": 0,
+                    "description": "The ID type",
+                    "value_list": [
+                        "Event",
+                        "Observation"
+                    ],
+                    "default": "Observation",
+                    "required": true
+                },
+                "id": {
+                    "data_type": "string",
+                    "order": 1,
+                    "description": "ID Value (Event or Observation )",
+                    "contains": [
+                        "protectwise event id",
+                        "protectwise observation id"
+                    ],
+                    "primary": true,
+                    "required": true
+                },
+                "sensorid": {
+                    "data_type": "string",
+                    "order": 2,
+                    "description": "Sensor ID",
+                    "contains": [
+                        "protectwise sensor id"
+                    ],
+                    "primary": true
+                }
+            },
+            "render": {
+                "width": 12,
+                "title": "Get Packets",
+                "type": "custom",
+                "view": "protectwise_view.display_packets",
+                "height": 5
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.id",
+                    "data_type": "string",
+                    "contains": [
+                        "protectwise event id",
+                        "protectwise observation id"
+                    ],
+                    "example_values": [
+                        "0005c39404209a9874014a71c6e384a16aa520474614f1a7ca781955"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.sensorid",
+                    "data_type": "string",
+                    "contains": [
+                        "protectwise sensor id"
+                    ],
+                    "example_values": [
+                        "3100"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.type",
+                    "data_type": "string",
+                    "example_values": [
+                        "Event",
+                        "Observation"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.estimatedSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.netflows.*.endTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.netflows.*.flowId",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.netflows.*.sensorId",
+                    "data_type": "numeric",
+                    "contains": [
+                        "protectwise sensor id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.netflows.*.startTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.container",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.file_name",
+                    "data_type": "string",
+                    "column_order": 2,
+                    "column_name": "Vault Filename"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.hash",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.succeeded",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.vault_info.vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ],
+                    "column_order": 1,
+                    "column_name": "Vault ID"
+                },
+                {
+                    "data_path": "action_result.summary.vault_id",
+                    "data_type": "string",
+                    "contains": [
+                        "vault id"
+                    ]
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string",
+                    "column_order": 0,
+                    "column_name": "Status"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "hunt ip",
+            "description": "Hunt an IP in the network",
+            "verbose": "To get info within a time range specify the <b>start_time</b> and <b>end_time</b>. These parameters take time in the Zulu format which can be expressed as %Y-%m-%dT%H:%M:%S.%fZ e.g. 2016-12-30T13:00:00.0000Z.<br><ul><li>If <b>start_time</b> and <b>end_time</b> both are not specified, then the app defaults to last 5 days</li><li>If <b>start_time</b> is specified and <b>end_time</b> is not, then the app will default the <b>end_time</b> to <i>current</i></li><li>If <b>start_time</b> is not specified and <b>end_time</b> is, the app will throw an error</li></ul>.",
+            "type": "investigate",
+            "identifier": "hunt_ip",
+            "read_only": true,
+            "parameters": {
+                "ip": {
+                    "data_type": "string",
+                    "order": 0,
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ],
+                    "description": "IP Address",
+                    "required": true,
+                    "primary": true
+                },
+                "ph": {
+                    "data_type": "ph",
+                    "order": 1
+                },
+                "start_time": {
+                    "data_type": "string",
+                    "order": 2,
+                    "description": "Start time (Zulu format)"
+                },
+                "end_time": {
+                    "data_type": "string",
+                    "order": 3,
+                    "description": "End time (Zulu format)"
+                }
+            },
+            "render": {
+                "width": 12,
+                "title": "Hunt Ip",
+                "type": "table",
+                "height": 5
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.ip",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ],
+                    "example_values": [
+                        "8.8.8.8"
+                    ],
+                    "column_name": "IP",
+                    "column_order": 0
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.ip.host",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.ip.organization",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.end",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.interval",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.intervalSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.start",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.values.*.count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.values.*.timestamp",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.total",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.maxThreatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.maxThreatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.threatCategory.MaliciousHost",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.threatSubCategory.MachineGeneratedDomain",
+                    "data_type": "numeric",
+                    "contains": [
+                        "domain"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.endedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.isUpdate",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.netflowCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.observationCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.sensorIds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.startedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._original.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.endedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.isUpdate",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.netflowCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.observationCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.sensorIds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.startedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*._state.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.endedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.isUpdate",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.netflowCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.observationCount",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.priority",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.sensorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.sensorIds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.startedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.top.*.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.maxThreatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.maxThreatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.end",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.interval",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.intervalSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.start",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.values.*.count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.values.*.timestamp",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.direction",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.ip.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.key",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.associatedId.flowId.startTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.connectionInfo.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.dnsReputation.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.dnsReputation.dns",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.dnsReputation.partnerCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.classification",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.generatorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.priorityId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.revision",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.signatureId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.timestampMicros",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.data.idsEvent.timestampSeconds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.info.coordinates.*.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.info.coordinates.*.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.info.ips",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.info.ports",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.netflowId",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.observationDirection",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.occurredAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.severity",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.source",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._original.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.direction",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.ip.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.key",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.associatedId.flowId.startTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.connectionInfo.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.dnsReputation.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.dnsReputation.dns",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.dnsReputation.partnerCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.classification",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.generatorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.priorityId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.revision",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.signatureId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.timestampMicros",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.data.idsEvent.timestampSeconds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.info.coordinates.*.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.info.coordinates.*.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.info.ips",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.info.ports",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.netflowId",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.observationDirection",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.occurredAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.severity",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.source",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*._state.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.direction",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.ip.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.key",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.associatedId.flowId.startTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.connectionInfo.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.dnsReputation.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.dnsReputation.dns",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.dnsReputation.partnerCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.classification",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.description",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.generatorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.priorityId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.revision",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.signatureId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.timestampMicros",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.data.idsEvent.timestampSeconds",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.info.coordinates.*.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.info.coordinates.*.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.info.ips",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.info.ports",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.netflowId",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.observationDirection",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.occurredAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.sensorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.severity",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.source",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.top.*.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.types.DnsReputation",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.types.Ids",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.summary.event_count",
+                    "data_type": "numeric",
+                    "column_name": "Total Events",
+                    "column_order": 2
+                },
+                {
+                    "data_path": "action_result.summary.ip_organization",
+                    "data_type": "string",
+                    "column_name": "IP Organization",
+                    "column_order": 1
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.ph",
+                    "data_type": "ph"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "hunt domain",
+            "description": "Hunt a domain in the network",
+            "verbose": "To get info within a time range specify the <b>start_time</b> and <b>end_time</b>. These parameters take time in the Zulu format which can be expressed as %Y-%m-%dT%H:%M:%S.%fZ e.g. 2016-12-30T13:00:00.0000Z.<br><ul><li>If <b>start_time</b> and <b>end_time</b> both are not specified, then the app defaults to last 5 days</li><li>If <b>start_time</b> is specified and <b>end_time</b> is not, then the app will default the <b>end_time</b> to <i>current</i></li><li>If <b>start_time</b> is not specified and <b>end_time</b> is, the app will throw an error</li></ul>.",
+            "type": "investigate",
+            "identifier": "hunt_domain",
+            "read_only": true,
+            "parameters": {
+                "domain": {
+                    "data_type": "string",
+                    "order": 0,
+                    "contains": [
+                        "domain"
+                    ],
+                    "description": "Domain",
+                    "required": true,
+                    "primary": true
+                },
+                "ph": {
+                    "data_type": "ph",
+                    "order": 1
+                },
+                "start_time": {
+                    "data_type": "string",
+                    "order": 2,
+                    "description": "Start time (Zulu format)"
+                },
+                "end_time": {
+                    "data_type": "string",
+                    "order": 3,
+                    "description": "End time (Zulu format)"
+                }
+            },
+            "render": {
+                "width": 12,
+                "title": "Hunt Domain",
+                "type": "table",
+                "height": 5
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.domain",
+                    "data_type": "string",
+                    "contains": [
+                        "domain"
+                    ],
+                    "example_values": [
+                        "test.com"
+                    ],
+                    "column_order": 0,
+                    "column_name": "Domain"
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.domain.resolveData.*.firstSeen",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.domain.resolveData.*.lastSeen",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.domain.resolveData.*.resolvesTo",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.end",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.interval",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.intervalSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.timeRange.start",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.values.*.count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.timeSeries.values.*.timestamp",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.events.count.total",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.ipAddresses",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.end",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.interval",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.intervalSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.timeRange.start",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.values.*.count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.threat.observations.timeSeries.values.*.timestamp",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.summary.domain_organization",
+                    "data_type": "string",
+                    "column_order": 1,
+                    "column_name": "Domain Organization"
+                },
+                {
+                    "data_path": "action_result.summary.event_count",
+                    "data_type": "numeric",
+                    "column_order": 2,
+                    "column_name": "Total Events"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.ph",
+                    "data_type": "ph"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "hunt file",
+            "description": "Hunt for a file in the network",
+            "verbose": "To get info within a time range specify the <b>start_time</b> and <b>end_time</b>. These parameters take time in the Zulu format which can be expressed as %Y-%m-%dT%H:%M:%S.%fZ e.g. 2016-12-30T13:00:00.0000Z.<br><ul><li>If <b>start_time</b> and <b>end_time</b> both are not specified, then the app defaults to last 5 days</li><li>If <b>start_time</b> is specified and <b>end_time</b> is not, then the app will default the <b>end_time</b> to <i>current</i></li><li>If <b>start_time</b> is not specified and <b>end_time</b> is, the app will throw an error</li></ul>.",
+            "type": "investigate",
+            "identifier": "hunt_file",
+            "read_only": true,
+            "parameters": {
+                "hash": {
+                    "data_type": "string",
+                    "order": 0,
+                    "contains": [
+                        "sha256"
+                    ],
+                    "description": "File Hash",
+                    "required": true,
+                    "primary": true
+                },
+                "ph": {
+                    "data_type": "ph",
+                    "order": 1
+                },
+                "start_time": {
+                    "data_type": "string",
+                    "order": 2,
+                    "description": "Start time (Zulu format)"
+                },
+                "end_time": {
+                    "data_type": "string",
+                    "order": 3,
+                    "description": "End time (Zulu format)"
+                }
+            },
+            "render": {
+                "width": 12,
+                "title": "Hunt File",
+                "type": "custom",
+                "view": "protectwise_view.display_file",
+                "height": 5
+            },
+            "output": [
+                {
+                    "data_path": "action_result.status",
+                    "data_type": "string",
+                    "example_values": [
+                        "success",
+                        "failed"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.end_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "contains": [
+                        "sha256"
+                    ],
+                    "data_path": "action_result.parameter.hash",
+                    "data_type": "string",
+                    "example_values": [
+                        "e3545e19f5f74d733306991ce232ad4ee7556ca1c47cb07740dda148be3d05c2"
+                    ]
+                },
+                {
+                    "data_path": "action_result.parameter.start_time",
+                    "data_type": "string",
+                    "example_values": [
+                        "2016-12-30T13:00:00.0000Z"
+                    ]
+                },
+                {
+                    "contains": [
+                        "host name"
+                    ],
+                    "data_path": "action_result.data.*.behavior.network.dns.*.hostname",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.dns.*.ip",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.hosts",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.body",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.data",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.host",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.method",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.path",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.port",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.uri",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.user-agent",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.http.*.version",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.tcp.*.dport",
+                    "data_type": "numeric",
+                    "contains": [
+                        "port"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.tcp.*.dst",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.tcp.*.sport",
+                    "data_type": "numeric",
+                    "contains": [
+                        "port"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.tcp.*.src",
+                    "data_type": "string",
+                    "contains": [
+                        "ip",
+                        "ipv6"
+                    ]
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.udp.*.dport",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.udp.*.dst",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.udp.*.sport",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.behavior.network.udp.*.src",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.info.detectedFileSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.info.detectedType",
+                    "data_type": "string"
+                },
+                {
+                    "contains": [
+                        "md5"
+                    ],
+                    "data_path": "action_result.data.*.info.hashes.md5",
+                    "data_type": "string"
+                },
+                {
+                    "contains": [
+                        "sha1"
+                    ],
+                    "data_path": "action_result.data.*.info.hashes.sha1",
+                    "data_type": "string"
+                },
+                {
+                    "contains": [
+                        "sha256"
+                    ],
+                    "data_path": "action_result.data.*.info.hashes.sha256",
+                    "data_type": "string"
+                },
+                {
+                    "contains": [
+                        "sha512"
+                    ],
+                    "data_path": "action_result.data.*.info.hashes.sha512",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.info.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.info.isArchive",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.info.isEncrypted",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.info.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.facets.fields.fileExtractedName",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.facets.fields.fileExtractedName.23.exe",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.nextOffset",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.agentId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.direction",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.ip.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.key",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.associatedId.flowId.startTime",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.cid",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.confidence",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.dstIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.dstMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.dstPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.layer3Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.layer4Proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.proto",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.srcIp",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.srcMac",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.connectionInfo.srcPort",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.advertisedType",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.category",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.detectedFileSize",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.detectedType",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.end",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.extractedName",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.extractedPath",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.finding.score",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.hashes.md5",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.hashes.sha1",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.hashes.sha256",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.hashes.sha512",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.isArchive",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.isEncrypted",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.isTruncated",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.isTypeMismatched",
+                    "data_type": "boolean"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.serviceType",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.start",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.transportProtocol",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.data.fileReputation.type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.dstGeo.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.dstGeo.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.info.coordinates.*.lat",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.info.coordinates.*.lon",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.info.ips",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.info.ports",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.killChainStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.netflowId",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.observationDirection",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.observedAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.observedStage",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.occurredAt",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.sensorId",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.severity",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.source",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.threatLevel",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.threatScore",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.data.*.observations.results.*.threatSubCategory",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.detected_type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.file_type",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.id",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "action_result.summary.observation_count",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.message",
+                    "data_type": "string"
+                },
+                {
+                    "data_path": "summary.total_objects",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "summary.total_objects_successful",
+                    "data_type": "numeric"
+                },
+                {
+                    "data_path": "action_result.parameter.ph",
+                    "data_type": "ph"
+                }
+            ],
+            "versions": "EQ(*)"
+        },
+        {
+            "action": "on poll",
+            "description": "Query ProtectWise for Events and Observables and ingest into Splunk SOAR",
+            "type": "ingest",
+            "identifier": "on_poll",
+            "read_only": true,
+            "parameters": {
+                "container_id": {
+                    "data_type": "string",
+                    "order": 0,
+                    "description": "Container IDs to limit the ingestion to",
+                    "allow_list": true
+                },
+                "start_time": {
+                    "data_type": "numeric",
+                    "order": 1,
+                    "description": "Start of time range, in epoch time (milliseconds), if not specified, the default is past 10 days"
+                },
+                "end_time": {
+                    "data_type": "numeric",
+                    "order": 2,
+                    "description": "End of time range, in epoch time (milliseconds), if not specified, the default is now"
+                },
+                "container_count": {
+                    "data_type": "numeric",
+                    "order": 3,
+                    "description": "Maximum number of container records to query for"
+                },
+                "artifact_count": {
+                    "data_type": "numeric",
+                    "order": 4,
+                    "description": "Maximum number of artifact records to query for"
+                }
+            },
+            "output": [],
+            "versions": "EQ(*)"
+        }
+    ],
+    "pip39_dependencies": {
+        "wheel": []
+    },
+    "pip313_dependencies": {
+        "wheel": []
+    }
+}

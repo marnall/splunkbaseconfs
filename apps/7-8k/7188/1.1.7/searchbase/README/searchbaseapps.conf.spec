@@ -1,0 +1,22 @@
+[<stanza name>]
+id = <integer>
+name = <ASCII string>
+stanza = <ASCII string>
+author = <ASCII string>
+categories = <ASCII string>
+ko_enabled = <boolean>
+installed = <boolean>
+version = <Decimal>
+icon_path = <ASCII string>
+ex_img_paths = <ASCII string>
+url_splunkbase = <ASCII string>
+url_info = <ASCII string>
+url_more_info = <ASCII string>
+url_release_notes = <ASCII string>
+url_download = <ASCII string>
+video = <ASCII string>
+description = <ASCII string>
+details = <ASCII string>
+requirements = <ASCII string>
+compatibility = <ASCII string>
+contributors = <ASCII string>

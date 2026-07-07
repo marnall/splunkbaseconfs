@@ -1,0 +1,156 @@
+Official ONYPHE client to access the API.
+For more: https://www.onyphe.io/
+
+Setup API key
+=============
+
+After installation in $SPLUNK_HOME/etc/apps, edit the bin/onyphe.pl script and put your API key in $apikey variable at the beginning of the file.
+
+If you are behind a HTTP proxy, you will also either have to set your HTTP_PROXY & HTTPS_PROXY environment variables or set them in bin/onyphe.pl near $apikey.
+
+Install dependencies
+====================
+
+On Debian/Ubuntu/Kali:
+
+  sudo apt-get install perl cpanminus libhttp-message-perl libjson-xs-perl liblwp-protocol-https-perl libnetaddr-ip-perl libnet-cidr-perl libnet-netmask-perl libregexp-ipv6-perl libsub-install-perl libtext-csv-xs-perl liburi-perl libwww-mechanize-perl libio-socket-ssl-perl
+
+  sudo cpanm -n Mozilla::CA
+
+On CentOS/RedHat:
+
+  sudo yum install epel-release perl perl-Data-Dumper perl-HTTP-Message perl-JSON-XS perl-LWP-Protocol-https perl-Mozilla-CA perl-NetAddr-IP perl-Net-CIDR perl-Net-Netmask perl-Regexp-IPv6 perl-Sub-Install perl-Text-CSV_XS perl-URI perl-WWW-Mechanize perl-IO-Socket-SSL
+
+Examples
+========
+
+  # Search IP addresses know by some threatlists
+  index=main src_ip=*
+  | onyphe ip=src_ip api=threatlist
+  | spath input=onyphe_threatlist
+  | rename onyphe.threatlist{}.threatlist AS threatlist
+  | eval threatlist=mvdedup(threatlist)
+  | table clientip threatlist
+
+  # Search IP addresses that have some Cisco services
+  index=main src_ip=*
+  | onyphe ip=src_ip api=ip
+  | spath input=onyphe_datascan
+  | search "onyphe.datascan{}.productvendor"=Cisco
+
+  # Search IP addresses that have been seen doing activities on the
+  # Internet not particularly targeted at you.
+  index=main src_ip=*
+  | onyphe ip=src_ip api=sniffer
+  | spath input=onyphe_sniffer
+  | search "onyphe.sniffer{}.sniffer"=*
+
+  # Lookup reverse DNS in passive DNS data
+  index=main src_ip=*
+  | onyphe ip=src_ip api=reverse
+  | spath input=onyphe_resolver
+  | search "onyphe.resolver{}.reverse"=*
+
+  # Display top domains from passive DNS data
+  index=onyphe src_ip=*
+  | onyphe ip=src_ip api=reverse
+  | spath input=onyphe_resolver
+  | search "onyphe.resolver{}.reverse"=*
+  | top "onyphe.resolver{}.domain"
+
+  # Build a new list of entries to create a couple forward/seen_data
+  | makeresults
+  | eval ip="8.8.8.8"
+  | onyphe api=resolver ip=ip
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.@timestamp as timestamp
+  | eval tmp=mvzip(forward, timestamp)
+  | mvexpand tmp
+  | rex field=tmp "(?<forward>[^,]+),(?<timestamp>[^,]+)"
+  | fields - onyphe_resolver
+  | table forward timestamp
+
+  # Forward+domain pairs
+  | makeresults
+  | eval ip="8.8.8.8"
+  | onyphe api=resolver ip=ip
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.domain as domain
+  | eval tmp=mvzip(forward, domain)
+  | mvexpand tmp
+  | rex field=tmp "(?<forward>[^,]+),(?<domain>[^,]+)"
+  | table forward domain onyphe_resolver
+
+  # List all subdomains
+  | makeresults
+  | eval ip="8.8.8.8"
+  | onyphe api=resolver ip=ip
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.subdomains{} as subdomains
+  | mvexpand subdomains
+  | dedup subdomains
+  | table subdomains onyphe_resolver
+
+  # Top subdomains for a given IP
+  | makeresults
+  | eval ip="8.8.8.8"
+  | onyphe api=resolver ip=ip
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.subdomains{} as subdomains
+  | top subdomains
+
+  # Top subdomains by using resolver search API
+  | makeresults
+  | onyphe api=resolver mode=search search="domain:example.com"
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.subdomains{} as subdomains
+  | top subdomains
+
+  # Top domains for a given organization
+  | makeresults
+  | onyphe api=resolver mode=search search="organization:\"ORG\" type:forward"
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.domain as domain
+  | top limit=0 domain
+
+  # Autoscroll by iterating over all pages (warning: will consume credits)
+  | makeresults
+  | onyphe api=resolver mode=search autoscroll=1 search="organization:\"ORG\" type:forward"
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.forward as forward
+  | rename onyphe.resolver{}.domain as domain
+  | top limit=0 domain
+
+  # Search top organization for a given domain
+  | makeresults
+  | onyphe api=resolver mode=search autoscroll=1 search="domain:example.com"
+  | spath input=onyphe_resolver
+  | rename onyphe.resolver{}.organization as organization
+  | top organization
+
+  # Search and output in Splunk mode
+  | makeresults
+  | onyphe api=resolver mode=search output=splunk autoscroll=1 search="domain:example.com"
+  | dedup onyphe_ip
+  | top onyphe_country
+
+  # Geolocation for all screenshots taken from cameras
+  | makeresults
+  | onyphe api=datashot mode=search search="protocol:rtsp -fields:location" autoscroll=1 output=splunk
+  | rex field=onyphe_location "(?<lat>[^,]+),(?<lon>[^,]+)"
+  | geostats count
+
+  # Search all hosts with PHP installed
+  | makeresults
+  | onyphe api=datascan mode=search output=splunk search="protocol:http -exists:app.http.component.product -dayago:0 country:FR"
+  | spath input=onyphe_app
+  | rename onyphe_app.http.component{}.product as product
+  | mvexpand product
+  | search product=PHP
+  | table onyphe_ip protocol product
+

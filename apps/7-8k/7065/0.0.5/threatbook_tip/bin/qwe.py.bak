@@ -1,0 +1,78 @@
+# -*- coding: utf-8 -*-
+# @File  : eventingcsc.py.py
+# @Date  : 2023/4/12
+# @Desc  :
+import sys
+import os
+import re
+import requests
+import json
+# from flatten_json import flatten
+#from lib.soc_adpter import SOCAdpter
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lib"))
+from splunklib.searchcommands import dispatch, EventingCommand, Configuration, Option
+    
+#     json_data = {"data":[{"ioc":"zzv.no-ip.info","host":"192.168.91.174","intelligence":[{"judgments":["Malware","C2"],"severity":"high","ban":{"banned":2,"suggestion":"1、及时更新系统/应用程序补丁或版本"},"tags_classes":{"virus_family":["Rebhip","CyberGate"]},"basic_tag":"Backdoor","main_tag":"CyberGate","platform":["all","windows"],"tlp":0,"ports":[],"ioc_type":"domain","confidence_level":"high","is_malicious":"true","source_name":"微步在线-失陷指标","update_time":1650576353000}]}],"response_code":0,"verbose_msg":"成功"}
+#     flattened_json = flatten_json(json_data)
+#     # dict_generator(data)
+#     flatten_json(json_data)
+#     print(flattened_json)
+@Configuration()
+class ThreatbookTip(EventingCommand):
+#     """
+#     The eventingcsc command filters records from the events stream returning only those for which the status is same
+#     as search query.
+
+#     Example:
+
+#     ``index="_internal" | head 4000 | eventingcsc status=200``
+
+#     Returns records having status 200 as mentioned in search query.
+#     """
+    @staticmethod
+    def flatten_json(src_json, prefix=""):
+        flattened_dict = {}
+        def flatten(json_data, parent_key=''):
+            if isinstance(json_data, dict):
+                for key, value in json_data.items():
+                    new_key = f"{parent_key}.{key}" if parent_key else key
+                    flatten(value, parent_key=new_key)
+            elif isinstance(json_data, list):
+                for index, item in enumerate(json_data):
+                    new_key = f"{parent_key}.{index}" if parent_key else str(index)
+                    flatten(item, parent_key=new_key)
+            else:
+                flattened_dict[parent_key] = json_data
+        flatten(src_json,prefix)
+        return flattened_dict
+
+    def transform(self, records):
+        # To connect with Splunk, use the instantiated service object which is created using the server-uri and
+        # other meta details and can be accessed as shown below
+        # Example:-
+        #    service = self.service
+        #    info = service.info //access the Splunk Server info
+
+        domain_url = 'http://192.168.91.54:8090/tip_api/v4/dns'
+        ip_url = 'http://192.168.91.54:8090/tip_api/v4/ip'
+        headers = {"Content-Type": "application/json;charset=UTF-8"}
+        send = requests.Session()
+        for record in records:    
+            a = record['ioc']
+            query = {
+                "apikey" : "889af9e4705d4ed18961342002209a32",
+                "resource" : a
+            }
+            if re.search(r"\d{1,3}.\d{1,3}.\d{1,3}.\d{1,3}", a):
+                response = send.get(url = ip_url, headers = headers , params = query)
+            else:
+                response = send.get(url = domain_url, headers = headers , params = query)
+            # print(self.send.json())
+            data = response.json()
+            record.update({'dongxiaocan' : data})
+            # if data["response_code"] == 0:
+            #     flatten_data = ThreatbookTip.flatten_json(data,"threatbook")
+            #     record.update(flatten_data)
+            yield record
+
+dispatch(ThreatbookTip, sys.argv, sys.stdin, sys.stdout, __name__)

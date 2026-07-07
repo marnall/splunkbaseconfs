@@ -1,0 +1,124 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.access_token",
+        "grant_type",
+        "client_id",
+        "client_secret",
+        "username",
+        "password",
+        "expires_in"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{expires_in}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_expires_in"
+                    },
+                    {
+                        "input": [
+                            "{{expires_in}}",
+                            "%s",
+                            "%s"
+                        ],
+                        "method": "time_str2str",
+                        "output": "expires_in"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://uat.safeguardcyber.app/safeguard/api/oauth/token?grant_type={{grant_type}}&client_id={{client_id}}&client_secret={{client_secret}}&username={{username}}&password={{password}}",
+                "method": "POST",
+                "headers": {
+                    "grant_type": "{{grant_type}}",
+                    "client_id": "{{client_id}}",
+                    "client_secret": "{{client_secret}}",
+                    "username": "{{username}}",
+                    "password": "{{password}}"
+                }
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.expires_in"
+                        ],
+                        "method": "json_path",
+                        "output": "expires_in"
+                    },
+                    {
+                        "input": [
+                            "{{expires_in != ''}}",
+                            "The value of token 'expires_in' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{expires_in == _raw_expires_in}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{expires_in}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_expires_in"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": []
+            },
+            "checkpoint": {
+                "content": {
+                    "expires_in": "{{_raw_expires_in}}"
+                }
+            }
+        }
+    ]
+}

@@ -1,0 +1,123 @@
+{
+    "meta": {
+        "apiVersion": "1.0.0"
+    },
+    "tokens": [
+        "__settings__.logging.loglevel",
+        "__settings__.additional_parameters.username",
+        "__settings__.additional_parameters.password",
+        "__settings__.additional_parameters.client_id",
+        "__settings__.additional_parameters.client_secret",
+        "id"
+    ],
+    "global_settings": {
+        "logging": {
+            "level": "{{__settings__.logging.loglevel}}"
+        }
+    },
+    "requests": [
+        {
+            "pre_process": {
+                "skip_conditions": [],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{id}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_id"
+                    }
+                ]
+            },
+            "request": {
+                "url": "https://uat.safeguardcyber.app/safeguard/api/v1/channels?access_token=fedfe15a-a0dc-4a58-b620-2ce397fc8036",
+                "method": "GET",
+                "headers": {}
+            },
+            "post_process": {
+                "skip_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.channels"
+                        ],
+                        "method": "json_empty"
+                    }
+                ],
+                "pipeline": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.$.channels.[0].id"
+                        ],
+                        "method": "json_path",
+                        "output": "id"
+                    },
+                    {
+                        "input": [
+                            "{{id != ''}}",
+                            "The value of token 'id' extracted from response cannot be empty!"
+                        ],
+                        "method": "assert_true"
+                    },
+                    {
+                        "input": [
+                            "{{id == _raw_id}}"
+                        ],
+                        "method": "exit_if_true"
+                    },
+                    {
+                        "input": [
+                            "{{id}}"
+                        ],
+                        "method": "set_var",
+                        "output": "_raw_id"
+                    },
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.channels"
+                        ],
+                        "method": "json_path",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}",
+                            "",
+                            "{{index}}",
+                            "{{host}}",
+                            "{{source}}",
+                            "{{sourcetype}}"
+                        ],
+                        "method": "splunk_xml",
+                        "output": "__stdout__"
+                    },
+                    {
+                        "input": [
+                            "{{__stdout__}}"
+                        ],
+                        "method": "std_output"
+                    }
+                ]
+            },
+            "iteration_mode": {
+                "iteration_count": "100",
+                "stop_conditions": [
+                    {
+                        "input": [
+                            "{{__response__.body}}",
+                            "$.channels"
+                        ],
+                        "method": "json_empty"
+                    }
+                ]
+            },
+            "checkpoint": {
+                "content": {
+                    "id": "{{_raw_id}}"
+                }
+            }
+        }
+    ]
+}

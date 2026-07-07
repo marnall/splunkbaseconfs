@@ -1,0 +1,86 @@
+## DriveLock App for Splunk v3.0.0
+
+By DriveLock SE
+
+## Overview
+
+This is a Splunk add-on for analyzing DriveLock syslog event data.
+
+## Features
+* Common UI based data input configuration via Splunk Manager/Settings.
+* Custom field extractions make relevant event data available for searches and dashboards.
+* Dashboard "DriveLock Events" provides an overview of fundamental DriveLock event data.
+* Saved searches / reports are defined and can be scheduled as export. 
+* Event types are classified and highlight different events in searches.
+* Data model 'DriveLock Events' contains extracted fields and is used in a pivot table dashboard part.
+* Source type 'DriveLock' contains an event break pattern, as well as some advanced settings used to process and display search results.
+ 
+## System requirements
+* Splunk 8.1
+
+## Installation
+* Untar the release to your $SPLUNK_HOME/etc/apps directory or upload the app in Splunk Web -> Manage Apps -> Install app from file
+* Restart Splunk
+
+## Configuration
+* To set up the DriveLock syslog data input, take two steps: First, configure DES to send syslog data. Second, set up the data input settings in Splunk. See below.
+
+### Enable syslog connector in DriveLock
+* DriveLock Cloud customers please contact cloud.opsmgmt@drivelock.com for syslog configuration of your tenant.
+* Customers of DriveLock on-premises installations can configure the syslog connector as follows.
+* Login to the DriveLock Opertations Center (DOC) with Supervisor role. You need to access the DevOps area in the DOC.
+* Go to "Tenant config" and select the tenant you want to send syslog data.
+* Click "Add configuration value".
+* At "Known config settings" select "event-connector-configs".
+* At "Known config value" select the suggested value.
+* Modify the server address (your Splunk server), port (the port you configured in you data input, usually 514) and select one of the connectionTypes (delete the other suggested connectionTypes, e.g. "UPD"):
+{
+  "sysLogConfig": {
+    "enabled": true,
+    "server": "127.0.0.1",
+    "port": 514,
+    "languageKey": "enu",
+    "connectionType": "UDP|TCP|TCP_SSL",
+    "ignoreCertificateErrors": false
+  }
+
+### Configure Event message transfer settings
+* Configure DriveLock Centrally Stored Policy to send event data. 
+* Open the policy and go to 'Settings' -> 'Event message transfer settings'.
+* Enable the checkbox 'DriveLock Enterprise Service' for each event you want to make available to Splunk.
+
+### Enable auditing
+* For some dashboard parts of this Splunk app it is necessary to enable auditing. 
+* For accessed drives: In the policy enable the checkbox 'Drives' -> 'Removable drive locking' -> 'Filter / Shadow' -> 'Audit and shadow files read form or written to drives of this type' and add a file filter that has auditing enabled (see next step). 
+* File filter template: Open the file filter template you want to use and check on tab 'Audit', if 'Audit files' and 'Audit condition' are set to 'All'. If no filter is available create a new filter with these auditing settings.
+* For application execution: In the policy go to 'Applications' -> 'Settings' -> 'Always audit application execution (independent of blocking mode)' and enable this setting.
+* If you don’t want to audit events of accessed drives or application execution, you can configure the Splunk dashboard parts to show some other relevant information. 
+
+### Set up Splunk data input
+* As a Splunk administrator go to Settings | Data inputs. 
+* Add a new UDP or TCP port. Specify the same port you configured in DriveLock.
+* For TCP-SSL only:
+** Add a new TCP Data input within the DriveLock app context. 
+** Check and add the following configuration in the file "C:\Program Files\Splunk\etc\system\local\inputs.conf":
+[tcp-ssl://6514]
+disabled = false
+sourcetype = DriveLock
+source = DriveLock (TCP-SSL)
+
+[SSL]
+serverCert = <Add certificate path of .pem>
+sslPassword = <The password that was used to sign the certificate (if exists)>
+requireClientCert = false
+
+** Add the CA certificate to C:\Program Files\Splunk\etc\system\local\server.conf:
+[sslConfig]
+sslRootCAPath = <Add CA certificate path of .pem>
+
+## Running the app
+* By default, the above features are configured. You can customize them, if required, with the functionality provided by Splunk.
+
+## Version support
+* This app was built using Splunk 7.1.0 and finally upgraded to 8.1.1
+
+## Troubleshooting and logging
+* Please check $SPLUNK_HOME/var/log/splunk/splunkd.log if errors occur.

@@ -1,0 +1,2 @@
+USER_AGENT = "ForesietSplunkAddon/0.0.9"
+DEFAULT_SLEEP_TIME = 60
