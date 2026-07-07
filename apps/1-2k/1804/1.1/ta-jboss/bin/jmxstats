@@ -1,0 +1,76 @@
+#!/bin/sh
+##############################################
+#
+#  Copyright Radoslaw Zak-Brodalko (c) 2013
+#  Modified by Tomasz Cholewa <tch@linupolska.pl> (c) 2014
+#  The JMX Statistics Collector Wrapper for Splunk
+#
+##############################################
+
+usage() {
+cat <<EOF
+Usage: $0 [ -u user ] [ -p password ] profile jmx_uri
+
+user     - user to authenticate as
+password - password for authentication
+profile  - use profile defined in \$profile.properties (in local/ or default/)
+jmx_uri  - use uri for jmx connection
+
+EOF
+
+}
+
+while getopts 'u:p:' opt;do
+	case $opt in
+		u) userarg="-u $OPTARG" ;;
+		p) passarg="-p $OPTARG" ;;
+	esac
+done
+
+shift $((OPTIND-1))
+profile="$1"
+jmxuri="$2"
+
+if [ -z "$jmxuri" -o -z "$profile" ];then
+	usage
+	exit 2
+fi
+
+if [ -z "$SPLUNK_HOME" ];then
+    if [ -d /opt/splunk ];then
+        echo "INFO: SPLUNK_HOME environment variable not set - using autodected value: /opt/splunk" 1>&2
+        export SPLUNK_HOME=/opt/splunk
+    elif [ -d /opt/splunkforwarder ];then
+        echo "INFO: SPLUNK_HOME environment variable not set - using autodected value: /opt/splunkforwarder" 1>&2
+        export SPLUNK_HOME=/opt/splunkforwarder
+    else
+        echo "ERROR: Could not determine splunk installation directory." 1>&2
+        echo "Please set SPLUNK_HOME variable before executing this script (e.g. export SPLUNK_HOME=/your/splunk/installation_dir)" 1>&2
+        exit 1
+    fi
+fi
+
+apphome=$SPLUNK_HOME/etc/apps/ta-jboss
+base=$apphome
+
+if ! [ -d "$apphome" ];then
+    echo "ERROR: Could not found $apphome" 1>&2
+    exit 1
+fi
+
+# classes required for remoting-jmx connection to jboss version >= 6
+classpath="$base/modules/org/jboss/remoting3/remoting-jmx/main/remoting-jmx-1.0.2.Final.jar:$base/modules/org/jboss/remoting3/main/jboss-remoting-3.2.3.GA.jar:$base/modules/org/jboss/logging/main/jboss-logging-3.1.0.GA.jar:$base/modules/org/jboss/xnio/main/xnio-api-3.0.3.GA.jar:$base/modules/org/jboss/xnio/nio/main/xnio-nio-3.0.3.GA.jar:$base/modules/org/jboss/sasl/main/jboss-sasl-1.0.0.Final.jar:$base/modules/org/jboss/marshalling/main/jboss-marshalling-1.3.11.GA.jar:$base/modules/org/jboss/marshalling/river/main/jboss-marshalling-river-1.3.11.GA.jar"
+
+JMXCMD="java -cp $classpath:$apphome/modules/jmx.jar pl.linuxpolska.jmx.read.attribute.ReadAttributeMain"
+
+# prefer local over default directory when searching for config file
+for d in $apphome/local $apphome/default;do
+	f="$d/$profile.properties"
+	if [ -f "$f" ];then
+        echo "INFO: Using config file - $f" 1>&2
+		$JMXCMD -s "$jmxuri" -c "$f" $userarg $passarg
+		exit $?
+	fi
+done
+echo "ERROR: Failed to find profile file.." 1>&2
+exit 1

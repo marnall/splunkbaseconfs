@@ -1,0 +1,92 @@
+#!/usr/bin/python2
+
+import datetime
+import sys
+from sqlalchemy import create_engine
+try:
+    from ConfigParser import RawConfigParser, NoOptionError
+except ImportError:
+    from configparser import RawConfigParser, NoOptionError
+
+DEBUG          = False
+DEFAULT_CONFIG = "/opt/splunk/etc/apps/SplunkForRequestTracker/bin/sql_datainput2.conf"
+
+cp = RawConfigParser()
+
+if len(sys.argv) > 1:
+    cp.read([DEFAULT_CONFIG, sys.argv[1]])
+else:
+    cp.read([DEFAULT_CONFIG])
+
+
+for section in cp.sections():
+
+    try:
+        engine = cp.get(section,"engine")
+    except NoOptionError:
+        sys.exit(1)
+
+    try:
+        query = cp.get(section,"query")
+    except NoOptionError:
+        sys.exit(1)
+
+    try:
+        username = cp.get(section,"username")
+    except NoOptionError:
+        username = ""
+
+    try:
+        password = cp.get(section,"password")
+    except NoOptionError:
+        password = ""
+
+    try:
+        hostname = cp.get(section,"hostname")
+    except NoOptionError:
+        hostname = ""
+
+    try:
+        port     = cp.get(section,"port")
+    except NoOptionError:
+        port     = ""
+
+    try:
+        instance = cp.get(section,"instance")
+    except NoOptionError:
+        instance = cp.get(section,"database")
+
+    if username and password:
+        user_str = "%s:%s" % (username, password)
+    elif username:
+        user_str = "%s" % username
+    else:
+        user_str = ""
+
+    if port:
+        host_str = "%s:%s" % ( hostname, port )
+    else:
+        host_str = "%s" % hostname
+
+#    last_id = open("/tmp/lastid-sql_datainput").read().replace("\n","")
+
+    conn_str = "%s://" % engine + "%s" % user_str + \
+               "@%s" % host_str + "/%s" % instance
+
+    engine = create_engine(conn_str,echo=DEBUG)
+#    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+ #   current_id = last_id
+
+    for row in engine.execute(str(query)):
+        sys.stdout.write("section=\"%s\" " % str(section))
+#        sys.stdout.write("Date=\"%s\" " % str(now))
+        sys.stdout.write( "%s=\"%s\" " % ( "Field","Status-real"))
+        for key in row.iterkeys():
+            sys.stdout.write( "%s=\"%s\" " % ( str(key), str(row[key]) ) )
+        sys.stdout.write("\n")
+  #      current_id = row["id"]
+
+  #  open("/tmp/lastid-sql_datainput","w").write(str(current_id) + "\n")
+
+

@@ -1,0 +1,39 @@
+App: Domain Categories
+Author: David Shpritz, Aplura, LLC
+
+This app will allow you to add category classifications to data with domains. For example, if you are using something like urlsnarf to capture HTTP requests, you can use this app to add domain categories, much like you might see in commercial web proxy data.
+Domain categorization is provided by:
+http://urlblacklist.com/cgi-bin/commercialdownload.pl?type=download&file=bigblacklist
+Please make sure to abide by any licensing requirements they may have in place.
+
+| Prerequisites 
+You must have getwatchlist installed:
+http://splunk-base.splunk.com/apps/24216/getwatchlist
+
+| Installation
+To install:
+1. Untar the domainCategories.tar.gz file in your $SPLUNK_HOME/etc/apps directory
+2. To download the initial category list, and create a file which describes the categories, run the following:
+	python $SPLUNK_HOME/etc/apps/domainCategories/bin/squid2Splunk.py
+   This is the command you may set up a cron job to run, if you would like automated updates of the list.
+3. Restart Splunk
+4. There is a savedsearch named "Combine all domain categories" which will compile the downloaded domains with any custom domains, as well as the information from Malware Domains. This search will need to run before domainCategories can really work. This search is scheduled to run at 5 minutes past the hour, but it can be run by hand from the Splunk search bar:
+	| savedsearch "Combine all domain categories" 
+ You should get a message telling you that the lookup file has been written.
+5. You can now use the lookup to enrich your data with domain category information. The domain column in the lookup is "category_domain" so you may need to rename or copy an existing field for the lookup. Most likely you will want to use the domain for the request, not the full host name. For example, if you have "1234.cdn.facebook.com", you may want to only perform the lookup again "facebook.com". For example, if you have HTTP requests in the “webproxy” index, and would like to use the “domain2” field as the key for category lookups:
+	index="webproxy" | eval category_domain=domain2 | lookup dc-domain_categories category_domain
+
+The first time you run a search using the lookup, it will take longer. This is because Splunk will create a mini bucket for the large lookup file. This will be true anytime the all_domain_categories.csv file has been modified.
+Once results are returned, you should get additional fields returned with the results:
+category - The category a domain has been listed under
+action - A fake "Action" field for use with certain apps. You can add your own categories and actions by editing the category_actions.csv file.
+vendor - The name of the list the category information came from.
+
+| Included lookup files
+all_domain_categories.csv - This is created by the saved search. It combines the URLBlacklist information with any custom domains, actions, and data form Malware Domains.
+category_actions.csv - Values for the "Action" field, associated with the category
+categorydescriptions.csv - Descriptions of the categories contained in the information downloaded from URLBlacklist. You can add this to your results with “| lookup cat_descriptions category
+custom_domain_categories.csv - Any custom domains you would like to add
+domaincategories.csv - The category information downloaded from URLBlacklist
+vendor_actions.csv
+

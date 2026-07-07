@@ -1,0 +1,123 @@
+******************************************************
+    Integration of ACI Syslog messages with Splunk
+******************************************************
+
+Follow the steps provided for integration of syslog messages generated from APIC and ACI fabric nodes with Splunk ACI Add-on.
+
+
+Step 1: Configure Splunk machine as a Syslog Server.
+
+Note: The following steps may be used to successfully configure a Syslog Server on Ubuntu/*nix based systems.
+Edit the rsyslog.conf file to allow the submission of syslog messages from APIC.
+ $ sudo vim /etc/rsyslog.conf 
+	### Uncomment the following lines: 
+	$ModLoad imudp  
+	$UDPServerRun 514 
+
+Change permissions of the /var/log directory.
+ $ sudo chown syslog:syslog /var/log 
+
+Restart the rsyslog service.
+ $ sudo service rsyslog restart 
+
+Step 2: Configuring Syslog in ACI Fabric.
+
+Task 1: Create Syslog Monitoring Destination Group.
+The Syslog monitoring destination group will be used by the Cisco ACI Fabric for sending syslog messages. 
+Use the APIC Admin GUI to a create syslog monitoring destination group.
+ On the menu bar, choose ADMIN > EXTERNAL DATA COLLECTORS. In the Navigation pane, select MONITORING DESTINATIONS. 
+
+	   Right-click and click CREATE SYSLOG MONITORING DESTINATION GROUP. In the Create Syslog monitoring destination group dialog box, perform the following actions.
+	   
+ Task 1.1 - DEFINE A GROUP NAME AND PROFILE
+	  • Enter Name (splunk-syslog-destGrp)
+	  • Enter Description (Syslog integration with Splunk)
+	  • For the REMAINING Fields, accept the DEFAULT settings. Click NEXT
+	   
+ Task 1.2 - CREATE SYSLOG MONITORING DESTINATION GROUP 
+	   From the "Create Syslog Monitoring Destination Group" wizard, Create Syslog Remote Destinations.  Click on the " + " to CREATE A SYSLOG REMOTE DESTINATION. In the Create Syslog Remote Destination dialog box, perform the following actions.
+	   • Enter Host (Splunk server address)
+           • Enter Name (Optional)
+	   • Select Admin State (enabled)
+	   • Select Severity (information/warnings)
+	   • Select Forwarding Facility (local7)
+	   • Select Management EPG (default (In-Band)). Click OK.
+	   
+
+Task 2: Create Syslog source group policy.
+Task 2.1 - Configure FABRIC > FABRIC POLICIES to send SYSLOG messages to Syslog Remote Destinations. 
+Fabric policies govern the operation of internal fabric interfaces. Fabric policies configure interfaces that connect spine and leaf switches. 
+Use the APIC Admin GUI to a configure the "DEFAULT" monitoring policy for syslog.
+ On the menu bar, choose FABRIC > FABRIC POLICIES. In the Navigation pane, expand MONITORING POLICIES. 
+
+	   • Expand default
+	   • Select "Callhome/SNMP/Syslog"
+	   • In the "Callhome/SNMP/Syslog" Work Pane, Select the SOURCE TYPE "SYSLOG" from the Source Type drop down list.
+	   • Click on the " + " sign to CREATE SYSLOG SOURCE.  
+	
+	   In the Create Syslog Source dialog box, perform the following actions:
+		➡ Enter Name (splunk-fab-syslog-source)
+		➡ Select Min Severity (information/warnings)
+		➡ For Include (CHECK ALL)
+		➡ Select Dest Group (splunk-syslog-destGrp)
+		➡ Click SUBMIT
+	   
+
+Task 2.2- Configure FABRIC > ACCESS POLICIES to send SYSLOG messages to Syslog Remote Destinations. 
+Access policies govern the operation of interfaces that provide external access to the fabric. 
+Use the APIC Admin GUI to a configure the "DEFAULT" monitoring policy for syslog.
+ On the menu bar, choose FABRIC > ACCESS POLICIES. In the Navigation pane, expand MONITORING POLICIES. 
+
+	   • Expand default
+	   • Select "Callhome/SNMP/Syslog"
+	   • In the "Callhome/SNMP/Syslog" Work Pane, Select the SOURCE TYPE "SYSLOG" from the Source Type drop down list.
+	   • Click on the " + " sign to CREATE SYSLOG SOURCE.  
+	
+	   In the Create Syslog Source dialog box, perform the following actions:
+		➡ Enter Name (splunk-fab-syslog-source)
+		➡ Select Min Severity (information/warnings)
+		➡ For Include (CHECK ALL)
+		➡ Select Dest Group (splunk-syslog-destGrp)
+		➡ Click SUBMIT
+	   
+Step 3: Configure Splunk to monitor Syslog file
+Configure inputs.conf to monitor the syslog file. 
+
+Add to inputs.conf in $APP_HOME/TA_cisco-ACI/local folder
+Enter below content to inputs.conf
+
+	[monitor:///var/log/syslog]
+	disabled = 0
+	index = <your index>
+	sourcetype = apicsyslog
+
+Restart Splunk
+
+Note: Users can also configure other file to monitor instead of default syslog file. Refer the link provided in references section for more details. 
+
+Step 4: Test configuration.
+Login to configured APIC.
+	Fabric -> Pod1 -> Leaf1 -> Interfaces -> Physical Interfaces
+	Right click on any "Admin State: up" , Disable. It will bring down the interface. Will trigger syslog messages. 
+	
+Login to configured Splunk:
+	Search tab, enter 
+		index="<your index>" sourcetype=apicsyslog
+
+	Sample Syslog messages:
+	Sep 26 07:44:53 apic_host1 <186> Sep 26 09:34:38 Leaf1 %LOG_LOCAL7-2-SYSTEM_MSG [F0532][soaking_clearing][interface-physical-down][critical][sys/phys-[eth1/15]/phys/fault-F0532] Port is down, reason:notconnect(connected), used by:EPG,Infra
+	Sep 26 07:44:29 apic_host1 <186> Sep 26 09:34:14 Leaf1 %LOG_LOCAL7-2-SYSTEM_MSG [F0532][soaking][interface-physical-down][critical][sys/phys-[eth1/15]/phys/fault-F0532] Port is down, reason:notconnect(connected), used by:EPG,Infra
+	Sep 26 07:42:58 apic_host1 <186> Sep 26 09:32:43 Leaf1 %LOG_LOCAL7-2-SYSTEM_MSG [F0532][soaking_clearing][interface-physical-down][critical][sys/phys-[eth1/15]/phys/fault-F0532] Port is down, reason:adminCfgChng(connected), used by:EPG,Infra
+	Sep 26 07:42:58 apic_host1 <186> Sep 26 09:32:43 Leaf1 %LOG_LOCAL7-2-SYSTEM_MSG [F0532][soaking][interface-physical-down][critical][sys/phys-[eth1/15]/phys/fault-F0532] Port is down, reason:adminCfgChng(connected), used by:EPG,Infra
+
+	
+References:
+
+Configure Ubuntu Server 12.04 LTS as a Syslog Server: https://community.spiceworks.com/how_to/65683-configure-ubuntu-server-12-04-lts-as-a-syslog-server 
+SYSLOG Configuration for the ACI Fabric: https://supportforums.cisco.com/document/12416991/technote-day-syslog-configuration-aci-fabric 
+Cisco ACI LAB-3: Configuring Syslog: https://www.youtube.com/watch?v=NvwUNBDHXqM 
+Syslog configuration with Splunk: https://www.georgestarcher.com/splunk-success-with-syslog/
+To Store syslog messages to seperate files than default syslog: https://www.youtube.com/watch?v=fewUSu_QZAY
+
+****************************************************************************************************************************************************************************************************
+****************************************************************************************************************************************************************************************************

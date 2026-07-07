@@ -1,0 +1,69 @@
+# Splunk for O2 Wireless box
+# Version : 1.0.2
+# Date: 02 Apr 2013
+#
+# written by Rui Ataide 
+# This software is provided "as is" without express or implied warranty or support
+
+ === Splunk for O2 Wirless box ===
+
+ This Splunk app will parse O2 Wireless box (Technicolor TG582n - O2 8.4.4.J.AE) syslog data and will provide global dashboard views.
+
+ This requires some "advanced" knowledge of Splunk and your O2 Wireless box, both extensively available publicly.
+
+ To install:
+   - Extract to $SPLUNK_HOME/etc/apps/
+   - Reconfigure as per below
+     -> Not tested on Splunk for Windows, inputs.conf will need to be adapted
+   - Restart Splunk
+
+
+ == O2 Router Configuration details ==
+
+ You will need to reconfigure your O2 Wireless box as follows.
+
+ If Syslog is not active then configure Syslog as follows after login in to your router via Telnet using the command below
+
+   :syslog config activate enabled format welf timeout 0
+   :syslog ruleadd fac all sev debug dest <your_syslog_server_ip>
+
+ You will need to enable syslog for xDSL config as per below by default this is not enabled
+
+   :xdsl config syslog enabled
+
+ == Syslog Server details ==
+
+ On your Syslog server, you should reconfigure so that data from your O2 router is logged into /var/log/o2router.log
+ 
+ An example configuration using rsyslogd on an Ubuntu Linux system is shown below:
+
+   # provides UDP syslog reception
+   $ModLoad imudp
+   $UDPServerRun 514
+   # Specific format to use local time as on restart times are always set to Jan 1
+   $template O2FileFormat,"%timegenerated:::date-rfc3339% %HOSTNAME% %syslogtag%%msg:::sp-if-no-1st-sp%%msg:::drop-last-lf%\n"
+   # Log O2 Router Syslog to a separate file
+   :HOSTNAME, isequal, "192.168.1.254"	/var/log/o2router.log;O2FileFormat
+   & ~
+
+ You should make sure your Syslog server adds the correct time as the O2 router on reboot loses it's time.
+
+ == Additional O2 router App Confiuration Details ==
+
+ For the detailed dashboard you will so need to configure the variables in o2router.conf
+ Make sure you place it in <app>/local/o2router.conf to avoid overwrite during app upgrades:
+
+   [o2router]
+   host = 192.168.1.254
+   username = SuperUser
+   password = YOUR_SERIAL_NUMBER_GOES_HERE
+
+ These variables should be self-explanatory. And of course don't forget to replace with the correct password.
+
+ This will use a scripted input that connects regularly to your O2 device and extracts detailed xDSL info
+
+
+ == Support for Splunkstorm ==
+
+ This content works with Splunk Storm but its configuration is beyond this app! 
+ Please feel free to use the dashboard views on your Splunk Storm project. In my case, I have a local index and forward instance.

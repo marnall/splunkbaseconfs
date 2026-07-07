@@ -1,0 +1,113 @@
+The FileTrek app for Splunk does not create or generate any data for Splunk but provides:
+
+1. A dashboard with 5 preselected searches producing charts and tables detailing 'exit points'. An exit point represents an activity for which the target
+location is potentially outside of an organizations scope.
+	- copies to removable media (usb) from a local media (local disk volume)
+	- copies to a network volume from a local volume
+	- Screen captures
+	- upload to a web page
+	- attachments to email (Outlook
+	- Print
+
+2. Common searches to find and report on FileTrek data of interest.
+
+3. Drilldown on dashboard charts to event details with further drilldown to file chain of custody, user and machine reports.
+(these are links to web pages served from the FileTrek Server).
+
+4. A simple view to search for a file.
+
+Compatability:
+=============
+Compatible with FileTrek version 3.1.1.
+
+To install:
+==========
+
+note: the document "Configure_Splunk" provides more detailed instructions.
+
+1. From Splunk=>app select Manage Apps...
+2. Click on install app from file
+3. Browse... and select the file FtInfoSec.tar.gz file
+4. click on 'Upload'
+
+After the FileTrek application is uploaded there will be an option to run 'Set up'. This step can be run now, later or from the Splunk => manager => apps page.
+This step is to configure the url of the FileTrek server used to generate chain of custody, user and machine reports. example https://filetrekserver.com
+
+Follow configuration details in "Configure_Splunk" to ensure that Splunk is indexing FileTrek audit event logs.
+
+For more information goto:
+http://filetrek.com/splunk
+
+note: make sure that the FileTrelaudit event log file is being indexed by a Splunk indexer either via a local data file or forwarded from Splunk forwarders.
+In the simplest case where The Splunk indexer is running on the same machine as The FileTrek server:
+- Splunk > Manager > Data inputs > Files & directories
+index the file /var/ftauditevents
+using the index ftauditevents
+(other fields leave as defaults).
+
+
+pre-production tasks
+====================
+These are possible procedures that could be useful in a pre-production lab environment while investigating possible usage of FileTrek data in Splunk. These tasks
+would not be recommended to be run in a production environment. These would be tasks performed by a person knowledgeable with Splunk.
+
+A. Update the dashboard charts with historical data
+---------------------------------------------------
+Generate FileTrek dashboard chart data from historical events. This would be required if there is existing FileTrek data in Splunk that was captured prior
+to installing the Spunk for FileTrek application.
+(i.e. prior to installing the plunk for FileTrek app, Splunk was setup manually to import FileTrek data).
+
+1. cd /opt/splunk/bin
+
+2. determine how far back you want to go in pulling in statistical data for the dashboard charts - 1day, 1 week 1 year etc.. 
+The example scripts below go back 2 days (-et -2d). Other common formats are d - day, w = week, y = year. See Splunk documentation for more exotic examples.
+-et == earliest time
+
+3. determine how far back to stop running the capture of historical data. If you have just installed the FileTrek app -lt now is appropriate. If the FileTrek app has
+been installed for a week then you don't need to rerun the historical capture over the last week. The command will avoid duplicates (-dedup).
+-lt == latest time.
+
+4. Run these:
+sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_bytype -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_networkVolume -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_top10 -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_overtime -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_hourly -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+#sudo /opt/splunk/bin/splunk cmd python fill_summary_index.py -app FTInfoSec -name FTexitpoint_data -et -2d -lt now -dedup true -auth <Admin User>: <pwd>
+
+These commands run the scheduled searches that are used to build up statistics for the dashboard charts.
+Note: these commands can take a long time to run if run over many days, weeks of existing data.
+
+
+B. Recreating events in splunk (not recommended, not easy and likely to cause missing data)
+------------------------------
+This is a last resort to recreate FileTrek events in Splunk. It depeneds on the source audit event logs being available on every FileTrek server node.
+
+If you have a single indexer running on a single FileTrek server.
+
+1. stop splunk
+sudo /opt/splunk/bin/splunk stop
+
+2. remove the current index(s) data
+/opt/splunk/var/lib/splunk/ftauditevents
+/opt/splunk/var/lib/splunk/ft3
+/opt/splunk/var/lib/splunk/ftsummary
+
+3. rename (mv) the existing 'ftauditevents' log file to ftauditevents.save
+4 Find the oldest rotated ftauditevents log in /var/log and rename to ftauditevents
+- the ftauditevent logs are rotated so there may be multiple older log files.
+
+5. Start splunk
+sudo /opt/splunk/bin/splunk start
+
+Splunk will recreate the FileTrek indexes and then index all the events in 'ftauditevents'
+
+6. Wait until all the events have been indexes - may take a while and you need to manually verify in Splunk that it has pulled in everything.
+
+7. Stop Splunk, rename the next oldest ftauditevents log file to 'ftauditevents'. Start Splunk (don't remove any indexes at this step). Repeat until all old
+ftauditevents log files have been pulled into Splunk
+
+8. Stop Splunk, rename ftauditevents.save back to ftauditevents. Start Splunk. 
+
+9. Rerun the steps in task A. Update the dashboard charts with historical data.
+If there is a lot of data, these steps will take a long time to run.

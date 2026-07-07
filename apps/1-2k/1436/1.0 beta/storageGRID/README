@@ -1,0 +1,123 @@
+NetApp StorageGRID
+----------------------------------------
+	Author: NetApp, Inc.
+	Version/Date: 01/14/2013
+	Source type(s): auditlog
+	Input requirements: Data needs to be source typed and parsed, as described below
+	Supported product(s): 
+		 * StorageGRID Audit Log
+
+Using this App:
+----------------------------------------
+	Configuration: Manual
+	Ports for automatic configuration: None
+	Scripted input setup: Not applicable
+	
+	The source type must be assigned to data at index time. See the steps of input data below:
+	
+   		Go to Manager>Data inputs>File & Directories>New
+   		Select Skip preview, and click Continue
+    		Enter full path to your CIFS (or NFS) share* to the audit log, i.e. the mounted export folder
+
+			\\<admin-node-hostname-or-ip>\audit-export\
+
+    		Check More Settings
+    		At the Source type dropdown menu, set the source type to Manual
+    		Enter auditlog for the Source type
+    		Click Save
+			
+*Set up NFS/CIFS Share for StorageGRID
+-----------------------------------------------
+In order to share the audit log of StorageGRID with Splunk, it is neccessary for storageGrid to be integrated with NFS (see Admin Guide p.222)and has audit share enabled (see Admin Guide p.246). Depending on what OS you are running splunk at. You can mount the share for splunk to read later.
+
+Ubuntu (Source: Ubuntu Documentation)
+
+	NFSv4 client
+		Install the required packages...
+			# apt-get install nfs-common 
+		The client needs the same changes to /etc/default/nfs-common to connect to an NFSv4 server.
+
+		In /etc/default/nfs-common we set:
+			NEED_IDMAPD=yes
+			NEED_GSSD=no # no is default
+		because we want UID/GUID to be mapped from names. This way, server and client do not need the users to share same UID/GUID. Remember that mount/fstab defaults to NFSv3, so "mount -t nfs4" is necessary to make this work.
+
+		On the client we can mount the complete export tree with one command:
+			# mount -t nfs4 -o proto=tcp,port=2049 nfs-server:/ /mnt
+		Note that nfs-server:/export is not necessary in NFSv4, as it is in NFSv3. The root export :/ defaults to export with fsid=0. 
+
+		It can fail sometimes with the message
+			mount.nfs4: No such device
+		You have to load the nfs module by giving the command
+			# modprobe nfs
+		To make sure that the module is loaded at each boot, simply add nfs on the last line of /etc/modules. We can also mount an exported subtree with:
+			# mount -t nfs4 -o proto=tcp,port=2049 nfs-server:/users /home/users
+
+		To save us from retyping this after every reboot we add the following line to /etc/fstab:
+			nfs-server:/   /mnt   nfs4    _netdev,auto  0  0
+		The auto option mounts on startup and the _netdev option waits until system network devices are loaded. However this will not work with WiFi as WiFi is set up at the user level (after login) not at system startup. If you use _netdev with WiFi the boot process will pause waiting for the server to become available.
+		Note that _netdev only works with nfs version 3 and before. nfs4 ignores this option. Depending on how fast the network comes up on boot the mount entry may fail and the system will just keep booting. It can still be useful if you make your own script to wait for the network to come up and then mount -a -O _netdev
+
+	Portmap Lockdown(optional)
+		Add the following line to /etc/hosts.deny:
+			rpcbind : ALL
+		By blocking all clients first, only clients in /etc/hosts.allow below will be allowed to access the server.
+		Now add the following line to /etc/hosts.allow:
+			rpcbind : NFS server IP address
+		Where "NFS server IP address" is the IP address of the server. This must be numeric! It's the way portmap works.
+
+Windows
+
+	To install Client Services for NFS, go to the Add/Remove Software wizard in the Control Panel.
+	Click on Turn Windows features on or off
+	In command line, enter: mount [options] //nfs-server-unc-name/share-name [drive letter]
+
+*Setup the app
+-----------------------------------------------
+Note: NetApp StorageGRID.spl is the same as NetApp StorageGRID.tar.gz
+
+1.Save “NetApp StoragGRID.spl” to your local directory
+2.From the top right of the UI, go to Manager>Apps>Install app from file
+3.Browse to the directory of saved “NetApp StoragGRID.spl”, and click Upload.
+4.When uploading finishes, click the link at the prompt warning at the top of the window
+5.Restart Splunk by clicking “Restart Splunk”, then click Ok to confirm
+6.Login to Splunk. From the top right corner, click App>Audit Log Report
+7.You should see the dashboard of NetApp StoragGRID. However, there might be no result from the search since we have no data input at this point.
+8.If you cannot launch the app, please make sure that the app view is selected to be visible: Manager>Apps>(NetApp StoragGRID)Edit Properties>Visible>Select 'Yes'
+
+*Setup Splunk
+-----------------------------------------------
+Download latest Splunk from official website
+Please refer to the installation manual for information on system prerequest and details
+http://docs.splunk.com/Documentation/Splunk/latest/Installation/Whatsinthismanual%7C
+
+*Input Data
+-----------------------------------------------
+NFS Share/Remote Directory
+-Go to Manager>Data inputs>File & Directories>New
+-Select Skip preview, and click Continue
+-Enter full path to your nfs share, i.e. the mounted export folder
+	Windows
+		\\<node ip/node hostname>\var\local\audit\export
+	Linux
+		/path/to/your/mounted/directory
+-Check More Settings
+-At the Source type dropdown menu, set the source type to Manual
+-Enter auditlog for the Source type
+-Click Save
+
+Local File/Directory
+-Go to Manager>Data inputs>File & Directories>New
+-Select Preview data before indexing, select path to the directory
+-Click Continue
+-Select Apply an existing source type (if you have the app installed, source type "auditlog" should appea in the dropdown menu) when prompt with Set source type window.
+-Preview the data format and click Continute if finished
+-Click Save
+
+Note: 
+1. Splunk comes with a Free license includes 500 MB/day of indexing volume. It is free , and has no expiration date. If you are reading in data exceeding this limit (i.e. exceeding the indexing volume), you will need to request other license from Splunk. Additionally, you can request a developer license from Splunkbase
+2. Some dropdown menu are generated by running a internal search form the data input (such as SPAR). therefore, there might be warning message and no option shown on the drop down menu when you have no data input or just import the data to Splunk. Please wait for 15 minutes after you input the data for splunk to finish its first internal search .
+
+Enjoy!
+
+Copyright (C) 2012-2013 NetApp Inc. All Rights Reserved.

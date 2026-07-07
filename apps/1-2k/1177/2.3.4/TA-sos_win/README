@@ -1,0 +1,149 @@
+################################################################################
+#                                                                              #
+#                      Splunk on Splunk add-on (SoS TA)                        #
+#                                for Windows                                   #
+#             A collection of inputs for the Splunk on Splunk app              #
+#                                                                              #
+################################################################################
+
+The Splunk on Splunk add-on is a collection of inputs for the Splunk on Splunk
+app. It contains the following scripted inputs:
+
+  ps_sos.ps1
+  Gathers memory and CPU statistics for Splunk Web, splunkd, and search 
+  processes.
+
+################################################################################
+#                                IMPORTANT                                     #
+# Version 2.3 or later of the Splunk on Splunk app is required to properly use #
+#       the events produced by the Splunk on Splunk add-on for Windows         #
+################################################################################
+
+The instance of the Splunk on Splunk app installed on your search-head uses the
+information gathered from these scripts to populate views for analysis of
+resource usage in your Splunk installation.
+
+Install the SoS TA on Splunk search-peers or forwarders to track resource usage.
+
+You must enable SoS TA inputs before they can report resource usage information.
+By default, SoS TA inputs are disabled.
+
+IMPORTANT: You must enable local PowerShell script execution on every Windows 
+server where you want to install the SoS TA for Windows. If your servers are in 
+an Active Directory domain, you can use Group Policy objects to enable this 
+setting. You can also perform this step from within PowerShell. Read "To enable
+local PowerShell script execution" later in this README for specific instructions.
+
+NOTE: The data gathered by this input counts against the daily
+licensed volume.
+
+The 'sos' index is required for the SoS TA inputs to gather data. By default, the
+'sos' index is enabled.
+
+################################################################################
+# To enable or disable data inputs
+################################################################################
+
+Enable the scripted inputs that collect information for the SoS Splunk CPU/Memory
+Usage and Distributed Searches Memory Usage views:
+   
+   a) Go to Manager > Data Inputs > Scripts. Enable the following data input:
+
+      ps_sos.ps1
+
+   OR
+
+   b) Run the following from a command or PowerShell prompt:
+
+      %SPLUNK_HOME%\bin\splunk _internal call \
+      '/servicesNS/nobody/TA-sos/data/inputs/script/.%252Fbin%252Fps_sos.ps1' \
+      -post:disabled 0
+
+################################################################################
+# To enable local PowerShell script execution on Windows servers
+################################################################################
+
+You must enable local PowerShell script execution on each Windows server that
+you wish to collect Splunk on Splunk data from. There are several ways to do
+this; two are described here.
+
+#### Enable local PowerShell script execution from PowerShell
+
+You can enable local PowerShell script execution directly from PowerShell. This 
+method is the fastest way to get the TA working if you have only a few 
+workstations or servers that you wish to get data from.
+
+You must have administrative access to the system to make changes to the script 
+execution policy.
+
+To enable local PowerShell script execution from within PowerShell:
+
+  1) Log into the Windows server as an administrator or equivalent.
+
+  2) Open a PowerShell prompt.
+
+  3) In the prompt, type the following command:
+
+     Set-ExecutionPolicy RemoteSigned
+
+     PowerShell responds with the following:
+
+     Execution Policy Change
+     The execution policy helps protect you from scripts that you do not trust.
+     Changing the execution policy might expose you to the security risks described
+     in the about_Execution_Policies help topic. Do you want to change the execution
+     policy?
+     [Y] Yes  [N] No  [S] Suspend  [?] Help (default is "Y"): Y
+
+  4) Answer "Y" (or hit "Enter") to finalize the settings change.
+
+NOTE: This change remains active across PowerShell sessions. If you want to disable
+local PowerShell script execution later, you must evoke the following command in
+another PowerShell prompt:
+
+     Set-ExecutionPolicy Restricted
+
+##### Enable local PowerShell script execution with a Group Policy object
+
+If you have numerous servers that you want to collect Splunk on Splunk data
+from, and they are in an Active Directory network, consider deploying a Group 
+Policy object (GPO) to enable local PowerShell script execution. 
+
+You must have administrative privileges on the domain to deploy a GPO.
+
+To enable local PowerShell script execution using a GPO:
+
+  1) Create a new Active Directory GPO.
+
+  NOTE: The exact steps to create and edit a GPO vary based on the version of
+  Windows Server that you run. Consult the Microsoft documentation for
+  specific details.
+
+  2) Open the GPO for editing.
+
+  3) In the GPO editor, select Computer Configuration > Policies > 
+     Administrative Templates > Windows Components > Windows PowerShell.
+
+  4) Right-click "Turn on script execution", then select "Edit".
+
+  5) In the window that appears, click the "Enabled" radio button.
+
+  6) In the "Execution Policy" drop-down, select Allow local scripts and
+     remote signed scripts.
+
+  7) Click "OK" to accept the changes.
+
+  8) Close the Group Policy Object editor to save your changes.
+
+  9) Deploy the GPO. 
+
+##### If you don't enable local PowerShell execution
+
+If you do not enable PowerShell script execution, the SoS TA for Windows will not
+collect data. Splunk displays an error message similar to the following in splunkd.log:
+
+08-12-2012 02:39:40.632 -0700 ERROR ExecProcessor - message from ""C:\Program Files\Splunk\etc\apps\sos\bin\powershell\ps_sos.ps1"" File C:\Program Files\Splunk\etc\apps\sos\bin\powershell\ps_sos.ps1 cannot be loaded because the execution of scripts is disabled on this system. Please see "get-help about_signing" for more details.
+At line:1 char:13
++ .\ps_sos.ps1 <<<<
+    + CategoryInfo          : NotSpecified: (:) [], PSSecurityException
+    + FullyQualifiedErrorId : RuntimeException

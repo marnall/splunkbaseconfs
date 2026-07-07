@@ -1,0 +1,117 @@
+import os
+import json
+import os.path
+import base64
+import urllib
+import urllib2
+import time
+import sys
+import ssl
+
+class ZiftenConnector:
+    def __init__(self,username, token, ip, version = False):
+        """ The initlization method for the ZiftenConnector.
+
+        Keyword arguments:
+        username -- A string that is the username of the person making the requests
+        token-- A string of the token
+        ip -- A string of the IP address of the appliance
+        """
+        self.username = username
+        self.token = token
+        self.ip = ip
+
+        #if version == False:
+        #    result = self.getVersion()
+        #    if 'response' in result:
+        #        version = result['response'].pop()
+        #    else:
+        #        raise Exception('Unable to determine api version')
+        #self.version = version
+
+    def getVersion(self):
+        baseUrl = "https://"+self.ip+"/external/api/v1/"
+        return self._request("GET", baseUrl)
+
+    def callAPI(self, method, url, data = {}, download = False):
+        """ Calls the api of a service and returns the result.
+
+        Keyword arguments:
+        method -- A string of the HTTP Method(GET,POST)
+        url -- A string of the api url(not complete url)
+        data -- A Dictionary of the data that will be sent(default {})
+        download -- A string of the name the file should be give.
+            If no string is given it assumes it's not a download(default False)
+        """
+        if url[0:1] == '/':
+            url = url[1:]
+        baseUrl = "https://" + self.ip + "/external/api/"+url
+        print "baseUrl: " + baseUrl
+
+        return self._request(method, baseUrl, data, download)
+
+    def _request(self, method, url, data = {}, download = False):
+        post = {}
+        files = {}
+        if len(data) != 0:
+            for k,v in data.iteritems():
+                if isinstance(v, basestring) and os.path.isfile(v):
+                    files[k] = open(v, "rb")
+                else:
+                    post[k] = json.dumps(v)
+            if method != "POST":
+                post['_method'] = method
+            encpost = urllib.urlencode(post)
+            request=urllib2.Request(url,encpost)
+            auth = base64.encodestring('%s' % ( self.token)).strip()
+            #auth = base64.encodestring('%s:%s' % (self.username, self.token)).strip()
+            request.add_header("Authorization", "Bearer %s" % auth)
+            try:
+                response = urllib2.urlopen(request)
+            except urllib2.HTTPError as e:
+                print "%s status=error, msg='Server failed to fulfill the request' code='%s'" % (time.strftime("%Y-%m-%d %H:%M:%S") , str(e.code))
+                sys.stderr.write('%s - ERROR - Server failed to fulfill the request %s\n' % (time.strftime("%Y-%m-%d %H:%M:%S"), str(e.code)))
+                exit(-1)
+            except urllib2.URLError as e:
+                print "%s status=error, msg='Failed to reach server' reason='%s'" % (time.strftime("%Y-%m-%d %H:%M:%S") , str(e.reason))
+                sys.stderr.write('%s - ERROR - Failed to reach server %s\n' % (time.strftime("%Y-%m-%d %H:%M:%S"), str(e.reason)))
+                exit(-1)
+
+        else:
+            request=urllib2.Request(url)
+            auth = base64.encodestring('%s:%s' % (self.username, self.token)).strip()
+	    #authtoken = base64.encodestring('%s' % self.token)
+            request.add_header("Authorization", "Bearer %s" % self.token)
+            try:
+                ctx = ssl.create_default_context()
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+
+                response = urllib2.urlopen(request,context=ctx)
+                print "Response Code: " 
+                print response.getcode()
+            except urllib2.HTTPError as e:
+                print "%s status=error, msg='Server failed to fulfill the request' code='%s'" % (time.strftime("%Y-%m-%d %H:%M:%S") , str(e.code))
+                sys.stderr.write('%s - ERROR - Server failed to fulfill the request %s\n' % (time.strftime("%Y-%m-%d %H:%M:%S"), str(e.code)))
+                exit(-1)
+            except urllib2.URLError as e:
+                print "%s status=error, msg='Failed to reach server' reason='%s'" % (time.strftime("%Y-%m-%d %H:%M:%S") , str(e.reason))
+                sys.stderr.write('%s - ERROR - Failed to reach server %s\n' % (time.strftime("%Y-%m-%d %H:%M:%S"), str(e.reason)))
+                exit(-1)
+
+        #If download download to correct area
+        if download != False:
+            if download == 'memory':
+                return response
+                #return response.read()
+            else:
+                with open(download, 'wb') as dfile:
+                        dfile.write(response.read())
+                filesize = os.path.getsize(download)
+                return {'download_file':download, 'filesize':filesize}
+        else: #Else return the data
+            result = response.read()
+            return json.loads(result)
+
+
+
