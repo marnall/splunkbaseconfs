@@ -1,0 +1,116 @@
+# Application-level permissions for SA-Data-Heartbeat.
+# Read for all authenticated users; write for admin / sc_admin only.
+# Objects are app-local (export = none) — this app is self-contained and
+# does not need to publish its lookups/transforms/searches into the global
+# namespace, where they would risk colliding with other apps' objects.
+
+[]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[views]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[nav]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[lookups]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[transforms]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[savedsearches]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# The "Flagged Sources" alert search's results carry the per-row alert TARGET
+# secret (re-joined from the admin-only heartbeat_alert_targets so the dispatcher
+# can deliver). A scheduled search's dispatch artifacts inherit ITS read ACL, so
+# with the default read:[*] a non-admin could read the results and harvest the
+# webhook URL / recipient list (verified live). Restrict THIS one search — and
+# therefore its artifacts — to admin/sc_admin read (a3#3). The scheduler runs it
+# server-side regardless of this ACL, so delivery is unaffected; non-admins keep
+# their read-only Monitor view (which never shows the secret).
+[savedsearches/Data Heartbeat Alert - Flagged Sources]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# KV-store collections — explicit so dashboard users (read) and admins
+# (write) have well-defined access on multi-user / SHC installs rather than
+# relying on inherited app-level defaults.
+[collections/monitored_sourcetypes]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Holds Slack/Teams/webhook URLs + email recipient lists (bearer secrets). Read
+# is restricted to admin/sc_admin so a low-priv user can't enumerate every org's
+# incoming-webhook URL via the KV REST API and post into their Slack/Teams (#4).
+# The dispatcher reads it server-side as the scheduled alert's (admin-context)
+# session key, and non-admins get a read-only Settings page, so tightening read
+# breaks neither delivery nor the admin UI.
+[collections/heartbeat_alert_actions]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# Per-sourcetype alert target secrets (webhook URLs / recipients), split out of the
+# world-readable monitored_sourcetypes (#3). read AND write restricted to admin/
+# sc_admin: the admin-context "Flagged Sources" alert search reads it server-side,
+# and only admins edit per-row targets, so tightening read breaks neither delivery
+# nor the (admin-only) editing UI — while a non-admin can no longer enumerate every
+# org's incoming-webhook URL. The Monitor read-only view stays intact because the
+# non-secret alert_action stays in the world-readable monitored_sourcetypes.
+[collections/heartbeat_alert_targets]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+[collections/heartbeat_audit_log]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[collections/heartbeat_metrics]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[collections/heartbeat_settings]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Nightly DR copy of monitored_sourcetypes. Post-v1.4.0 the per-row alert TARGET
+# secret no longer lives in monitored_sourcetypes (it moved to the admin-only
+# heartbeat_alert_targets — a3#20), so this backup carries only the non-secret
+# action NAME (alert_action) with a blank alert_action_config. Read is STILL
+# restricted to admin/sc_admin because a snapshot captured on a PRE-v1.4.0 build
+# may still hold the old secret, and the Restore search runs in admin context.
+# (Per-row targets are not part of this monitored-list DR snapshot — see the
+# README "Backup & restore" note; Restore blanks alert_action_config so it can
+# never re-leak a pre-upgrade secret into the world-readable collection.)
+[collections/monitored_sourcetypes_backup]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# Recycle bin for the "Clear Never-Seen" bulk delete (v1.4.2 b75). Only ever
+# written on builds >= 75, where alert_action_config is force-blanked before
+# the snapshot lands — so unlike the DR backup above it can never hold a
+# pre-v1.4.0 secret. Read stays admin-only anyway: the bin only matters to the
+# admins who can delete/restore, so there is no reason to widen it.
+[collections/heartbeat_recycle_bin]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# Deletion tombstones (sourcetype + deleted_time only — no secret). Read is world
+# so the scheduled Source Type Monitor search (nobody context) and Run Detection
+# can join against it to avoid resurrecting a just-deleted row; write is admin
+# because only admins delete rows (which is what writes a tombstone).
+[collections/heartbeat_deleted]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+# Custom alert action used by the "Flagged Sources" saved search (same app).
+[alert_actions/heartbeat_dispatch]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none

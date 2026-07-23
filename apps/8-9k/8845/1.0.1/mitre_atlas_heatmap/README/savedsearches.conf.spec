@@ -1,0 +1,14 @@
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.startColor = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.midColor = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.endColor = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.sortKey = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.sortOrder = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.startVal = <float>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.endVal = <float>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.legendTitle = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.display = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.theme = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.hideNull = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.showSubTechniques = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.animate = <string>
+display.visualizations.custom.mitre_atlas_heatmap.mitre_atlas_heatmap.duration = <float>

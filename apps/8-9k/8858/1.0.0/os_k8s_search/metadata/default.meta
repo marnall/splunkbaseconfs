@@ -1,0 +1,130 @@
+# Application-level + per-resource ACLs.
+#
+# The empty-stanza default is the app's root ACL — applies to
+# everything not specifically overridden below. Per-conf stanzas
+# override it: kubeclusters is admin-managed, kubeauth is per-user.
+
+[]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+# Credential store (passwords.conf / storage/passwords). Locked down
+# rather than inheriting the root `read : [ * ]`: Splunk's own
+# secret-storage guidance restricts password read to admin-tier roles
+# (dev.splunk.com, "Configure access control for secret storage"). The
+# search command never reads here directly — it resolves credentials
+# through the passSystemAuth /k8s_search/secrets handler, which runs in
+# the system context (admin_all_objects) and so is unaffected by this
+# ACL. role_k8s_search_admin keeps read access for credential
+# maintenance (it holds list_storage_passwords). No `export = system` —
+# secrets must not be visible outside this app. Defense in depth: the
+# base role_k8s_search_user already lacks list_storage_passwords, so
+# nothing in it can read here regardless; this removes the footgun of a
+# role being granted the capability and inheriting `read : [ * ]`.
+[passwords]
+access = read : [ admin, sc_admin, k8s_search_admin ], write : [ admin, sc_admin, k8s_search_admin ]
+
+# App-wide runtime settings (timeouts, fan-out concurrency, log-line size cap)
+# AND the license key ([license] key). The key is a signed token (it can't be
+# forged), but it can be copied to another installation — and the installation
+# cap is honor-system — so the raw key must not be readable over conf REST by
+# anyone who isn't a full Splunk admin. Read AND write are therefore both
+# restricted to admin / sc_admin only:
+#   - `power`, and the app's own non-Splunk-admin k8s_search_admin
+#     role, are deliberately excluded — any of them could
+#     otherwise pull the raw key from configs/conf-k8s_search/license,
+#     bypassing the setup handler (which returns decoded status but never
+#     echoes the key).
+#   - Non-Splunk-admin app admins still VIEW status and SET the key through
+#     /k8s_search/settings, which reads via the passSystemAuth system token and
+#     gates writes on edit_k8s_search_clusters — so they never need direct
+#     conf-REST access to this stanza.
+# This ACL does NOT affect the search commands: the Go binary reads the conf
+# file from disk, governed by OS permissions, not this ACL.
+[k8s_search]
+export = system
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+# System-wide Kubernetes cluster registry. Admins create, edit, and
+# delete; everyone reads (so the setup page can show the list and
+# search commands can resolve a context= name to a stanza).
+[kubeclusters]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+# Per-user kubeauth.conf. Every authenticated user manages their
+# OWN file in their own user-scope namespace
+# (etc/users/<user>/os_k8s_search/local/kubeauth.conf). The setup-page
+# REST handler enforces "write under the authenticated user's
+# namespace, never another user's" by reading the session user.
+[kubeauth]
+export = system
+access = read : [ * ], write : [ * ]
+
+# Pre-built dashboards. Everyone runs them, only admins edit (the
+# inline SPL panels run as the viewing user, so the ACL controls
+# editing-the-dashboard, not who can search). Exported so global
+# search-head clusters can find them.
+[views/cluster_health]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/system_components]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/incident_snapshot]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/pod]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/node]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/workload_overview]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/reliability_troubleshooting]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/resource_hygiene]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/events]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/networking_storage]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[views/logs_explorer]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+# Custom search commands. Same pattern as kubeclusters — everyone
+# executes, admins author. Pulling out per-command stanzas (rather
+# than a single [commands] catch-all) keeps each command's ACL
+# explicit and auditable.
+[commands/k8s]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[commands/k8slogs]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[commands/k8sevents]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
+
+[commands/k8sdescribe]
+export = system
+access = read : [ * ], write : [ sc_admin, admin, power ]
