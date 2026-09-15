@@ -1,0 +1,33 @@
+attr1,attr2,setting
+New,orange,status
+"In-Progress",blue,status
+Pending,yellow,status
+Escalated,yellow,status
+Resolved,gray,status
+Closed,gray,status
+Critical,cherry,severity
+High,red,severity
+Medium,yellow,severity
+Informational,blue,severity
+New,none,disposition
+"True Positive",none,disposition
+"Benign positive- Expected",none,disposition
+"False Positive",none,disposition
+other,none,disposition
+"index=notable 
+| eval eventtime=coalesce(eventtime,_time)
+| eval severity=""Low""| eval status=""New""| eval disposition=""Undetermined"" |eval alert_id=md5(_raw+tostring(eventtime)) 
+| eval TITLE= coalesce(detection_name,source) 
+| eventstats count as duplicate_alert by _raw
+| eval duplicate_alert = duplicate_alert -1
+| table * | fields - orig_* date_* punct linecount _* count
+| dedup alert_id
+| lookup secalerts_comments alert_id as alert_id OUTPUT customkey
+| mvexpand customkey
+| lookup secalerts_comments customkey as customkey OUTPUT assigned_to,comment,created,disposition,status,user
+| eval status=if(isnull(status),""New"",status)| eval disposition=if(isnull(disposition),""Undetermined"",disposition) , created=if(isnull(created),eventtime,created)
+| sort 0 + alert_id created
+| eventstats last(status) as last_status last(assigned_to) as last_assigned_to last(disposition) as last_disposition by alert_id
+| eval status=case(isnotnull(last_status),last_status) | eval disposition=case(isnotnull(last_disposition),last_disposition) | eval assigned_to=case(isnotnull(last_assigned_to),last_assigned_to)
+| eval created = strftime(created,""%d-%m-%Y %H:%M"") , eventtime=strftime(eventtime,""%d-%m-%Y %H:%M"")
+|fields - timeendpos timestamp timestartpos _mkv_child info_search_time",,query

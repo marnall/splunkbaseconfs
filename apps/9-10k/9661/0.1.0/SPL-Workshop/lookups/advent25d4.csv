@@ -1,0 +1,725 @@
+SPL,comment,step,previous_step,title
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row",<p>We start with the example data.,1,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| streamstats current=false last(previous_row) as previous_previous_row
+| table previous_previous_row previous_row row
+| rename row as next_row
+| rename previous_row as row
+| rename previous_previous_row as previous_row","<p>In order to count the number of neighbours, we need both the previous and next row.
+
+<p>We can use the streamstats current=false trick twice. But that leaves us with two problems:
+
+<ul>
+<li>we have a useless record at the top. We can simply add | search row=*
+<li>we're missing one record at the bottom. We need to add a line to our data...
+</ul>",2,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| append
+    [| stats count as row
+    | eval row=null()
+        ]
+| streamstats current=false last(row) as previous_row
+| streamstats current=false last(previous_row) as previous_previous_row
+| table previous_previous_row previous_row row
+| rename row as next_row
+| rename previous_row as row
+| rename previous_previous_row as previous_row
+| search row=*","<p>Not super elegant but we got there.
+
+<p>Can we think of a more elegant way?",3,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row",<p>Nice!,4,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| eval cell=split( row, """" )
+| mvexpand cell","<p>We need to explore each cell one by one. We could use a foreach mode=multivalue and just manipulate row, but maybe a more splunky way would be to get into a situation where we have one record per cell.",5,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by row","<p>In order to look at neighbours, we need to keep track of where the cell came from.
+
+<p>We could use streamstats count by row, but that would break if there's ever two identical rows.",6,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y","<p>It is much safer to number the rows first, and then streamstats count by y instead.
+
+<p>Note how the choice of the name of these variables keep the code clearer.
+
+<p>From here it's easy to identify the neighbours of each cell.",7,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )",<p>This should be all the neighbours.,8,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=mvcount( mvfilter( neighbours==""@"" ) )","<p>There's several ways to bring the neighbours together, one of them is to use mvappend. The advantage of mvappend is that it will cope well with empty or null contributors.
+
+<p>Sadly there is actually a bug in this code, but we won't notice until later.",9,,AdventOfCode25 Day 4<-O->part 1
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=mvcount( mvfilter( neighbours==""@"" ) )
+| stats count(eval(cell==""@"" AND neighbour_count<4)) as accessible","<p>Now that we can see our logic is working well we can filter on cells containing an actual printer paper roll, and count the number of accessible ones.
+
+<p>The correct answer should be <b>13</b>.
+
+<h1>Part 1 solved!</h1>",10,,AdventOfCode25 Day 4<-O->part 1
+"| inputlookup adventofcode2025day4.csv
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=mvcount( mvfilter( neighbours==""@"" ) )
+| stats count(eval(cell==""@"" AND neighbour_count<4)) as accessible","<p>This solution scales to the full puzzle data.
+
+<p>The correct answer should be <b>1537</b>.
+
+<p>Can you figure out why this solution is wrong?",11,,AdventOfCode25 Day 4<-O->part 1 - full scale
+"| inputlookup adventofcode2025day4.csv
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| stats count(eval(cell==""@"" AND neighbour_count<4)) as accessible","<p>Beware of mvcount! The documentation does say ""If the field has no values, this function returns NULL"". IMHO it should return 0.
+
+<p>Thankfully this is easily solved. And we get the correct <b>1537</b> answer!",12,,AdventOfCode25 Day 4<-O->part 1 - full scale
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| eval removable=if( cell==""@"" AND neighbour_count<4,1, 0)
+| eval cell=if( removable==1, ""."", cell )","<h1>Part 2</h1>
+
+<p>Let's go back to the example data, and rewrite the cell if a printer paper roll is removable.",13,,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| eval removable=if( cell==""@"" AND neighbour_count<4,1, 0)
+| eval cell=if( removable==1, ""."", cell )
+| stats first(row) as row, list(cell) as new_row by y
+| sort 0 + y
+| eval new_row=mvjoin( new_row, """" )",<p>Now we can reconstruct each row. Does this look good?,14,,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| eval removable=if( cell==""@"" AND neighbour_count<4,1, 0)
+| eval cell=if( removable==1, ""."", cell )
+| stats list(cell) as row by y
+| sort 0 + y
+| eval row=mvjoin( row, """" )
+| fields row","<p>Since it looks good, we simplify it.
+
+<p>We now need a way to iterate this.",15,,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv",<p>This is our bootstrap.,16,,AdventOfCode25 Day 4<-O->part 2
+"| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| eval removable=if( cell==""@"" AND neighbour_count<4,1, 0)
+| eval cell=if( removable==1, ""."", cell )
+| stats list(cell) as row by y
+| sort 0 + y
+| eval row=mvjoin( row, """" )
+| fields row
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv","<p>And this is our iterator.
+
+<p>Feel free to click the ""refresh"" function (near ""open in search"") in the search results table below to see the progression happening.
+
+<p>Pretty cool!",17,15,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" )
+| mvexpand row
+| eval removed=0
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv",<p>We need to keep track of how many rolls were removed as we go. So let's modify our bootstrap.,18,16,AdventOfCode25 Day 4<-O->part 2
+"| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+| streamstats current=false last(row) as previous_row
+| reverse
+| streamstats current=false last(row) as next_row
+| reverse
+| table previous_row row next_row removed
+| streamstats count as y
+| eval cell=split( row, """" )
+| mvexpand cell
+| streamstats count as x by y
+| eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) )
+| eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) )
+| eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) )
+| eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) )
+| eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 )
+| eval removable=if( cell==""@"" AND neighbour_count<4,1, 0)
+| eventstats sum(removable) as removing_this_time
+| eval removed=removed+removing_this_time
+| eval cell=if( removable==1, ""."", cell )
+|  stats first(removed) as removed, list(cell) as row by y
+| sort 0 + y
+| eval row=mvjoin( row, """" )
+| fields row removed
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv","<p>And this is our modified iterator.
+
+<p>If we run it enough times, we should get to the right answer of <b>43</b> when it stops moving.
+
+<h1>Part 1 solved!</h1>",19,17,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row 
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" ) 
+| mvexpand row 
+| eval removed=0 
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,20)
+| mvexpand count
+| map
+    [
+     | inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row removed
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removing_this_time 
+     | eval removed=removed+removing_this_time 
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y 
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed 
+     | outputlookup temp_SPL_Workshop_advent25d4_wip.csv] maxsearches=100","<p>Can we bring everything together into one search?
+
+<p>Note how map is accumulating the results of each iteration of the subsearch into the results of the main search.",20,,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row 
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" ) 
+| mvexpand row 
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,20)
+| mvexpand count
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removed
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y 
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed
+     | appendpipe 
+        [ |  fields row
+          | outputlookup temp_SPL_Workshop_advent25d4_wip.csv
+          | search nothing=doesnotexist]
+     | stats first(removed) as removed ] maxsearches=100","<p>Thanks to map's behaviour we no longer have to keep track of how many rolls were removed as we go.
+
+<p>Instead, each iteration of the subsearch is now returning how many rolls it has removed.
+
+<p>Notice the use of appendpipe. The problem it's solving is: how can we save the lookup without the removed field, but at the same time only keep the removed field  in the subsearch results? appendpipe duplicates the result pipeline, making it possible to do two completely different things with them. Note how we use a bogus search command to make sure the content of the lookup doesn't make it to the final results.",21,,AdventOfCode25 Day 4<-O->part 2
+"| stats count as row 
+| eval row=split( ""..@@.@@@@.
+@@@.@.@.@@
+@@@@@.@.@@
+@.@@@@..@.
+@@.@@@@.@@
+.@@@@@@@.@
+.@.@.@.@@@
+@.@@@.@@@@
+.@@@@@@@@.
+@.@.@@@.@."", ""
+"" ) 
+| mvexpand row 
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,20)
+| mvexpand count
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removed
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y 
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed
+     | appendpipe 
+        [ |  fields row
+          | outputlookup temp_SPL_Workshop_advent25d4_wip.csv
+          | search nothing=doesnotexist]
+     | stats first(removed) as removed ] maxsearches=100
+| stats sum(removed) as total_removed, last(removed) as removed_in_last_iteration","<p>All we need now is a bit more stats.
+
+<p>The most inelegant aspect of this solution is that we don't know in advance how many times we should iterate.
+
+<p>At least removed_in_last_iteration tells us we went far enough when it is 0.",22,,AdventOfCode25 Day 4<-O->part 2
+"| inputlookup adventofcode2025day4.csv
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,20)
+| mvexpand count
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removed
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y 
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed
+     | appendpipe 
+        [ |  fields row
+          | outputlookup temp_SPL_Workshop_advent25d4_wip.csv
+          | search nothing=doesnotexist]
+     | stats first(removed) as removed ] maxsearches=100
+| stats sum(removed) as total_removed, last(removed) as removed_in_last_iteration","<p>Time to see if this scales.
+
+<p>And it doesn't. Notice the error saying that stats' list()  command is limited to 100 values.",23,,AdventOfCode25 Day 4<-O->part 2 - full scale
+"| inputlookup adventofcode2025day4.csv
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,20)
+| mvexpand count
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removed
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y  limit=1000
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed
+     | appendpipe 
+        [ |  fields row
+          | outputlookup temp_SPL_Workshop_advent25d4_wip.csv
+          | search nothing=doesnotexist]
+     | stats first(removed) as removed ] maxsearches=100
+| stats sum(removed) as total_removed, last(removed) as removed_in_last_iteration","<p>Thankfully, stats has an undocumented (!) feature that allows to change the limit for list().",24,,AdventOfCode25 Day 4<-O->part 2 - full scale
+"| inputlookup adventofcode2025day4.csv
+| outputlookup temp_SPL_Workshop_advent25d4_wip.csv 
+| stats count ```Clear results```
+| eval count=mvrange(0,80)
+| mvexpand count
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d4_wip.csv
+     | streamstats current=false last(row) as previous_row
+     | reverse
+     | streamstats current=false last(row) as next_row
+     | reverse
+     | table previous_row row next_row
+     | streamstats count as y
+     | eval cell=split( row, """" ) 
+     | mvexpand cell 
+     | streamstats count as x by y 
+     | eval neighbour_left= if( x==1, """", substr( row, x-1, 1 ) ) 
+     | eval neighbour_right= if( x==len(row), """", substr( row, x+1, 1 ) ) 
+     | eval neighbour_top=substr( previous_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbour_bottom=substr( next_row, if( x==1, 1, x-1 ), if( x==1 OR x==len(row), 2, 3 ) ) 
+     | eval neighbours=mvappend( neighbour_right, neighbour_left, split(neighbour_top, """" ), split(neighbour_bottom, """" ) ) 
+     | eval neighbour_count=coalesce( mvcount( mvfilter( neighbours==""@"" ) ), 0 ) 
+     | eval removable=if( cell==""@"" AND neighbour_count<4,1, 0) 
+     | eventstats sum(removable) as removed
+     | eval cell=if( removable==1, ""."", cell ) 
+     | stats first(removed) as removed, list(cell) as row by y  limit=1000
+     | sort 0 + y 
+     | eval row=mvjoin( row, """" ) 
+     | fields row removed
+     | appendpipe 
+        [ |  fields row
+          | outputlookup temp_SPL_Workshop_advent25d4_wip.csv
+          | search nothing=doesnotexist]
+     | stats first(removed) as removed ] maxsearches=100
+| stats sum(removed) as total_removed, last(removed) as removed_in_last_iteration","<p>We are gettting there, just need to increase the number of iteration until removed_in_last_iteration is 0.
+
+<p>The correct answer for this data set is <b>8707</b>.",25,,AdventOfCode25 Day 4<-O->part 2 - full scale

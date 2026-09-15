@@ -1,0 +1,39 @@
+# Dependencies vendored into the add-on's `lib/` by `ucc-gen build`.
+#
+# EVERYTHING HERE MUST RESOLVE TO A PURE-PYTHON INSTALL.
+# ------------------------------------------------------
+# AppInspect's `check_aarch64_compatibility` is evaluated PER FILE:
+# `if binary and not arm: Fail`. It demands the *absence* of non-ARM binaries,
+# not the *presence* of ARM ones, so shipping fat/multi-arch objects fails
+# identically. The only configuration that passes is a `lib/` with no compiled
+# extension modules at all. Adding a dependency that ships a C extension
+# re-breaks Splunkbase certification -- check `find lib -name '*.so'` before
+# changing anything below. `scripts/build-linux.sh` enforces this.
+
+# `solnlib` is pinned to the last 7.x ON PURPOSE. solnlib >= 8.0.0 declares
+# `grpcio` and `opentelemetry-exporter-otlp-proto-grpc`, and `grpcio` publishes
+# NO pure-Python wheel -- it is C-only -- so any solnlib 8.x drags a
+# non-ARM `cygrpc*.so` (plus `google/_upb/_message.abi3.so`) into `lib/`.
+# The add-on never reaches the observability code that needs it; solnlib 8 only
+# `import grpc` inside `observability.py`, which nothing here calls.
+#
+# The 7 -> 8 delta across every API this add-on uses -- `KVStoreCheckpointer`
+# (constructor, `get`/`update`/`delete`), `conf_manager.ConfManager`,
+# `conf_manager.get_log_level` and the `log.*` helpers -- is `typing.Dict` ->
+# `dict` annotation cosmetics and nothing else. `update()` is a full document
+# replace (`batch_save({"_key": key, "state": json.dumps(state)})`) in both, so
+# the namespaced checkpoint keys in `audit_events_helper.py` /
+# `training_state_helper.py` keep working exactly as verified.
+#
+# `splunktaucclib 8.2.0` requires only `solnlib (>=5)`, so 7.0.0 satisfies it.
+solnlib==7.0.0
+
+# `charset-normalizer` (a hard dependency of `requests`) publishes mypyc-compiled
+# wheels. Its sdist builds pure Python unless `CHARSET_NORMALIZER_USE_MYPYC=1`
+# is set, so force the source build to keep `cd*.so` / `md*.so` out of `lib/`.
+# This line is a pip requirements-file option, honoured by every `pip install
+# -r`, so a plain `ucc-gen build` stays clean too.
+--no-binary charset-normalizer
+
+splunktaucclib==8.2.0
+requests==2.32.3

@@ -1,0 +1,284 @@
+SPL,format,comment,step,previous_step,title
+"| stats count as offset
+| eval offset=50",,"<p>The dial starts in position 50.
+
+<p>Starting a search with <preish>|stats count</preish>  is my favourite way to get a 'run anywhere' search going. You could also use <command>makeresults</command>.
+
+<p>Next, let's bring in the list of rotation from the example data.",1,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ]",,"<p>We bring in the list of rotation instructions in a separate sub-search with <command>append</command>.
+
+<p>We're just copy-pasting the example data from the advent of code website, <eval>split</eval>ting on linebreaks, and using <command>mvexpand</command> to get one event per rotation.
+
+<p>Our goal now is to get ready to do some calculations.",2,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )",,<p>The <eval>replace</eval> eval function transforms the instructions in numbers we can add.,3,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset","<format type=""color"" field=""running_offset"">
+          <colorPalette type=""sharedList""></colorPalette>
+          <scale type=""sharedCategory""></scale>
+        </format>","<p>The <command>streamstats</command> command is perfect for calculating the position of the dial after each rotation.
+
+<p>A good clarifying exercise here is to replace <command>streamstats</command> with <command>stats</command> first, then <command>eventstats</command>, then back to <command>streamstats</command>.
+
+<p>We're getting there, but here the dial is pointing at 0 only twice.",4,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| eval position = running_offset % 100",,<p>A bit more massaging to bring back the <preish>running_offset</preish> into a realistic <preish>position</preish>.,5,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| eval position = running_offset % 100
+| stats count(eval(position==0)) as solution",,"<p>The <stats>count</stats> function of <command>stats</command> can be used with an eval expression, here to count only the steps where the dial points to 0, giving us the right solution <b>3</b>.
+
+<h1>Part 1 solved!</h1>
+
+<p>Does this solution scale to the full puzzle data?",6,,AdventOfCode25 Day 1<-O->part 1
+"| stats count as offset 
+| eval offset=50 
+| inputlookup append=t adventofcode2025day1.csv
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| eval position = running_offset % 100
+| stats count(eval(position==0)) as solution",,<p>Does this allow you to unlock part 2?,7,,AdventOfCode25 Day 1<-O->part 1 - full scale
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset",,"<p>For part 2, let's go back to the sample data.
+
+<p>We need to consider what happens during a rotation, for this we need to know not only where the dial ends up but where it came from.",8,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset",,"<p>The <command>streamstats</command> command has the <preish>current=false</preish> option which tells it to give you its running result up to but <b>NOT</b> including the current event. That's perfect to bring in the <i>previous</i> value of a field.
+
+<p>Now we need to enumerate the positions from the starting point <preish>previous_running_offset</preish> to the end point <preish>running_offset</preish>.",9,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range= mvrange( min(previous_running_offset, running_offset), max( previous_running_offset, running_offset ) )",,"<p>This is promising but it's not quite right.
+
+<p>It doesn't work with clockwise rotations.",10,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range=if( previous_running_offset<running_offset, mvrange( previous_running_offset + 1, running_offset + 1), mvrange( running_offset, previous_running_offset  ) )",,"<p>This is a bit longer code but it definitely fixes it.
+
+<p>Next we have to figure out how many times we go through the 0 position.",11,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range=if( previous_running_offset<running_offset, mvrange( previous_running_offset + 1, running_offset + 1), mvrange( running_offset, previous_running_offset  ) )
+| eval zeros=mvfilter( range % 100 == 0 )",,<p>We first use <eval>mvfilter</eval> to retain only the relevant values.,12,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range=if( previous_running_offset<running_offset, mvrange( previous_running_offset + 1, running_offset + 1), mvrange( running_offset, previous_running_offset  ) )
+| eval zeros=mvfilter( range % 100 == 0 )
+| eval zero_count=mvcount(zeros)",,"<p>Which we can then count with <eval>mvcount</eval>.
+
+<p>Notice how <eval>mvcount</eval> returns null when the multivalue is empty. It is not a problem here, but something to keep in mind.",13,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| append 
+    [| stats count as rotation 
+    | eval rotation=split( ""L68
+L30
+R48
+L5
+R60
+L55
+L1
+L99
+R14
+L82"", ""
+"") 
+    | mvexpand rotation ] 
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range=if( previous_running_offset<running_offset, mvrange( previous_running_offset + 1, running_offset + 1), mvrange( running_offset, previous_running_offset  ) )
+| eval zeros=mvfilter( range % 100 == 0 )
+| eval zero_count=mvcount(zeros)
+| stats sum(zero_count)",,"<p>We get the correct answer, <b>6</b>.
+
+<p>Will it scale?",14,,AdventOfCode25 Day 1<-O->part 2
+"| stats count as offset 
+| eval offset=50 
+| inputlookup append=t adventofcode2025day1.csv
+| eval offset=coalesce( offset, replace( replace( rotation, ""L"", ""-"" ), ""R"", """" ) )
+| streamstats sum(offset) as running_offset
+| streamstats current=false last(running_offset) as previous_running_offset
+| eval range=if( previous_running_offset<running_offset, mvrange( previous_running_offset + 1, running_offset + 1), mvrange( running_offset, previous_running_offset  ) )
+| eval zeros=mvfilter( range % 100 == 0 )
+| eval zero_count=mvcount(zeros)
+| stats sum(zero_count)",,<p>Does this give you the right answer?,15,,AdventOfCode25 Day 1<-O->part 2 - full scale

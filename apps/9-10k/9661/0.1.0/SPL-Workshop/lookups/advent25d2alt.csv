@@ -1,0 +1,172 @@
+SPL,comment,step,title
+"| stats count as id 
+| eval id=""11-22""",<p>Let's take one range at a time to start with.,1,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| eval id=split( id, ""-"" )",<p>We need to enumerate each ID in the range. Let's start by getting the boundaries.,2,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| eval id=split( id, ""-"" ) 
+| mvexpand id",<p>Let's get the boundaries in separate events,3,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| eval id=split( id, ""-"" ) 
+| mvexpand id 
+| makecontinuous id span=1 ","<p>The makecontinuous enumerates the IDs in between the two boundaries for us.
+
+<p><a target=""_blank"" href=""/app/SPL-Workshop/spl_lesson?form.lookup=command_makecontinuous.csv"">Launch the makecontinuous lesson</a>
+
+<p>Warning: makecontinuous fails (with an error message) if asked to insert more than 50,000 values.",4,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| eval id=split( id, ""-"" ) 
+| mvexpand id 
+| makecontinuous id span=1
+| regex id=""^(.*)\1$""",<p>As with the previous version we'll use regular expressions to select the correct IDs.,5,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id
+| eval id=split( ""11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124"", "","" )
+| mvexpand id
+| eval id=split( id, ""-"" ) 
+| mvexpand id 
+| makecontinuous id span=1
+| regex id=""^(.*)\1$""","<p>To solve the puzzle, we need to deal with multiple ranges.
+
+<p>Unfortunately this errors (notice the red triangle 🔺).
+
+<p>The makecontinuous command is trying to make the smallest ID from the lowest range continuous with the highest ID from the highest range. We need to keep each ranges separate.",6,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id_range 
+| eval id_range=split( ""11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124"", "","" ) 
+| mvexpand id_range 
+| map 
+    [| stats count as id 
+    | eval id=""$id_range$"" 
+    | eval id=split( id, ""-"" ) 
+    | mvexpand id 
+    | makecontinuous id span=1 
+    | regex id=""^(.*)\1$"" ] maxsearches=100","<p>The map command allows to run a new search for each search result.
+
+<p>Note how each search can refer to the search result it came from with tokens between dollar signs.
+
+<p>Warning: because it starts a whole new search for each result, map will not scale terribly well. It is limited to 10 by default, though you can increase the limit with the maxsearches option.
+
+",7,AdventOfCode25 Day 2 alt<-O->part 1
+"| stats count as id_range 
+| eval id_range=split( ""11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124"", "","" ) 
+| mvexpand id_range 
+| map 
+    [| stats count as id 
+    | eval id=""$id_range$"" 
+    | eval id=split( id, ""-"" ) 
+    | mvexpand id 
+    | makecontinuous id span=1 
+    | regex id=""^(.*)\1$"" ] maxsearches=100
+| stats sum(id) as total","<p>The correct solution is <b>1227775554</b>.
+
+<h1>Part 1 solved once again!</h1>",8,AdventOfCode25 Day 2 alt<-O->part 1
+"| inputlookup adventofcode2025day2.csv
+| rename id as id_range
+| map 
+    [| stats count as id 
+    | eval id=""$id_range$"" 
+    | eval id=split( id, ""-"" ) 
+    | mvexpand id 
+    | makecontinuous id span=1 
+    | regex id=""^(.*)\1$"" ] maxsearches=100
+| stats sum(id) as total",<p>Unfortunately this doesn't scale (notice the red triangle 🔺).,9,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$""
+| eval id_count=end + 1 - start
+| eval number_of_50000_blocks = id_count /50000
+| table id start end id_count number_of_50000_blocks
+| sort - number_of_50000_blocks","<p>First thing to do is check the extent of the problem.
+
+<p>Looks like the biggest range is ""only"" 4-5 times bigger than the maximum.",10,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| eval boundary=split(id, ""-"" )
+| eval start=mvindex(boundary, 0), end=mvindex(boundary, 1)
+| eval id_count=end + 1 - start
+| eval number_of_50000_blocks = id_count /50000
+| table id start end id_count number_of_50000_blocks
+| sort - number_of_50000_blocks","<p>If you are allergic to regular expressions:
+<ul>
+<li>1. exposure therapy will get you over it, it's too useful not to
+<li>2. you could potentially use split and mvindex if you really wanted.
+</ul>",11,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$""
+| eval id_count=end-start+1
+| eval set_count = ceil( id_count / 50000 )","<p>The scale seems manageable, so let's break up the big ranges in a few smaller ranges.
+
+<p>First we calculate how many ranges we'll need per original range.",12,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$""
+| eval id_count=end-start+1
+| eval set_count = ceil( id_count / 50000 )
+| eval rank=mvrange(1, set_count + 1)
+| mvexpand rank","<p>For each original range, we create additional events as necessary.",13,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$""
+| eval id_count=end-start+1
+| eval set_count = ceil( id_count / 50000 )
+| eval rank=mvrange(1, set_count + 1)
+| mvexpand rank
+| eval real_start=start+(rank-1)*50000
+| eval real_end=if( set_count==rank, end, start+rank*50000-1 )
+| table id start end id_count set_count rank real_start real_end",<p>This should start building the sub-ranges.,14,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$""
+| eval id_count=end-start+1
+| eval set_count = ceil( id_count / 50000 )
+| eval rank=mvrange(1, set_count + 1)
+| mvexpand rank
+| eval real_start=start+(rank-1)*50000
+| eval real_end=if( set_count==rank, end, start+rank*50000-1 )
+| table id start end id_count set_count rank real_start real_end
+| eval id_range=real_start . ""-"" . real_end
+| table id_range","<p>Now we only have ranges that are 50,000 IDs or fewer, but covering all the original ranges.",15,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$"" 
+| eval id_count=end-start+1 
+| eval set_count = ceil( id_count / 50000 ) 
+| eval rank=mvrange(1, set_count + 1)
+| mvexpand rank
+| eval real_start=start+(rank-1)*50000 
+| eval real_end=if( set_count==rank, end, start+rank*50000-1 ) 
+| table id start end id_count set_count rank real_start real_end 
+| eval id_range=real_start . ""-"" . real_end 
+| table id_range
+| map 
+    [| stats count as id 
+    | eval id=""$id_range$"" 
+    | eval id=split( id, ""-"" ) 
+    | mvexpand id 
+    | makecontinuous id span=1 
+    | regex id=""^(.+)\1$"" 
+    | table id
+        ] maxsearches=100 
+| stats sum(id) as total","<p>All we need to do is plug in our original solution and we get the correct solution <b>43952536386</b>.
+
+<h1>Part 1 solved!</h1>",16,AdventOfCode25 Day 2 alt<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""^(?<start>\d+)-(?<end>\d+)$"" 
+| eval id_count=end-start+1 
+| eval set_count = ceil( id_count / 50000 ) 
+| eval rank=mvrange(1, set_count + 1)
+| mvexpand rank
+| eval real_start=start+(rank-1)*50000 
+| eval real_end=if( set_count==rank, end, start+rank*50000-1 ) 
+| table id start end id_count set_count rank real_start real_end 
+| eval id_range=real_start . ""-"" . real_end 
+| table id_range
+| map 
+    [| stats count as id 
+    | eval id=""$id_range$"" 
+    | eval id=split( id, ""-"" ) 
+    | mvexpand id 
+    | makecontinuous id span=1 
+    | regex id=""^(.+)\1+$"" 
+    | table id
+        ] maxsearches=100 
+| stats sum(id) as total","<p>And for part2 we only have to add a + to the regex. The correct solution is <b>54486209192</b>.
+
+<h1>Part 2 solved!</h2>",17,AdventOfCode25 Day 2 alt<-O->part 2 - full scale

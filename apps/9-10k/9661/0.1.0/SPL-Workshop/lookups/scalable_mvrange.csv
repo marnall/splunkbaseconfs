@@ -1,0 +1,67 @@
+SPL,comment,step,title
+"| stats count as id
+| eval lbound=999, hbound=20999
+| eval id=mvrange( lbound, hbound+1 )","<p>At first glance, this works.",1,Scalable mvrange
+"| stats count as id
+| eval lbound=999, hbound=20999
+| eval id=mvrange( lbound, hbound+1 )
+| eval count=mvcount(id)","<p>But mvrange silently quit after 10,000 values! (no error message!) ",2,Scalable mvrange
+"| stats count as id
+| eval lbound=9, hbound=35
+| eval batch_size = 10
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) )","<p>We want to make it work with any range by building the multivalue in batches. The batches will be 10,000 values each, but for debugging purposes, we temporarily choose something more manageable.",3,Scalable mvrange
+"| stats count as id 
+| eval lbound=9, hbound=35 
+| eval batch_size = 10 
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) )
+| foreach mode=multivalue batches 
+    [ eval batch_lbound= lbound + <<ITEM>> * batch_size, batch_hbound=min( batch_lbound + batch_size, hbound), id=mvappend( id, mvrange( batch_lbound, batch_hbound ) ) ]",<p>Multivalue foreach allows us to iterate over each batch and build the multivalue.,4,Scalable mvrange
+"| stats count as id 
+| eval lbound=9, hbound=35 
+| eval batch_size = 10 
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) ) 
+| foreach mode=multivalue batches 
+    [ eval batch_lbound= lbound + <<ITEM>> * batch_size, batch_hbound=min( batch_lbound + batch_size, hbound), id=mvappend( id, mvrange( batch_lbound, batch_hbound ) ) ] 
+| eval reference=mvrange(lbound, hbound)","<p>For small ranges, this should compare directly to mvrange.
+
+<p>Notice how we have an extra value?!",5,Scalable mvrange
+"| stats count as id 
+| eval lbound=9, hbound=35 
+| eval batch_size = 10 
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) ) 
+| eval id=null() 
+| foreach mode=multivalue batches 
+    [ eval batch_lbound= lbound + <<ITEM>> * batch_size, batch_hbound=min( batch_lbound + batch_size, hbound), id=mvappend( id, mvrange( batch_lbound, batch_hbound ) ) ] 
+| eval reference=mvrange(lbound, hbound)",<p>This is better. Also it ensures that the result is not perturbed by our target field existing. This is important as we want to make this code into a macro.,6,Scalable mvrange
+"| stats count as id 
+| eval lbound=9, hbound=35 
+| eval batch_size = 10 
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) ) 
+| eval id=null() 
+| foreach mode=multivalue batches 
+    [ eval batch_lbound= lbound + <<ITEM>> * batch_size, batch_hbound=min( batch_lbound + batch_size, hbound), debug=mvappend( debug, ""batch <<ITEM>>: ["" . batch_lbound . ""-"" . batch_hbound . ""]"" ), id=mvappend( id, mvrange( batch_lbound, batch_hbound ) ) ] 
+| eval reference=mvrange(lbound, hbound)",<p>We can add a debug field to check the loop does what we expect.,7,Scalable mvrange
+"| stats count as id 
+| eval lbound=999, hbound=20999 
+| eval batch_size = 10000
+| eval batches=mvrange( 0, ceiling( (hbound-lbound) / batch_size ) ) 
+| eval id=null() 
+| foreach mode=multivalue batches 
+    [ eval batch_lbound= lbound + <<ITEM>> * batch_size, batch_hbound=min( batch_lbound + batch_size, hbound), id=mvappend( id, mvrange( batch_lbound, batch_hbound ) ) ] 
+| eval reference=mvrange(lbound, hbound)
+| eval count=mvcount(id)","<p>Let's check it can handle big ranges. count is 20,000, as expected.",8,Scalable mvrange
+"| stats count as id 
+| eval lbound=999, hbound=20999 
+| eval _batch_size = 10000
+| eval _batches=mvrange( 0, ceiling( (hbound-lbound) / _batch_size ) ) 
+| eval id=null() 
+| foreach mode=multivalue _batches 
+    [ eval _batch_lbound= lbound + <<ITEM>> * _batch_size, _batch_hbound=min( _batch_lbound + _batch_size, hbound), id=mvappend( id, mvrange( _batch_lbound, _batch_hbound ) ) ] 
+| fields - _batch*
+| eval count=mvcount(id)","<p>Now we're making the code tidy, adding _ to temporary fields to avoid clashing with any pre-existing fields and removing them from existence when we no longer need them.
+
+<p>We can now save this as a macro: <a target=""_blank"" href=""/manager/SPL-Workshop/data/macros?ns=SPL-Workshop&pwnr=-&search=super_mvrange"">/manager/SPL-Workshop/data/macros?ns=SPL-Workshop&pwnr=-&search=super_mvrange</a>",9,Scalable mvrange
+"| stats count as id 
+| eval lbound=999, hbound=20999
+| `super_mvrange(id, lbound, hbound)`
+| eval count=mvcount(id)","<p>Now we can use the macro from anywhere, with a very similar syntax to the mvrange eval function.",10,Scalable mvrange

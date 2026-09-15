@@ -1,0 +1,189 @@
+import logging
+
+import requests
+from openai_consts import ADDON_NAME, GET_FILE_CONTENT, OPENAI_COMPLIANCE_API_BASE_URL
+from requests.adapters import HTTPAdapter
+from solnlib import conf_manager, log
+from solnlib.modular_input import checkpointer
+from urllib3.util.retry import Retry
+
+
+def set_logger(input_name: str, session_key: str) -> logging.Logger:
+    normalized_input_name = input_name.split("/")[-1]
+
+    logger = log.Logs().get_logger(f"{ADDON_NAME.lower()}_{normalized_input_name}")
+
+    log_level = conf_manager.get_log_level(
+        logger=logger,
+        session_key=session_key,
+        app_name=ADDON_NAME,
+        conf_name="openai_compliance_addon_for_splunk_settings",
+    )
+
+    logger.setLevel(log_level)
+
+    log.modular_input_start(logger, normalized_input_name)
+
+    return logger
+
+
+class OpenAIHelper:
+    def __init__(self, input_name, session_key, config, account_name):
+        self.input_name = input_name
+        self.session_key = session_key
+        self.config = config
+        self.account_name = account_name
+        self.logger = set_logger(input_name, session_key)
+        self.checkpointer = checkpointer.KVStoreCheckpointer(
+            collection_name=f"{ADDON_NAME}_checkpointer",
+            session_key=session_key,
+            app=ADDON_NAME,
+        )
+
+    def get_account_data(self, conf_filename):
+        cfm = conf_manager.ConfManager(
+            self.session_key,
+            ADDON_NAME,
+            realm=f"__REST_CREDENTIAL__#{ADDON_NAME}#configs/conf-{conf_filename}",
+        )
+
+        account_conf_file = cfm.get_conf(conf_filename)
+
+        api_key = account_conf_file.get(self.account_name).get("api_key")
+        workspace_id = account_conf_file.get(self.account_name).get("workspace_id")
+        base_url = account_conf_file.get(self.account_name).get("base_url")
+        return base_url, api_key, workspace_id
+
+    def get_checkpoint_for_request(self, checkpoint_name, endpoint, start_time_arg):
+        last_record_checkpoint_value = self.checkpointer.get(checkpoint_name)
+
+        checkpoint_value = None
+
+        # There's a value already stored as checkpoint
+        if last_record_checkpoint_value is not None:
+            checkpoint_value = last_record_checkpoint_value
+        else:
+            # During the first run of the input only the conversations and logs endpoints requires a start_time param, the rest of the endpoints don't need it
+            if endpoint == "logs":
+                checkpoint_value = start_time_arg
+
+        return checkpoint_value
+
+    def build_session(self):
+        retry = Retry(
+            total=5,
+            connect=3,
+            read=3,
+            status=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=frozenset(["GET"]),
+            respect_retry_after_header=True,
+            raise_on_status=False,
+        )
+
+        adapter = HTTPAdapter(max_retries=retry)
+
+        session = requests.Session()
+        session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        return session
+
+    def make_request(self, base_url, api_key, workspace_id, endpoint, params):
+        try:
+            compliance_data = []
+            last_index = None
+            request_params = dict(params or {})
+            timeout = (3, 30)
+
+            url = (
+                OPENAI_COMPLIANCE_API_BASE_URL.format(
+                    base_url=base_url, workspace_id=workspace_id
+                )
+                + "/"
+                + endpoint
+            )
+
+            self.logger.debug(f"URL: {url}")
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            with self.build_session() as session:
+                while True:
+                    response = session.get(
+                        url=url, params=request_params, headers=headers, timeout=timeout
+                    )
+
+                    response.raise_for_status()
+
+                    result = response.json()
+
+                    data = result.get("data", None)
+
+                    if not data:
+                        break
+
+                    compliance_data.extend(data)
+                    has_more = result.get("has_more", False)
+                    last_index = result.get("last_id") or result.get("last_end_time")
+
+                    if has_more and last_index:
+                        # Update params to fetch next page
+                        request_params["after"] = last_index
+                    else:
+                        break
+
+            return compliance_data, last_index
+
+        except requests.RequestException as e:
+            self.logger.error(f"Request failed: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error: {e}")
+            raise
+
+    def get_log_files_content(self, base_url, api_key, workspace_id, log_files):
+        result = []
+        timeout = (3, 30)
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+
+            with self.build_session() as session:
+                for log_file in log_files:
+                    log_file_id = log_file.get("id")
+                    if not log_file_id:
+                        continue
+
+                    url = (
+                        OPENAI_COMPLIANCE_API_BASE_URL.format(
+                            base_url=base_url, workspace_id=workspace_id
+                        )
+                        + "/"
+                        + GET_FILE_CONTENT.format(log_file_id=log_file_id)
+                    )
+
+                    response = session.get(url=url, headers=headers, timeout=timeout)
+
+                    self.logger.debug(f"response from request: {response}")
+
+                    response.raise_for_status()
+
+                    file_content = response.text
+                    events = file_content.splitlines()
+                    result.extend(events)
+
+            return result
+
+        except requests.RequestException as e:
+            self.logger.error(f"Request failed: {e}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Unexpected error: {e}")
+            raise

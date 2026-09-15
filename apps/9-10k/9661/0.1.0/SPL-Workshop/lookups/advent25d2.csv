@@ -1,0 +1,150 @@
+SPL,comment,step,title
+"| stats count as id 
+| eval id=""11-22""",<p>Let's take one range at a time to start with.,1,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""",<p>We need to enumerate each ID in the range. Let's start by getting the boundaries.,2,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)","<p>We can use mvrange to enumerate the IDs.
+
+<p>Warning: if mvrange is asked to generate more than 10,000 values, it will only give the first 10,000 values with no error message.",3,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22"" 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id","<p>mvexpand will give us one event per ID, which sets us up to assess them in turn.",4,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22""
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""","<p>The simplest way to identify IDs made of a repeated set of digits is to use a regular expression.
+
+<p>^ and $ anchor the pattern at the start and end of the ID.
+
+<p>The . means (almost) any character and + means ""1 or more"" of it.
+
+<p>The () brackets are defining a capturing group.
+
+<p>\1 is referring to whatever the content of the first capturing group is.",5,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22""
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| eval len=len(id) 
+| where len % 2 == 0
+| eval width=len/2","<p>Let's explore an alternative to regular expressions.
+
+<p>First we establish how big the chunks we need to look at, and we exclude IDs with an odd number of digits.",6,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22""
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| eval len=len(id) 
+| where len % 2 == 0
+| eval width=len/2
+| eval first_half = substr(id,1,len/2) 
+| eval second_half= substr(id,len/2 + 1, len/2)","<p>Substr allows us to extract each half of the ID.
+
+<p>Warning: unlike some other eval functions (such as mvindex) substr use a one-based index.",7,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22""
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| eval len=len(id) 
+| where len % 2 == 0
+| eval width=len/2
+| eval first_half = substr(id,1,len/2) 
+| eval second_half= substr(id,len/2 + 1, len/2)
+| where first_half==second_half
+| table id",<p>We keep the IDs where both halves are the same.,8,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id 
+| eval id=""11-22""
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""",<p>We prefer using a regular expression.,9,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id
+| eval id=split( ""11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124"", "","" )
+| mvexpand id
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""","<p>To solve the puzzle, we need to deal with multiple ranges. Thankfully that is easy in this approach.",10,AdventOfCode25 Day 2<-O->part 1
+"| stats count as id
+| eval id=split( ""11-22,95-115,998-1012,1188511880-1188511890,222220-222224,1698522-1698528,446443-446449,38593856-38593862,565653-565659,824824821-824824827,2121212118-2121212124"", "","" )
+| mvexpand id
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""
+| stats sum(id) as total","<p>The correct solution is <b>1227775554</b>.
+
+<h1>Part 1 solved!</h1>
+",11,AdventOfCode25 Day 2<-O->part 1
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| eval id=mvrange(min, max +1)
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""
+| stats sum(id) as total","<p>Unfortunately our solution does not scale with the full puzzle data.
+
+<p>No errors, but this gives the wrong solution because mvexpand silently maxes out at 10,000 values (no error message!).
+
+<p>We can fix this by developing a scalable version of mvrange. <a target=""_blank"" href=""/app/SPL-Workshop/spl_lesson?form.lookup=scalable_mvrange.csv"">Launch the scalable mvrange lesson</a>",12,AdventOfCode25 Day 2<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| `super_mvrange(id, min, max +1)`
+| fields id
+| mvexpand id
+| regex id=""^(.+)\1$""
+| stats sum(id) as total","<p>We have made mvexpand scalable, but now it's mvexpand that runs out of memory (notice the yellow triangle ⚠️).
+
+<p>Can we get replace mvexpand with something else?",13,AdventOfCode25 Day 2<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| `super_mvrange(id, min, max +1)`
+| fields id
+| stats count by id
+| regex id=""^(.+)\1$""
+| stats sum(id) as total","<p>A stats command is often a good replacement for mvexpand and it is much much more memory efficient.
+
+<p>The correct answer for this particular puzzle data is <b>43952536386</b>.
+
+<p>But can you think of another way?",14,AdventOfCode25 Day 2<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| `super_mvrange(id, min, max +1)`
+| fields id
+| eval id=mvmap( id, if( match( id, ""^(.+)\1$""), id, null() ) )
+| stats sum(id) as total","<p>How about that?
+
+<p>In this approach we keep id as a multivalue field and we filter it in-situ.
+
+<p>The correct answer for this particular puzzle data is (still) <b>43952536386</b>.
+
+<p>The mvfilter is useful for basic filtering but for this kind of situation, a clever use of mvmap is what's needed.",15,AdventOfCode25 Day 2<-O->part 1 - full scale
+"| inputlookup adventofcode2025day2.csv 
+| rex field=id ""(?<min>\d+)-(?<max>\d+)""
+| `super_mvrange(id, min, max +1)`
+| fields id
+| eval id=mvmap( id, if( match( id, ""^(.+)\1+$""), id, null() ) )
+| stats sum(id) as total","<h1>Part 2 Solved</h1>
+
+<p>All we need to do to solve part2 is add a + to our regular expression!
+
+<p>The correct answer for this particular puzzle data is <b>54486209192</b>.",16,AdventOfCode25 Day 2<-O->part 2 - full scale

@@ -1,0 +1,982 @@
+SPL,comment,"previous_step",step,title
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv","<p>We start with the example data.
+
+<p>In this first approach, we're going for something similar to what we did in day 4, so we save this to a temporary lookup. This is our bootstrap search.",,1,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold","<p>We bring in the previous line with <command>streamstats</command>.",,2,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| mvexpand content","<p>We want to be able to deal with each position in space one-by-one. So <command>mvexpand</command> is handy.",,3,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y","<p>Every time we use <command>mvexpand</command> with the intention to regroup later, we need to have something we can group by later. Here we use <command>streamstats</command> to label each line with <preish>y</preish>.
+
+<p>We do the same to label the position within each line with <preish>x</preish>.
+
+<p>So now we're in a position where we can go through each position, one-by-one, and we have visibility of both the current line (where the content is) and the previous line.
+
+<p>Next we want to look at what's around each position.",,4,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y
+| eval top_char = substr(previous_manifold, x, 1 )
+| eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+| eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+| eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+| eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )","<p>Here we're just getting in place all the information we need about the current position.",,5,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y
+| eval top_char = substr(previous_manifold, x, 1 )
+| eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+| eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+| eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+| eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+| eval new_content=content
+| eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )","<p>Now we determine what the new content of the position should be.
+
+<p>The logic is: it should be the same it used to be, unless:
+<ul>
+<li>It used to be empty space and the source or an existing beam is right above it.
+<li>It used to be empty space and there's a splitter on its side with a beam right above the splitter.
+</ul>
+<p>In these special cases, the position should now have a beam (""|"").",,6,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y
+| eval top_char = substr(previous_manifold, x, 1 )
+| eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+| eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+| eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+| eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+| eval new_content=content
+| eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+| stats list(new_content) as manifold by y
+| sort + y
+| eval manifold=mvjoin( manifold, """" )","<p>Now we can put the manifolds back together.",,7,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y
+| eval top_char = substr(previous_manifold, x, 1 )
+| eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+| eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+| eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+| eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+| eval new_content=content
+| eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+| stats list(new_content) as manifold by y
+| sort + y
+| eval manifold=mvjoin( manifold, """" )
+| table manifold
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv","<p>If we save back to the same temp lookup, this completes our iterator.
+
+<p>Go ahead and click ""refresh"" (near ""open in search"") multiple times to see the beam propagating!
+
+<p>Next step: we need to count how many times a split happens.",,8,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| streamstats current=false last(manifold) as previous_manifold
+| eval content=split(manifold, """" )
+| streamstats count as y
+| mvexpand content
+| streamstats count as x by y
+| eval top_char = substr(previous_manifold, x, 1 )
+| eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+| eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+| eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+| eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+| eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+| eval new_content=content
+| eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+| eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+| stats list(new_content) as manifold, sum(split_count) as split_count by y
+| sort + y
+| eval manifold=mvjoin( manifold, """" )
+| appendpipe
+    [| table manifold
+    | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+    | where NOT true() ]
+| table manifold split_count
+| eventstats sum(split_count) as total_split_count","<p>We use <command>appendpipe</command> to duplicate the pipeline so that we can save the manifold state without <preish>split_count</preish>.
+
+<p>We use the <command>where</command> <preish>NOT true()</preish> trick in the subsearch so it doesn't pollute the main search's results.
+
+<p>Finally <command>eventstats</command> gives us the total number of splits in the main search's results.
+
+<p>We're getting the correct answer (<b>21</b>) provided we've iterated enough times.
+
+<p>To tidy this up, can we put the bootstrap search and all the iterations together in one search?</p>",,9,"AdventOfCode25 Day 7<-O->part 1"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+     | streamstats current=false last(manifold) as previous_manifold
+     | eval content=split(manifold, """" )
+     | streamstats count as y
+     | mvexpand content
+     | streamstats count as x by y
+     | eval top_char = substr(previous_manifold, x, 1 )
+     | eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+     | eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+     | eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+     | eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+     | eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+     | eval new_content=content
+     | eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+     | stats list(new_content) as manifold, sum(split_count) as split_count by y
+     | sort + y
+     | eval manifold=mvjoin( manifold, """" )
+     | appendpipe
+         [| table manifold
+         | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+         | where NOT true() ]
+     | table manifold split_count
+     | eventstats sum(split_count) as total_split_count ] maxsearches=100","<p>The bootstrap search obviously has to happen first.
+
+<p>Then we use <command>map</command> to run our iterator as a sub-search. It will run once per number of line in the bootstrap search's results, which is about exactly what we need.
+
+<p>This works because <command>map</command>'s sub-searches run one-by-one sequentially.
+
+<p>Notice how there is no trace of the bootstrap search's results in the final results. Instead, we have all the results from all the sub-searches.",,10,"AdventOfCode25 Day 7<-O->part 1"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| regex manifold!=""^\.*$""
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+     | streamstats current=false last(manifold) as previous_manifold
+     | eval content=split(manifold, """" )
+     | streamstats count as y
+     | mvexpand content
+     | streamstats count as x by y
+     | eval top_char = substr(previous_manifold, x, 1 )
+     | eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+     | eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+     | eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+     | eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+     | eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+     | eval new_content=content
+     | eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+     | stats list(new_content) as manifold, sum(split_count) as split_count by y
+     | sort + y
+     | eval manifold=mvjoin( manifold, """" )
+     | appendpipe
+         [| table manifold
+         | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+         | where NOT true() ]
+     | table manifold split_count
+     | eventstats sum(split_count) as total_split_count ] maxsearches=100","<p>By the way, did you notice lines without splitters are not really contributing anything to the problem? We might as well get rid of them and divide our compute load by 2.",,11,"AdventOfCode25 Day 7<-O->part 1"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| regex manifold!=""^\.*$""
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+     | streamstats current=false last(manifold) as previous_manifold
+     | eval content=split(manifold, """" )
+     | streamstats count as y
+     | mvexpand content
+     | streamstats count as x by y
+     | eval top_char = substr(previous_manifold, x, 1 )
+     | eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+     | eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+     | eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+     | eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+     | eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+     | eval new_content=content
+     | eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+     | stats list(new_content) as manifold, sum(split_count) as split_count by y
+     | sort + y
+     | eval manifold=mvjoin( manifold, """" )
+     | appendpipe
+         [| table manifold
+         | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+         | where NOT true() ]
+     | table manifold split_count
+     | eventstats sum(split_count) as total_split_count ] maxsearches=100
+| stats max(total_split_count) as solution","<p>All we need now is a <command>stats</command> to get the last (or max) of <preish>total_split_count</preish>.
+
+<p>Will this scale up to the full puzzle data?",,12,"AdventOfCode25 Day 7<-O->part 1"
+"| inputlookup adventofcode2025day7.csv
+| regex manifold!=""^\.*$""
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+     | streamstats current=false last(manifold) as previous_manifold
+     | eval content=split(manifold, """" )
+     | streamstats count as y
+     | mvexpand content
+     | streamstats count as x by y
+     | eval top_char = substr(previous_manifold, x, 1 )
+     | eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+     | eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+     | eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+     | eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+     | eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+     | eval new_content=content
+     | eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+     | stats list(new_content) as manifold, sum(split_count) as split_count by y
+     | sort + y
+     | eval manifold=mvjoin( manifold, """" )
+     | appendpipe
+         [| table manifold
+         | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+         | where NOT true() ]
+     | table manifold split_count
+     | eventstats sum(split_count) as total_split_count ] maxsearches=100
+| stats max(total_split_count) as solution","<p>Unlike <stats>values(0)</stats>, <stats>list()</stats> in <command>stats</command> is limited to 100 values. We need it here, though, because it preserves the order of the values.
+
+<p>We could work around the limitation with batches, but actually <command>stats</command> has an undocumented (!) option <preish>limit</preish> allowing us to push the limit up.",,13,"AdventOfCode25 Day 7<-O->part 1 - full scale"
+"| inputlookup adventofcode2025day7.csv
+| regex manifold!=""^\.*$""
+| outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+| map
+    [| inputlookup temp_SPL_Workshop_advent25d7_wip.csv
+     | streamstats current=false last(manifold) as previous_manifold
+     | eval content=split(manifold, """" )
+     | streamstats count as y
+     | mvexpand content
+     | streamstats count as x by y
+     | eval top_char = substr(previous_manifold, x, 1 )
+     | eval top_left_char = if ( x > 1, substr(previous_manifold, x -1, 1 ), """" )
+     | eval top_right_char = if( x < len(previous_manifold), substr(previous_manifold, x +1, 1 ), """" )
+     | eval left_char = if ( x > 1, substr(manifold, x -1, 1 ), """" )
+     | eval right_char = if( x < len(manifold), substr(manifold, x +1, 1 ), """" )
+     | eval split_count=if( content==""^"" AND ( top_char==""S"" OR top_char==""|"" ), 1, 0 )
+     | eval new_content=content
+     | eval new_content=if( new_content==""."" AND ( top_char==""S"" OR top_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND right_char==""^"" AND ( top_right_char==""S"" OR top_right_char==""|"" ), ""|"", new_content )
+     | eval new_content=if( new_content==""."" AND left_char==""^"" AND ( top_left_char==""S"" OR top_left_char==""|"" ), ""|"", new_content )
+     | stats list(new_content) as manifold, sum(split_count) as split_count by y limit=0
+     | sort + y
+     | eval manifold=mvjoin( manifold, """" )
+     | appendpipe
+         [| table manifold
+         | outputlookup temp_SPL_Workshop_advent25d7_wip.csv
+         | where NOT true() ]
+     | table manifold split_count
+     | eventstats sum(split_count) as total_split_count ] maxsearches=100
+| stats max(total_split_count) as solution","<p>Success!
+
+<p>Did you get the right answer to unlock part 2?",,14,"AdventOfCode25 Day 7<-O->part 1 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold","<p>Having solved part 1, part 2 feels completely out of reach. We need to change our approach.
+
+<p>Let's start part 1 over, with the example data.
+
+<p>Can we rephrase the problem in a more compact, less visual way?",,15,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| eval splitter=mvjoin(splitter, "","" )
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```","<p>We now have a starting point (source) and a list of rows, each with splitters. It's a much more compact version of the challenge data.
+
+<p>We could have a <preish>state</preish> multivalue that list the positions where a beam exists. It would start with <preish>state = source</preish> and we would somehow iterate over the splitter sets to see how state evolves.
+
+<p>There's only one problem with this: splitter is technically two levels of multivalues: multiple splitters on multiple lines. And SPL doesn't really do nested loops. (Or does it? in another challenge we do crazy things with an mvmap inside a foreach loop, but that wouldn't work here...)
+
+<p>However... we don't really have to care about these 2 levels. We could just apply all the splitter in order, and lose the information about which is one which line, provided we keep the order...?",,16,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```","<p>So just this then.
+
+<p>Now the question is how do we iterate over <preish>splitter</preish> to alter <preish>state</preish> as we go.",,17,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )","<p>Writing loop code right away is too daunting. Much easier to play with a little search on the side.
+
+<p>Let's say we start with the source at position 7 and the first splitter is also on position 7. What happens to state?
+
+<p>Ok, now the next splitter is in position 6, can we reuse the same code?",,18,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )
+| eval splitter=6
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )","<p>Hmm, we lost the beam that was in position 8 after the first splitter.
+
+<p>We need to keep in mind that <preish>state</preish> is a multivalue. And we should only replace the relevant item with the <preish>left/right</preish> multivalue.
+
+<p>Note how <preish>x==state</preish> works even if <preish>state</preish> is a multivalue. It will be true if any of the values is equal to <preish>x</preish>.",,19,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )
+| eval splitter=6
+| eval x=splitter, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )","<p>This is where <eval>mvmap</eval> is really useful. It lets us loop over a multivalue and do a complex eval expression on each item one-by-one.
+
+<p>Let's manually keep going. Can we deal successfully with the next splitter, with the same code?",,20,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )
+| eval splitter=6
+| eval x=splitter, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+| eval splitter=8
+| eval x=splitter, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )","<p>That's promising. I guess we just need an <eval>mvdedup</eval> thrown in there.",,21,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=if( x==state, mvappend( left, right ), state )
+| eval splitter=6
+| eval x=splitter, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+| eval splitter=8
+| eval x=splitter, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) )","<p>Right, we're happy with that. The next logical step is to turn this in a loop.
+
+<p>To get there, can we rewrite each step so it's basically the same code?",,22,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=7
+| eval x=splitter, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) )
+| eval splitter=6
+| eval x=splitter, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) )
+| eval splitter=8
+| eval x=splitter, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) )","<p>We're now ready for the loop.",,23,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as splitter
+| eval state=7
+| eval splitter=mvappend( ""7"", ""6"", ""8"" )
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) ) ]","<p>Nice!
+
+<p>There's no way we could have written this right away.
+
+<p>Now let's bring back in the example data.",,24,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) ) ]","<p>According to the puzzle description, the example manifold should end with this beam configuration:
+
+<pre>|.|.|.|.|.|||.|</pre>
+
+<p>If you look at the index values in <preish>state</preish>, that fits!
+
+<p>Now what we need is to keep track of the number of splits.",,25,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```
+| eval split_count=0
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, split_count=split_count + if( x==state, 1, 0 ), state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) ) ]","<p>This is actually not that hard, and we got the right answer <b>21</b>!
+
+<p>Now will this scale to the full puzzle data?",,26,"AdventOfCode25 Day 7<-O->part 1 revisited"
+"| inputlookup adventofcode2025day7.csv
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```
+| eval split_count=0
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, split_count=split_count + if( x==state, 1, 0 ), state=mvdedup( mvmap( state, if( x==state, mvappend(left, right), state) ) ) ]","<p>Did you get the right answer to unlock part 2?
+
+<p>It is a bit sad that we had to abandon the streaming nature of SPL, but this is undeniably a better solution.",,27,"AdventOfCode25 Day 7<-O->part 1 revisited - full scale"
+"| stats count as x
+| eval state=7
+| eval x=7, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+","<p>The key to part 2 is to think about the problem in the right way.
+
+<p>In part 1, we went through each splitter, and we kept track of all the positions for the beam in <preish>state</preish>:
+<ul>
+<li><preish>state</preish> is a list of positions where there is a beam.</li>
+<li>Each splitter is potentially modifying state.</li>
+<li>We are keeping track of the number of splits.</li>
+</ul>
+
+In other words: in part 1 we have one universe but the beam can be multiple places. In part 2, we have multiple universes, but the beam can only be in one place. This means we still only need a one-dimensional list to keep track of state:
+<ul>
+<li><preish>state</preish> is basically a list of universes, each universe has only one beam.</li>
+<li>Each splitter is creating more universes.</li>
+<li>We are keeping track of the number of universes.</li>
+</ul>
+
+<p>Does this mean we can retain the same code and just get rid of the <eval>mvdedup</eval> and <preish>split_count</preish>?",,28,"AdventOfCode25 Day 7<-O->part 2"
+"| stats count as x
+| eval state=7
+| eval x=7, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+| eval x=6, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+| eval x=8, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )
+| eval x=7, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) )","<p>Let's test it with this situation, which is the simplest configuration to give us an interesting case:
+
+<pre>.......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.......^.......</pre>
+
+<p>In part 1 we would end up with:
+
+<pre>.......S.......
+.......|.......
+......|^|......
+......|.|......
+.....|^|^|.....
+.....|.|.|.....
+.....||^||.....</pre>
+
+<p>Which means <preish>state</preish> would end up containing <preish>5,6,8,9</preish> and <preish>split_count</preish> would be 4.
+
+<p>In part 2, <preish>state</preish> would contain the same numbers but keeping track of the fact that there are two paths that lead to position 6 and 8.
+
+<p>It looks like our code is already doing the right thing!",,29,"AdventOfCode25 Day 7<-O->part 2"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) ) ]
+| eval universe_count=mvcount(state)","<p>Let's take the code from step 26, remove <preish>split_count</preish> and <eval>mvdedup</eval>.
+
+<p>Yes, we get the correct answer for the example data, <b>40</b>!
+
+<p>Will it scale?",26,30,"AdventOfCode25 Day 7<-O->part 2"
+"| inputlookup adventofcode2025day7.csv
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state = source    ``` We start with a beam right under the source, same index as the source ```
+| foreach mode=multivalue splitter 
+    [ eval x=<<ITEM>>, left=x-1, right=x+1, state=mvmap( state, if( x==state, mvappend(left, right), state) ) ]
+| eval universe_count=mvcount(state)","<p>No it doesn't. It takes forever and eventually runs out of memory, probably because it's trying to keep track of too many universes.
+
+<p>Can we represent the same information with a different data structure?
+
+<p>In our little play example, <preish>state</preish> was <preish>5,6,8,6,8,9</preish>.
+
+<p>Another way to say the same thing is <preish>1x5, 2x6, 2x8, 1x9</preish>
+
+<p>Another way to say the same things is <preish>0x0, 0x1, 0x2, 0x3, 0x4, 1x5, 2x6, 0x7, 2x8, 1x9, 0x10, 0x11, 0x12, 0x13, 0x14</preish>.
+
+<p>Another way to say the same thing is <preish>0, 0, 0, 0, 0, 1, 2, 0, 2, 1, 0, 0, 0, 0</preish>. We're back to a simple array, but this one is guaranteed not to grow indefinitely!",,31,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as x
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )","<p>Let's establish our starting point with the new representation.",0,32,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as x
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| eval x=7,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) )","<p>When a splitter is met:
+<ul>
+<li>Everything before the item to the left of the splitter remains the same.
+<li>The count to the left of the splitter is increased by the current count of timelines at the splitter's position.
+<li>The count at the splitter position is zero'd (because it's in the shadow of the splitter).
+<li>And the rest is symmetrical.
+</ul>",,33,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as x
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| eval x=7,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right )","<p>Now we just need to reassemble the new <preish>state</preish>.
+
+<p>What happens in our simple play example?",,34,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as x
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| eval x=7,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right )
+| eval x=6,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right )
+| eval x=8,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right )
+| eval x=7,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right )","<p>Looks good!
+
+<p>Let's make this a loop.",,35,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as splitter
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| eval splitter=mvappend( ""7"", ""6"", ""8"", ""7"" )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]","<p>Let's try the puzzle's example data next.",,36,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)","<p>Hmm, <b>66</b> is not the correct answer. Should be <b>40</b>.
+
+<p>How would you debug this?",,37,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............""```
+.^.^.^.^.^...^.
+...............""```
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)","<p>A good approach to debugging is to start small and reintroduce more steps until it starts going wrong.
+
+<p>Following along with pen and paper we can see that it goes well until here, i.e. just before the last row of splitters.
+
+<p>Let's manually add the next splitter.",,38,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............""```
+.^.^.^.^.^...^.
+...............""```
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)
+
+| eval x=1,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    new_state=mvappend( far_left, left, ""0"", right, far_right )","<p>Ah, of course, <preish>x-2</preish> is <preish>-1</preish>, which means the last element, so <preish>far_left</preish> is completely wrong.
+
+<p>We can fix this easily.",,39,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............""```
+.^.^.^.^.^...^.
+...............""```
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=mvindex( state, 0, x-2 ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)
+
+| eval x=1,
+    far_left=if( x>1, mvindex( state, 0, x-2 ), null() ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    new_state=mvappend( far_left, left, ""0"", right, far_right )","<p>Ah, of course, <preish>x-2</preish> is <preish>-1</preish>, which means the last element, so <preish>far_left</preish> is completely wrong.
+
+<p>We can fix this easily.",,40,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| stats count as manifold
+| eval manifold="".......S.......
+...............
+.......^.......
+...............
+......^.^......
+...............
+.....^.^.^.....
+...............
+....^.^...^....
+...............
+...^.^...^.^...
+...............
+..^...^.....^..
+...............
+.^.^.^.^.^...^.
+...............""
+| eval manifold=split( manifold, ""
+"")
+| mvexpand manifold
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| stats first(source) as source, list(splitter) as splitter  limit=0
+| eval state=mvrange( 0, 15 )
+| eval state=mvmap( state, if( state==7, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=if( x>1, mvindex( state, 0, x-2 ), null() ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)","<p>Great!
+
+<p>Now will this scale?
+
+<p>Don't forget <preish>state</preish> is going to be bigger now.",,41,"AdventOfCode25 Day 7<-O->part 2 - full scale"
+"| inputlookup adventofcode2025day7.csv
+| eval i=split(manifold, """")
+| foreach mode=multivalue i
+    [ eval source=mvappend( source, if( <<ITEM>>==""S"", ""<<ITER>>"", null() ) ),
+    splitter= mvappend( splitter, if( <<ITEM>>==""^"", ""<<ITER>>"", null() ) )]
+| eval manifold_width=mvcount(i)
+| stats first(source) as source, list(splitter) as splitter, values(manifold_width) as manifold_width limit=0
+| eval state=mvrange( 0, manifold_width )
+| eval state=mvmap( state, if( state==source, 1, 0 ) )
+| foreach mode=multivalue splitter 
+    [| eval x=<<ITEM>>,
+    far_left=if( x>1, mvindex( state, 0, x-2 ), null() ),
+    left=tonumber( mvindex(state, x-1) ) + tonumber( mvindex(state, x) ),
+    right=tonumber( mvindex(state, x+1) ) + tonumber( mvindex(state, x) ),
+    far_right=mvindex( state, x+2, mvcount(state) ),
+    state=mvappend( far_left, left, ""0"", right, far_right ) ]
+| eval universe_count=sum(state)","<h1>Part 2 solved!</h1>
+
+<p>Wow, trillions of universes! No wonder our first approach was running out of memory...",,42,"AdventOfCode25 Day 7<-O->part 2 - full scale"

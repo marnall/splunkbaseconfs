@@ -1,0 +1,408 @@
+SPL,comment,previous_step,step,title
+"| stats count as pos
+| eval pos=split( ""ABCDEFGH"", """" )
+| mvexpand pos",<p>The first challenge is to enumerate all possible pairs.Let's play with very simple data to start with.,,1,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""ABCDEFGH"", """" )
+| mvexpand pos
+| eventstats values(pos) as pos2",<p><command>eventstats</command>allows to list every values for each value.,,2,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""ABCDEFGH"", """" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2","<p>We can then <eval>mvexpand</eval> and we're most of the way there.
+
+<p>What issues do you notice?",,3,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""ABCDEFGH"", """" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), """" )
+| dedup pair","<p>A pair can't be made of the same item twice.
+
+<p>And order doesn't matter in a pair, so <preish>AB</preish> and <preish>BA</preish> are technically the same pair.
+
+<p>Now that we've got this sorted, let's bring in the example data.",,4,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2","<p>Next we need to figure out the distance for each pair and ""connect"" the shortest 10.",,5,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )","<p>Great.
+
+<p>Now we need to group these into circuits.",,6,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes","<p>If the same node appears in more than one pair, we want to group them together... What do we use for grouping?",,7,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) by node","<p>That's promising!
+
+<p>We will need to repeat this a few times. Let's put it in a shape that can be repeated.",,8,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes",<p>Now let's repeat these 3 lines until the number of results stop decreasing (i.e. grouping is finished).,,9,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes","<p>This is not the most elegant, but it is working.
+
+<p>To solve the puzzle, we need to identify the 3 biggest circuits and multiply their size together.",,10,AdventOfCode25 Day 8<-O->part 1
+"| stats count as pos
+| eval pos=split( ""162,817,812
+57,618,57
+906,360,560
+592,479,940
+352,342,300
+466,668,158
+542,29,236
+431,825,988
+739,650,466
+52,470,668
+216,146,977
+819,987,18
+117,168,530
+805,96,715
+346,949,466
+970,615,88
+941,993,340
+862,61,35
+984,92,344
+425,690,689"", ""
+"" )
+| mvexpand pos
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=10, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval size=mvcount(nodes)
+| sort 3 - size
+| stats values(size) as sizes
+| eval solution = 1
+| foreach mode=multivalue sizes
+    [ eval solution = solution * <<ITEM>> ]","<p>And we're getting the correct answer for the example data.
+
+<p>Will it scale to the full puzzle data?",,11,AdventOfCode25 Day 8<-O->part 1
+"| inputlookup adventofcode2025day8.csv
+| eval pos=x . "","" . y . "","" . z
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=1000, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval size=mvcount(nodes)
+| sort 3 - size
+| stats values(size) as sizes
+| eval solution = 1
+| foreach mode=multivalue sizes
+    [ eval solution = solution * <<ITEM>> ]","<p>Don't forget to increase the number of connections from 10 to 1000!
+
+<p>This is not giving us the correct answer because with more connections we need more iterations to finish grouping.",,12,AdventOfCode25 Day 8<-O->part 1 - full scale
+"| inputlookup adventofcode2025day8.csv
+| eval pos=x . "","" . y . "","" . z
+| eventstats values(pos) as pos2
+| mvexpand pos2
+| where pos!=pos2
+| eval pair=mvjoin( mvsort( mvappend( pos, pos2 ) ), ""&"" )
+| dedup pair
+| table pair pos pos2
+| rex field=pos ""^(?<x>\d+),(?<y>\d+),(?<z>\d+)$""
+| rex field=pos2 ""^(?<x2>\d+),(?<y2>\d+),(?<z2>\d+)$""
+| eval d= sqrt( pow(x2-x, 2) + pow(y2-y, 2) + pow(z2-z, 2) )
+| sort d
+| streamstats count as rank
+| eval connected=if(rank<=1000, ""yes"", ""no"" )
+| search connected=yes
+| eval nodes=mvappend(pos, pos2 )
+| table nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval node=nodes
+| stats values(nodes) as nodes by node
+| dedup nodes
+| eval size=mvcount(nodes)
+| sort 3 - size
+| stats values(size) as sizes
+| eval solution = 1
+| foreach mode=multivalue sizes
+    [ eval solution = solution * <<ITEM>> ]","<h1>Part 1 solved!</h1>
+
+<p>Did you unlock part 2?
+
+<p>Copy-pasting code is definitely not very elegant. We could use <command>map</command> with a temporary lookup as we've done in other challenges, but there is still no way to know how many iterations are required. Thankfully the number is quite small, so this approach still scales reasonably well.
+
+<p>Let's move on to part 2.",,13,AdventOfCode25 Day 8<-O->part 1 - full scale

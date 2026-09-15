@@ -1,0 +1,100 @@
+[]
+access = read : [ * ], write : [ admin, sc_admin ]
+export = none
+
+[views]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+# The AI prioritization page ships ADMIN-ONLY, and the master switch widens it
+# to everyone when AI is switched on (the admin endpoint rewrites this view's
+# ACL; the local layer it writes wins over this default).
+#
+# Nav entries are filtered server-side by view read permission, so this is
+# what keeps the page out of every user's navigation while AI is off -- not
+# the JavaScript, which is only belt and braces. Doing it in meta rather than
+# script means there is no first-paint flash of a nav item that is about to be
+# removed, and nothing at all renders for a user who types the URL directly:
+# Splunk itself answers 404, exactly as it would for a page that does not
+# exist.
+[views/riskability_ai]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+# The two Network analysis pages work the same way: admin-only as shipped, and
+# the firewall settings endpoint opens them to everyone when an administrator
+# names a firewall source (and closes them again when the source is removed).
+# Splunk drops an empty nav collection, so the whole "Network analysis" menu is
+# absent for a user until then, rather than two pages that say "not configured".
+[views/riskability_netevidence]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+[views/riskability_routes]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+# The four configuration pages, which used to be a separate app so that only
+# administrators could open them. A Splunkbase listing takes one archive, so
+# they live here with the same restriction expressed per view: Splunk filters
+# the navigation bar by view permission on the server, so for everyone else
+# the Administration menu is empty and is not drawn, and a typed URL answers
+# Splunk's own 404. The endpoints behind them guard themselves by capability
+# regardless of which page calls them.
+[views/riskability_admin]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+[views/riskability_ai_settings]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+[views/riskability_escalations]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+[views/riskability_firewall]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+[collections/riskability_ranges]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+[collections/riskability_advisories]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+[collections/riskability_notaffected]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+[collections/riskability_feedstate]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+# The single AI-enabled bit every user's AI page reads (see collections.conf
+# for why this is a collection and not the conf file). Write stays admin-only:
+# the capability-guarded REST endpoint is the only writer.
+[collections/riskability_aistate]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+[collections/riskability_suppressions]
+access = read : [ * ], write : [ admin, power, sc_admin ]
+
+[transforms]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+[commands]
+access = read : [ * ], write : [ admin, sc_admin ]
+
+# riskabilitymatch and riskabilityvercmp stay readable by everyone on purpose:
+# they are pure functions over the arguments they are handed, and vercmp exists
+# precisely so an operator can sanity-check the matcher from the search bar.
+#
+# The AI queue consumer is not that. Running it reads the configured endpoint,
+# spends the app's stored credential against it and writes the verdict cache
+# every other user's expansion joins against, so typing it is an act of data
+# egress on behalf of the whole instance. authorize.conf argues that
+# riskability_ai_admin exists so "who can turn data egress on" has a one-word
+# answer; that capability gates configuring the pipeline, and a blanket
+# read : [ * ] here let anyone who can search perform the egress the
+# capability was written to hold back. Metadata takes roles rather than
+# capabilities, so this names the two roles authorize.conf grants
+# riskability_ai_admin to.
+[commands/riskabilityaianalyze]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+
+# The verdict cache is readable by every search (the expansion join needs
+# it); writes happen only through the queue consumer command under the
+# master switch.
+[collections/riskability_aiverdicts]
+access = read : [ * ], write : [ admin, sc_admin ]
