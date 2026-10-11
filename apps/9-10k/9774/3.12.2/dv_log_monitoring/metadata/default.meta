@@ -1,0 +1,74 @@
+#
+# Scheduled searches must stay shared at app level: a search flipped to private
+# silently fails to write the KV collection.
+#
+# Lookups and their definitions are exported globally. Every administrative
+# decision in this app is a row in a CSV, and the tools people edit CSVs with --
+# the Lookup Editor above all -- run in their own app context. With export = none
+# they cannot reach these files and the edit fails with a permissions error,
+# which makes the app's entire management model unusable. Names are dvlm_
+# prefixed, so a global namespace costs nothing.
+#
+# Views, nav and saved searches stay app-scoped: nothing outside this app needs
+# them.
+[]
+access = read : [ * ], write : [ admin, power ]
+export = none
+
+[views]
+access = read : [ * ], write : [ admin, power ]
+
+[nav]
+access = read : [ * ], write : [ admin, power ]
+
+[savedsearches]
+access = read : [ * ], write : [ admin, power ]
+
+[transforms]
+access = read : [ * ], write : [ admin, power ]
+export = system
+
+[lookups]
+access = read : [ * ], write : [ admin, power ]
+export = system
+
+# export = system, and for the same reason transforms and lookups are: the DATA this app
+# writes is visible from any app, so the way to READ it has to be too. dvlm_status is the
+# whole brain, and an engineer asking an ad-hoc question from Search & Reporting will
+# reach for it; without the export they get "macro not found" and no hint why.
+#
+# It is also load bearing for the one search this app tells people to paste. README.txt
+# carries "how often does this source deliver" -- the replacement for the learner v3
+# removed -- and it calls `dvlm_norm_host`. The lookups it reads were already global; the
+# macro was not, so the documented search failed anywhere except this app's own Search tab.
+#
+# Two names, both dvlm_-prefixed. The namespace cost is two strings that nothing else on a
+# Splunk instance is going to be called.
+[macros]
+access = read : [ * ], write : [ admin, power ]
+export = system
+
+# Exported because the previous change exported the macro that READS these, and left
+# behind a contradiction: this file said "the collection stays app-scoped, nothing outside
+# this app needs it" while the stanza above said an engineer in Search & Reporting will run
+# `dvlm_status` -- which opens with | inputlookup dvlm_log_tracking and then | lookup
+# dvlm_entity. Both cannot be true.
+#
+# WHETHER A COLLECTION MUST BE EXPORTED SEPARATELY FROM ITS LOOKUP DEFINITION IS NOT
+# SETTLED HERE. The definitions in transforms.conf are already global, and the Splunk
+# documentation reachable from this machine does not say whether that is enough or whether
+# the collection is checked as well. The direction was chosen because it cannot cost
+# anything: reading dvlm_log_tracking through its already-exported lookup definition
+# returns the same rows, so this adds no exposure that the existing exports did not
+# already intend, and the names are dvlm_ prefixed.
+#
+# One search settles it on a live instance, from Search & Reporting rather than this app:
+#
+#     | `dvlm_status` | stats count
+#
+# A number means the path works. An error naming the collection means this line is what
+# made it work. Either way it is a measurement, and this project has already learned once
+# that a measurement outranks a reading of the spec.
+[collections]
+access = read : [ * ], write : [ admin, power ]
+export = system

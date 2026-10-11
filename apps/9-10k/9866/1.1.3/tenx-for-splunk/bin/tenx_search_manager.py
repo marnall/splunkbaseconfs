@@ -1,0 +1,421 @@
+"""
+Tenx Search Manager Module
+=========================
+
+This module provides utilities for managing Splunk search jobs and querying
+the DML (template) sourcetype. It handles:
+
+- Creating search jobs via /services/search/jobs
+- Polling for job completion
+- Retrieving search results
+- Running DML searches to find matching template hashes
+
+Key Operations
+--------------
+1. **Create Search Job**: POST to /services/search/jobs with search parameters
+2. **Poll Job Status**: GET job details and check dispatchState
+3. **Get Results**: Retrieve events from completed jobs
+4. **DML Search**: Search tenx_dml_pure to find template hashes matching query
+
+DML Search Workflow
+-------------------
+When a user searches for "error":
+1. Create search: "search sourcetype=tenx_dml_pure error"
+2. Poll until job completes
+3. Extract unique dml_hash values from results
+4. Return list of template hashes that contain "error"
+
+These hashes are then used by TenxSearchBuilder to create a combined search
+that covers both template matches and variable matches.
+
+Classes
+-------
+TenxSearchManager
+    Main class for search job operations.
+
+JobState
+    Enum for job completion states (SUCCESS, FAILURE, TIMEOUT).
+
+API Endpoints Used
+------------------
+{app} is the app the search came from, `search` when it is not known.
+
+POST /servicesNS/{user}/{app}/search/jobs/
+    Create new search job
+
+GET /servicesNS/{user}/{app}/search/jobs/{sid}
+    Get job details
+
+GET /servicesNS/{user}/{app}/search/jobs/{sid}/events
+    Get job results
+
+GET /servicesNS/{user}/{app}/search/parser
+    Parse search string
+
+See Also
+--------
+- tenx_search_builder.py: Uses this module for DML searches
+- tenxsearch.py: Search command that creates jobs
+"""
+
+import logging
+import urllib.error
+
+logger = logging.getLogger(__name__)
+
+import tenx_util
+
+from enum import Enum, auto
+
+
+class JobState(Enum):
+	SUCCESS = auto()
+	FAILURE = auto()
+	TIMEOUT = auto()
+	ABORTED = auto()
+
+
+# Cap on distinct template hashes fetched per probe. If a probe matched more templates than
+# this, get_dml_results reports truncated=True and the builder leaves that piece
+# unrestricted, which is correct and a full scan. Measured on Splunk 10.4.3: a clause of
+# 30,000 hash phrases is a 540,000-character search that Splunk accepts and runs in about
+# 10 seconds, so the cap is not a Splunk limit; it bounds the compiled search's size. The
+# probe collapses the dictionary rows to distinct hashes first (a template re-sent to the
+# dictionary index is two rows and one hash), so the cap counts templates, not rows.
+DML_FETCH_LIMIT = 25000
+
+
+class TenxSearchManager:
+	"""
+	Class for handling common search related operations with the Splunk cluster.
+	"""
+	def __init__(self, server_connection, tenx_config, app=None):
+		self.server_connection = server_connection
+		self.tenx_config = tenx_config
+		self.dml_key = 'dml_hash'
+		# The app the search came from. Another app's namespace cannot see this app's private
+		# macros, lookups or eventtypes, so the search is parsed and run in its own app.
+		self.app = app or 'search'
+
+	def create_search_job_url(self):
+		"""
+		Returns the base url for creating a new search job.
+		"""
+		return '/servicesNS/' + self.server_connection.user + '/' + self.app + '/search/jobs/'
+
+	def create_search_job(self, search_data):
+		"""
+		Creates a new search job with the provided search_data.
+		Returns the new job SID, or None in case of errors.
+		"""
+		try:
+			url = self.create_search_job_url()
+			create_res = self.server_connection.post(url, search_data)
+
+			if 'sid' not in create_res:
+				logger.warning("Missing sid in job creation result for search - {}.".format(search_data['search']))
+				return None
+
+			return create_res['sid']
+		except Exception as e:
+			logger.error("Error creating search job for search - {} - {}.".format(search_data['search'], e), exc_info=1)
+			return None
+
+	def cancel_search_job(self, sid):
+		"""
+		Cancels a search job and removes it. Errors are logged and otherwise ignored: the job
+		expires on its own either way.
+		"""
+		try:
+			self.server_connection.post(self.get_search_job_url(sid) + '/control', {'action': 'cancel'})
+		except Exception as e:
+			logger.warning("Failed cancelling search job {} - {}.".format(sid, e))
+
+	def get_search_job_url(self, sid):
+		"""
+		Returns the base url for the specific search job SID provided.
+		"""
+		return self.create_search_job_url() + sid
+
+	def get_search_job_details(self, sid):
+		"""
+		Returns the current details about an existing search job for the provided SID.
+		Returns None in case of failures.
+		"""
+		try:
+			url = self.get_search_job_url(sid)
+			get_res = self.server_connection.get(url)
+
+			return tenx_util.get_internal(get_res, 'entry', 0, 'content')
+		except Exception as e:
+			logger.error("Failed getting search {} state - {}.".format(sid, e), exc_info=1)
+			return None
+
+	def get_search_job_state(self, sid):
+		"""
+		Returns the current search job state for the provided SID.
+		Returns None in case of errors or missing data.
+		"""
+		try:
+			job_details = self.get_search_job_details(sid)
+
+			if not job_details:
+				logger.warning("Can't get job {} state from no details.".format(sid))
+				return None
+
+			return tenx_util.get_internal(job_details, 'dispatchState')
+		except Exception as e:
+			logger.error("Failed getting search {} state - {}.".format(sid, e), exc_info=1)
+			return None
+
+	def is_job_live(self, sid):
+		"""
+		False when the job is gone or has ended (cancelled, failed or done); True otherwise,
+		including when the check itself fails, so a transient error never stops a search.
+		"""
+		try:
+			content = tenx_util.get_internal(self.server_connection.get(self.get_search_job_url(sid)),
+				'entry', 0, 'content')
+		except urllib.error.HTTPError as e:
+			return e.code != 404
+		except Exception:
+			return True
+
+		if not content:
+			return True
+
+		return content.get('dispatchState') not in ('DONE', 'FAILED') and not content.get('isFinalized')
+
+	def poll_for_job_end(self, sid, max_time_ms, poll_interval_ms, keep_going=None, check_every_ms=1000):
+		"""
+		Polls a given search job until it either reach a terminal state (successful or not), or times out.
+		Will poll for roughly a max time of max_time_ms (as the time it takes to actually poll is added),
+		and in intervals of poll_interval_ms between different polls.
+
+		If at any point the job state will be 'DONE', returns JobState.SUCCESS
+		If at any point the job state will be 'FAILED', returns JobState.FAILURE
+
+		If max_time_ms has been reached, returns JobState.TIMEOUT
+
+		keep_going, when given, is called about every check_every_ms; once it returns False the
+		poll stops and returns JobState.ABORTED.
+		"""
+		start_time = tenx_util.current_time_ms()
+		last_check = start_time
+
+		while True:
+			if keep_going is not None and tenx_util.current_time_ms() - last_check >= check_every_ms:
+				last_check = tenx_util.current_time_ms()
+
+				if not keep_going():
+					return JobState.ABORTED
+
+			state = self.get_search_job_state(sid)
+
+			if state == 'DONE':
+				return JobState.SUCCESS
+
+			if state == 'FAILED':
+				return JobState.FAILURE
+
+			if (tenx_util.current_time_ms() - start_time - poll_interval_ms) >= max_time_ms:
+				break
+
+			tenx_util.sleep_ms(poll_interval_ms)
+
+		return JobState.TIMEOUT
+
+	def get_search_results_url(self, sid):
+		"""
+		Returns the base url for the specific search job SID resulting events.
+		"""
+		return self.get_search_job_url(sid) + '/events'
+
+	def get_search_results(self, sid, params=None, transformed=False):
+		"""
+		Returns the current search results for the search job matching the SID provided.
+
+		Params may be used to affect different aspects of the returned results. A search that
+		ends in a transforming command (stats, chart, top and so on) has its output under
+		/results, not /events; pass transformed=True for one.
+		"""
+		if params is None:
+			params = {}
+
+		try:
+			url = self.get_search_job_results_url(sid) if transformed else self.get_search_results_url(sid)
+			return self.server_connection.get(url, params)
+
+		except Exception as e:
+			logger.error("Failed getting search {} state - {}.".format(sid, e), exc_info=1)
+			return None
+
+	def create_dml_search(self, dml_search):
+		"""
+		Creates a search job specifically for runs on the 10x DML sourcetype, from the given dml_search string.
+
+		Jobs are always set to run from earliest_time of 0 until latest_time of now, as we need all the matches.
+		Additionally sets to fetch the 'dml_hash' field from the events for easier usage later on.
+
+		Returns the search job SID, or None in case of errors.
+		"""
+		# The index is named, not just the sourcetype. Splunk searches only a user's default
+		# indexes when none is given, which is 'main' out of the box, so a deployment keeping
+		# its templates anywhere else resolved every search term to zero hashes. The search
+		# then ran with the user's terms still in front of the inflate macro, matched nothing
+		# and returned no results with no error, because the text being searched for is in the
+		# original line and not in the compact event.
+		search_data = {
+			'earliest_time': '0',
+			'latest_time': 'now',
+			'rf': self.dml_key,
+			'search': 'search index=%s sourcetype=%s %s | stats count by %s' % (
+				self.tenx_config['dest_dml_index'], self.tenx_config['dml_source_type'],
+				dml_search, self.dml_key)
+		}
+
+		return self.create_search_job(search_data)
+
+	def get_search_job_results_url(self, sid):
+		"""
+		Returns the url for a search job's transformed results (as opposed to its events).
+		"""
+		return self.get_search_job_url(sid) + '/results'
+
+	def get_dml_results(self, sid):
+		"""
+		Returns (hashes, truncated) for a provided search job on the 10x DML.
+
+		The probe ends in `stats count by dml_hash`, so each result row is one distinct
+		template. hashes is the sorted list of those (up to DML_FETCH_LIMIT). truncated is
+		True when the job produced more distinct hashes than were fetched, so the list must
+		not be treated as a complete answer.
+
+		Returns (None, False) if any errors occured when trying to get the results.
+
+		Note that a None result indicates an actual error, while an empty list is actually ok, it's quite possible
+		no actual matches were found for a specific search.
+		"""
+		try:
+			search_results = self.server_connection.get(
+				self.get_search_job_results_url(sid), {"f": self.dml_key, "count": DML_FETCH_LIMIT})
+		except Exception as e:
+			logger.error("Failed getting dml results for {} - {}.".format(sid, e), exc_info=1)
+			return None, False
+
+		if not search_results or 'results' not in search_results:
+			return None, False
+
+		raw_rows = search_results['results']
+		# sorted(), not list(set()): the hash list is baked verbatim into the compiled
+		# hash clause and persisted in savedsearches.conf. A plain set's
+		# iteration order is randomized per process (PYTHONHASHSEED), so the same matching
+		# templates would produce a different clause string on each save/recompile - making the
+		# recompile pass's "only rewrite if the compiled search changed" guard always fire and
+		# churn every multi-template alert. A stable, sorted order makes the compiled SPL a
+		# deterministic function of the matching template set.
+		hashes = sorted(set(result[self.dml_key] for result in raw_rows if self.dml_key in result))
+
+		job_details = self.get_search_job_details(sid)
+		total_results = tenx_util.get_internal(job_details, 'resultCount') if job_details else None
+
+		try:
+			truncated = int(total_results) > DML_FETCH_LIMIT
+		except (TypeError, ValueError):
+			# Couldn't confirm the true total - fall back to the one signal we do have:
+			# fetching exactly the cap is itself a sign there may be more.
+			truncated = len(raw_rows) >= DML_FETCH_LIMIT
+
+		return hashes, truncated
+
+	def get_timestamp_formats(self, max_time_ms=2000, poll_interval_ms=50):
+		"""
+		The distinct timestamp formats of the stored templates, as Splunk strftime strings, or
+		None when they could not be read in time.
+		"""
+		sid = self.create_search_job({
+			'earliest_time': '0',
+			'latest_time': 'now',
+			'search': '| inputlookup tenx-dml-lookup | stats count by timestamp_format'})
+
+		if sid is None:
+			return None
+
+		if self.poll_for_job_end(sid, max_time_ms, poll_interval_ms) != JobState.SUCCESS:
+			logger.warning("Timestamp formats not read in {}ms ({}).".format(max_time_ms, sid))
+			return None
+
+		results = self.get_search_results(sid, {'count': 0}, transformed=True)
+
+		if results is None or 'results' not in results:
+			return None
+
+		return [row.get('timestamp_format') for row in results['results'] if row.get('timestamp_format')]
+
+	def run_dml_search(self, dml_search, max_time_ms=2000, poll_interval_ms=50):
+		"""
+		Runs a search on the 10x DML, waits for the search job to finish, and returns the results.
+
+		Basically a wrapper for create_dml_search -> poll_for_job_end -> get_dml_results.
+
+		Returns (hashes, truncated). (None, True) when the probe did not finish inside
+		max_time_ms, which the caller treats as "no usable hash list" rather than an error.
+		(None, False) in case of any actual errors along the way.
+		"""
+		logger.info("About to dml search - {}".format(dml_search))
+
+		dml_sid = self.create_dml_search(dml_search)
+
+		if dml_sid is None:
+			logger.warning("Failed creating dml search for - {}.".format(dml_search))
+
+			return None, False
+
+		state = self.poll_for_job_end(dml_sid, max_time_ms, poll_interval_ms)
+
+		if state == JobState.TIMEOUT:
+			# Did not finish inside its budget. That is not a failure of the search, and the
+			# caller can carry on without this probe: a piece with no hash list is simply not
+			# used to narrow, which is correct and wider. Reported as incomplete, the same as
+			# a truncated result, rather than as an error.
+			logger.warning("Dml probe {} did not finish in {}ms - {}.".format(dml_sid, max_time_ms, dml_search))
+
+			return None, True
+
+		if state != JobState.SUCCESS:
+			logger.warning("Failed waiting for job {} - {} - {}.".format(dml_sid, dml_search, state))
+
+			return None, False
+
+		dml_results, truncated = self.get_dml_results(dml_sid)
+
+		if dml_results is None:
+			logger.warning("Failed getting dml results for job {} - {}.".format(dml_sid, dml_search))
+			return None, False
+
+		if truncated:
+			logger.warning("DML search truncated at {} rows for {} - {}; hash set may be incomplete.".format(
+				DML_FETCH_LIMIT, dml_sid, dml_search))
+
+		logger.info("Got {} results for dml {} - {}.".format(len(dml_results), dml_sid, dml_search))
+
+		return dml_results, truncated
+
+	def parse_search_string_url(self):
+		"""
+		Returns the base url for parsing a search string a new search job.
+		"""
+		return '/servicesNS/' + self.server_connection.user + '/' + self.app + '/search/parser'
+
+	def parse_search_string(self, search, parse_only=False):
+		try:
+			data = {'q': search}
+
+			if parse_only:
+				data['parse_only'] = 'true'
+
+			# Note: The search parser endpoint requires POST method
+			return self.server_connection.post(self.parse_search_string_url(), data)
+		except Exception as e:
+			logger.error("Failed parsing search {} - {}.".format(search, e), exc_info=1)
+			return None

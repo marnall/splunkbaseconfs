@@ -1,0 +1,719 @@
+# Default object permissions for the PolySwarm App.
+#
+# WHY THE EXPORT SCOPE IS SPLIT (ruled 2026-09-09). Splunk's default.meta
+# specification is the authority for both halves of this. An object is visible
+# only inside the app that ships it until its export scope says system, and an
+# object exported to system gets no change to its accessibility rules: a
+# reader still needs read access to the containing app, to the object class,
+# and to the object itself. Export scope and role access are therefore two
+# independent axes, and this file uses both. Exported: the things a search
+# running in some other app has to be able to resolve, which is the five
+# search commands and their search-assistant syntax, the three workflow
+# actions, the alert action, the lookup definitions, the KV store collections
+# those definitions read, and the props, eventtypes and tags that make the
+# intel sourcetype searchable and CIM compliant. Not exported: credentials,
+# configuration and user interface, which is the passwords classes, the app
+# object, polyswarm.conf, restmap, the modular inputs, the views and the nav.
+# Nothing outside this app needs to read those, and the credential path
+# especially must not be reachable from a namespace nobody reviewed. Every
+# access line below is the one it had before the split, so least privilege is
+# unaffected: it lives in the role lists, not in the export scope.
+#
+# WHY sc_admin APPEARS BESIDE admin IN EVERY LIST (ruled 2026-09-09). sc_admin
+# is the Splunk Cloud Platform customer's own administrator role: Splunk's
+# Enterprise Security installation manual, in "Users and roles for Splunk
+# Enterprise Security" on help.splunk.com, states that "In a Splunk Cloud
+# Platform deployment, the Splunk platform admin role is called sc_admin", and
+# the Splunk Cloud Platform Service Details page states that "Splunk Cloud
+# Platform provides the sc_admin role, which has sufficient capabilities to
+# administer Splunk Cloud Platform". The admin role itself is not handed to a
+# Cloud customer, so an object whose only named role was admin would be an
+# object that customer's administrator could not reach, which is what
+# AppInspect's check_kos_are_accessible warns about. Adding the role costs
+# nothing on Splunk Enterprise: the default.meta.conf specification describes
+# access as a list of named roles, and a reader is granted the object when a
+# role they hold appears in that list at the app, class and object level, so a
+# name nobody on the instance holds matches nobody and grants nothing. Splunk
+# Enterprise ships no sc_admin role, and no Splunk page found says in so many
+# words what splunkd does with a role name it cannot resolve, so that half is
+# read off the specification's own matching model rather than quoted; what is
+# quoted is that role lists are matched by name. The stanza comments below that
+# read "admin and power only" describe the same gate they always did: sc_admin
+# travels with admin everywhere in this file and nowhere else, so it widens no
+# gate and it withholds nothing from power or user that was reaching them.
+#
+# WHY polyswarm_analyst APPEARS BESIDE power (ruled 2026-09-09, decision D27).
+# An object ACL is not the only gate on the credential path. splunkd protects
+# its storage/passwords endpoint with a capability as well, and Splunk's
+# capability reference, "Define roles on the Splunk platform with
+# capabilities" on help.splunk.com, says list_storage_passwords is what "Lets
+# the user list and view the /storage/passwords endpoint, lets the user perform
+# GETs". The Power column of that table is not marked for that row, and the
+# built-in power role does not hold the capability. Every metered command in
+# this app reads the key from that endpoint as the searching user, so power
+# passed every ACL below and was still refused the key: confirmed live on
+# Splunk Enterprise 10.4.2, HTTP 403 on the app's storage/passwords path and a
+# ClientConfigurationError from every metered command.
+#
+# default/authorize.conf therefore ships one custom role, polyswarm_analyst,
+# which imports power and enables that one capability. This file names it
+# wherever it names power, in read and write clauses alike, and adds it to the
+# read clause of [passwords] and [storage/passwords] so that the object gate
+# and the capability gate line up on the same role. power keeps every grant it
+# had, which costs nothing (a role that cannot read the credential cannot use
+# the commands whatever this file says) and leaves the other route open: an
+# administrator who would rather add list_storage_passwords to power than
+# assign the shipped role can, and then power is the role that holds both
+# halves. Built-in roles are not modified anywhere in this app.
+#
+# The stanza comments below that read "admin and power only" describe the same
+# gate they always did, in the same way they already do for sc_admin:
+# polyswarm_analyst travels with power everywhere in this file, so it widens no
+# gate and it withholds nothing. Where a comment says a gate excludes the user
+# role, it still does.
+#
+# Five rules govern this file:
+#
+#   1. Export scope is a decision per object, and it is one of two values. A
+#      stanza a search in another app must resolve sets export = system; a
+#      stanza carrying a credential, a piece of configuration or a view sets
+#      export = none. Adding a stanza means classifying it, and the tests
+#      enumerate both lists so that a new one cannot arrive unclassified.
+#   2. Every object class is listed explicitly. There is no reliance on the
+#      root stanza to cover an object type by omission, because a default that
+#      is inherited silently is a default nobody reviews.
+#   3. No read : [ * ] on anything in the credential path. Roles are named.
+#      A wildcard read on a credential object grants every present and future
+#      role, including ones created after this file was last looked at.
+#   4. Every access list that names admin also names sc_admin, in both the
+#      read clause and the write clause, so that a Splunk Cloud customer's
+#      administrator reaches whatever this app's own administrator reaches. A
+#      test asserts this over the whole file rather than stanza by stanza, so
+#      a stanza added later cannot forget it.
+#   5. Every access list that names power also names polyswarm_analyst, in the
+#      write clause as well as the read clause, so the role holding the
+#      credential capability reaches everything power reaches. Swept over the
+#      whole file for the reason rule 4 is swept: a stanza written next month
+#      is covered the moment it is written. The two credential stanzas are the
+#      one place the role appears without power, and they name neither power
+#      nor user.
+#
+# Changing an export or widening a read here is a security review, not a
+# convenience edit.
+
+# Root default. Deliberately narrow: an object type not listed below inherits
+# administrator and power read rather than becoming world readable by accident.
+[]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# Search commands. Readable by any role that can run a search, since a user who
+# cannot read the command definition cannot invoke it. This is the default for
+# the object class; the two commands below override it individually, because
+# they do not carry the same risk and must not inherit one permission between
+# them.
+[commands]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: polyswarmextract is readable by the user role.
+#
+# It is pure local computation. It runs the shared extraction engine over a
+# field that is already in the result set the user is allowed to see, makes no
+# network call, needs no credential, and spends no quota. There is nothing here
+# a user could consume or exfiltrate that they did not already have, so gating
+# it would cost capability and buy nothing.
+[commands/polyswarmextract]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: polyswarmsearch is admin and power only. Deliberately excludes the
+# user role.
+#
+# Every invocation spends the customer's PolySwarm API quota, one request per
+# distinct hash, against a single shared account key. That makes it a
+# consumable, shared resource, and three consequences follow:
+#
+#   1. A user running it over a wide search can exhaust the quota for every
+#      other user of the app, including scheduled searches and correlation
+#      searches that other people depend on.
+#   2. Quota exhaustion and rate limiting persist after the search ends, so the
+#      damage outlives the person who caused it.
+#   3. The hashes queried leave the customer's estate. That is a data egress
+#      decision, and it belongs to a role that is accountable for it.
+#
+# The required limit option bounds a single search. It does not bound how many
+# searches a role can run, which is what this gate is for. The two controls are
+# not substitutes.
+#
+# Widening this to the user role is a security review, not a convenience edit.
+[commands/polyswarmsearch]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: polyswarmusage is admin and power only. Deliberately excludes the
+# user role, and for a different reason from polyswarmsearch's.
+#
+# It is not the cost. Two requests to the account endpoints spend none of the
+# scan or detonation allowance a customer buys, and the command throttles itself
+# to one call a minute per search head on top of that. It is what the answer
+# contains. The rows carry the account's plan class, its tenant, its entitled
+# communities, and how much of each entitlement is left, which is the
+# customer's commercial relationship with us rather than security telemetry. A
+# role that cannot read the app's configuration should not learn the contract
+# from a search command instead.
+#
+# The consequence is deliberate and matches the pattern [views/triage]
+# established: the Overview dashboard stays readable by the user role, and a
+# user pressing the refresh input there gets a permission error naming this
+# command. That is the honest failure. The stored answer beside it is refused by
+# [collections/ps_usage_cache], one decision in one place.
+#
+# Whether the user role should see quota is a real question for the usage
+# surface to answer, and it is not answered by shipping a command. Widening this
+# is a review, not a convenience edit.
+[commands/polyswarmusage]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: polyswarmdetonate is admin and power only. Deliberately excludes
+# the user role, and this is the narrowest gate in the file by intent even
+# though its access line reads the same as the two above.
+#
+# Constraint C3 says commands that spend quota get a role gate, and this is the
+# command that spends the most. An enrichment request is a database lookup. One
+# invocation of this books a virtual machine, runs a browser inside it against
+# a URL, and captures the result, which is the most expensive metered call in
+# the product and the one with the smallest included allowance: the entitlement
+# matrix gives an Enterprise plan 30 detonations a month, where the same plan's
+# API request allowance is measured in thousands.
+#
+# Four consequences follow, and the last one is specific to this command:
+#
+#   1. A single search spends a detonation from a shared monthly allowance
+#      measured in tens, so one user can exhaust a month for everyone.
+#   2. The spend is not reversible and not throttled by anything except the
+#      cap of one per invocation, and a saved search or an alert action can
+#      dispatch this on a schedule.
+#   3. The URL leaves the customer's estate AND IS BROWSED FROM OUR
+#      INFRASTRUCTURE, which is a stronger statement than the egress
+#      polyswarmsearch makes: the sandbox fetches the target, so the target's
+#      operator sees the request. That is a decision an accountable role makes.
+#   4. The command writes to the ps_sandbox_tasks collection, whose ACL below
+#      matches this one, because a role that can detonate and cannot record the
+#      task would spend the call and lose the receipt.
+#
+# Widening this to the user role is a security review, not a convenience edit,
+# and it is a bigger review than widening polyswarmsearch would be.
+[commands/polyswarmdetonate]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: polyswarmsync is admin and power only, and it is gated for a
+# reason none of the four commands above share.
+#
+# It does not spend a fixed amount. One invocation runs a whole cycle of the
+# polyswarm_intel_pull input, which is one API request per page up to that
+# stanza's own max_artifacts_per_run, so a single typed command can spend what
+# the schedule was going to spend over an interval, and can be typed again
+# immediately. Constraint C11 bounds the size of that (the cap is the stanza's
+# and cannot be raised from the search bar) but nothing bounds the frequency,
+# because there is a person at the keyboard and the command exists precisely so
+# that they can re-run it while adjusting a family list.
+#
+# So the accountable role is the one that already decides what the input may
+# spend, which is why this line matches [inputs/input_intel_pull] below rather
+# than [commands/polyswarmsearch] above. A role that cannot enable the
+# scheduled pull should not be able to run its cycles by hand.
+#
+# The user role is excluded rather than merely unmentioned. Widening this is a
+# security review: it is the one command in the app whose cost per invocation
+# is set by somebody else's configuration.
+[commands/polyswarmsync]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# Search assistant syntax for the commands above. Same audience.
+[searchbnf]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# Event workflow actions, declared in default/workflow_actions.conf. The class
+# default; each action below overrides it individually per rule 2, because the
+# two actions do not carry the same risk.
+[workflow-actions]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: the enrich action is admin and power only, matching
+# [commands/polyswarmsearch] exactly.
+#
+# This is a different decision from the one taken for [views/triage], and the
+# difference is the point. Triage stays visible to the user role because half of
+# that page, the extraction panel, costs nothing and works for everyone; hiding
+# the page to protect the metered panel would take the free one with it.
+#
+# This action has no free half. Its entire function is to dispatch a search that
+# runs polyswarmsearch, which the user role cannot run, so a user offered this
+# menu entry gets a new browser tab containing a permission error and nothing
+# else. Withholding the entry costs that role no capability it had.
+#
+# The two stanzas move together. Widening polyswarmsearch to the user role
+# without widening this one would leave the capability unreachable from an
+# event, and widening this one alone would restore the failing menu entry.
+[workflow-actions/polyswarm_enrich]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: the attribution enrich action is admin and power only, matching
+# [commands/polyswarmsearch] exactly, for the same reason the action above
+# does and with one more reason on top.
+#
+# It dispatches the same command the plain enrich action does, so the role that
+# cannot run polyswarmsearch gets the same empty tab containing a permission
+# error. And it spends twice as much when it does run, one verdict request plus
+# one tag-link request, so if the two ever came apart this is the one that
+# should be the narrower of them rather than the wider.
+#
+# All three stanzas move together. Widening polyswarmsearch to the user role
+# without widening these would leave the capability unreachable from an event,
+# and widening either action alone would restore a failing menu entry.
+[workflow-actions/polyswarm_enrich_attribution]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: the portal link is readable by the user role.
+#
+# It is a hyperlink. It runs no command, reads no credential, makes no request
+# from the search head, and spends no quota. The indicator it carries is one
+# already in the result set the user is permitted to see. There is nothing here
+# to gate.
+[workflow-actions/polyswarm_portal]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# Alert actions, declared in default/alert_actions.conf. The class default; the
+# one action below overrides it individually per rule 2.
+[alert_actions]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# ROLE GATE: the detonate alert action is admin and power only, matching
+# [commands/polyswarmdetonate] exactly, and the reasons that stanza gives all
+# apply here with one more on top.
+#
+# It spends the most expensive metered call in the product, from a shared
+# monthly allowance measured in tens, and the URL is browsed from our
+# infrastructure so the target's operator sees the request. What is different
+# from the command is the schedule: a search command spends once when somebody
+# runs it, and an action attached to a correlation search spends every time
+# that search fires, with nobody watching. The cap in
+# bin/action_detonate.py bounds one firing; who may attach the action to a
+# search is what this stanza bounds, and the two are not substitutes.
+#
+# The user role is excluded because it is excluded from the command. Widening
+# either is a security review, not a convenience edit, and widening this one is
+# the larger of the two.
+[alert_actions/polyswarm_detonate]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = system
+
+# Modular inputs, declared in default/inputs.conf. The class default; the one
+# input below overrides it individually per rule 2.
+#
+# Read for admin and power, write for admin, matching every other configuration
+# object in this file. An operator diagnosing "why has this task not moved"
+# should be able to see whether the poller is enabled and how often it runs
+# without being trusted with the key that lets it run.
+[inputs]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# ROLE GATE: the sandbox task poller is admin and power to read, admin to
+# write, and the write half is the one that matters.
+#
+# The input spends API requests on a schedule, against the same shared account
+# key every other metered path in this app uses, so who may change its interval
+# and its per-run ceiling is the same question as who may spend quota. It is the
+# narrower half of the pair with [commands/polyswarmdetonate]: a role that can
+# buy a detonation cannot also decide how often the whole deployment polls.
+#
+# It is not withheld from power for reading, because reading an input stanza is
+# how an operator answers whether the poller is running at all, which is design
+# section 4.6's "why is nothing happening" question in its most literal form.
+[inputs/input_task_poller]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# ROLE GATE: the intel pull input is admin and power to read, admin to write,
+# and here the write half is the strongest gate on any input in this app.
+#
+# The task poller above spends nothing on its own behalf: with no detonations
+# there are no rows and it makes no request. This input is the opposite. Its
+# settings ARE its cost: families, the PolyScore floor and
+# max_artifacts_per_run together decide how many metered requests the
+# deployment makes every fifteen minutes, forever, with nobody watching. That
+# makes editing this stanza the same act as authorising recurring spend, so it
+# is admin.
+#
+# Reading stays open to power for the reason the poller's does, and it matters
+# more here because the input ships DISABLED: "is the intel pull turned on"
+# is the first question an operator asks when an index is empty, and answering
+# it must not require admin.
+[inputs/input_intel_pull]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# Dashboards and setup pages. The class default; each view below overrides it
+# individually per rule 2, so that a view added later is a permission decision
+# rather than an inherited one.
+[views]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# The Overview dashboard, and the app's default view.
+#
+# Readable by the user role. Every panel that runs when the page opens reads
+# either the verdict cache through the ps_verdict_cache_lookup definition, the
+# stored entitlement answer through ps_usage_cache_lookup, or the app's own log
+# lines out of _internal. None of those spends quota and none exposes anything
+# a role cannot already reach through the collection ACLs above.
+#
+# One panel on the page can spend, the entitlement refresh, and it runs
+# polyswarmusage. It is gated by a token no input defaults, so it cannot fire on
+# load, and the command is withheld from the user role by
+# [commands/polyswarmusage], so a user pressing the input gets a permission
+# error naming the command. That is the same split [views/triage] makes below.
+# See docs/dashboards.md.
+[views/overview]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# The Triage dashboard, design section 4.8.
+#
+# Also readable by the user role, and deliberately so even though its main
+# panel runs polyswarmsearch, which [commands/polyswarmsearch] withholds from
+# that role. The two decisions are consistent: the command is where the quota
+# gate belongs, and a user who cannot run it gets a permission error from the
+# search with the command named in it. Hiding the page instead would produce a
+# missing dashboard and no explanation, and it would also hide the extraction
+# panel, which spends nothing and is available to every role.
+[views/triage]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# The Sandbox Tasks dashboard, design section 4.3's tasks tray.
+#
+# Readable by the user role, and this one is the least arguable of the three:
+# every panel on it reads the ps_sandbox_tasks collection through the
+# ps_sandbox_tasks_lookup definition, no panel names a command at all, and
+# opening it cannot spend a detonation or any other metered call.
+#
+# What a user gets is therefore decided one layer down, by
+# [collections/ps_sandbox_tasks], which withholds the collection from that
+# role: the page renders and its panels are refused by the collection, naming
+# it. That is the same split [views/triage] and [views/overview] already make,
+# and it is the honest failure. Note what widening the collection would show a
+# user, since that is the decision this stanza is not making: the URLs other
+# people detonated.
+[views/sandbox]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# ROLE GATE: the setup page is admin and power only. Deliberately excludes the
+# user role, and it is the only view in this app that does.
+#
+# Constraint C3 says an object that touches credentials gets a role gate, and
+# this page is where the credential is entered. Three reasons, and the third is
+# the one that is easy to miss:
+#
+#   1. It writes to storage/passwords. [storage/passwords] below grants that to
+#      admin alone, so the write itself is gated whatever this line says.
+#   2. It writes the app's own configuration, both the community setting in
+#      polyswarm.conf and the is_configured flip on the app object.
+#   3. It is a form asking for a credential. A page that asks for an API key,
+#      shown to a role that cannot save one, teaches the wrong lesson about
+#      where credentials go in this deployment. Withholding it is the honest
+#      answer for a role that has no business handing us a key.
+#
+# WHY POWER AND NOT ADMIN ALONE, given that the credential write is admin only.
+# The same reason [views/triage] stays visible to a role that cannot run the
+# command behind it: the refusal belongs to the object being written, where it
+# is one decision in one place, and a power user who opens this page gets a
+# permission error from splunkd naming the endpoint it refused. That is a
+# better failure than a missing page, and it does not widen anything, because
+# [passwords] and [storage/passwords] are unchanged. Widening those is a
+# security review; widening this line is not a substitute for it.
+[views/setup]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# Navigation.
+[nav]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# The nav itself. Same audience as the views it lists: a role that can read a
+# view and not the nav reaches the app and sees no way through it.
+[nav/default]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = none
+
+# Credential storage. This is the stanza the no-wildcard rule exists for: the
+# API key lives here.
+#
+# WRITE IS ADMIN ONLY, unchanged and not up for discussion: saving, changing or
+# deleting the key is an administrator action, which is the same audience the
+# setup page's other writes have.
+#
+# READ NAMES polyswarm_analyst BESIDE THE TWO ADMINISTRATOR ROLES (ruled
+# 2026-09-09, decision D27), and the power role is still deliberately absent.
+# Every metered command reads the key from splunkd's storage/passwords endpoint
+# with the searching user's own session key, so a role that can run the command
+# and cannot read this object gets a working command and no credential. That
+# was the live defect: a power-only user passed the command ACL and was refused
+# the key.
+#
+# Naming the role here is only half of the fix, and the other half is not in
+# this file. splunkd gates that endpoint with a capability as well as with this
+# ACL, list_storage_passwords, which the built-in power role does not hold, so
+# default/authorize.conf ships the polyswarm_analyst role to carry it. The two
+# gates are independent: the capability without this ACL is refused by the
+# object, and this ACL without the capability is refused by splunkd. They are
+# lined up on the same role name on purpose, and moving one without the other
+# puts the app back where it was.
+#
+# power is not added, for the reason it is not added to [app] either: it cannot
+# use read access here without the capability, and the honest place to grant
+# both is the shipped role. An administrator who prefers to add
+# list_storage_passwords to power instead can, and then power needs naming here
+# too; docs/install.md section 9 says so.
+[passwords]
+access = read : [ admin, sc_admin, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+[storage/passwords]
+access = read : [ admin, sc_admin, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# App configuration, including the setup state that gates first use.
+[app]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# The app's own configuration file, default/polyswarm.conf.
+#
+# Listed explicitly rather than left to the root stanza per rule 2. It holds no
+# credential and never will, which is stated in the file itself and in
+# README/polyswarm.conf.spec, so read is granted to power alongside admin: an
+# operator diagnosing a scoping question should be able to see which community
+# the app is configured for without being trusted with the key.
+#
+# Write stays with admin, matching every other configuration object here. The
+# setup page's write to configs/conf-polyswarm is therefore an admin action,
+# which is the same audience the credential write already has.
+[polyswarm]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin ]
+export = none
+
+# Custom REST endpoints. These run with elevated capability, so they are
+# admin only until an endpoint exists that has been reviewed for wider access.
+[restmap]
+access = read : [ admin, sc_admin ], write : [ admin, sc_admin ]
+export = none
+
+# KV store collections. Same audience as polyswarmsearch, and write is granted
+# alongside read on purpose.
+#
+# The verdict cache is written by the search command as the invoking user, so a
+# role that can run polyswarmsearch but cannot write the collection would get a
+# working search with the cache permanently degraded: correct results, full
+# quota spent on every hash, and only a log line to say why. Read without write
+# is the worst of the three states, so the two are granted together.
+#
+# The user role is excluded because it is excluded from polyswarmsearch, and
+# the cache holds nothing a user could not already see through that command.
+[collections]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The verdict cache itself. Declared in default/collections.conf.
+[collections/ps_verdict_cache]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The usage and entitlement cache. Declared in default/collections.conf.
+#
+# Same audience as [commands/polyswarmusage], which is what fills it, and read
+# and write granted together for the same reason the verdict cache grants them
+# together: a role that can run the command but cannot write the collection
+# would get correct rows in the search bar and an Entitlement panel that never
+# updates, with only a log line to say why.
+#
+# The user role is excluded because it is excluded from the command, and the
+# collection holds exactly what the command returns. This is the one stanza to
+# edit if the answer to "should a user see quota" turns out to be yes.
+[collections/ps_usage_cache]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The call throttle. Declared in default/collections.conf.
+#
+# Nothing reads this but the command, and no panel reads it at all. It is listed
+# explicitly rather than left to the class default per rule 2, and it is worth
+# noting what widening it would mean: write access to this collection is the
+# ability to reset the throttle window, so it stays with the roles that are
+# allowed to make the call in the first place.
+[collections/ps_usage_throttle]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The sandbox task table. Declared in default/collections.conf.
+#
+# Same audience as [commands/polyswarmdetonate], which is what fills it, and
+# read and write granted together for a sharper version of the reason the two
+# caches grant them together. On a cache, read without write costs quota and
+# nothing else. Here it would let a role buy a detonation and fail to record
+# it, and because the platform's own my-tasks listing hangs there is no second
+# place to look the task up: the spend would be unrecoverable rather than
+# merely unrecorded.
+#
+# The user role is excluded because it is excluded from the command. This is
+# the stanza to edit if a read-only tray for the user role is ever wanted, and
+# note what such a tray would show: the URLs other people detonated.
+[collections/ps_sandbox_tasks]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The cached providers and VMs list. Declared in default/collections.conf.
+#
+# Nothing reads this but the command, and no panel reads it at all. Listed
+# explicitly rather than left to the class default per rule 2. Write access
+# here is the ability to poison the list a detonation is validated against,
+# which is the reason it stays with the roles that are allowed to detonate in
+# the first place rather than being granted more widely because the content
+# looks harmless.
+[collections/ps_sandbox_providers]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The community rule's whois cache. Declared in default/collections.conf.
+#
+# Same audience as [commands/polyswarmdetonate], which is what fills it, and
+# read and write granted together for the reason every cache in this file
+# grants them together: a role that can detonate and cannot write this
+# collection would resolve the community correctly and pay for a whois call on
+# every detonation, with only a log line to say why.
+#
+# Note what write access to this collection is: the ability to change the
+# community list a detonation is scoped from, for everyone, for an hour. That
+# is why it stays with the roles allowed to detonate rather than being granted
+# more widely because the content looks like an account detail. The account
+# identity it holds is the same answer [commands/polyswarmusage] returns, and
+# that command withholds itself from the user role for the same reason.
+[collections/ps_community_cache]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# The intel pull's checkpoint, declared in default/collections.conf.
+#
+# Admin and power for both halves, matching the caches above rather than the
+# task collection. The reason is what a failure costs: the modular input runs
+# as the app and writes this document at the end of a completed window, and a
+# role that could read it but not write it would re-pull the same window on
+# every run. Bounded duplication rather than lost data, which is the direction
+# bin/intel_checkpoint.py chooses everywhere, but there is no reason to choose
+# it here by accident.
+#
+# Power can write because | polyswarmsync runs for power and constructs the
+# same store object. It does not advance the checkpoint, deliberately, but it
+# does open the collection, and an ACL that made that a permission error would
+# report a broken checkpoint on every preview.
+[collections/ps_intel_pull_checkpoint]
+access = read : [ admin, sc_admin, power, polyswarm_analyst ], write : [ admin, sc_admin, power, polyswarm_analyst ]
+export = system
+
+# Field extractions and parsing. default/props.conf carries one sourcetype,
+# polyswarm:artifact, written by the intel pull input.
+#
+# READABLE BY THE USER ROLE, WHICH IS WIDER THAN THE INPUT THAT PRODUCES THE
+# EVENTS, AND THAT IS CORRECT RATHER THAN AN OVERSIGHT. A props stanza is not a
+# capability, it is how an event becomes searchable: without read access the
+# JSON body indexes as one unparsed blob and every field in it disappears for
+# that role. An analyst who can see the index has to be able to see the fields,
+# and gating this to admin would ship a data source nobody can use. Who may
+# CREATE the events is the input's ACL above, and that is where the spend
+# decision lives.
+#
+# The CIM field aliases and the vendor_product eval are in the same stanza and
+# inherit the same reading, for the same reason: a data model that resolves for
+# admin and not for an analyst is worse than no data model.
+[props]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# Event types. default/eventtypes.conf carries one, polyswarm_artifact, which
+# exists so that default/tags.conf has something to hang the malware tag on.
+#
+# Same reading as [props] and for the same reason: an event type an analyst
+# cannot read is a tag that does not resolve for them, and a data model that
+# resolves per role is a data model nobody trusts.
+[eventtypes]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# CIM tags. default/tags.conf applies malware to the event type above, and
+# deliberately not attack; the file carries the argument.
+#
+# Same reading, same reason. This is the object a customer's Malware data model
+# actually matches on.
+[tags]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# Lookup definitions. The class default.
+[transforms]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# The verdict cache lookup definition, declared in default/transforms.conf.
+#
+# Read is granted to the user role, and write only to admin.
+#
+# Reading the DEFINITION is not reading the data. The collection behind it
+# carries its own ACL in [collections/ps_verdict_cache], which does not
+# include the user role, so a user running | inputlookup against this
+# definition is refused by the collection and not by the definition. That is
+# the intended split: the lookup definition is public app furniture, and who
+# may read the cache is one decision, made in one place, next to who may spend
+# quota filling it. Widening cache access to the user role is an edit to the
+# collections stanza, not to this one.
+[transforms/ps_verdict_cache_lookup]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# The usage cache lookup definition, declared in default/transforms.conf.
+#
+# Read granted to the user role, write only to admin, exactly as for the verdict
+# cache lookup and for the same reason: reading the DEFINITION is not reading
+# the data. The collection behind it carries its own ACL in
+# [collections/ps_usage_cache], which does not include the user role, so a user
+# running | inputlookup against this definition is refused by the collection and
+# not by the definition. Who may read entitlement is one decision, made in one
+# place, next to who may fetch it.
+[transforms/ps_usage_cache_lookup]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system
+
+# The sandbox task lookup definition, declared in default/transforms.conf.
+#
+# Read granted to the user role, write only to admin, exactly as for the two
+# lookup definitions above and for the same reason: reading the DEFINITION is
+# not reading the data. The collection behind it carries its own ACL in
+# [collections/ps_sandbox_tasks], which does not include the user role, so a
+# user running | inputlookup against this definition is refused by the
+# collection and not by the definition. Who may read the tasks is one decision,
+# made in one place, next to who may create them.
+[transforms/ps_sandbox_tasks_lookup]
+access = read : [ admin, sc_admin, power, polyswarm_analyst, user ], write : [ admin, sc_admin ]
+export = system

@@ -1,0 +1,71 @@
+# ActionStack
+
+Build forms in Splunk that submit events to Splunk SOAR.
+
+[Splunkbase](https://splunkbase.splunk.com/app/9812) · [Issues](https://github.com/Shorton88/ActionStack/issues) · [Contributing](CONTRIBUTING.md)
+
+## About this project
+
+ActionStack is an AI-driven project attempting to build something useful for the community. It is developed and maintained on a best-effort basis and is provided "as is," without warranty of any kind. See the [MIT license](LICENSE) for the full terms.
+
+## Features
+
+- Team workspaces with access controlled by Splunk roles.
+- Automation catalog with search, categories, favorites, and pagination.
+- Form builder with conditional fields, validation, lookup inputs, multiple-value inputs, and collapsible sections.
+- Drafts, publishing, version history, cloning, and recoverable form deletion.
+- Reusable workspace categories and JSON form export/import.
+- Configurable SOAR labels, tags, CEF mappings, and approval requirements handled by your playbooks.
+- Paginated submission history with playbook/action status counts, delivery retries, and receipts with custom action names, reported block results, summaries, and data.
+- Optional receipt timeline and JSON receipt / CSV submission exports for audit review.
+- Optional retention for delivered submissions, with SOAR events retained.
+- Light, dark, and system themes.
+
+## Installation
+
+ActionStack runs on a standalone Splunk Enterprise search head or a search head cluster, with KV Store enabled.
+
+Download the app from [Splunkbase](https://splunkbase.splunk.com/app/9812):
+
+- **Standalone search head:** install the app directly through Splunk Web.
+- **Search head cluster:** deploy the app through the SHC deployer.
+
+Open ActionStack as a Splunk administrator. The setup wizard creates the first workspace and configures the SOAR connection. Create a form, select an existing SOAR label, and publish it. **Allow SOAR automation on delivery** starts enabled for new forms; turn it off for intake-only forms. Existing forms keep their setting.
+
+See [Deployment](DEPLOYMENT.md) for configuration and permissions, and the [SOAR event contract](SOAR_EVENT_CONTRACT.md) for submitted fields.
+
+## Moving forms between workspaces or instances
+
+Use **Export** in the form list, or **Export form** in the editor, to download a JSON definition. The editor export includes unsaved edits. Exports include fields, defaults, validation, conditional sections, appearance, category, lookup configuration, and SOAR mapping. They exclude source workspace permissions, form IDs, version history, submissions, and connection credentials.
+
+Choose **Import form**, select the JSON file (one form, up to 200 KB), and choose a destination workspace. ActionStack validates the file and opens a new, unsaved draft with a new ID and the destination workspace's default access. Review SOAR labels and lookup sources before saving or publishing; they must exist on the destination instance. Importing does not overwrite an existing form or create a SOAR event.
+
+In the editor's **Settings** tab, **Category** lists categories used by accessible forms in the current workspace. Choose **Add a new category…** to create another; it becomes reusable when the form is saved.
+
+## Development
+
+Requires Node.js 22 and Python 3.9 or 3.13.
+
+```sh
+npm ci
+python3 scripts/dev_server.py
+```
+
+In a second terminal:
+
+```sh
+npm run dev
+```
+
+Open http://127.0.0.1:5173. The local server simulates Splunk identity and SOAR delivery and stores demo data in `.dev-data/`. Do not use live credentials in the demo.
+
+```sh
+npm test
+npm run package
+```
+
+The package and SHA-256 checksum are written to `dist/`. CI runs the tests and package build on pushes and pull requests. See [Contributing](CONTRIBUTING.md) for the development workflow.
+
+## License
+
+[MIT](LICENSE). Packaged dependencies retain their own licenses in `THIRD_PARTY_NOTICES.txt`.
